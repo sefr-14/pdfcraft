@@ -1186,4 +1186,3 @@ fn template_at_the_depth_limit_parses_on_a_worker_thread() {
     let parsed = std::thread::spawn(move || crate::parse::parse(&xml).is_ok()).join();
     assert!(matches!(parsed, Ok(true)), "a template at the limit parses on a default-stack thread");
 }
-
