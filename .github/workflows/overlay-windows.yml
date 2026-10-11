@@ -73,7 +73,10 @@ jobs:
 
       - name: Test the changed crates
         shell: bash
-        run: cargo test --locked $TEST_PACKAGES
+        run: |
+          # TEST_PACKAGES holds several "-p crate" arguments; split it into an array, not by globbing.
+          read -ra packages <<<"$TEST_PACKAGES"
+          cargo test --locked "${packages[@]}"
 
       - name: Build
         shell: bash
