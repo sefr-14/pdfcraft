@@ -6,10 +6,12 @@
 mod error;
 pub mod frame;
 pub mod settings;
+pub mod sheet;
 
 pub use error::{OverlayError, Warning};
 pub use frame::{DisplayFrame, frame, frame_of, frame_of_page};
 pub use settings::Settings;
+pub use sheet::{SheetCase, SheetMatch, SheetProposal, propose};
 
 /// Points per millimetre (72 / 25.4).
 pub const PT_PER_MM: f64 = 72.0 / 25.4;
