@@ -186,7 +186,7 @@ impl Model for Similarity {
         if !scale.is_finite() {
             return Err(Refusal::Overflow);
         }
-        if scale < s.min_scale || scale > s.max_scale {
+        if !in_range(scale, s.min_scale, s.max_scale) {
             return Err(Refusal::ScaleOutOfRange { scale, min: s.min_scale, max: s.max_scale });
         }
         let rotation = im.atan2(re);
@@ -202,6 +202,110 @@ impl Model for Similarity {
         let (sin, cos) = self.rotation.sin_cos();
         let (re, im) = (self.scale * cos, self.scale * sin);
         Matrix([re, im, -im, re, self.tx, self.ty])
+    }
+}
+
+/// Relative slack at the ends of the plausible scale range: a numerical tolerance only (decision
+/// of 11 Oct). A scale or singular value of exactly 0.05 or 20 carries rounding of up to about
+/// 2.3e-12 relative after the affine fit; 1e-11 keeps such values inside, while 0.049 and 20.1
+/// stay far outside.
+pub const RANGE_SLACK: f64 = 1e-11;
+
+/// Is `x` inside `[min, max]`, counting the ends as inside despite rounding ([`RANGE_SLACK`])?
+fn in_range(x: f64, min: f64, max: f64) -> bool {
+    x >= min * (1.0 - RANGE_SLACK) && x <= max * (1.0 + RANGE_SLACK)
+}
+
+/// The advanced affine fit: six parameters, a point (x, y) of B going to
+/// `(a x + c y + e, b x + d y + f)` on A (PDF order). It changes the drawing's proportions, so the
+/// wizard warns before using it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Affine(pub Matrix);
+
+impl Affine {
+    /// The two singular values of the linear part, largest first: how much the fit stretches
+    /// along its most and least stretched directions.
+    pub fn singular_values(&self) -> (f64, f64) {
+        singular_values(self.0)
+    }
+}
+
+/// Singular values of the 2 × 2 linear part of `m`, in closed form: with E = (a + d)/2,
+/// F = (a − d)/2, G = (b + c)/2, H = (b − c)/2, Q = hypot(E, H) and R = hypot(F, G), they are
+/// Q + R and |Q − R|, and the determinant is Q² − R².
+fn singular_values(m: Matrix) -> (f64, f64) {
+    let [a, b, c, d, ..] = m.0;
+    let (e, f, g, h) = ((a + d) / 2.0, (a - d) / 2.0, (b + c) / 2.0, (b - c) / 2.0);
+    let (q, r) = (e.hypot(h), f.hypot(g));
+    (q + r, (q - r).abs())
+}
+
+impl Model for Affine {
+    const MIN_PAIRS: usize = 3;
+
+    /// Least squares on centred points (b̃ = b − b̄, ã = a − ā), solved in the principal axes of
+    /// B's picks (decision of 11 Oct): rotate b̃ by Rᵀ, where R turns the axes onto the
+    /// eigenvectors of Σ b̃ b̃ᵀ, solve `ã ≈ K u` for u = Rᵀ b̃ with each axis divided by its own
+    /// sum of squares, then `L = K Rᵀ` and `t = ā − L b̄`. This is the same least-squares
+    /// solution as the normal equations `L = (Σ ã b̃ᵀ)(Σ b̃ b̃ᵀ)⁻¹`, without their determinant
+    /// `Σb̃x² Σb̃y² − (Σb̃x b̃y)²`, which cancels when the picks lie nearly in a line.
+    fn solve(pairs: &[PointPair], limits: &Limits) -> Result<Self, Refusal> {
+        let c = centred(pairs, Self::MIN_PAIRS, limits)?;
+        let s = &limits.settings;
+        let theta = 0.5 * (2.0 * c.bxy).atan2(c.bxx - c.byy);
+        let (sn, cs) = theta.sin_cos();
+        let (mut u11, mut u22, mut u12) = (0.0, 0.0, 0.0);
+        let (mut ax1, mut ax2, mut ay1, mut ay2) = (0.0, 0.0, 0.0, 0.0);
+        for p in pairs {
+            let (bx, by) = (p.b.x - c.mean_b.x, p.b.y - c.mean_b.y);
+            let (u1, u2) = (cs * bx + sn * by, cs * by - sn * bx);
+            let (ax, ay) = (p.a.x - c.mean_a.x, p.a.y - c.mean_a.y);
+            u11 += u1 * u1;
+            u22 += u2 * u2;
+            u12 += u1 * u2;
+            ax1 += ax * u1;
+            ax2 += ax * u2;
+            ay1 += ay * u1;
+            ay2 += ay * u2;
+        }
+        // In these axes u12 is rounding-small, so this determinant doesn't cancel. The narrow
+        // principal spread is the square root of the smaller eigenvalue of B's covariance,
+        // computed as det / λ_max.
+        let det = u11 * u22 - u12 * u12;
+        let lambda_max = (u11 + u22) / 2.0 + ((u11 - u22) / 2.0).hypot(u12);
+        let narrow = if lambda_max > 0.0 { (det / lambda_max / c.n).max(0.0).sqrt() } else { 0.0 };
+        let minimum = s.min_narrow_spread * limits.diag_b;
+        if !narrow.is_finite() {
+            return Err(Refusal::Overflow);
+        }
+        if narrow < minimum {
+            return Err(Refusal::NarrowSpreadTooSmall { spread: narrow, minimum });
+        }
+        let (k11, k12) = ((ax1 * u22 - ax2 * u12) / det, (ax2 * u11 - ax1 * u12) / det);
+        let (k21, k22) = ((ay1 * u22 - ay2 * u12) / det, (ay2 * u11 - ay1 * u12) / det);
+        let (a11, a12) = (k11 * cs - k12 * sn, k11 * sn + k12 * cs);
+        let (a21, a22) = (k21 * cs - k22 * sn, k21 * sn + k22 * cs);
+        let e = c.mean_a.x - (a11 * c.mean_b.x + a12 * c.mean_b.y);
+        let f = c.mean_a.y - (a21 * c.mean_b.x + a22 * c.mean_b.y);
+        let m = Matrix([a11, a21, a12, a22, e, f]);
+        if !m.0.iter().all(|v| v.is_finite()) {
+            return Err(Refusal::Overflow);
+        }
+        let determinant = a11 * a22 - a12 * a21;
+        if determinant <= 0.0 {
+            return Err(Refusal::Mirrored { determinant });
+        }
+        let (big, small) = singular_values(m);
+        for scale in [small, big] {
+            if !in_range(scale, s.min_scale, s.max_scale) {
+                return Err(Refusal::ScaleOutOfRange { scale, min: s.min_scale, max: s.max_scale });
+            }
+        }
+        Ok(Affine(m))
+    }
+
+    fn matrix(&self) -> Matrix {
+        self.0
     }
 }
 
@@ -222,11 +326,6 @@ pub(crate) struct Centred {
     pub bxx: f64,
     pub byy: f64,
     pub bxy: f64,
-    /// Cross sums Σ ãx b̃x, Σ ãx b̃y, Σ ãy b̃x, Σ ãy b̃y
-    pub axbx: f64,
-    pub axby: f64,
-    pub aybx: f64,
-    pub ayby: f64,
 }
 
 impl Centred {
@@ -253,22 +352,7 @@ pub(crate) fn centred(pairs: &[PointPair], need: usize, limits: &Limits) -> Resu
         Point::new(sx / n, sy / n)
     };
     let (mean_b, mean_a) = (mean(|p| p.b), mean(|p| p.a));
-    let mut c = Centred {
-        n,
-        mean_b,
-        mean_a,
-        sum_bb: 0.0,
-        sum_aa: 0.0,
-        sum_ab_re: 0.0,
-        sum_ab_im: 0.0,
-        bxx: 0.0,
-        byy: 0.0,
-        bxy: 0.0,
-        axbx: 0.0,
-        axby: 0.0,
-        aybx: 0.0,
-        ayby: 0.0,
-    };
+    let mut c = Centred { n, mean_b, mean_a, sum_bb: 0.0, sum_aa: 0.0, sum_ab_re: 0.0, sum_ab_im: 0.0, bxx: 0.0, byy: 0.0, bxy: 0.0 };
     for p in pairs {
         let (bx, by) = (p.b.x - mean_b.x, p.b.y - mean_b.y);
         let (ax, ay) = (p.a.x - mean_a.x, p.a.y - mean_a.y);
@@ -278,13 +362,9 @@ pub(crate) fn centred(pairs: &[PointPair], need: usize, limits: &Limits) -> Resu
         c.sum_aa += ax * ax + ay * ay;
         c.sum_ab_re += bx * ax + by * ay;
         c.sum_ab_im += bx * ay - by * ax;
-        c.axbx += ax * bx;
-        c.axby += ax * by;
-        c.aybx += ay * bx;
-        c.ayby += ay * by;
     }
     c.sum_bb = c.bxx + c.byy;
-    let sums = [c.mean_a.x, c.mean_a.y, c.mean_b.x, c.mean_b.y, c.sum_bb, c.sum_aa, c.sum_ab_re, c.sum_ab_im, c.bxy, c.axby, c.aybx];
+    let sums = [c.mean_a.x, c.mean_a.y, c.mean_b.x, c.mean_b.y, c.sum_bb, c.sum_aa, c.sum_ab_re, c.sum_ab_im, c.bxy];
     if !sums.iter().all(|v| v.is_finite()) {
         return Err(Refusal::Overflow);
     }

@@ -11,7 +11,7 @@ pub mod sheet;
 
 pub use error::{OverlayError, Warning};
 pub use frame::{DisplayFrame, frame, frame_of, frame_of_page};
-pub use register::{Doc, Fit, Flag, Limits, Model, Point, PointPair, PointReport, Refusal, Similarity, fit, report, residuals};
+pub use register::{Affine, Doc, Fit, Flag, Limits, Model, Point, PointPair, PointReport, RANGE_SLACK, Refusal, Similarity, fit, report, residuals};
 pub use settings::Settings;
 pub use sheet::{SheetCase, SheetMatch, SheetProposal, propose};
 
