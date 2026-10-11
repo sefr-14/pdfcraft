@@ -3822,6 +3822,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pdfcraft-overlay"
+version = "0.6.0"
+dependencies = [
+ "pdfcraft-content",
+ "pdfcraft-cos",
+ "pdfcraft-model",
+]
+
+[[package]]
 name = "pdfcraft-platform"
 version = "0.6.0"
 dependencies = [

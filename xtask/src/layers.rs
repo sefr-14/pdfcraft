@@ -73,6 +73,7 @@ pub const TABLE: &[(&str, Class)] = &[
     // L5 interaction
     ("viewport", Class::Layer(5)),
     ("tools", Class::Layer(5)),
+    ("overlay", Class::Layer(5)), // this fork's overlay comparison (crates/overlay)
     // L6 façade
     ("engine", Class::Layer(6)),
     // L7 platform + frontends

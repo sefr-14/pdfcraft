@@ -1,0 +1,14 @@
+[package]
+name = "pdfcraft-overlay"
+description = "Overlay comparison for PdfCraft (fork): page frames, sheet-size proposals, registration and placement"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+pdfcraft-content = { workspace = true }
+pdfcraft-cos = { workspace = true }
+pdfcraft-model = { workspace = true }
