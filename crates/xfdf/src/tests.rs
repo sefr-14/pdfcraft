@@ -36,6 +36,52 @@ fn blank() -> Document {
     Document::open(Arc::new(write_full(&doc, &SaveOptions::default()).unwrap())).unwrap()
 }
 
+/// A deeply nested field tree is refused with an error. The walk used to recurse once per level
+/// with nothing bounding it, so a small file overflowed the stack - and a stack overflow aborts
+/// the process, which no `catch_unwind` can intercept.
+#[test]
+fn deeply_nested_fields_are_refused_instead_of_overflowing_the_stack() {
+    let mut xml = String::from(r#"<?xml version="1.0"?><xfdf xmlns="http://ns.adobe.com/xfdf/"><fields>"#);
+    for i in 0..10_000 {
+        xml.push_str(&format!(r#"<field name="f{i}">"#));
+    }
+    xml.push_str("<value>v</value>");
+    for _ in 0..10_000 {
+        xml.push_str("</field>");
+    }
+    xml.push_str("</fields></xfdf>");
+    assert!(matches!(data_values(xml.as_bytes()), Err(DataError::Malformed(_))), "ten thousand nested fields must be refused, not walked");
+}
+
+/// Nesting inside the limit still reads, and the dotted field name is built as before.
+#[test]
+fn nested_fields_within_the_limit_still_read() {
+    let mut xml = String::from(r#"<?xml version="1.0"?><xfdf xmlns="http://ns.adobe.com/xfdf/"><fields>"#);
+    for i in 0..16 {
+        xml.push_str(&format!(r#"<field name="f{i}">"#));
+    }
+    xml.push_str("<value>deep</value>");
+    for _ in 0..16 {
+        xml.push_str("</field>");
+    }
+    xml.push_str("</fields></xfdf>");
+    let Ok(values) = data_values(xml.as_bytes()) else { panic!("sixteen levels must still read") };
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].0, "f0.f1.f2.f3.f4.f5.f6.f7.f8.f9.f10.f11.f12.f13.f14.f15");
+    assert_eq!(values[0].1, vec!["deep".to_string()]);
+}
+
+/// The scanner counts a tag that closes itself as one level while it is read, not as a level left
+/// open, so a flat file with thousands of them stays shallow and is not refused.
+#[test]
+fn self_closing_elements_do_not_accumulate_in_the_depth() {
+    use crate::xml_nesting_depth as d;
+    assert_eq!(d("<a/>"), 1);
+    assert_eq!(d("<a><b/></a>"), 2);
+    assert_eq!(d(&"<empty/>".repeat(2_000)), 1);
+    assert_eq!(d(&format!("<fields>{}</fields>", r#"<field name="a"/>"#.repeat(2_000))), 2);
+}
+
 /// The blank document with comments and values.
 fn filled() -> Document {
     let mut doc = blank();

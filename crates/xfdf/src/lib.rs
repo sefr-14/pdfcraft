@@ -67,6 +67,92 @@ pub struct Report {
 
 // ── names ───────────────────────────────────────────────────────────────────────────────────
 
+/// Form data files are attacker-supplied. Refuse a DTD and bound the node count, exactly as the
+/// XFA template parser does (`crates/xfa/src/parse.rs`), and bound how deep a nested field tree
+/// may go: the walk below recurses once per nesting level.
+const MAX_NODES: u32 = 2_000_000;
+const MAX_DEPTH: usize = 64;
+
+/// The deepest element nesting accepted before the text reaches the XML parser.
+///
+/// roxmltree parses by recursive descent, so its stack use grows with the nesting depth: ten
+/// thousand levels overflow the main thread's stack and abort the process. A stack overflow is
+/// `abort()`, so `catch_unwind` cannot intercept it and the whole application dies - which is why
+/// the bound has to be applied before parsing, not while walking the result. Around three thousand
+/// levels still parse on the default stack, so this stays clear of the cliff while leaving far more
+/// room than the walks below, which cut off at 64.
+const MAX_XML_DEPTH: usize = 1_024;
+
+/// Element nesting depth of `text`, skipping comments, CDATA, processing instructions, the DOCTYPE
+/// and quoted attribute values. A tag that closes itself (`<field/>`) is one level while it is read
+/// and does not stay open, so a long run of them cannot accumulate into the bound. It cannot
+/// under-count a real element; a stray `<` in text is invalid XML and only makes it over-count,
+/// which errs towards refusing the file.
+fn xml_nesting_depth(text: &str) -> usize {
+    fn find(hay: &[u8], from: usize, needle: &[u8]) -> Option<usize> {
+        (from..hay.len()).find(|&p| hay[p..].starts_with(needle))
+    }
+    let b = text.as_bytes();
+    let (mut i, mut depth, mut max) = (0usize, 0usize, 0usize);
+    while i < b.len() {
+        if b[i] != b'<' {
+            i += 1;
+        } else if b[i..].starts_with(b"<!--") {
+            i = find(b, i + 4, b"-->").map_or(b.len(), |p| p + 3);
+        } else if b[i..].starts_with(b"<![CDATA[") {
+            i = find(b, i + 9, b"]]>").map_or(b.len(), |p| p + 3);
+        } else if b[i..].starts_with(b"<?") {
+            i = find(b, i + 2, b"?>").map_or(b.len(), |p| p + 2);
+        } else if b[i..].starts_with(b"<!") {
+            i = find(b, i + 2, b">").map_or(b.len(), |p| p + 1);
+        } else if b[i..].starts_with(b"</") {
+            depth = depth.saturating_sub(1);
+            i = find(b, i + 2, b">").map_or(b.len(), |p| p + 1);
+        } else {
+            depth += 1;
+            max = max.max(depth);
+            // Skip the rest of the start tag, over any quoted attribute value, and remember its last
+            // significant byte: a tag that ends in `/` closes itself, so it is one level deep while it
+            // is read rather than a level left open.
+            i += 1;
+            let mut quote = 0u8;
+            let mut last = 0u8;
+            while i < b.len() {
+                let c = b[i];
+                if quote != 0 {
+                    if c == quote {
+                        quote = 0;
+                    }
+                } else if c == b'"' || c == b'\'' {
+                    quote = c;
+                } else if c == b'>' {
+                    i += 1;
+                    break;
+                } else if !c.is_ascii_whitespace() {
+                    last = c;
+                }
+                i += 1;
+            }
+            if last == b'/' {
+                depth -= 1;
+            }
+        }
+    }
+    max
+}
+
+fn check_form_xml_depth(text: &str) -> Result<(), DataError> {
+    let depth = xml_nesting_depth(text);
+    if depth > MAX_XML_DEPTH {
+        return Err(DataError::Malformed(format!("the file nests XML elements {depth} deep, past the {MAX_XML_DEPTH} the reader accepts")));
+    }
+    Ok(())
+}
+
+fn parse_form_xml(text: &str) -> Result<roxmltree::Document<'_>, roxmltree::Error> {
+    roxmltree::Document::parse_with_options(text, roxmltree::ParsingOptions { allow_dtd: false, nodes_limit: MAX_NODES })
+}
+
 const SUBTYPES: [(&str, &str); 17] = [
     ("Text", "text"),
     ("FreeText", "freetext"),
@@ -702,7 +788,8 @@ fn place(doc: &mut Document, page_ref: ObjRef, d: Dict) -> Result<ObjRef, DataEr
 }
 
 fn import_xfdf(doc: &mut Document, text: &str) -> Result<Report, DataError> {
-    let xml = roxmltree::Document::parse(text).map_err(|e| DataError::Malformed(e.to_string()))?;
+    check_form_xml_depth(text)?;
+    let xml = parse_form_xml(text).map_err(|e| DataError::Malformed(e.to_string()))?;
     let root = xml.root_element();
     if root.tag_name().name() != "xfdf" {
         return Err(DataError::UnknownFormat);
@@ -754,7 +841,7 @@ fn import_xfdf(doc: &mut Document, text: &str) -> Result<Report, DataError> {
     // Fields.
     if let Some(fields) = root.children().find(|c| c.has_tag_name("fields")) {
         let mut values = Vec::new();
-        walk_xfdf(fields, "", &mut values);
+        walk_xfdf(fields, "", &mut values, 0)?;
         apply_values(doc, &values, &mut report);
     }
     Ok(report)
@@ -787,7 +874,10 @@ fn deep(src: &Document, o: &Object, depth: usize) -> Object {
     }
 }
 
-fn walk_xfdf(node: roxmltree::Node, prefix: &str, out: &mut Vec<(String, Vec<String>)>) {
+fn walk_xfdf(node: roxmltree::Node, prefix: &str, out: &mut Vec<(String, Vec<String>)>, depth: usize) -> Result<(), DataError> {
+    if depth > MAX_DEPTH {
+        return Err(DataError::Malformed(format!("XFDF fields nest more than {MAX_DEPTH} deep")));
+    }
     for f in node.children().filter(|c| c.has_tag_name("field")) {
         let Some(name) = f.attribute("name") else { continue };
         let full = if prefix.is_empty() { name.to_string() } else { format!("{prefix}.{name}") };
@@ -795,8 +885,9 @@ fn walk_xfdf(node: roxmltree::Node, prefix: &str, out: &mut Vec<(String, Vec<Str
         if !vals.is_empty() {
             out.push((full.clone(), vals));
         }
-        walk_xfdf(f, &full, out);
+        walk_xfdf(f, &full, out, depth + 1)?;
     }
+    Ok(())
 }
 
 fn walk_fdf(fdf: &Document, list: &[Object], prefix: &str, out: &mut Vec<(String, Vec<String>)>, depth: usize) {
@@ -857,14 +948,15 @@ pub fn data_values(bytes: &[u8]) -> Result<Vec<(String, Vec<String>)>, DataError
     }
     let text = String::from_utf8_lossy(bytes);
     let t = text.trim_start_matches('\u{feff}').trim_start();
-    let xml = roxmltree::Document::parse(t).map_err(|_| DataError::UnknownFormat)?;
+    check_form_xml_depth(t)?;
+    let xml = parse_form_xml(t).map_err(|_| DataError::UnknownFormat)?;
     let root = xml.root_element();
     if root.tag_name().name() != "xfdf" {
         return Err(DataError::UnknownFormat);
     }
     let mut values = Vec::new();
     if let Some(fields) = root.children().find(|c| c.has_tag_name("fields")) {
-        walk_xfdf(fields, "", &mut values);
+        walk_xfdf(fields, "", &mut values, 0)?;
     }
     Ok(values)
 }
@@ -944,7 +1036,8 @@ fn import_table(doc: &mut Document, text: &str) -> Result<Report, DataError> {
     let mut report = Report::default();
     let t = text.trim_start_matches('\u{feff}');
     let values: Vec<(String, Vec<String>)> = if t.trim_start().starts_with('<') {
-        let xml = roxmltree::Document::parse(t).map_err(|e| DataError::Malformed(e.to_string()))?;
+        check_form_xml_depth(t)?;
+        let xml = parse_form_xml(t).map_err(|e| DataError::Malformed(e.to_string()))?;
         xml.root_element()
             .children()
             .filter(|c| c.is_element())

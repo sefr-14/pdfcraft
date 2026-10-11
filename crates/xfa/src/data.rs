@@ -73,6 +73,9 @@ fn to_node(n: roxmltree::Node, depth: usize) -> DataNode {
 /// The `xfa:data` element of the datasets packet in `xdp` (or a bare datasets document), as a
 /// tree whose root is that element.
 pub fn parse_datasets(xdp: &str) -> Option<DataNode> {
+    if crate::xml_nesting_depth(xdp) > crate::MAX_XML_DEPTH {
+        return None;
+    }
     let opts = roxmltree::ParsingOptions { allow_dtd: false, nodes_limit: MAX_NODES };
     let doc = roxmltree::Document::parse_with_options(xdp, opts).ok()?;
     let datasets = doc.descendants().find(|n| n.is_element() && n.tag_name().name() == "datasets")?;
@@ -584,6 +587,10 @@ fn merge(text: &str, within: Within, op: Op, warnings: &mut Vec<String>) -> Merg
         Op::Values(w) => w,
         Op::Remove(_) => &[],
     };
+    if crate::xml_nesting_depth(text) > crate::MAX_XML_DEPTH {
+        warnings.push("The XFA data nests XML elements deeper than the reader accepts; the field values were not written to it".into());
+        return Merged::Failed;
+    }
     let opts = || roxmltree::ParsingOptions { allow_dtd: false, nodes_limit: MAX_NODES };
     // A packet of an array may use the prefixes the XDP envelope declares: read it inside
     // an element declaring the usual ones.

@@ -1109,3 +1109,58 @@ fn data_paths_leave_areas_out() {
     assert_eq!(path("other[0].box[0].rest[0]"), "other[0].box[0].rest[0]");
     assert_eq!(data_path(&tpl, ""), Vec::new());
 }
+/// A template nested thousands of elements deep must be refused. roxmltree recurses with the
+/// nesting depth, so it used to overflow the stack - and a stack overflow aborts the process,
+/// which no `catch_unwind` can intercept.
+#[test]
+fn deeply_nested_template_is_refused_instead_of_overflowing_the_stack() {
+    let mut xml = String::from(r#"<template xmlns="http://www.xfa.org/schema/xfa-template/3.3/">"#);
+    for i in 0..10_000 {
+        xml.push_str(&format!(r#"<subform name="s{i}">"#));
+    }
+    xml.push_str(&"</subform>".repeat(10_000));
+    xml.push_str("</template>");
+    assert!(matches!(crate::parse::parse(&xml), Err(crate::XfaError::Malformed(_))), "ten thousand nested subforms must be refused, not parsed");
+}
+
+/// The depth scanner skips what is not an element and cannot under-count one.
+#[test]
+fn nesting_depth_scanner_counts_what_matters() {
+    use crate::xml_nesting_depth as d;
+    assert_eq!(d(""), 0);
+    assert_eq!(d("<a><b><c/></b></a>"), 3);
+    assert_eq!(d(r#"<?xml version="1.0"?><!-- <x> --><a/>"#), 1);
+    assert_eq!(d("<a><![CDATA[<not-an-element>]]></a>"), 1);
+    assert_eq!(d(r#"<a b="<"><c/></a>"#), 2);
+    assert_eq!(d("<a/>"), 1);
+    assert_eq!(d("<a><b/></a>"), 2);
+    assert_eq!(d(&"<empty/>".repeat(2_000)), 1, "elements that close themselves must not accumulate");
+}
+
+/// A template holding thousands of self-closing elements is two levels deep, not thousands. Before
+/// the scanner knew that, a form with a lot of styling elements was refused as too deeply nested.
+#[test]
+fn many_self_closing_elements_do_not_accumulate_into_the_bound() {
+    let mut xml = String::from(r#"<template xmlns="http://www.xfa.org/schema/xfa-template/3.3/"><subform layout="tb">"#);
+    for i in 0..2_000 {
+        xml.push_str(&format!(r#"<draw name="d{i}"/>"#));
+    }
+    xml.push_str("</subform></template>");
+    assert!(crate::parse::parse(&xml).is_ok(), "two thousand self-closing draws are two levels deep, not two thousand");
+}
+
+/// The bound must hold on a worker thread too, whose default stack (2 MiB) is a quarter of the
+/// main thread's: a template exactly at the limit parses there without overflowing.
+#[test]
+fn template_at_the_depth_limit_parses_on_a_worker_thread() {
+    let depth = crate::MAX_XML_DEPTH - 1;
+    let mut xml = String::from(r#"<template xmlns="http://www.xfa.org/schema/xfa-template/3.3/">"#);
+    for i in 0..depth {
+        xml.push_str(&format!(r#"<subform name="s{i}">"#));
+    }
+    xml.push_str(&"</subform>".repeat(depth));
+    xml.push_str("</template>");
+    let parsed = std::thread::spawn(move || crate::parse::parse(&xml).is_ok()).join();
+    assert!(matches!(parsed, Ok(true)), "a template at the limit parses on a default-stack thread");
+}
+
