@@ -223,24 +223,23 @@ pub fn progress_notice(app: &PdfCraftApp, ctx: &egui::Context) -> bool {
     cancel
 }
 
-/// The ArtCraft wordmark (Storyteller's brand, docs/brand/; not open source), sized to `height`.
+/// The plain-text credit this fork shows where upstream draws the ArtCraft marks. The ArtCraft
+/// brand licence (docs/brand/LICENSE-brand.txt) requires a published modified version to leave
+/// the marks out, and allows saying in plain text that it is based on PdfCraft by the ArtCraft
+/// team. Kept in English: it is an attribution, not interface text.
+pub const UPSTREAM_CREDIT: &str = "Based on PdfCraft by the ArtCraft team";
+
+/// Upstream draws the ArtCraft wordmark here. This fork shows [`UPSTREAM_CREDIT`] as muted text
+/// about `height` points tall.
 pub fn artcraft_logo(ui: &mut egui::Ui, height: f32) -> Response {
-    let dark = ui.visuals().dark_mode;
-    let (uri, bytes): (&str, &'static [u8]) = if dark {
-        ("bytes://artcraft-logo-white.svg", include_bytes!("../../../docs/brand/artcraft-logo-white.svg"))
-    } else {
-        ("bytes://artcraft-logo.svg", include_bytes!("../../../docs/brand/artcraft-logo.svg"))
-    };
-    ui.add(egui::Image::from_bytes(uri, bytes).max_height(height).alt_text("ArtCraft"))
+    let t = Tokens::get(ui.ctx());
+    ui.label(egui::RichText::new(UPSTREAM_CREDIT).font(theme::regular(height.clamp(11.0, 14.0))).color(t.text_muted))
 }
 
-/// The ArtCraft mark (brand blue, works on light and dark), `size` points square.
-pub fn artcraft_mark(ui: &mut egui::Ui, size: f32) -> Response {
-    ui.add(
-        egui::Image::from_bytes("bytes://artcraft-mark.svg", include_bytes!("../../../docs/brand/artcraft-mark.svg"))
-            .fit_to_exact_size(vec2(size, size))
-            .alt_text("ArtCraft"),
-    )
+/// Upstream draws the ArtCraft mark here. This fork draws nothing in its place, so the credit
+/// appears once, through [`artcraft_logo`].
+pub fn artcraft_mark(ui: &mut egui::Ui, _size: f32) -> Response {
+    ui.allocate_response(vec2(0.0, 0.0), Sense::hover())
 }
 
 /// Buttons for every community link (`pdfcraft_engine::links`), Discord first and prominent.
