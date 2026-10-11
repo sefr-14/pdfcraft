@@ -198,6 +198,45 @@ fn a_tiff_claiming_enormous_dimensions_is_refused() {
     assert!(matches!(from_images(&[("huge.tif".into(), tif)]), Err(CreateError::Image(..))));
 }
 
+/// A PNG of a few bytes whose header claims `w`×`h` 8-bit RGBA pixels, with no pixel data.
+fn png_claiming(w: u32, h: u32) -> Vec<u8> {
+    fn crc32(bytes: &[u8]) -> u32 {
+        let mut c = !0u32;
+        for &b in bytes {
+            c ^= u32::from(b);
+            for _ in 0..8 {
+                c = if c & 1 != 0 { 0xEDB8_8320 ^ (c >> 1) } else { c >> 1 };
+            }
+        }
+        !c
+    }
+    let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+    let mut chunk = |kind: &[u8], data: &[u8]| {
+        png.extend_from_slice(&(data.len() as u32).to_be_bytes());
+        let body = [kind, data].concat();
+        png.extend_from_slice(&body);
+        png.extend_from_slice(&crc32(&body).to_be_bytes());
+    };
+    let ihdr = [&w.to_be_bytes()[..], &h.to_be_bytes(), &[8, 6, 0, 0, 0]].concat();
+    chunk(b"IHDR", &ihdr);
+    // An empty zlib stream: one stored block of no bytes.
+    chunk(b"IDAT", &[0x78, 0x01, 0x01, 0x00, 0x00, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01]);
+    chunk(b"IEND", &[]);
+    png
+}
+
+#[test]
+fn a_tiny_png_claiming_huge_dimensions_is_refused_before_allocating() {
+    // 68 bytes claiming 13 GiB (and 1 TiB) of pixels: refused before anything is allocated,
+    // where it used to abort the process when the allocation failed.
+    for (w, h) in [(60_000, 60_000), (1 << 20, 1 << 18)] {
+        let png = png_claiming(w, h);
+        assert_eq!(png.len(), 68);
+        let r = from_images(&[("huge.png".into(), png)]);
+        assert!(matches!(&r, Err(CreateError::Image(_, m)) if m.contains("too large")), "{w}x{h}");
+    }
+}
+
 /// Likewise a PNG: the png crate's limits don't cover the frame buffer, which its header sizes
 /// (60000x60000 RGBA is 14.4 GB). Refused before anything is allocated, not after.
 #[test]

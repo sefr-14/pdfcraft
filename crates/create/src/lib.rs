@@ -314,10 +314,13 @@ fn png_image(name: &str, bytes: &[u8]) -> Result<Embedded, CreateError> {
         _ => (72.0, 72.0),
     };
     let icc = reader.info().icc_profile.as_ref().map(|p| p.to_vec());
-    // The png crate's limits don't cover the frame buffer, sized by the header alone: a small
-    // file claiming enormous dimensions must not make it allocate (and fill) gigabytes.
+    // The decoded size comes from the header alone, so a file of a few bytes can claim any
+    // size: keep the ceiling, and ask for the memory fallibly (a failed allocation would abort
+    // the whole app, and no `catch_unwind` stops that).
     let size = reader.output_buffer_size().filter(|n| *n <= MAX_DECODED_BYTES).ok_or_else(|| bad("image too large".into()))?;
-    let mut buf = vec![0; size];
+    let mut buf = Vec::new();
+    buf.try_reserve_exact(size).map_err(|_| bad("not enough memory for this image".into()))?;
+    buf.resize(size, 0);
     let frame = reader.next_frame(&mut buf).map_err(|e| bad(e.to_string()))?;
     let (w, h) = (frame.width, frame.height);
     let data = &buf[..frame.buffer_size()];
@@ -330,8 +333,14 @@ fn png_image(name: &str, bytes: &[u8]) -> Result<Embedded, CreateError> {
     };
     let has_alpha = channels == 2 || channels == 4;
     let colour_n = if has_alpha { channels - 1 } else { channels };
-    let mut colour = Vec::with_capacity(w as usize * h as usize * colour_n);
+    let mut colour = Vec::new();
+    colour
+        .try_reserve_exact((w as usize).saturating_mul(h as usize).saturating_mul(colour_n))
+        .map_err(|_| bad("not enough memory for this image".into()))?;
     let mut alpha = Vec::new();
+    if has_alpha {
+        alpha.try_reserve_exact((w as usize).saturating_mul(h as usize)).map_err(|_| bad("not enough memory for this image".into()))?;
+    }
     for px in data.chunks_exact(channels) {
         colour.extend_from_slice(&px[..colour_n]);
         if has_alpha {

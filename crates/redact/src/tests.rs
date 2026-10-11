@@ -204,6 +204,48 @@ fn rotated_text_and_composite_fonts() {
 }
 
 #[test]
+fn vertical_writing_text_under_a_mark_fails_closed() {
+    // A Type0 font laid out vertically (Identity-V / CMap WMode 1) cannot have its glyphs placed
+    // under a mark by the horizontal interpreter, so Apply Redactions must fail rather than ship
+    // the text under the box. The horizontal control (Identity-H) is redacted normally.
+    let make = |encoding: &str| -> Document {
+        let t0 = format!(
+            "<< /Type /Font /Subtype /Type0 /BaseFont /X /Encoding /{encoding} /DescendantFonts [<< /Type /Font /Subtype /CIDFontType2 /BaseFont /X /DW 1000 /W [1 [500 500] 3 4 250] >>] >>"
+        )
+        .into_bytes();
+        let src = b"BT /F2 10 Tf 0 1 -1 0 100 50 Tm <0001000200030004> Tj ET";
+        let mut doc = one_page(src, "", vec![]);
+        let font_ref = doc.add(Object::Dict(Dict::new()));
+        let parsed = {
+            let mut lx = pdfcraft_cos::Lexer::new(&t0, 0);
+            lx.object().unwrap()
+        };
+        doc.set(font_ref, parsed);
+        let page = pdfcraft_model::pages(&doc)[0].obj;
+        doc.update_dict(page, |d| {
+            let mut res = d.get(b"Resources").and_then(Object::as_dict).cloned().unwrap();
+            let mut fonts = res.get(b"Font").and_then(Object::as_dict).cloned().unwrap();
+            fonts.set(b"F2".to_vec(), Object::Ref(font_ref));
+            res.set(b"Font".to_vec(), Object::Dict(fonts));
+            d.set(b"Resources".to_vec(), Object::Dict(res));
+        })
+        .unwrap();
+        doc
+    };
+
+    // Identity-V: apply must refuse rather than report success with the text still in the file.
+    let mut vdoc = make("Identity-V");
+    mark(&mut vdoc, 0, &[[85.0, 55.5, 105.0, 61.0]], "");
+    assert_eq!(apply(&mut vdoc, None), Err(RedactError::VerticalText(1)), "vertical text under a mark must not silently pass");
+
+    // Identity-H control: the same glyphs and mark are redacted normally.
+    let mut hdoc = make("Identity-H");
+    mark(&mut hdoc, 0, &[[85.0, 55.5, 105.0, 61.0]], "");
+    let r = apply(&mut hdoc, None).unwrap();
+    assert_eq!(r.glyphs, 2, "the horizontal control is redacted: {r:?}");
+}
+
+#[test]
 fn images_are_removed_or_have_their_pixels_cleared() {
     // Image 1 is fully covered; image 2 (4×1 gray, all white) is half covered.
     let img = stream("/Type /XObject /Subtype /Image /Width 4 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8", &[255, 255, 255, 255]);
@@ -260,6 +302,94 @@ fn shared_form_xobjects_are_copied_not_changed() {
     assert_eq!(content(&doc, 1), "/Fm Do", "page 2 shares the stream and the form: untouched");
     assert_eq!(under(&mut doc, 1, &[[0.0, 90.0, 300.0, 120.0]]), 6);
     assert_eq!(under(&mut doc, 0, &[[0.0, 90.0, 300.0, 120.0]]), 0);
+}
+
+#[test]
+fn redacted_images_and_forms_do_not_survive_a_full_rewrite_save() {
+    // Page 1 draws a fully covered image, a partly covered image and a form XObject whose text
+    // is under the mark. After Apply Redactions and the forced full rewrite, none of their secret
+    // bytes may stay in the saved file, while an unrelated image drawn only on page 2 survives.
+    let im1 = b"REDIMGONECOVERED"; // 16 bytes, one gray row
+    let impart = b"REDIMGPARTSECRETPUBPARTBOTTOMROW"; // 16-byte secret top row + 16-byte bottom row
+    let imkeep = b"PUBIMGKEEPSURVIVE"; // 17 bytes, used only on page 2
+    let objs: Vec<Vec<u8>> = vec![
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R 10 0 R] /Count 2 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> /XObject << /Im1 7 0 R /ImPart 8 0 R /FmSecret 9 0 R >> >> >>".to_vec(),
+        stream("", b"q 50 0 0 50 20 230 cm /Im1 Do Q q 50 0 0 100 100 180 cm /ImPart Do Q /FmSecret Do"),
+        FONT.replace("95 0 R", "6 0 R").into_bytes(),
+        widths(),
+        stream("/Type /XObject /Subtype /Image /Width 16 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8", im1),
+        stream("/Type /XObject /Subtype /Image /Width 16 /Height 2 /ColorSpace /DeviceGray /BitsPerComponent 8", impart),
+        stream(
+            "/Type /XObject /Subtype /Form /BBox [0 0 300 300] /Resources << /Font << /F1 5 0 R >> >>",
+            b"BT /F1 10 Tf 20 230 Td (REDFORMSECRETTEXT) Tj ET",
+        ),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Contents 11 0 R /Resources << /XObject << /ImKeep 12 0 R >> >> >>".to_vec(),
+        stream("", b"q 50 0 0 50 20 20 cm /ImKeep Do Q"),
+        stream("/Type /XObject /Subtype /Image /Width 17 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8", imkeep),
+    ];
+    let mut doc = pdf(objs);
+    mark(&mut doc, 0, &[[0.0, 200.0, 300.0, 300.0]], "");
+    let r = apply(&mut doc, None).unwrap();
+    assert!(r.images_removed >= 1 && r.forms_rewritten >= 1, "{r:?}");
+
+    // The full rewrite that redaction forces must not carry the removed content forward.
+    let bytes = write_full(&doc, &SaveOptions::default()).unwrap();
+    let has = |needle: &[u8]| bytes.windows(needle.len()).any(|w| w == needle);
+    assert!(!has(b"REDIMGONECOVERED"), "covered image samples survived the save");
+    assert!(!has(b"REDIMGPARTSECRET"), "partly covered image's secret row survived the save");
+    assert!(!has(b"REDFORMSECRETTEXT"), "the form's redacted text survived the save");
+
+    // The unrelated image drawn only on page 2 stays referenced and intact.
+    let saved = Document::open(Arc::new(bytes)).unwrap();
+    let keep = pdfcraft_model::pages(&saved).swap_remove(1);
+    let res = saved.resolve(keep.dict.get(b"Resources").unwrap()).as_dict().cloned().unwrap();
+    let xo = saved.resolve(res.get(b"XObject").unwrap()).as_dict().cloned().unwrap();
+    let kref = xo.get(b"ImKeep").and_then(Object::as_ref).expect("ImKeep still referenced");
+    let Object::Stream(s) = &*saved.get(kref) else { panic!("ImKeep is a stream") };
+    assert_eq!(s.decoded().unwrap(), imkeep, "the unrelated image survives intact");
+}
+
+#[test]
+fn redacting_an_xfa_field_drops_the_xfa_packet_so_its_value_cannot_survive() {
+    // A static AcroForm+XFA form whose field value lives both in the widget /V and in the XFA
+    // datasets packet (Designer-style /XFA array). Redacting the widget must delete the field and
+    // stop the form being XFA, so neither the saved file nor a later relayout keeps the value.
+    let objs: Vec<Vec<u8>> = vec![
+        b"<< /Type /Catalog /Pages 2 0 R /NeedsRendering true /AcroForm 7 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> /Annots [8 0 R] >>".to_vec(),
+        stream("", b"BT ET"),
+        FONT.replace("95 0 R", "6 0 R").into_bytes(),
+        widths(),
+        b"<< /Fields [8 0 R] /XFA 9 0 R /PCXfaLayout << /Pages 1 /Fields 1 >> >>".to_vec(),
+        b"<< /Type /Annot /Subtype /Widget /FT /Tx /T (ssn) /V (SSN-987-65-4321) /Rect [72 200 272 220] /P 3 0 R >>".to_vec(),
+        b"[(datasets) 10 0 R (template) 11 0 R]".to_vec(),
+        stream(
+            "",
+            b"<xfa:datasets xmlns:xfa=\"http://www.xfa.org/schema/xfa-data/1.0/\"><xfa:data><ssn>SSN-987-65-4321</ssn></xfa:data></xfa:datasets>",
+        ),
+        stream(
+            "",
+            b"<template xmlns=\"http://www.xfa.org/schema/xfa-template/3.3/\"><subform name=\"form1\"><field name=\"ssn\"/></subform></template>",
+        ),
+    ];
+    let mut doc = pdf(objs);
+    assert_eq!(pdfcraft_forms::fields(&doc).len(), 1, "the XFA-bound field is present before");
+    mark(&mut doc, 0, &[[72.0, 200.0, 272.0, 220.0]], "");
+    let r = apply(&mut doc, None).unwrap();
+    assert!(r.fields >= 1 && r.xfa_removed, "{r:?}");
+
+    let bytes = write_full(&doc, &SaveOptions::default()).unwrap();
+    assert!(!bytes.windows(15).any(|w| w == b"SSN-987-65-4321"), "the redacted value survived in the datasets packet");
+
+    let saved = Document::open(Arc::new(bytes)).unwrap();
+    let cat = saved.get(saved.root().unwrap()).as_dict().cloned().unwrap();
+    let acro = saved.resolve(cat.get(b"AcroForm").unwrap()).as_dict().cloned().unwrap();
+    assert!(acro.get(b"XFA").is_none(), "/XFA is gone from the saved AcroForm");
+    assert!(acro.get(b"PCXfaLayout").is_none(), "the cached layout mark is cleared");
+    assert!(cat.get(b"NeedsRendering").is_none(), "/NeedsRendering is cleared");
 }
 
 #[test]

@@ -37,6 +37,8 @@ pub enum RedactError {
     Unreadable(usize),
     #[error("redaction could not be verified: {0} item(s) were still found under the marks, so nothing was changed")]
     Residue(usize),
+    #[error("page {0} has vertical-writing text under a redaction mark, which PdfCraft cannot remove yet, so nothing was changed")]
+    VerticalText(usize),
     #[error(transparent)]
     Edit(#[from] pdfcraft_edit::EditError),
     #[error(transparent)]
@@ -107,6 +109,9 @@ pub struct Report {
     pub fields: usize,
     /// Structure elements that lost alternate/actual text or emptied marked content.
     pub tags: usize,
+    /// The form was an AcroForm+XFA form and its `/XFA` packets (which still held redacted field
+    /// values, and from which a relayout could rebuild them) were removed.
+    pub xfa_removed: bool,
 }
 
 fn rect_of(doc: &Document, o: Option<&Object>) -> Option<[f64; 4]> {
@@ -292,6 +297,13 @@ pub fn apply(doc: &mut Document, pages: Option<&[usize]>) -> Result<Report, Reda
             let mut scope = Scope::new(&rects, Mode::Apply, &mut report);
             process(doc, &mut scope, &data, &resources, pdfcraft_content::Matrix::IDENTITY)
         };
+        // Fail closed: the interpreter lays vertical-writing text out horizontally, so it cannot
+        // place such glyphs under a mark or confirm they are gone. Rather than report success and
+        // ship the text under the box, refuse the whole operation (the caller keeps the previous
+        // document). Full vertical-text removal is a future enhancement.
+        if out.vertical {
+            return Err(RedactError::VerticalText(pi + 1));
+        }
         let mut new_list = list.clone();
         let mut changed = false;
         for (i, new) in out.streams.into_iter().enumerate() {
@@ -309,10 +321,20 @@ pub fn apply(doc: &mut Document, pages: Option<&[usize]>) -> Result<Report, Reda
             new_list[i] = Object::Ref(doc.add(Object::Stream(Stream::flate(dict, &bytes))));
             changed = true;
         }
-        if changed || !out.xobjects.is_empty() {
+        if changed || !out.xobjects.is_empty() || !out.replaced.is_empty() {
             let mut res = resources;
-            if !out.xobjects.is_empty() {
+            if !out.xobjects.is_empty() || !out.replaced.is_empty() {
                 let mut xo = res.get(b"XObject").and_then(|x| doc.resolve(x).as_dict().cloned()).unwrap_or_default();
+                // A full save keeps whatever is still referenced: unlink the originals this page no
+                // longer draws so the removed image or form bytes cannot survive in the saved file.
+                let page_content: Vec<Vec<u8>> = new_list
+                    .iter()
+                    .map(|o| match &*doc.resolve(o) {
+                        Object::Stream(s) => s.decoded().unwrap_or_default(),
+                        _ => Vec::new(),
+                    })
+                    .collect();
+                interp::prune(&mut xo, &out.replaced, &page_content);
                 for (n, r) in &out.xobjects {
                     xo.set(n.clone(), Object::Ref(*r));
                 }
@@ -385,6 +407,37 @@ pub fn apply(doc: &mut Document, pages: Option<&[usize]>) -> Result<Report, Reda
         if pdfcraft_forms::fields(doc).iter().any(|f| &f.name == name) {
             pdfcraft_forms::delete_field(doc, name)?;
             report.fields += 1;
+        }
+    }
+
+    // 3b. An XFA form mirrors its field values in the /XFA datasets packet, and a relayout
+    // rebuilds fields and pages from that packet, so deleting the AcroForm field alone leaves the
+    // redacted value in the file and lets a later relayout put it back. Once redactions are
+    // applied the form stops being XFA: drop /AcroForm /XFA (template and datasets), the catalog's
+    // /NeedsRendering, and PdfCraft's own layout mark (pdfcraft_xfa::LAYOUT_KEY), leaving a plain
+    // already-laid-out AcroForm that neither the saved file nor a relayout can restore from.
+    if let Some(root) = doc.root() {
+        let strip_xfa = |d: &mut Dict| {
+            d.remove(b"XFA");
+            d.remove(b"PCXfaLayout");
+        };
+        match doc.get(root).as_dict().and_then(|d| d.get(b"AcroForm").cloned()) {
+            Some(Object::Ref(af)) if doc.get(af).as_dict().is_some_and(|d| d.contains(b"XFA")) => {
+                doc.update_dict(af, strip_xfa)?;
+                doc.update_dict(root, |d| {
+                    d.remove(b"NeedsRendering");
+                })?;
+                report.xfa_removed = true;
+            }
+            Some(Object::Dict(mut af)) if af.contains(b"XFA") => {
+                strip_xfa(&mut af);
+                doc.update_dict(root, |d| {
+                    d.set(b"AcroForm".to_vec(), Object::Dict(af));
+                    d.remove(b"NeedsRendering");
+                })?;
+                report.xfa_removed = true;
+            }
+            _ => {}
         }
     }
 

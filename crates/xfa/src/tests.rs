@@ -223,6 +223,29 @@ fn hostile_templates_fail_without_panicking() {
 }
 
 #[test]
+fn repeated_pictures_are_bounded_in_total_bytes() {
+    // Each laid-out picture keeps its own copy of the bytes, so one picture in a repeating
+    // subform used to multiply without bound and exhaust memory (a failed allocation aborts the
+    // app). "AAAA" base64 decodes to zero bytes; 2_097_152 groups is 6 MiB, under the 32 MiB
+    // per-picture cap. 50 instances (occur initial, clamped to MAX_INSTANCES) would be ~300 MiB,
+    // past the aggregate cap, so layout must stop with TooLarge rather than retain it all.
+    let big = "AAAA".repeat(2_097_152);
+    let tpl = format!(
+        "<template><subform layout=\"tb\"><subform layout=\"tb\"><occur initial=\"50\" max=\"-1\"/>\
+         <draw w=\"0.2in\" h=\"0.2in\"><value><image contentType=\"image/png\">{big}</image></value></draw>\
+         </subform></subform></template>"
+    );
+    assert!(matches!(layout_xml(&tpl), Err(XfaError::TooLarge(m)) if m.contains("too large")), "the repeated picture must be refused");
+
+    // A single small picture still lays out: the cap does not reject an ordinary form.
+    let small = "AAAA".repeat(8);
+    let ok = format!(
+        "<template><subform layout=\"tb\"><draw w=\"1in\" h=\"1in\"><value><image contentType=\"image/png\">{small}</image></value></draw></subform></template>"
+    );
+    assert!(layout_xml(&ok).is_ok(), "one small picture must lay out");
+}
+
+#[test]
 fn the_packets_can_be_one_stream_or_named_parts() {
     // Named parts, with the template split from the rest.
     let doc = Document::open(Arc::new(shell(&template(0)))).unwrap();

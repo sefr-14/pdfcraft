@@ -754,7 +754,27 @@ fn annot_from_xml(node: roxmltree::Node, subtype: &str, page_ref: ObjRef) -> Opt
 
 /// Put an annotation dictionary on a page, replacing one with the same `/NM`. Returns its
 /// reference.
-fn place(doc: &mut Document, page_ref: ObjRef, d: Dict) -> Result<ObjRef, DataError> {
+/// `/F` bits an imported file may not set on a redaction mark: Invisible, Hidden, NoView — so a
+/// mark it brings in is always drawn for the user to review before content is removed.
+const REDACT_UNSEEN: i64 = 1 | 2 | 32;
+/// `/F` Locked (ISO 32000-2 Table 167): the user protected this annotation from change.
+const LOCKED: i64 = 128;
+
+/// An existing annotation an import must never replace, move or unlock: one the user locked, or a
+/// redaction mark (replacing it would drop the region the user marked to remove).
+fn import_protected(x: &Dict) -> bool {
+    x.int(b"F").unwrap_or(0) & LOCKED != 0 || x.name(b"Subtype") == Some(b"Redact".as_slice())
+}
+
+fn place(doc: &mut Document, page_ref: ObjRef, mut d: Dict) -> Result<ObjRef, DataError> {
+    // A redaction mark the import carries is always made visible: clear any Invisible/Hidden/NoView
+    // flag so it cannot remove content the user never sees.
+    if d.name(b"Subtype") == Some(b"Redact".as_slice()) {
+        let f = d.int(b"F").unwrap_or(0);
+        if f & REDACT_UNSEEN != 0 {
+            d.set(b"F".to_vec(), Object::Int(f & !REDACT_UNSEEN));
+        }
+    }
     let nm = d.get(b"NM").and_then(|n| n.as_string().map(|s| s.to_text()));
     let annots: Vec<Object> = doc
         .get(page_ref)
@@ -765,14 +785,23 @@ fn place(doc: &mut Document, page_ref: ObjRef, d: Dict) -> Result<ObjRef, DataEr
         .unwrap_or_default();
     let mut kept = Vec::new();
     let mut removed: Vec<ObjRef> = Vec::new();
+    // Never let a same-name import replace a locked comment or a redaction mark: keep it, and add
+    // the imported dict beside it under no name of its own.
+    let mut clash = false;
     for a in annots {
-        let same = nm.is_some()
-            && a.as_ref().and_then(|r| doc.get(r).as_dict().and_then(|x| x.get(b"NM").and_then(|n| n.as_string().map(|s| s.to_text())))) == nm;
-        if same {
+        let existing = a.as_ref().and_then(|r| doc.get(r).as_dict().cloned());
+        let same = nm.is_some() && existing.as_ref().and_then(|x| x.get(b"NM").and_then(|n| n.as_string().map(|s| s.to_text()))) == nm;
+        if same && existing.as_ref().is_some_and(import_protected) {
+            clash = true;
+            kept.push(a);
+        } else if same {
             removed.extend(a.as_ref());
         } else {
             kept.push(a);
         }
+    }
+    if clash {
+        d.remove(b"NM");
     }
     // The replaced note's pop-up goes with it; otherwise it stays on the page pointing at a note that is no longer there.
     kept.retain(|a| {

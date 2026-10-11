@@ -976,6 +976,12 @@ fn classify_changes(doc: &Document, old: Option<Document>, p: Option<u8>) -> Mod
         .collect();
     // The signed revision's document-level XMP stream.
     let old_metadata = old.root().and_then(|root| old.get(root).as_dict().and_then(|c| c.get(b"Metadata").and_then(Object::as_ref)));
+    // What each object was in the signed revision: its pages, and its trailer /Info. A changed
+    // object is judged by the role it held when signed, never by the labels or keys its new,
+    // attacker-written version carries (relabelling a signed page /Type /Sig, or dropping its
+    // /Type and adding /ModDate, must not reclassify it away from page content).
+    let signed_pages: HashSet<ObjRef> = pdfcraft_annot::page_refs(&old).unwrap_or_default().into_iter().collect();
+    let old_info = old.trailer().get(b"Info").and_then(Object::as_ref);
     let (mut allowed, mut disallowed): (Vec<&str>, Vec<&str>) = (Vec::new(), Vec::new());
     let dss = dss_parts(doc, &old);
     // Stored at the same place in both (and not edited since): the same bytes, unchanged.
@@ -1005,11 +1011,27 @@ fn classify_changes(doc: &Document, old: Option<Document>, p: Option<u8>) -> Mod
         let kind = match &*new {
             // The Document Security Store's own arrays and dictionaries, when they only grew.
             _ if dss.contains(&num) => "document security store",
-            Object::Dict(d) => change_kind(doc, &old, d, before.as_deref().and_then(Object::as_dict)),
+            Object::Dict(d) => {
+                let was = before.as_deref().and_then(Object::as_dict);
+                if signed_pages.contains(&r) {
+                    // A signed page is always judged by what the page shows, whatever it is now
+                    // relabelled: a rewritten /Contents or /Resources is a page content change.
+                    page_change_kind(doc, &old, d, was)
+                } else if was.is_some() && Some(r) == old_info {
+                    // Only the signed revision's own /Info dictionary is a metadata change.
+                    "metadata"
+                } else {
+                    change_kind(doc, &old, d, was)
+                }
+            }
             Object::Stream(s) => {
+                // File plumbing is what the stream was when signed: the /Type it has now is
+                // written by whoever changed it, and the renderer ignores /Type (a page's Form
+                // XObject relabelled /ObjStm still draws its new content).
+                let was_plumbing = matches!(before.as_deref(), Some(Object::Stream(b)) if matches!(b.dict.name(b"Type"), Some(b"XRef" | b"ObjStm")));
                 if old_content.contains(&r) {
                     "page content"
-                } else if s.dict.name(b"Type") == Some(b"XRef") || s.dict.name(b"Type") == Some(b"ObjStm") || before.is_none() {
+                } else if before.is_none() || was_plumbing {
                     continue;
                 } else if s.dict.name(b"Type") == Some(b"Metadata") && Some(r) == old_metadata {
                     // Only the signed catalog's XMP stream. A /Type /Metadata label on anything
@@ -1210,15 +1232,42 @@ fn acroform_kind(doc: &Document, old: &Document, now: &Dict, before: Option<&Dic
     if added.is_empty() || added_annots(doc, &added) == "signature" { "signature" } else { "form fill" }
 }
 
+/// Dictionary entries in a stable order, without `keys`.
+fn without(x: &Dict, keys: &[&[u8]]) -> Vec<(Vec<u8>, Object)> {
+    let mut v: Vec<(Vec<u8>, Object)> = x.iter().filter(|(k, _)| !keys.contains(&k.as_slice())).map(|(k, o)| (k.to_vec(), o.clone())).collect();
+    v.sort_by(|a, b| a.0.cmp(&b.0));
+    v
+}
+
+/// Whether a dictionary was a signature object: a signature or timestamp value, a signature
+/// reference or its transform parameters, or a signature form field. Used to decide from the
+/// signed revision, so a later relabel of some other object cannot pose as a signature change.
+fn is_signature_dict(d: &Dict) -> bool {
+    matches!(d.name(b"Type"), Some(b"Sig" | b"DocTimeStamp" | b"SigRef" | b"TransformParams")) || d.name(b"FT") == Some(b"Sig")
+}
+
+/// A changed object that was a page in the signed revision, judged by what the page shows rather
+/// than by any `/Type` its new version carries. Only added annotations are permitted; any other
+/// difference (content, resources, a relabelled or dropped `/Type`) is a page content change.
+fn page_change_kind(doc: &Document, old: &Document, d: &Dict, before: Option<&Dict>) -> &'static str {
+    match before {
+        Some(b) if without(d, &[b"Annots"]) != without(b, &[b"Annots"]) => "page content",
+        Some(b) => {
+            let was = refs(old, b.get(b"Annots"));
+            let added: Vec<ObjRef> = refs(doc, d.get(b"Annots")).into_iter().filter(|r| !was.contains(r)).collect();
+            added_annots(doc, &added)
+        }
+        None => "page content",
+    }
+}
+
 fn change_kind(doc: &Document, old: &Document, d: &Dict, before: Option<&Dict>) -> &'static str {
     let ty = d.name(b"Type");
-    let without = |x: &Dict, keys: &[&[u8]]| -> Vec<(Vec<u8>, Object)> {
-        let mut v: Vec<(Vec<u8>, Object)> = x.iter().filter(|(k, _)| !keys.contains(&k.as_slice())).map(|(k, o)| (k.to_vec(), o.clone())).collect();
-        v.sort_by(|a, b| a.0.cmp(&b.0));
-        v
-    };
+    // A later revision cannot make an existing object a signature by relabelling it: a signature
+    // change is only a brand-new object, or one that was already a signature object when signed.
+    let signature_ok = before.is_none_or(is_signature_dict);
     match ty {
-        Some(b"Sig" | b"DocTimeStamp" | b"SigRef" | b"TransformParams") => return "signature",
+        Some(b"Sig" | b"DocTimeStamp" | b"SigRef" | b"TransformParams") if signature_ok => return "signature",
         Some(b"Catalog") => {
             let keys: &[&[u8]] = &[b"AcroForm", b"DSS", b"Perms", b"Metadata", b"NeedsRendering"];
             return match before {
@@ -1252,12 +1301,12 @@ fn change_kind(doc: &Document, old: &Document, d: &Dict, before: Option<&Dict>) 
         _ => {}
     }
     match d.name(b"Subtype") {
-        Some(b"Widget") => return if d.name(b"FT") == Some(b"Sig") { "signature" } else { "form fill" },
+        Some(b"Widget") => return if d.name(b"FT") == Some(b"Sig") && signature_ok { "signature" } else { "form fill" },
         Some(b"Link") => return "links",
         Some(_) if ty == Some(b"Annot") || d.contains(b"Rect") => return "comments",
         _ => {}
     }
-    if d.name(b"FT") == Some(b"Sig") {
+    if d.name(b"FT") == Some(b"Sig") && signature_ok {
         return "signature";
     }
     if d.contains(b"Fields") {
@@ -1265,9 +1314,6 @@ fn change_kind(doc: &Document, old: &Document, d: &Dict, before: Option<&Dict>) 
     }
     if d.contains(b"FT") || (d.contains(b"T") && d.contains(b"Kids")) || d.contains(b"DR") {
         return "form fill";
-    }
-    if d.contains(b"Producer") || d.contains(b"ModDate") || d.contains(b"CreationDate") {
-        return "metadata";
     }
     if before.is_none() {
         // New objects referenced by changed ones (fonts, appearance resources).
