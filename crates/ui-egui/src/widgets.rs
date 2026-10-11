@@ -227,13 +227,20 @@ pub fn progress_notice(app: &PdfCraftApp, ctx: &egui::Context) -> bool {
 /// brand licence (docs/brand/LICENSE-brand.txt) requires a published modified version to leave
 /// the marks out, and allows saying in plain text that it is based on PdfCraft by the ArtCraft
 /// team. Kept in English: it is an attribution, not interface text.
-pub const UPSTREAM_CREDIT: &str = "Based on PdfCraft by the ArtCraft team";
+pub const UPSTREAM_CREDIT: &str = "Based on PdfCraft by the ArtCraft team.";
 
-/// Upstream draws the ArtCraft wordmark here. This fork shows [`UPSTREAM_CREDIT`] as muted text
-/// about `height` points tall.
+/// Shown under [`UPSTREAM_CREDIT`], so nobody takes this build for ArtCraft's or asks ArtCraft
+/// about the overlay. Kept in English, like the credit.
+pub const FORK_NOTICE: &str = "This fork only adds overlay comparison.";
+
+/// Upstream draws the ArtCraft wordmark here. This fork shows [`UPSTREAM_CREDIT`] and
+/// [`FORK_NOTICE`] as two lines of muted text about `height` points tall.
 pub fn artcraft_logo(ui: &mut egui::Ui, height: f32) -> Response {
     let t = Tokens::get(ui.ctx());
-    ui.label(egui::RichText::new(UPSTREAM_CREDIT).font(theme::regular(height.clamp(11.0, 14.0))).color(t.text_muted))
+    let font = theme::regular(height.clamp(11.0, 14.0));
+    let credit = ui.label(egui::RichText::new(UPSTREAM_CREDIT).font(font.clone()).color(t.text_muted));
+    let notice = ui.label(egui::RichText::new(FORK_NOTICE).font(font).color(t.text_muted));
+    credit.union(notice)
 }
 
 /// Upstream draws the ArtCraft mark here. This fork draws nothing in its place, so the credit
