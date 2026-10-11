@@ -1,0 +1,137 @@
+# Fork-only workflow (sefr-14/pdfcraft, branch `overlay`): build the overlay-compare version of
+# PdfCraft for 64-bit Windows and publish it as a pre-release on this fork's Releases page.
+#
+# - Runs on every push to `overlay`, and on demand from the Actions tab.
+# - Builds with the MSVC toolchain, as upstream's release.yml does, but unsigned, without the
+#   MSI installer and without the OCR models.
+# - Runs the tests of the crates this branch changes before publishing anything; a failure
+#   publishes nothing.
+# - Publishes a portable zip under the tag overlay-<version>-<short commit>. Re-running the same
+#   commit replaces that zip; nothing compiled is ever committed to git.
+# - The ArtCraft marks are left out of this build (crates/ui-egui/src/widgets.rs), as the
+#   ArtCraft brand licence (docs/brand/LICENSE-brand.txt) requires for published modified versions.
+
+name: overlay windows build
+
+on:
+  push:
+    branches: [overlay]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: overlay-windows-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+  TARGET: x86_64-pc-windows-msvc
+  # The crates this branch changes; their tests must pass before a build is published.
+  # Later overlay steps add their crates here.
+  TEST_PACKAGES: -p pdfcraft-ui-egui
+
+jobs:
+  windows-x64:
+    name: Windows x64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.TARGET }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: overlay-windows-x64
+
+      # The icon and version resources are required, as in upstream's Windows CI.
+      - name: Require Windows executable resources
+        shell: pwsh
+        run: Add-Content -Path $env:GITHUB_ENV -Value 'PDFCRAFT_REQUIRE_WINRES=1'
+
+      - name: Name this build
+        id: name
+        shell: bash
+        run: |
+          version="$(awk '/^\[/ { p = ($0 == "[workspace.package]"); next } p && $1 == "version" { gsub(/[" ]/, "", $3); print $3; exit }' Cargo.toml)"
+          if [ -z "$version" ]; then
+            echo "::error::no [workspace.package] version in Cargo.toml"
+            exit 1
+          fi
+          short="${GITHUB_SHA::7}"
+          {
+            echo "version=$version"
+            echo "short=$short"
+            echo "tag=overlay-$version-$short"
+            echo "package=pdfcraft-overlay-$version-$short-windows-x64-portable"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Test the changed crates
+        shell: bash
+        run: cargo test --locked $TEST_PACKAGES
+
+      - name: Build
+        shell: bash
+        run: cargo build --release --locked -p pdfcraft -p pdfcraft-cli --target "$TARGET"
+
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          & "target\$env:TARGET\release\pdfcraft-cli.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw "pdfcraft-cli --version failed with exit code $LASTEXITCODE" }
+
+      - name: Package
+        shell: pwsh
+        env:
+          PACKAGE: ${{ steps.name.outputs.package }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bin = "target\$env:TARGET\release"
+          $dir = "dist\$env:PACKAGE"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Copy-Item "$bin\pdfcraft.exe", "$bin\pdfcraft-cli.exe" $dir
+          # portable.txt beside pdfcraft.exe keeps settings, logs and recovery files in
+          # PdfCraftData\ next to the exe instead of %APPDATA%.
+          Copy-Item packaging\windows\portable.txt $dir
+          # Licences and notices the binaries need.
+          foreach ($f in 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE', 'README.md') { Copy-Item $f $dir }
+          Copy-Item assets\app-icon\LICENSE-document.txt $dir
+          Compress-Archive -Path $dir -DestinationPath "dist\$env:PACKAGE.zip" -Force
+          Get-Item "dist\$env:PACKAGE.zip" | Format-Table Name, Length
+
+      - name: Publish pre-release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.name.outputs.tag }}
+          VERSION: ${{ steps.name.outputs.version }}
+          SHORT: ${{ steps.name.outputs.short }}
+          PACKAGE: ${{ steps.name.outputs.package }}
+        run: |
+          zip="dist/$PACKAGE.zip"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # A re-run of the same commit replaces its zip.
+            gh release upload "$TAG" "$zip" --clobber
+          else
+            cat >notes.md <<EOF
+          Overlay-compare build of PdfCraft $VERSION for 64-bit Windows.
+
+          Commit: $GITHUB_SHA on branch \`${GITHUB_REF_NAME}\`.
+
+          - Unofficial modified version, based on PdfCraft by the ArtCraft team. Not supported by them.
+          - Unsigned: Windows SmartScreen warns on first launch (More info, then Run anyway).
+          - Portable: unzip and run \`pdfcraft.exe\`. Settings stay in \`PdfCraftData\` next to it.
+          - Built by \`.github/workflows/overlay-windows.yml\`.
+          - OCR is not included in this build.
+          EOF
+            gh release create "$TAG" "$zip" \
+              --prerelease \
+              --target "$GITHUB_SHA" \
+              --title "PdfCraft overlay $VERSION ($SHORT)" \
+              --notes-file notes.md
+          fi
