@@ -24,6 +24,14 @@ pub struct Settings {
     pub robust_from: usize,
     /// Robust flag: a modified z-score above this flags a point (3.5, Iglewicz and Hoaglin).
     pub robust_z: f64,
+    /// The robust test is skipped when the MAD is 0 to numerical precision: at or below
+    /// `min(mad_floor_diagonal × A's diagonal, mad_floor_tolerance × flag tolerance)`
+    /// (decision of 11 Oct: 1e-9 and 0.01, so at most 0.005 mm with the 0.5 mm tolerance).
+    pub mad_floor_diagonal: f64,
+    pub mad_floor_tolerance: f64,
+    /// Identification: an exclusion is plausible when the worst remaining misfit is under
+    /// `separation × flag tolerance` (1.5, so 0.75 mm; decision of 11 Oct).
+    pub separation: f64,
     /// Largest output page side in user-space units before the output needs a `/UserUnit`
     /// (14,400, the 200-inch limit of Acrobat and most viewers).
     pub max_page_units: f64,
@@ -41,6 +49,9 @@ impl Default for Settings {
             flag_mm: 0.5,
             robust_from: 5,
             robust_z: 3.5,
+            mad_floor_diagonal: 1e-9,
+            mad_floor_tolerance: 0.01,
+            separation: 1.5,
             max_page_units: 14_400.0,
         }
     }

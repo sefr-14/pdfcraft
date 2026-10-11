@@ -392,6 +392,10 @@ pub struct PointReport {
     pub leave_one_out: Option<f64>,
     /// RMS of the fit without this pair, over the other pairs, in points.
     pub rms_without: Option<f64>,
+    /// e₍ᵢ₎: the worst misfit left among the other pairs by the fit without this pair, in points.
+    pub max_without: Option<f64>,
+    /// Inconsistency indicators: this pick doesn't fit with the others. Not a claim that it is
+    /// the wrong one; that is the fit's [`Verdict`].
     pub flags: Vec<Flag>,
 }
 
@@ -415,6 +419,78 @@ pub struct Fit<M> {
     /// Exactly as many pairs as the fit needs: it passes through them, so no residual check is
     /// possible. The wizard suggests another point.
     pub exact: bool,
+    /// The set-level outcome: consistent, add a pick, a probable wrong pick, ambiguous or
+    /// unexplained (row 13 as revised on 11 Oct).
+    pub verdict: Verdict,
+    /// MAD of the leave-one-out residuals, in points, when there are enough of them.
+    pub mad: Option<f64>,
+    /// The MAD at or below which it counts as 0 and the robust test is skipped, in points.
+    pub mad_floor: f64,
+    /// Whether the robust test ran.
+    pub robust_applied: bool,
+}
+
+/// What a set of picks says as a whole (row 13 as revised on 11 Oct). A warning that the picks
+/// disagree is separate from the claim that one particular pick is probably wrong.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Verdict {
+    /// No pick is flagged. (With exactly as many pairs as the fit needs, no check is possible;
+    /// see [`Fit::exact`].)
+    Consistent,
+    /// The picks disagree, and there are too few to tell which is wrong: every single exclusion
+    /// leaves an exact fit. Add a pick.
+    AddPick,
+    /// Leaving out `pair` (0-based) makes every other pick fit within the tolerance, and leaving
+    /// out any other single pick leaves at least one pick `separation × tolerance` or more off.
+    ProbablyWrong { pair: usize },
+    /// Two or more single exclusions leave every other pick within `separation × tolerance`:
+    /// each of `candidates` (0-based) could be the wrong one. None is chosen.
+    Ambiguous { candidates: Vec<usize> },
+    /// The picks disagree, but no single exclusion explains it: more than one may be off, or the
+    /// transform doesn't fit the drawing (a stretched scan, for example).
+    Unexplained,
+}
+
+impl fmt::Display for Verdict {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let list = |v: &[usize]| v.iter().map(|i| i.saturating_add(1).to_string()).collect::<Vec<_>>().join(", ");
+        match self {
+            Verdict::Consistent => write!(f, "The picks agree."),
+            Verdict::AddPick => write!(f, "These picks disagree, and with this few the wrong one can't be told apart. Add a pick."),
+            Verdict::ProbablyWrong { pair } => write!(
+                f,
+                "Pick {} is probably wrong: without it, every other pick fits within the tolerance; without any other single pick, at least one stays clearly off.",
+                pair.saturating_add(1)
+            ),
+            Verdict::Ambiguous { candidates } => write!(f, "Picks {} could each be the wrong one. Check them, or add picks.", list(candidates)),
+            Verdict::Unexplained => write!(f, "No single pick explains the mismatch. More than one may be off, or the drawing may be stretched."),
+        }
+    }
+}
+
+/// The verdict for a report: see [`Verdict`]. `tau` is the flag tolerance in points.
+pub fn verdict(points: &[PointReport], min_pairs: usize, tau: f64, separation: f64) -> Verdict {
+    if !points.iter().any(PointReport::flagged) {
+        return Verdict::Consistent;
+    }
+    if points.len() < min_pairs.saturating_add(2) {
+        return Verdict::AddPick;
+    }
+    let within = |limit: f64, strict: bool| -> Vec<usize> {
+        points
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.max_without.is_some_and(|e| if strict { e < limit } else { e <= limit }))
+            .map(|(i, _)| i)
+            .collect()
+    };
+    let consistent = within(tau, false);
+    let plausible = within(separation * tau, true);
+    match (consistent.as_slice(), plausible.as_slice()) {
+        (_, [_, _, ..]) => Verdict::Ambiguous { candidates: plausible },
+        ([i], [j]) if i == j => Verdict::ProbablyWrong { pair: *i },
+        _ => Verdict::Unexplained,
+    }
 }
 
 /// Residuals of `m` over `pairs`: each, the RMS and the maximum, in points.
@@ -439,39 +515,43 @@ pub fn report<M: Model>(transform: M, pairs: &[PointPair], limits: &Limits) -> F
     let m = transform.matrix();
     let (each, rms, max) = residuals(&m, pairs);
     let n = pairs.len();
-    // Leave-one-out needs the other pairs to determine a fit on their own.
-    let loo: Vec<(Option<f64>, Option<f64>)> = if n > M::MIN_PAIRS {
+    // Leave-one-out needs the other pairs to determine a fit on their own. For each pick: its
+    // distance from the fit without it, and that fit's RMS and worst misfit over the others.
+    let loo: Vec<Option<(f64, f64, f64)>> = if n > M::MIN_PAIRS {
         (0..n)
             .map(|i| {
                 let others: Vec<PointPair> = pairs.iter().enumerate().filter(|(j, _)| *j != i).map(|(_, p)| *p).collect();
                 match (M::solve(&others, limits), pairs.get(i)) {
                     (Ok(t), Some(p)) => {
                         let mi = t.matrix();
-                        (Some(p.b.transformed(&mi).dist(p.a)), Some(residuals(&mi, &others).1))
+                        let (_, rms_o, max_o) = residuals(&mi, &others);
+                        Some((p.b.transformed(&mi).dist(p.a), rms_o, max_o))
                     }
-                    _ => (None, None),
+                    _ => None,
                 }
             })
             .collect()
     } else {
-        vec![(None, None); n]
+        vec![None; n]
     };
-    let limit_pt = s.flag_mm * PT_PER_MM;
-    let available: Vec<f64> = loo.iter().filter_map(|(l, _)| *l).collect();
-    let robust = if available.len() >= s.robust_from {
+    let tau = s.flag_mm * PT_PER_MM;
+    let available: Vec<f64> = loo.iter().flatten().map(|x| x.0).collect();
+    let stats = (available.len() >= s.robust_from).then(|| {
         let med = median(&available);
-        let mad = median(&available.iter().map(|l| (l - med).abs()).collect::<Vec<_>>());
-        (mad > 0.0 && mad.is_finite()).then_some((med, mad))
-    } else {
-        None
-    };
-    let points = each
+        (med, median(&available.iter().map(|l| (l - med).abs()).collect::<Vec<_>>()))
+    });
+    // A MAD at or below the floor is 0 to numerical precision (rounding), and the robust test
+    // is skipped, as the PRD skips it for a MAD of 0. The floor is bounded by 1 % of the
+    // tolerance so it can't hide real deviations on very large sheets.
+    let mad_floor = (s.mad_floor_diagonal * limits.diag_a).min(s.mad_floor_tolerance * tau);
+    let robust = stats.filter(|&(_, mad)| mad.is_finite() && mad > mad_floor);
+    let points: Vec<PointReport> = each
         .iter()
         .zip(loo.iter())
-        .map(|(&residual, &(leave_one_out, rms_without))| {
+        .map(|(&residual, l)| {
             let mut flags = Vec::new();
-            if let Some(l) = leave_one_out {
-                if l > limit_pt {
+            if let Some((l, _, _)) = *l {
+                if l > tau {
                     flags.push(Flag::Absolute { residual_mm: l / PT_PER_MM, limit_mm: s.flag_mm });
                 }
                 if let Some((med, mad)) = robust {
@@ -481,10 +561,30 @@ pub fn report<M: Model>(transform: M, pairs: &[PointPair], limits: &Limits) -> F
                     }
                 }
             }
-            PointReport { residual, residual_mm: residual / PT_PER_MM, leave_one_out, rms_without, flags }
+            PointReport {
+                residual,
+                residual_mm: residual / PT_PER_MM,
+                leave_one_out: l.map(|x| x.0),
+                rms_without: l.map(|x| x.1),
+                max_without: l.map(|x| x.2),
+                flags,
+            }
         })
         .collect();
-    Fit { transform, points, rms, rms_mm: rms / PT_PER_MM, max, max_mm: max / PT_PER_MM, exact: n == M::MIN_PAIRS }
+    let verdict = verdict(&points, M::MIN_PAIRS, tau, s.separation);
+    Fit {
+        transform,
+        points,
+        rms,
+        rms_mm: rms / PT_PER_MM,
+        max,
+        max_mm: max / PT_PER_MM,
+        exact: n == M::MIN_PAIRS,
+        verdict,
+        mad: stats.map(|x| x.1),
+        mad_floor,
+        robust_applied: robust.is_some(),
+    }
 }
 
 /// Median of a non-empty slice (0 when empty). NaN never reaches it: residuals are finite.
