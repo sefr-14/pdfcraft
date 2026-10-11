@@ -5,12 +5,14 @@
 
 mod error;
 pub mod frame;
+pub mod place;
 pub mod register;
 pub mod settings;
 pub mod sheet;
 
 pub use error::{OverlayError, Warning};
 pub use frame::{DisplayFrame, frame, frame_of, frame_of_page};
+pub use place::{Placement, place};
 pub use register::{Affine, Doc, Fit, Flag, Limits, Model, Point, PointPair, PointReport, RANGE_SLACK, Refusal, Similarity, fit, report, residuals};
 pub use settings::Settings;
 pub use sheet::{SheetCase, SheetMatch, SheetProposal, propose};

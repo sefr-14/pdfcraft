@@ -32,7 +32,7 @@ env:
   TARGET: x86_64-pc-windows-msvc
   # The crates this branch changes; their tests must pass before a build is published.
   # Later overlay steps add their crates here.
-  TEST_PACKAGES: -p pdfcraft-ui-egui
+  TEST_PACKAGES: -p pdfcraft-ui-egui -p pdfcraft-overlay
 
 jobs:
   windows-x64:
