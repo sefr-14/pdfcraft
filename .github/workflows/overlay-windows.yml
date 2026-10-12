@@ -6,8 +6,11 @@
 #   MSI installer and without the OCR models.
 # - Runs the tests of the crates this branch changes before publishing anything; a failure
 #   publishes nothing.
-# - Publishes a portable zip under the tag overlay-<version>-<short commit>. Re-running the same
-#   commit replaces that zip; nothing compiled is ever committed to git.
+# - Only a run on `overlay` publishes: a portable zip under the tag overlay-<version>-<short
+#   commit>. Re-running the same commit replaces that zip; nothing compiled is ever committed to
+#   git.
+# - A run on any other branch (a manual run, e.g. on `overlay-upstream-sync`) creates no tag and
+#   no release: it uploads the zip and its SHA-256 as an Actions artifact instead (SYNC.1).
 # - The ArtCraft marks are left out of this build (crates/ui-egui/src/widgets.rs), as the
 #   ArtCraft brand licence (docs/brand/LICENSE-brand.txt) requires for published modified versions.
 
@@ -107,7 +110,32 @@ jobs:
           Compress-Archive -Path $dir -DestinationPath "dist\$env:PACKAGE.zip" -Force
           Get-Item "dist\$env:PACKAGE.zip" | Format-Table Name, Length
 
+      # Any branch but `overlay`: the zip goes to the run's artifacts, never to a release.
+      - name: Checksum for the artifact
+        if: github.ref != 'refs/heads/overlay'
+        shell: pwsh
+        env:
+          PACKAGE: ${{ steps.name.outputs.package }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hash = (Get-FileHash -Algorithm SHA256 "dist\$env:PACKAGE.zip").Hash.ToLowerInvariant()
+          "$hash  $env:PACKAGE.zip" | Set-Content -Encoding ascii "dist\$env:PACKAGE.zip.sha256"
+          "SHA-256 $hash  $env:PACKAGE.zip"
+
+      - name: Upload the zip as an artifact
+        if: github.ref != 'refs/heads/overlay'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.name.outputs.package }}
+          path: |
+            dist/${{ steps.name.outputs.package }}.zip
+            dist/${{ steps.name.outputs.package }}.zip.sha256
+          if-no-files-found: error
+
       - name: Publish pre-release
+        # Only `overlay` publishes. The script checks the branch again, so a run elsewhere can
+        # never create a tag or a release even if this condition were edited by mistake.
+        if: github.ref == 'refs/heads/overlay'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -116,6 +144,10 @@ jobs:
           SHORT: ${{ steps.name.outputs.short }}
           PACKAGE: ${{ steps.name.outputs.package }}
         run: |
+          if [ "$GITHUB_REF" != "refs/heads/overlay" ]; then
+            echo "::error::only refs/heads/overlay publishes, not $GITHUB_REF; nothing was published"
+            exit 1
+          fi
           zip="dist/$PACKAGE.zip"
           if gh release view "$TAG" >/dev/null 2>&1; then
             # A re-run of the same commit replaces its zip.
