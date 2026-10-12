@@ -9,10 +9,10 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::Instant;
 
-use pdfcraft_overlay::Side;
+use pdfcraft_overlay::{Side, light_tone, luminosity};
 use pdfcraft_render::{PageRenderer, RenderConfig, RenderRequest, effective_scale};
 
-use super::families::{Case, Expect, LineKind};
+use super::families::{Case, Expect, LineKind, Set};
 use super::measure::{self, Class, Image, Pair, classify, nearest_colour, recover};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -142,6 +142,48 @@ pub fn render(renderer: Renderer, pdf: &Arc<Vec<u8>>, path: &Path, page: usize, 
         _ => (s * k, s * k),
     };
     Ok(Render { img, scale_x, scale_y, height_units: h_units, honours_unit, dpi, effective_dpi, millis })
+}
+
+/// The compositing control for one case: each source page rendered alone by the same renderer at
+/// the same dpi, then put through the model pixel by pixel (m_t of the pixel's PDF luminosity for
+/// each document, then the layer colours multiplied). The overlay should match it whatever the
+/// renderer draws, so it separates the compositing from how a renderer draws the sources. Only
+/// where both placements are the identity, the unit is 1 and the renders line up pixel for pixel.
+/// `dir` holds the written sources (`sources/<set>-A.pdf`) for Poppler and PDFium; PdfCraft renders
+/// the bytes in process and doesn't read it.
+pub fn control(set: &Set, case: &Case, renderer: Renderer, overlay: &Render, dir: &Path, tmp: &Path) -> Option<Render> {
+    const IDENTITY: [f64; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+    if case.placement.a.0 != IDENTITY || case.placement.b.0 != IDENTITY || case.placement.unit != 1.0 {
+        return None;
+    }
+    let (w, h) = (overlay.img.width, overlay.img.height);
+    let side = |bytes: &Arc<Vec<u8>>, name: &str, page: Option<usize>| -> Option<Option<Image>> {
+        let Some(page) = page else { return Some(None) };
+        let file = dir.join(format!("sources/{}-{name}.pdf", set.name));
+        let r = render(renderer, bytes, &file, page, overlay.dpi, case, tmp).ok()?;
+        (r.img.width == w && r.img.height == h).then_some(Some(r.img))
+    };
+    let (a, b) = (side(&set.a, "A", case.a_page)?, side(&set.b, "B", case.b_page)?);
+    let t = case.style.threshold;
+    let alpha = |img: &Option<Image>, x: usize, y: usize| -> f64 {
+        img.as_ref().and_then(|i| i.get(x, y)).and_then(|p| light_tone(t, luminosity(p.map(|v| f64::from(v) / 255.0)))).unwrap_or(0.0)
+    };
+    let mut rgb = Vec::with_capacity(w * h * 3);
+    for y in 0..h {
+        for x in 0..w {
+            rgb.extend(case.pair.predict(alpha(&a, x, y), alpha(&b, x, y)).map(|v| v.round().clamp(0.0, 255.0) as u8));
+        }
+    }
+    Some(Render {
+        img: Image { width: w, height: h, rgb },
+        scale_x: overlay.scale_x,
+        scale_y: overlay.scale_y,
+        height_units: overlay.height_units,
+        honours_unit: overlay.honours_unit,
+        dpi: overlay.dpi,
+        effective_dpi: overlay.effective_dpi,
+        millis: 0,
+    })
 }
 
 // ── Measurements ─────────────────────────────────────────────────────────────────────────────

@@ -1,12 +1,13 @@
 //! In-process pixel tests (OV3.3): a fast subset of the proof, rendered by PdfCraft only, so it
 //! also runs in `cargo test` on Windows. Poppler and PDFium are compared by the proof example.
-//! Step 3 PRD criteria 1, 3, 4, 6, 8 and 9b for PdfCraft.
+//! Step 3 PRD criteria 1, 3, 4, 6, 8 and 9b for PdfCraft, and the source-controlled compositing
+//! check that R-a and R-b were accepted on (12 Oct).
 
 mod common;
 
 use std::path::Path;
 
-use common::evaluate::{LineRow, PatchRow, Render, Renderer, TargetRow, measure_lines, measure_patches, measure_targets, render};
+use common::evaluate::{LineRow, PatchRow, Render, Renderer, TargetRow, control, measure_lines, measure_patches, measure_targets, render};
 use common::families::{self, Case, LineKind, Set};
 
 fn draw(set: &Set, case: &Case, dpi: f64) -> Render {
@@ -113,4 +114,41 @@ fn line_study_at_150_dpi() {
             }
         }
     }
+}
+
+/// The source-controlled compositing check (OV3 acceptance, 12 Oct). R-a and R-b were accepted
+/// because the overlay reproduces what the renderer draws for each source page on its own: the
+/// source rendered alone, put through the model, is the control, and the overlay must match it
+/// within 2 levels in every channel. This keeps a compositing regression detectable even where
+/// the original criteria 2 and 6 fail for renderer reasons (the 0.1 mm hatching at 150 dpi, the
+/// light tones at t < 1); those original measurements are reported by the proof, not here.
+#[test]
+fn compositing_matches_the_source_control() {
+    let tol = 2.0;
+    let mut compared = 0;
+    let mut hatching = 0;
+    let mut failed = Vec::new();
+    for set in [families::overlap(), families::colours(), families::tones(), families::transparency(), families::images(), families::light_tones()] {
+        for case in &set.cases {
+            let r = draw(&set, case, 150.0);
+            let c = control(&set, case, Renderer::PdfCraft, &r, Path::new(""), Path::new(""))
+                .unwrap_or_else(|| panic!("{}: no control (placement not the identity, or renders not aligned)", case.id));
+            let (mut got, mut want) = (Vec::new(), Vec::new());
+            measure_patches(set.name, case, &r, Renderer::PdfCraft, &mut got);
+            measure_patches(set.name, case, &c, Renderer::PdfCraft, &mut want);
+            assert_eq!(got.len(), want.len(), "{}", case.id);
+            for (g, w) in got.iter().zip(&want) {
+                let d = (0..3).map(|i| (g.value[i] - w.value[i]).abs()).fold(0.0, f64::max);
+                compared += 1;
+                hatching += usize::from(g.patch.starts_with("hatching"));
+                if d.is_nan() || d > tol {
+                    failed.push(format!("{} / {}: overlay {:?}, control {:?}, {d:.2} levels", g.case, g.patch, g.value, w.value));
+                }
+            }
+        }
+    }
+    assert!(failed.is_empty(), "{}", failed.join("\n"));
+    // 150 patches at 150 dpi: every patch of these families (the proof also runs them at 300).
+    assert!(compared >= 150, "only {compared} patches compared");
+    assert!(hatching >= 4, "the R-a hatching patches must be among those compared");
 }

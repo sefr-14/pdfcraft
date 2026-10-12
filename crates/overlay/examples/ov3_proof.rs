@@ -30,7 +30,7 @@ use evaluate::{LineRow, PatchRow, Render, Renderer, TargetRow, measure_lines, me
 use families::{Case, Expect, LineKind, Set};
 use measure::Image;
 use pdfcraft_cos::{Dict, Document, Object, PdfString, Stream};
-use pdfcraft_overlay::{Side, light_tone, luminosity};
+use pdfcraft_overlay::Side;
 
 struct Args {
     out: PathBuf,
@@ -418,46 +418,6 @@ fn side_by_side(renders: &[(Renderer, &Image)]) -> Option<Image> {
     Some(Image { width, height: h, rgb })
 }
 
-/// The compositing control for one case: each source page rendered alone by the same renderer at
-/// the same dpi, then put through the model pixel by pixel (m_t of the pixel's PDF luminosity for
-/// each document, then the layer colours multiplied). The overlay should match it whatever the
-/// renderer draws, so it separates the compositing from how a renderer draws the sources. Only
-/// where both placements are the identity, the unit is 1 and the renders line up pixel for pixel.
-fn control(set: &Set, case: &Case, renderer: Renderer, overlay: &Render, dir: &Path, tmp: &Path) -> Option<Render> {
-    const IDENTITY: [f64; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
-    if case.placement.a.0 != IDENTITY || case.placement.b.0 != IDENTITY || case.placement.unit != 1.0 {
-        return None;
-    }
-    let (w, h) = (overlay.img.width, overlay.img.height);
-    let side = |bytes: &Arc<Vec<u8>>, name: &str, page: Option<usize>| -> Option<Option<Image>> {
-        let Some(page) = page else { return Some(None) };
-        let file = dir.join(format!("sources/{}-{name}.pdf", set.name));
-        let r = render(renderer, bytes, &file, page, overlay.dpi, case, tmp).ok()?;
-        (r.img.width == w && r.img.height == h).then_some(Some(r.img))
-    };
-    let (a, b) = (side(&set.a, "A", case.a_page)?, side(&set.b, "B", case.b_page)?);
-    let t = case.style.threshold;
-    let alpha = |img: &Option<Image>, x: usize, y: usize| -> f64 {
-        img.as_ref().and_then(|i| i.get(x, y)).and_then(|p| light_tone(t, luminosity(p.map(|v| f64::from(v) / 255.0)))).unwrap_or(0.0)
-    };
-    let mut rgb = Vec::with_capacity(w * h * 3);
-    for y in 0..h {
-        for x in 0..w {
-            rgb.extend(case.pair.predict(alpha(&a, x, y), alpha(&b, x, y)).map(|v| v.round().clamp(0.0, 255.0) as u8));
-        }
-    }
-    Some(Render {
-        img: Image { width: w, height: h, rgb },
-        scale_x: overlay.scale_x,
-        scale_y: overlay.scale_y,
-        height_units: overlay.height_units,
-        honours_unit: overlay.honours_unit,
-        dpi: overlay.dpi,
-        effective_dpi: overlay.effective_dpi,
-        millis: 0,
-    })
-}
-
 fn number(o: &Object) -> Option<f64> {
     match o {
         Object::Int(i) => Some(*i as f64),
@@ -769,7 +729,7 @@ fn main() -> ExitCode {
                     timings.push((case.id.clone(), renderer, dpi, r.millis, r.img.width, r.img.height));
                     measure_patches(set.name, case, &r, renderer, &mut patches);
                     if !case.patches.is_empty() {
-                        match control(set, case, renderer, &r, &out, &tmp) {
+                        match evaluate::control(set, case, renderer, &r, &out, &tmp) {
                             Some(c) => measure_patches(set.name, case, &c, renderer, &mut controls),
                             None => no_control.push(format!("{} ({} at {dpi} dpi)", case.id, renderer.name())),
                         }
@@ -1220,13 +1180,22 @@ fn main() -> ExitCode {
         md,
         "| Renderer | Patches with a control | Worst overlay − control, levels | Where | Above 2 levels |\n| --- | --- | --- | --- | --- |"
     );
+    let (mut ctl_n, mut ctl_above, mut ctl_worst) = (0usize, 0usize, 0.0f64);
     for r in &args.renderers {
         let ds: Vec<(f64, &PatchRow)> = patches.iter().filter(|p| p.renderer == *r).filter_map(|p| diff(p).map(|d| (d, p))).collect();
         let worst = ds.iter().fold((0.0, None), |acc, (d, p)| if *d > acc.0 { (*d, Some(*p)) } else { acc });
         let above = ds.iter().filter(|(d, _)| *d > 2.0).count();
         let where_ = worst.1.map_or(String::new(), |p| format!("{} / {} at {} dpi", p.case, p.patch, p.dpi));
         let _ = writeln!(md, "| {} | {} | {:.2} | {where_} | {above} |", r.name(), ds.len(), worst.0);
+        (ctl_n, ctl_above, ctl_worst) = (ctl_n + ds.len(), ctl_above + above, ctl_worst.max(worst.0));
     }
+    // The assessment R-a and R-b were accepted on (12 Oct). It doesn't replace criteria 2 and 6,
+    // which keep their own rows and measurements.
+    summary.push((
+        "Source-controlled compositing (basis of the accepted exceptions R-a and R-b)",
+        judged(ctl_n > 0, ctl_above == 0),
+        format!("{ctl_n} patches across the renderers; worst overlay − control {ctl_worst:.2} levels; {ctl_above} above 2 levels"),
+    ));
     if !no_control.is_empty() {
         let _ = writeln!(md, "\nNo control (placement not the identity, unit not 1, or renders not aligned): {}.", no_control.join(", "));
     }
@@ -1378,6 +1347,20 @@ fn main() -> ExitCode {
         }
     }
     write(&out.join("run.md"), run_md.as_bytes());
+    // Criteria 2 and 6 keep their original verdicts and measurements. Where they fail, the row says
+    // that the failure is an accepted, documented renderer-dependent exception (12 Oct), not a pass.
+    for (c, v, _) in &mut summary {
+        let exception = match c.split_whitespace().next() {
+            Some("2") => Some("R-a"),
+            Some("6") => Some("R-b"),
+            _ => None,
+        };
+        if let Some(x) = exception
+            && v == "FAIL"
+        {
+            *v = format!("FAIL (accepted documented exception {x}, 12 Oct)");
+        }
+    }
     // In the PRD's order: by number, then letter.
     summary.sort_by_key(|(c, _, _)| {
         let digits: String = c.chars().take_while(|ch| ch.is_ascii_digit()).collect();
