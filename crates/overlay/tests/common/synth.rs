@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use pdfcraft_cos::{Dict, Document, ObjRef, Object, SaveOptions, Stream, write_full};
+use pdfcraft_cos::{Dict, Document, ObjRef, Object, PdfString, SaveOptions, Stream, write_full};
 
 /// Points per millimetre.
 pub const MM: f64 = 72.0 / 25.4;
@@ -60,11 +60,21 @@ pub fn pdf(pages: &[Page]) -> Arc<Vec<u8>> {
     let mut kids = Vec::new();
     for p in pages {
         let mut resources = Dict::new();
+        // Streams first, so dictionaries can refer to them by "ref:<category>/<name>".
+        let mut made: Vec<(String, ObjRef)> = Vec::new();
+        for (cat, name, res) in &p.resources {
+            if let Res::Stream(d, data) = res {
+                made.push((format!("ref:{cat}/{name}"), doc.add(Object::Stream(Stream::flate(d.clone(), data)))));
+            }
+        }
         for (cat, name, res) in &p.resources {
             let obj = match res {
-                Res::Dict(d) => Object::Dict(d.clone()),
-                Res::Obj(o) => o.clone(),
-                Res::Stream(d, data) => Object::Ref(doc.add(Object::Stream(Stream::flate(d.clone(), data)))),
+                Res::Dict(d) => resolve_refs(Object::Dict(d.clone()), &made),
+                Res::Obj(o) => resolve_refs(o.clone(), &made),
+                Res::Stream(..) => {
+                    let key = format!("ref:{cat}/{name}");
+                    Object::Ref(made.iter().find(|(k, _)| *k == key).map(|(_, r)| *r).expect("made above"))
+                }
             };
             let mut sub = resources.get(cat.as_bytes()).and_then(|o| o.as_dict().cloned()).unwrap_or_default();
             sub.set(name.as_bytes().to_vec(), obj);
@@ -103,6 +113,35 @@ pub fn pdf(pages: &[Page]) -> Arc<Vec<u8>> {
     })
     .expect("the page tree is a dictionary");
     save(&doc, false)
+}
+
+/// Replace "ref:<category>/<name>" strings with the reference made for that stream resource.
+fn resolve_refs(o: Object, made: &[(String, ObjRef)]) -> Object {
+    match o {
+        Object::String(s) if s.bytes.starts_with(b"ref:") => {
+            let key = String::from_utf8_lossy(&s.bytes).into_owned();
+            Object::Ref(made.iter().find(|(k, _)| *k == key).map(|(_, r)| *r).unwrap_or_else(|| panic!("no stream resource {key}")))
+        }
+        Object::Dict(d) => {
+            let mut out = Dict::new();
+            for (k, v) in d.iter() {
+                out.set(k.clone(), resolve_refs(v.clone(), made));
+            }
+            Object::Dict(out)
+        }
+        Object::Array(a) => Object::Array(a.into_iter().map(|v| resolve_refs(v, made)).collect()),
+        other => other,
+    }
+}
+
+/// A soft-mask dictionary of type `kind` (`Luminosity` or `Alpha`) whose group is the page's
+/// XObject resource `xobject`.
+pub fn mask_ref(kind: &str, xobject: &str) -> Object {
+    let mut m = Dict::new();
+    m.set(b"Type".to_vec(), Object::name("Mask"));
+    m.set(b"S".to_vec(), Object::name(kind));
+    m.set(b"G".to_vec(), Object::String(PdfString::literal(format!("ref:XObject/{xobject}").into_bytes())));
+    Object::Dict(m)
 }
 
 /// Save a document deterministically. `object_streams` packs objects as PdfCraft's own saves do.

@@ -6,6 +6,8 @@ use std::sync::Arc;
 
 use pdfcraft_cos::Document;
 
+pub mod families;
+pub mod measure;
 pub mod synth;
 
 /// A PDF whose page tree node carries `tree` and whose pages carry one entry of `pages` each.
