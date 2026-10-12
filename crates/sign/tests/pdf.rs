@@ -1012,6 +1012,104 @@ fn a_form_xobject_relabelled_metadata_is_not_a_metadata_change() {
     assert_eq!(s.modification, Modification::Allowed(vec!["metadata".into()]));
 }
 
+#[test]
+fn a_form_xobject_relabelled_as_file_plumbing_is_still_judged() {
+    // Whether a changed stream is an xref or object stream is what it was when signed: a
+    // drawn Form XObject rewritten after signing and labelled /ObjStm or /XRef still shows its
+    // new content (the renderer ignores /Type), so it must not be skipped.
+    let id = pkcs12::open(&data("rsa-aes.p12"), "test").unwrap();
+    let trust = TrustStore { certs: vec![id.certificate.clone()] };
+    for certify in LEVELS {
+        let signed = pdfcraft_sign::sign(&open(&fixture_with_xobject()), &id, &SignOptions { certify, ..opts() }).unwrap();
+        for label in ["ObjStm", "XRef"] {
+            let edited = edit_after(&signed, |doc| {
+                let mut d = pdfcraft_cos::Dict::new();
+                d.set(b"Type".to_vec(), Object::name(label));
+                d.set(b"Subtype".to_vec(), Object::name("Form"));
+                d.set(b"BBox".to_vec(), Object::Array(vec![Object::Int(0), Object::Int(0), Object::Int(300), Object::Int(300)]));
+                let body = b"BT /F1 14 Tf 20 250 Td (Forged text) Tj ET".to_vec();
+                d.set(b"Length".to_vec(), Object::Int(body.len() as i64));
+                doc.set(pdfcraft_cos::ObjRef { num: 7, generation: 0 }, Object::Stream(pdfcraft_cos::Stream::from_raw(d, body)));
+            });
+            let s = signatures(&open(&edited), &edited, &trust).into_iter().find(|s| s.signed).unwrap();
+            assert_eq!(s.status, Status::Invalid, "{certify:?} /{label}: {:?}", s.details);
+            assert!(matches!(&s.modification, Modification::Disallowed(k) if k.iter().any(|k| k == "other changes")), "{:?}", s.modification);
+        }
+    }
+}
+
+/// `fixture()` with a document information dictionary (object 7) named by the trailer's `/Info`.
+fn fixture_with_info() -> Vec<u8> {
+    let objs: Vec<&[u8]> = vec![
+        b"<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [6 0 R] >> >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> /Annots [6 0 R] >>",
+        b"<< /Length 44 >>\nstream\nBT /F1 14 Tf 20 250 Td (Contract text) Tj ET\nendstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Type /Annot /Subtype /Widget /FT /Sig /T (Approval) /Rect [150 20 280 70] /P 3 0 R /F 4 >>",
+        b"<< /Producer (PdfCraft) /CreationDate (D:20260101000000Z) >>",
+    ];
+    let mut out = b"%PDF-1.7\n".to_vec();
+    let mut offsets = Vec::new();
+    for (i, o) in objs.iter().enumerate() {
+        offsets.push(out.len());
+        out.extend_from_slice(format!("{} 0 obj\n", i + 1).as_bytes());
+        out.extend_from_slice(o);
+        out.extend_from_slice(b"\nendobj\n");
+    }
+    let xref = out.len();
+    out.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", objs.len() + 1).as_bytes());
+    for o in offsets {
+        out.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
+    }
+    out.extend_from_slice(format!("trailer\n<< /Size {} /Root 1 0 R /Info 7 0 R >>\nstartxref\n{xref}\n%%EOF\n", objs.len() + 1).as_bytes());
+    out
+}
+
+#[test]
+fn a_signed_page_relabelled_or_stripped_of_type_is_still_page_content() {
+    // A page is judged by the role it had when signed, not by the /Type its new version carries.
+    // A hand-written incremental revision that rewrites the signed page's /Contents while
+    // relabelling it /Type /Sig (permitted at every level) or dropping /Type and adding /ModDate
+    // (read as a metadata change) must still be a disallowed page content change at every level.
+    let forge_page = |ty: Option<&'static str>| {
+        move |doc: &mut Document| {
+            let forged = doc.add(stream_of(b"BT /F1 14 Tf 20 250 Td (Amount due: 999999 EUR) Tj ET"));
+            let mut entries = vec![
+                ("Parent", oref(2)),
+                ("MediaBox", Object::Array(vec![Object::Int(0), Object::Int(0), Object::Int(300), Object::Int(300)])),
+                ("Contents", Object::Ref(forged)),
+                ("Resources", Object::Dict(dict_of(vec![("Font", Object::Dict(dict_of(vec![("F1", oref(5))])))]))),
+                ("Annots", Object::Array(vec![oref(6)])),
+            ];
+            match ty {
+                Some(name) => entries.insert(0, ("Type", Object::name(name))),
+                None => entries.push(("ModDate", Object::String(PdfString::literal("D:20261003000000Z")))),
+            }
+            doc.set(pdfcraft_cos::ObjRef { num: 3, generation: 0 }, Object::Dict(dict_of(entries)));
+        }
+    };
+    assert_refused_at_every_level(&fixture(), "page content", forge_page(Some("Sig")));
+    assert_refused_at_every_level(&fixture(), "page content", forge_page(None));
+
+    // Positive control: an ordinary /Info /ModDate bump on the signed revision's own information
+    // dictionary stays a permitted metadata change.
+    let id = pkcs12::open(&data("rsa-aes.p12"), "test").unwrap();
+    let trust = TrustStore { certs: vec![id.certificate.clone()] };
+    for certify in LEVELS {
+        let signed = pdfcraft_sign::sign(&open(&fixture_with_info()), &id, &SignOptions { certify, ..opts() }).unwrap();
+        let bumped = edit_after(&signed, |doc| {
+            doc.update_dict(pdfcraft_cos::ObjRef { num: 7, generation: 0 }, |d| {
+                d.set(b"ModDate".to_vec(), Object::String(PdfString::literal("D:20261003120000Z")));
+            })
+            .unwrap();
+        });
+        let s = signatures(&open(&bumped), &bumped, &trust).into_iter().find(|s| s.signed).unwrap();
+        assert_eq!(s.status, Status::Valid, "{certify:?}: {:?}", s.details);
+        assert!(matches!(&s.modification, Modification::Allowed(k) if k.iter().any(|k| k == "metadata")), "{certify:?}: {:?}", s.modification);
+    }
+}
+
 /// A self-signed CRL from `id` revoking its own certificate, valid from `this` to `next`.
 fn self_crl(id: &pkcs12::DigitalId, this: Time, next: Time, revoked_at: Time) -> Vec<u8> {
     let alg = id.key.signature_algorithm(pdfcraft_sign::DigestAlg::Sha256);

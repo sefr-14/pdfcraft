@@ -985,7 +985,10 @@ pub(crate) fn panel(ui: &mut egui::Ui, t: &Tokens, sigs: &[SignatureInfo], expan
             }
             ui.add_space(4.0);
             ui.horizontal_wrapped(|ui| {
-                if let Some(c) = s.chain.last().or(s.certificate.as_ref())
+                // Trust exactly the signer shown above (s.certificate), not the chain top the
+                // document embedded: trusting an issuer or root is a separate, explicit step in
+                // the Certificate Viewer's Trust tab, which names that certificate.
+                if let Some(c) = s.certificate.as_ref()
                     && s.status == SignatureStatus::Unknown
                     && ui.button(tl!("Add to trusted certificates")).clicked()
                 {

@@ -30,6 +30,10 @@ const MAX_MEASURES: usize = 2_000_000;
 const MAX_INSTANCES: usize = 50;
 /// Largest picture taken from the data (decoded bytes), as for template pictures.
 const MAX_DATA_IMAGE: usize = 32 << 20;
+/// Most picture bytes one layout keeps, all copies together. Each laid-out picture holds its
+/// own copy, so a large picture in repeating subforms would otherwise multiply into gigabytes
+/// (a failed allocation aborts the app); a real form's logos and photos stay far below.
+const MAX_IMAGE_BYTES: usize = 256 << 20;
 /// Placeholder for the page count in text laid out before the count is known.
 const PAGE_COUNT_MARK: char = '\u{E000}';
 
@@ -195,6 +199,8 @@ struct Layouter<'t> {
     warned: HashSet<String>,
     fields: usize,
     items: usize,
+    /// Picture bytes laid out so far (see [`MAX_IMAGE_BYTES`]).
+    image_bytes: usize,
     /// Container sizes by (address of the subform or area in the template, available width,
     /// depth), with the inherited font and paragraph they were measured with.
     measured: RefCell<HashMap<MeasureKey, Measured>>,
@@ -246,6 +252,7 @@ pub fn layout(tpl: &Template, data: Option<&DataNode>) -> Result<Form, XfaError>
         warned: HashSet::new(),
         fields: 0,
         items: 0,
+        image_bytes: 0,
         measured: RefCell::new(HashMap::new()),
         measures: Cell::new(0),
     };
@@ -1118,6 +1125,10 @@ impl Layouter<'_> {
 
     /// A picture scaled to fit `inner`, keeping its shape, from its top left.
     fn draw_image(&mut self, data: &[u8], content_type: &str, inner: Rect) -> Result<(), XfaError> {
+        self.image_bytes = self.image_bytes.saturating_add(data.len());
+        if self.image_bytes > MAX_IMAGE_BYTES {
+            return Err(XfaError::TooLarge("the form's pictures are too large together to lay out".into()));
+        }
         let fitted = match crate::image::size(data) {
             Some((iw, ih)) if iw > 0 && ih > 0 && inner.w > 0.0 && inner.h > 0.0 => {
                 let k = (inner.w / iw as f64).min(inner.h / ih as f64);

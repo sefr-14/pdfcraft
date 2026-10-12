@@ -223,6 +223,29 @@ fn hostile_templates_fail_without_panicking() {
 }
 
 #[test]
+fn repeated_pictures_are_bounded_in_total_bytes() {
+    // Each laid-out picture keeps its own copy of the bytes, so one picture in a repeating
+    // subform used to multiply without bound and exhaust memory (a failed allocation aborts the
+    // app). "AAAA" base64 decodes to zero bytes; 2_097_152 groups is 6 MiB, under the 32 MiB
+    // per-picture cap. 50 instances (occur initial, clamped to MAX_INSTANCES) would be ~300 MiB,
+    // past the aggregate cap, so layout must stop with TooLarge rather than retain it all.
+    let big = "AAAA".repeat(2_097_152);
+    let tpl = format!(
+        "<template><subform layout=\"tb\"><subform layout=\"tb\"><occur initial=\"50\" max=\"-1\"/>\
+         <draw w=\"0.2in\" h=\"0.2in\"><value><image contentType=\"image/png\">{big}</image></value></draw>\
+         </subform></subform></template>"
+    );
+    assert!(matches!(layout_xml(&tpl), Err(XfaError::TooLarge(m)) if m.contains("too large")), "the repeated picture must be refused");
+
+    // A single small picture still lays out: the cap does not reject an ordinary form.
+    let small = "AAAA".repeat(8);
+    let ok = format!(
+        "<template><subform layout=\"tb\"><draw w=\"1in\" h=\"1in\"><value><image contentType=\"image/png\">{small}</image></value></draw></subform></template>"
+    );
+    assert!(layout_xml(&ok).is_ok(), "one small picture must lay out");
+}
+
+#[test]
 fn the_packets_can_be_one_stream_or_named_parts() {
     // Named parts, with the template split from the rest.
     let doc = Document::open(Arc::new(shell(&template(0)))).unwrap();
@@ -1108,4 +1131,58 @@ fn data_paths_leave_areas_out() {
     assert_eq!(path("form[0].page[0].box[0].rest[0].box[0]"), "form[0].page[0].rest[0].box[0]");
     assert_eq!(path("other[0].box[0].rest[0]"), "other[0].box[0].rest[0]");
     assert_eq!(data_path(&tpl, ""), Vec::new());
+}
+/// A template nested thousands of elements deep must be refused. roxmltree recurses with the
+/// nesting depth, so it used to overflow the stack - and a stack overflow aborts the process,
+/// which no `catch_unwind` can intercept.
+#[test]
+fn deeply_nested_template_is_refused_instead_of_overflowing_the_stack() {
+    let mut xml = String::from(r#"<template xmlns="http://www.xfa.org/schema/xfa-template/3.3/">"#);
+    for i in 0..10_000 {
+        xml.push_str(&format!(r#"<subform name="s{i}">"#));
+    }
+    xml.push_str(&"</subform>".repeat(10_000));
+    xml.push_str("</template>");
+    assert!(matches!(crate::parse::parse(&xml), Err(crate::XfaError::Malformed(_))), "ten thousand nested subforms must be refused, not parsed");
+}
+
+/// The depth scanner skips what is not an element and cannot under-count one.
+#[test]
+fn nesting_depth_scanner_counts_what_matters() {
+    use crate::xml_nesting_depth as d;
+    assert_eq!(d(""), 0);
+    assert_eq!(d("<a><b><c/></b></a>"), 3);
+    assert_eq!(d(r#"<?xml version="1.0"?><!-- <x> --><a/>"#), 1);
+    assert_eq!(d("<a><![CDATA[<not-an-element>]]></a>"), 1);
+    assert_eq!(d(r#"<a b="<"><c/></a>"#), 2);
+    assert_eq!(d("<a/>"), 1);
+    assert_eq!(d("<a><b/></a>"), 2);
+    assert_eq!(d(&"<empty/>".repeat(2_000)), 1, "elements that close themselves must not accumulate");
+}
+
+/// A template holding thousands of self-closing elements is two levels deep, not thousands. Before
+/// the scanner knew that, a form with a lot of styling elements was refused as too deeply nested.
+#[test]
+fn many_self_closing_elements_do_not_accumulate_into_the_bound() {
+    let mut xml = String::from(r#"<template xmlns="http://www.xfa.org/schema/xfa-template/3.3/"><subform layout="tb">"#);
+    for i in 0..2_000 {
+        xml.push_str(&format!(r#"<draw name="d{i}"/>"#));
+    }
+    xml.push_str("</subform></template>");
+    assert!(crate::parse::parse(&xml).is_ok(), "two thousand self-closing draws are two levels deep, not two thousand");
+}
+
+/// The bound must hold on a worker thread too, whose default stack (2 MiB) is a quarter of the
+/// main thread's: a template exactly at the limit parses there without overflowing.
+#[test]
+fn template_at_the_depth_limit_parses_on_a_worker_thread() {
+    let depth = crate::MAX_XML_DEPTH - 1;
+    let mut xml = String::from(r#"<template xmlns="http://www.xfa.org/schema/xfa-template/3.3/">"#);
+    for i in 0..depth {
+        xml.push_str(&format!(r#"<subform name="s{i}">"#));
+    }
+    xml.push_str(&"</subform>".repeat(depth));
+    xml.push_str("</template>");
+    let parsed = std::thread::spawn(move || crate::parse::parse(&xml).is_ok()).join();
+    assert!(matches!(parsed, Ok(true)), "a template at the limit parses on a default-stack thread");
 }
