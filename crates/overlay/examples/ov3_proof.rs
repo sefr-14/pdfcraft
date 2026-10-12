@@ -145,10 +145,10 @@ fn sha256(data: &[u8]) -> String {
         msg.push(0);
     }
     msg.extend_from_slice(&bits.to_be_bytes());
-    for block in msg.chunks_exact(64) {
+    for block in msg.as_chunks::<64>().0 {
         let mut w = [0u32; 64];
-        for (word, b) in w.iter_mut().zip(block.chunks_exact(4)) {
-            *word = u32::from_be_bytes([b[0], b[1], b[2], b[3]]);
+        for (word, b) in w.iter_mut().zip(block.as_chunks::<4>().0) {
+            *word = u32::from_be_bytes(*b);
         }
         for i in 16..64 {
             let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);

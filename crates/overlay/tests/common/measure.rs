@@ -28,7 +28,7 @@ impl Image {
     /// Premultiplied RGBA (as PdfCraft's renderer returns it) composited onto white.
     pub fn from_premultiplied_rgba(width: usize, height: usize, rgba: &[u8]) -> Image {
         let mut rgb = Vec::with_capacity(width * height * 3);
-        for px in rgba.chunks_exact(4) {
+        for px in rgba.as_chunks::<4>().0 {
             let back = 255 - px[3];
             rgb.extend([px[0].saturating_add(back), px[1].saturating_add(back), px[2].saturating_add(back)]);
         }
