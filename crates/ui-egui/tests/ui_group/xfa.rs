@@ -103,6 +103,17 @@ fn ordinary_forms_and_documents_have_no_xfa_notice() {
     assert_eq!(xfa(&h), Some(pdfcraft_render::Xfa::Dynamic));
 }
 
+/// Run frames until the pages are drawn (fields can be clicked then).
+fn wait_for_pages(h: &mut Harness<'static, PdfCraftApp>) {
+    for _ in 0..40 {
+        h.run_steps(2);
+        if !h.state().render_pending() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
 /// Click the centre of a field's widget.
 fn click_field(h: &mut Harness<'static, PdfCraftApp>, name: &str) {
     let p = {
@@ -122,23 +133,17 @@ fn click_field(h: &mut Harness<'static, PdfCraftApp>, name: &str) {
 #[test]
 fn xfa_buttons_run_their_scripts_in_the_app() {
     let mut h = open(pdfcraft_xfa::fixtures::shell(&pdfcraft_xfa::fixtures::scripted_template()));
-    for _ in 0..40 {
-        h.run_steps(2);
-        if !h.state().render_pending() {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(5));
-    }
+    wait_for_pages(&mut h);
     let names = |h: &Harness<'static, PdfCraftApp>| {
         let s = h.state();
         s.session.get(s.views[0].id).unwrap().form.iter().map(|f| f.name.clone()).collect::<Vec<_>>()
     };
     assert!(!names(&h).iter().any(|n| n == "amount_2"));
     click_field(&mut h, "addRow");
-    assert!(names(&h).iter().any(|n| n == "amount_2"), "{:?}", names(&h));
+    assert!(names(&h).iter().any(|n| n == "amount_2"), "{:?}; script console: {:?}", names(&h), h.state().js_console.log);
     // The message box shows as a notice.
     click_field(&mut h, "hello");
-    h.get_by_label_contains("Hello 2");
+    assert!(h.query_by_label_contains("Hello 2").is_some(), "script console: {:?}", h.state().js_console.log);
 }
 
 #[test]
@@ -147,8 +152,63 @@ fn messages_from_scripts_run_on_open_show_right_away() {
         .replace("if (qty.rawValue === null) qty.rawValue = 2;", r#"xfa.host.messageBox("Welcome to the form"); xfa.host.print();"#);
     let mut h = open(pdfcraft_xfa::fixtures::shell(&tpl));
     h.run_steps(2);
-    h.get_by_label_contains("Welcome to the form");
+    assert!(h.query_by_label_contains("Welcome to the form").is_some(), "script console: {:?}", h.state().js_console.log);
     assert_eq!(h.state().dialog, None, "an initialize script can't open the Print dialog");
     let id = h.state().views[0].id;
     assert!(h.state_mut().session.take_js_output(id).is_empty(), "nothing waits for the next edit");
+}
+
+/// A script the engine's own limits don't stop (its loops are in nested calls): it runs until
+/// it is abandoned, which turns the form's scripts off.
+const RUNAWAY: &str = "function f() { for (var j = 0; j &lt; 99999; j++) {} } for (var k = 0; k &lt; 5000; k++) f();";
+const SCRIPTS_OFF: &str = "This form's scripts are turned off because one ran too long";
+
+fn says_scripts_are_off(toast: &Option<(String, f64)>) -> bool {
+    toast.as_ref().is_some_and(|t| t.0.contains(SCRIPTS_OFF))
+}
+
+#[test]
+fn a_form_whose_scripts_were_turned_off_at_open_says_so() {
+    let tpl = pdfcraft_xfa::fixtures::scripted_template().replace("if (qty.rawValue === null) qty.rawValue = 2;", RUNAWAY);
+    let mut h = open(pdfcraft_xfa::fixtures::shell(&tpl));
+    let id = h.state().views[0].id;
+    assert!(h.state().session.get(id).unwrap().xfa_scripts_off(), "script console: {:?}", h.state().js_console.log);
+    // A toast says so as it happens; the notice bar keeps saying so after the toast is gone.
+    assert!(says_scripts_are_off(&h.state().toast), "{:?}", h.state().toast);
+    h.state_mut().toast = None;
+    h.run_steps(2);
+    assert!(h.query_by_label_contains(SCRIPTS_OFF).is_some());
+    // The bar leads to the console, where the script's error is.
+    h.get_by_label("JavaScript Console").click();
+    h.run_steps(2);
+    assert_eq!(h.state().dialog, Some(pdfcraft_ui_egui::Dialog::JsConsole));
+    assert!(h.state().js_console.log.iter().any(|l| l.contains("abandoned")), "{:?}", h.state().js_console.log);
+}
+
+#[test]
+fn scripts_turned_off_by_a_click_bring_a_closed_notice_bar_back() {
+    let tpl = pdfcraft_xfa::fixtures::scripted_template().replace(r#"xfa.host.messageBox("Hello " + qty.rawValue);"#, RUNAWAY);
+    let mut h = open(pdfcraft_xfa::fixtures::shell(&tpl));
+    wait_for_pages(&mut h);
+    // The form opens with its scripts on, and the user closes the notice bar.
+    let id = h.state().views[0].id;
+    assert!(!h.state().session.get(id).unwrap().xfa_scripts_off());
+    assert!(h.query_by_label_contains(SCRIPTS_OFF).is_none() && !says_scripts_are_off(&h.state().toast));
+    h.get_by_label("Dismiss").click();
+    h.run_steps(2);
+    assert!(h.state().views[0].notice_dismissed);
+    // The button's script runs away: a toast says the scripts are off and the bar is back.
+    click_field(&mut h, "hello");
+    assert!(h.state().session.get(id).unwrap().xfa_scripts_off(), "script console: {:?}", h.state().js_console.log);
+    assert!(says_scripts_are_off(&h.state().toast), "{:?}", h.state().toast);
+    assert!(!h.state().views[0].notice_dismissed);
+    h.state_mut().toast = None;
+    h.run_steps(2);
+    assert!(h.query_by_label_contains(SCRIPTS_OFF).is_some());
+    // It is said once: closed again, the bar stays closed through what the user does next.
+    h.get_by_label("Dismiss").click();
+    h.run_steps(2);
+    click_field(&mut h, "addRow");
+    assert!(h.state().views[0].notice_dismissed);
+    assert!(!says_scripts_are_off(&h.state().toast), "{:?}", h.state().toast);
 }

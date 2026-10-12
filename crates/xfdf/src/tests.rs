@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use pdfcraft_annot::{Markup, Meta, NewAnnotation, Shape, Style, add_annotation, add_reply, summaries};
-use pdfcraft_cos::{SaveOptions, write_full};
+use pdfcraft_cos::{SaveOptions, write_full, write_incremental};
 use pdfcraft_forms::{NewField, add_field, fields, set_value};
 
 use super::*;
@@ -328,6 +328,57 @@ fn csv_values_may_span_lines() {
     assert!(import(&mut blank(), b"Name,Agree\r\n\"Ada, Yes\r\n").is_ok());
 }
 
+/// One page with one text field, `Name`.
+fn one_field() -> Document {
+    let mut doc = Document::new_empty();
+    let pages = doc.get(doc.root().unwrap()).as_dict().unwrap().reference(b"Pages").unwrap();
+    let mut p = Dict::new();
+    p.set(b"Type".to_vec(), Object::name("Page"));
+    p.set(b"Parent".to_vec(), Object::Ref(pages));
+    p.set(b"MediaBox".to_vec(), Object::Array(vec![0.into(), 0.into(), 600.into(), 800.into()]));
+    let page = doc.add(p);
+    doc.update_dict(pages, |d| {
+        d.set(b"Count".to_vec(), Object::Int(1));
+        d.set(b"Kids".to_vec(), Object::Array(vec![Object::Ref(page)]));
+    })
+    .unwrap();
+    add_field(&mut doc, 0, [50.0, 700.0, 250.0, 720.0], &NewField::Text { multiline: false }, Some("Name")).unwrap();
+    Document::open(Arc::new(write_full(&doc, &SaveOptions::default()).unwrap())).unwrap()
+}
+
+/// #1321: the text export of a one-field form has no tab to tell it from CSV, so a comma in the
+/// value used to split it and only the text before the comma was imported.
+#[test]
+fn one_field_text_data_keeps_its_commas() {
+    for value in ["Hello, world", "Say \"hi\", twice"] {
+        let mut src = one_field();
+        set_value(&mut src, "Name", &FieldValue::Text(value.into())).unwrap();
+        let txt = export_data(&src, Format::Txt);
+        assert_eq!(txt, format!("Name\n{value}\n"));
+        let mut dst = one_field();
+        let r = import(&mut dst, txt.as_bytes()).unwrap();
+        assert_eq!(r.fields, 1, "{r:?}");
+        assert!(r.rejected.is_empty(), "{r:?}");
+        assert_eq!(values(&dst)[0].1, [value]);
+    }
+}
+
+/// A one-column CSV is still CSV: quotes come off, and a quoted value keeps its commas and line
+/// breaks.
+#[test]
+fn one_column_csv_still_reads_its_quotes() {
+    let mut src = one_field();
+    set_value(&mut src, "Name", &FieldValue::Text("Hello, world".into())).unwrap();
+    let csv = export_data(&src, Format::Csv);
+    assert_eq!(csv, "Name\n\"Hello, world\"\n");
+    let mut dst = one_field();
+    assert_eq!(import(&mut dst, csv.as_bytes()).unwrap().fields, 1);
+    assert_eq!(values(&dst)[0].1, ["Hello, world"]);
+    let mut dst = one_field();
+    assert_eq!(import(&mut dst, b"Name\r\n\"Ada \"\"the\"\", \r\nCountess\"\r\n").unwrap().fields, 1);
+    assert!(values(&dst)[0].1[0].starts_with("Ada \"the\", ") && values(&dst)[0].1[0].ends_with("Countess"), "{:?}", values(&dst));
+}
+
 #[test]
 fn multi_select_lists_round_trip_through_xml_csv_and_text() {
     let src = filled();
@@ -397,6 +448,234 @@ fn reimporting_a_note_replaces_its_popup() {
     assert_eq!(popups.len(), 1, "one current pop-up, not one per import");
     let parent = doc.get(popups[0]).as_dict().and_then(|d| d.reference(b"Parent")).unwrap();
     assert!(refs.contains(&parent), "the pop-up belongs to a note that is still on the page");
+}
+
+/// A partial import updates the parent without detaching replies and review statuses that
+/// weren't included in the data file. FDF export only carries parents still on a page.
+#[test]
+fn replacing_a_note_keeps_existing_replies_and_review_status() {
+    let xfdf = concat!(
+        r#"<xfdf xmlns="http://ns.adobe.com/xfdf/"><annots>"#,
+        r#"<text page="0" name="n1" rect="100,500,120,520"><contents>Updated note</contents></text>"#,
+        r#"</annots></xfdf>"#,
+    );
+    let mut incoming = blank();
+    import(&mut incoming, xfdf.as_bytes()).unwrap();
+    let mut original = filled();
+    let index = summaries(&original).iter().find(|s| s.name.as_deref() == Some("n1")).unwrap().index;
+    pdfcraft_annot::set_review_state(
+        &mut original,
+        0,
+        index,
+        pdfcraft_annot::ReviewState::Accepted,
+        "Reviewer",
+        &Meta { date: None, id: "status".into() },
+    )
+    .unwrap();
+    let original = Arc::new(write_full(&original, &SaveOptions::default()).unwrap());
+    for data in [xfdf.as_bytes().to_vec(), export_fdf(&incoming, true, false, "notes.pdf")] {
+        // Start with the parent, reply and review status in the existing PDF revision.
+        let mut doc = Document::open(original.clone()).unwrap();
+        let mut want = threads(&doc);
+        want.sort();
+        assert_eq!(want.iter().filter(|(_, parent, _)| parent.as_deref() == Some("n1")).count(), 2);
+        assert_eq!(import(&mut doc, &data).unwrap().comments, 1);
+        let note = summaries(&doc).into_iter().find(|s| s.name.as_deref() == Some("n1")).unwrap();
+        assert_eq!(note.contents.as_deref(), Some("Updated note"));
+
+        // Check the saved object graph and a subsequent export/import, rather than relying on
+        // summaries resolving an obsolete parent's name from an object outside /Annots.
+        for incremental in [true, false] {
+            let saved = if incremental {
+                let saved = write_incremental(&doc, &SaveOptions::default()).unwrap();
+                assert!(saved.starts_with(original.as_slice()), "an incremental save preserves the original revision");
+                saved
+            } else {
+                write_full(&doc, &SaveOptions::default()).unwrap()
+            };
+            let reopened = Document::open(Arc::new(saved)).unwrap();
+            let note = summaries(&reopened).into_iter().find(|s| s.name.as_deref() == Some("n1")).unwrap();
+            assert_eq!(note.contents.as_deref(), Some("Updated note"));
+            let fdf = export_fdf(&reopened, true, false, "notes.pdf");
+            let mut dst = blank();
+            import(&mut dst, &fdf).unwrap();
+            let mut got = threads(&dst);
+            got.sort();
+            assert_eq!(got, want, "partial comment import must preserve reply and status threads (incremental={incremental})");
+        }
+    }
+}
+
+#[test]
+fn replacing_an_indirectly_named_note_preserves_its_identity_and_thread() {
+    let initial = concat!(
+        r#"<xfdf><annots><text page="0" name="n1" rect="10,10,30,30"><contents>Original</contents></text>"#,
+        r#"<text page="0" name="r1" rect="40,10,60,30" inreplyto="n1"><contents>Reply</contents></text>"#,
+        r#"<text page="0" name="s1" rect="70,10,90,30" inreplyto="n1" state="Accepted" statemodel="Review"/>"#,
+        r#"</annots></xfdf>"#,
+    );
+    let update = br#"<xfdf><annots><text page="0" name="n1" rect="10,10,30,30"><contents>Updated</contents></text></annots></xfdf>"#;
+    let mut original = blank();
+    for name in ["Name", "Agree", "Pick"] {
+        pdfcraft_forms::delete_field(&mut original, name).unwrap();
+    }
+    import(&mut original, initial.as_bytes()).unwrap();
+    let annotation_refs = |doc: &Document| {
+        let page = pdfcraft_model::pages(doc)[0].obj;
+        doc.get(page)
+            .as_dict()
+            .unwrap()
+            .get(b"Annots")
+            .map(|a| doc.resolve(a))
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Object::as_ref)
+            .collect::<Vec<_>>()
+    };
+    let parent = annotation_refs(&original)[0];
+    let indirect_name = original.add(PdfString::text("n1"));
+    original.update_dict(parent, |d| d.set(b"NM".to_vec(), Object::Ref(indirect_name))).unwrap();
+    let original = Arc::new(write_full(&original, &SaveOptions::default()).unwrap());
+    let mut incoming = blank();
+    import(&mut incoming, update).unwrap();
+    for data in [update.to_vec(), export_fdf(&incoming, true, false, "notes.pdf")] {
+        let mut doc = Document::open(original.clone()).unwrap();
+        let refs = annotation_refs(&doc);
+        assert_eq!(refs.len(), 3);
+        let parent = refs.iter().copied().find(|r| text_of(&doc, doc.get(*r).as_dict().unwrap(), b"NM").as_deref() == Some("n1")).unwrap();
+        assert!(doc.get(parent).as_dict().unwrap().get(b"NM").unwrap().as_ref().is_some(), "the saved source name is indirect");
+        let mut want = threads(&doc);
+        want.sort();
+        assert_eq!(import(&mut doc, &data).unwrap().comments, 1);
+        let updated = annotation_refs(&doc);
+        assert_eq!(updated.len(), 3, "a valid indirect name must replace its comment instead of duplicating it");
+        assert!(updated.contains(&parent), "replacement preserves the source object's identity");
+        assert_eq!(text_of(&doc, doc.get(parent).as_dict().unwrap(), b"Contents").as_deref(), Some("Updated"));
+        for child in refs.into_iter().filter(|r| *r != parent) {
+            assert_eq!(doc.get(child).as_dict().unwrap().reference(b"IRT"), Some(parent));
+        }
+        let saved = write_incremental(&doc, &SaveOptions::default()).unwrap();
+        assert!(saved.starts_with(original.as_slice()));
+        let reopened = Document::open(Arc::new(saved)).unwrap();
+        let mut got = threads(&reopened);
+        got.sort();
+        assert_eq!(got, want);
+        assert_eq!(summaries(&reopened).iter().find(|s| s.name.as_deref() == Some("n1")).unwrap().contents.as_deref(), Some("Updated"));
+    }
+}
+
+#[test]
+fn replacement_matches_named_comments_only_on_their_page() {
+    let xfdf = concat!(
+        r#"<xfdf><annots>"#,
+        r#"<text page="0" name="same" rect="10,10,30,30"><contents>First page</contents></text>"#,
+        r#"<text page="1" name="same" rect="10,10,30,30"><contents>Second page</contents></text>"#,
+        r#"<text page="0" rect="40,40,60,60"><contents>Unnamed</contents></text>"#,
+        r#"</annots></xfdf>"#,
+    );
+    let mut doc = blank();
+    import(&mut doc, xfdf.as_bytes()).unwrap();
+    import(&mut doc, xfdf.as_bytes()).unwrap();
+    let notes = summaries(&doc);
+    assert_eq!(notes.len(), 4, "named comments are replaced, unnamed comments are added");
+    for (page, text) in [(0, "First page"), (1, "Second page")] {
+        let note = notes.iter().find(|s| s.page == page && s.name.as_deref() == Some("same")).unwrap();
+        assert_eq!(note.contents.as_deref(), Some(text));
+    }
+    assert_eq!(notes.iter().filter(|s| s.name.is_none()).count(), 2);
+}
+
+#[test]
+fn the_last_same_named_record_controls_its_reply_parent() {
+    let mut incoming = blank();
+    let page = pdfcraft_model::pages(&incoming)[0].obj;
+    let mut refs = Vec::new();
+    for name in ["parent", "duplicate", "duplicate"] {
+        let mut d = Dict::new();
+        d.set(b"Subtype".to_vec(), Object::name("Text"));
+        d.set(b"NM".to_vec(), PdfString::text(name));
+        d.set(b"Rect".to_vec(), arr(&[10.0, 10.0, 30.0, 30.0]));
+        if refs.len() == 1 {
+            d.set(b"IRT".to_vec(), Object::Ref(refs[0]));
+        }
+        refs.push(incoming.add(d));
+    }
+    incoming.update_dict(page, |p| p.set(b"Annots".to_vec(), Object::Array(refs.into_iter().map(Object::Ref).collect()))).unwrap();
+    for data in [export_xfdf(&incoming, true, false, "notes.pdf").into_bytes(), export_fdf(&incoming, true, false, "notes.pdf")] {
+        let mut doc = blank();
+        import(&mut doc, &data).unwrap();
+        let notes = summaries(&doc);
+        assert_eq!(notes.len(), 2);
+        let last = notes.iter().find(|s| s.name.as_deref() == Some("duplicate")).unwrap();
+        assert_eq!(last.in_reply_to, None, "a replaced record's deferred /IRT must not attach the final standalone comment");
+    }
+}
+
+#[test]
+fn indirectly_named_protected_comments_and_popups_are_not_replaced() {
+    let xfdf = br#"<xfdf><annots><redact page="0" name="n1" rect="0,0,1,1" flags="invisible,hidden,noview,print"><contents>Updated</contents></redact></annots></xfdf>"#;
+    let fdf = b"%FDF-1.2\n1 0 obj\n<< /FDF << /Annots [<< /Subtype /Redact /NM (n1) /Page 0 /Rect [0 0 1 1] /F 39 /Contents (Updated) >>] >> >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n";
+    let annotation_refs = |doc: &Document| {
+        pdfcraft_model::pages(doc)[0]
+            .dict
+            .get(b"Annots")
+            .map(|a| doc.resolve(a))
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Object::as_ref)
+            .collect::<Vec<_>>()
+    };
+    for (subtype, flags) in [("Text", LOCKED), ("Redact", 0)] {
+        let mut original = blank();
+        let page = pdfcraft_model::pages(&original)[0].obj;
+        let name = original.add(PdfString::text("n1"));
+        let mut protected = Dict::new();
+        protected.set(b"Type".to_vec(), Object::name("Annot"));
+        protected.set(b"Subtype".to_vec(), Object::name(subtype));
+        protected.set(b"NM".to_vec(), Object::Ref(name));
+        protected.set(b"Rect".to_vec(), arr(&[10.0, 10.0, 30.0, 30.0]));
+        protected.set(b"F".to_vec(), Object::Int(flags));
+        protected.set(b"Contents".to_vec(), PdfString::text("Original"));
+        protected.set(b"CustomData".to_vec(), PdfString::text("preserved"));
+        let parent = original.add(protected);
+        let mut popup = Dict::new();
+        popup.set(b"Subtype".to_vec(), Object::name("Popup"));
+        popup.set(b"Rect".to_vec(), arr(&[40.0, 10.0, 140.0, 60.0]));
+        popup.set(b"Parent".to_vec(), Object::Ref(parent));
+        let popup = original.add(popup);
+        original.update_dict(parent, |d| d.set(b"Popup".to_vec(), Object::Ref(popup))).unwrap();
+        let mut annots = annotation_refs(&original);
+        annots.extend([parent, popup]);
+        original.update_dict(page, |d| d.set(b"Annots".to_vec(), Object::Array(annots.into_iter().map(Object::Ref).collect()))).unwrap();
+        let original = Arc::new(write_full(&original, &SaveOptions::default()).unwrap());
+        for data in [xfdf.as_slice(), fdf.as_slice()] {
+            let mut doc = Document::open(original.clone()).unwrap();
+            let before = annotation_refs(&doc);
+            let parent = before.iter().copied().find(|r| text_of(&doc, doc.get(*r).as_dict().unwrap(), b"NM").as_deref() == Some("n1")).unwrap();
+            let protected = doc.get(parent);
+            let popup_ref = protected.as_dict().unwrap().reference(b"Popup").unwrap();
+            let popup = doc.get(popup_ref);
+            assert!(protected.as_dict().unwrap().get(b"NM").unwrap().as_ref().is_some());
+            assert_eq!(import(&mut doc, data).unwrap().comments, 1);
+            let after = annotation_refs(&doc);
+            assert_eq!(after.len(), before.len() + 1);
+            assert!(after.contains(&parent) && after.contains(&popup_ref));
+            assert_eq!(doc.get(parent), protected, "the protected {subtype} must not change, including its unknown data");
+            assert_eq!(doc.get(popup_ref), popup, "the protected comment's popup must not change");
+            let added = after.into_iter().find(|r| !before.contains(r)).unwrap();
+            let added = doc.get(added);
+            let added = added.as_dict().unwrap();
+            assert!(added.get(b"NM").is_none(), "the imported comment must relinquish the protected name");
+            assert_eq!(added.int(b"F"), Some(4), "an imported redaction stays printable with Invisible/Hidden/NoView removed");
+            let reopened = Document::open(Arc::new(write_incremental(&doc, &SaveOptions::default()).unwrap())).unwrap();
+            assert_eq!(reopened.get(parent), protected);
+            assert_eq!(reopened.get(popup_ref), popup);
+        }
+    }
 }
 
 #[test]
@@ -578,4 +857,21 @@ fn wide_or_commented_xml_is_not_mistaken_for_deep() {
     let nested = |n: usize| format!("{}{}", "<a>".repeat(n), "</a>".repeat(n));
     assert_eq!(check_form_xml_depth(&nested(MAX_XML_DEPTH)), Ok(()));
     assert!(check_form_xml_depth(&nested(MAX_XML_DEPTH + 1)).is_err());
+}
+
+#[test]
+fn duplicate_xfdf_annotation_flags_do_not_turn_on_unrelated_bits() {
+    // Flags are a set of bit masks, not additive integers. A repeated "print" flag
+    // must not carry into "nozoom", nor repeated "readonly" into "locked".
+    for (flags, expected) in [("print, PRINT, nozoom", 12), ("readonly,readonly", 64), ("print,print,print", 4)] {
+        let xfdf = format!(
+            r#"<xfdf xmlns="http://ns.adobe.com/xfdf/"><annots><square page="0" rect="10,10,50,50" name="flags" flags="{flags}" /></annots></xfdf>"#
+        );
+        let mut doc = blank();
+        assert_eq!(import(&mut doc, xfdf.as_bytes()).unwrap().comments, 1);
+        let page = pdfcraft_model::pages(&doc)[0].obj;
+        let annotations = doc.get(page).as_dict().and_then(|p| p.get(b"Annots")).map(|a| doc.resolve(a)).and_then(|a| a.as_array().cloned()).unwrap();
+        let square = annotations.iter().filter_map(|a| doc.resolve(a).as_dict().cloned()).find(|d| d.name(b"Subtype") == Some(b"Square")).unwrap();
+        assert_eq!(square.get(b"F").and_then(Object::as_int), Some(expected), "flags={flags}");
+    }
 }

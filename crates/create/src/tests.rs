@@ -124,6 +124,32 @@ fn text_is_wrapped_and_paginated() {
     assert!(content(p.last().unwrap()).contains("(After a form feed) Tj"), "a form feed starts a page");
 }
 
+/// Text Helvetica can't draw is refused with its line and character, never set as `?`; text
+/// PdfCraft generates writes such characters as [U+XXXX] and says so.
+#[test]
+fn text_helvetica_cannot_draw_is_refused_or_escaped() {
+    let err = from_text("notes", "Café —\tok\r\n\u{c}第二页 notes", LETTER, 11.0).unwrap_err();
+    let CreateError::Invalid(msg) = &err else { panic!("{err:?}") };
+    assert!(msg.contains("(line 2)") && msg.contains("\"第\" (U+7B2C)") && msg.contains("Western European"), "{msg}");
+    // Western European text, tabs, CRLF and form feeds included, still converts.
+    from_text("notes", "Café —\tok\r\n\u{c}Seite zwei: Grüße", LETTER, 11.0).unwrap();
+    let (doc, escaped) = from_text_escaped("Summary of Comments on 报告.pdf", "Comment: 签名 ok\nPage 2", LETTER, 11.0).unwrap();
+    assert_eq!(escaped, 2);
+    let doc = reopen(&doc);
+    let p = pages(&doc);
+    let c = doc.resolve(p[0].get(b"Contents").unwrap());
+    let Object::Stream(s) = &*c else { panic!() };
+    let shown = String::from_utf8_lossy(&s.decoded().unwrap()).into_owned();
+    assert!(shown.contains("(Comment: [U+7B7E][U+540D] ok) Tj") && shown.contains(&format!("({ESCAPED_NOTE}) Tj")), "{shown}");
+    assert!(!shown.contains('?'), "{shown}");
+    // Nothing to escape: no note.
+    let (doc, escaped) = from_text_escaped("r", "Plain report", LETTER, 11.0).unwrap();
+    assert_eq!(escaped, 0);
+    let p = pages(&doc);
+    let Object::Stream(s) = &*doc.resolve(p[0].get(b"Contents").unwrap()) else { panic!() };
+    assert!(!String::from_utf8_lossy(&s.decoded().unwrap()).contains("U+XXXX"));
+}
+
 fn image_of(doc: &Document, page: usize) -> Dict {
     let p = &pages(doc)[page];
     let res = doc.resolve(p.get(b"Resources").unwrap()).as_dict().cloned().unwrap();

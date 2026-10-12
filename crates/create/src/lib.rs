@@ -618,8 +618,50 @@ fn turkish_code_page(bytes: &[u8]) -> bool {
         && !bytes.iter().any(|b| matches!(b, 0xC1 | 0xCD | 0xD3 | 0xDA | 0xE1 | 0xED | 0xF3 | 0xFA))
 }
 
-/// Plain text set in Helvetica on pages of `page` size with 1-inch margins.
+/// Plain text set in Helvetica on pages of `page` size with 1-inch margins. Text Helvetica can't
+/// draw (outside Western European) is refused with [`CreateError::Invalid`] naming the line and
+/// the character; text PdfCraft generates goes through [`from_text_escaped`] instead.
 pub fn from_text(title: &str, text: &str, page: (f64, f64), font_size: f64) -> Result<Document, CreateError> {
+    // Helvetica in WinAnsiEncoding: text it can't draw is refused with where it is, not set as `?`.
+    if let Some((line, c)) = first_undrawable_line(text) {
+        return Err(CreateError::Invalid(pdfcraft_fonts::undrawable_message(&format!("the text (line {line})"), c)));
+    }
+    set_text(title, text, page, font_size)
+}
+
+/// The line (1-based) and character of the first one Helvetica can't draw. Line breaks, tabs and
+/// form feeds (new pages) are layout, not drawn.
+fn first_undrawable_line(text: &str) -> Option<(usize, char)> {
+    text.split('\n').enumerate().find_map(|(i, l)| pdfcraft_fonts::first_undrawable(&l.replace('\u{c}', "")).map(|c| (i + 1, c)))
+}
+
+/// What a PDF made from text PdfCraft generated says, in its first line, about characters it
+/// wrote as `[U+XXXX]`.
+pub const ESCAPED_NOTE: &str = "Characters Helvetica can't draw are written as [U+XXXX] code points.";
+
+/// [`from_text`] for text PdfCraft generates from documents (a comment summary, a compare
+/// report), which may quote any language. Each character Helvetica can't draw is written as
+/// `[U+XXXX]` instead of being refused or set as `?`, so nothing is lost, and the first line says
+/// so ([`ESCAPED_NOTE`]). Returns the document and how many characters were written that way.
+pub fn from_text_escaped(title: &str, text: &str, page: (f64, f64), font_size: f64) -> Result<(Document, usize), CreateError> {
+    let mut escaped = 0usize;
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if matches!(c, '\n' | '\r' | '\u{c}') || pdfcraft_fonts::first_undrawable(c.encode_utf8(&mut [0; 4])).is_none() {
+            out.push(c);
+        } else {
+            escaped = escaped.saturating_add(1);
+            out.push_str(&format!("[U+{:04X}]", u32::from(c)));
+        }
+    }
+    if escaped > 0 {
+        out = format!("{ESCAPED_NOTE}\n\n{out}");
+    }
+    // The title is a text string in /Info, which holds any character.
+    Ok((set_text(title, &out, page, font_size)?, escaped))
+}
+
+fn set_text(title: &str, text: &str, page: (f64, f64), font_size: f64) -> Result<Document, CreateError> {
     let size = if font_size.is_finite() && font_size > 0.0 { font_size.clamp(4.0, 72.0) } else { 11.0 };
     let (w, h) = page;
     let margin = 72.0;

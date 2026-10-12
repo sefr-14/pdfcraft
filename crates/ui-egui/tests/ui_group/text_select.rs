@@ -77,8 +77,28 @@ fn quick_clicks_with_the_highlighter_mark_only_the_word() {
     let (mut h, at) = harness(|app| assert!(app.execute("comment.highlight")));
     for _ in 0..4 {
         click(&mut h, at);
+        // The double-click's highlight re-renders the page; give its text layer up to 8 frames
+        // to come back (still well inside egui's 0.3 s multi-click window at 1/60 s a frame), so
+        // a loaded machine doesn't make the later clicks land on a page with no text yet.
+        for _ in 0..8 {
+            if !h.state().render_pending() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            h.run_steps(1);
+        }
     }
     h.run_steps(3);
+    // Under load the mark can land a few frames later; wait for it (egui's clock is fixed per
+    // frame, so waiting can't turn the clicks into a different run).
+    for _ in 0..200 {
+        let app = h.state();
+        if app.session.get(app.views[0].id).is_some_and(|d| !d.info.annotations.is_empty()) && !app.render_pending() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        h.run_steps(1);
+    }
     let app = h.state();
     let doc = app.session.get(app.views[0].id).unwrap();
     let marks: Vec<(&str, usize)> = doc.info.annotations.iter().map(|a| (a.subtype.as_str(), a.quads.len())).collect();
@@ -138,4 +158,29 @@ fn shift_click_extends_the_selection_from_its_anchor() {
     // ⇧-click with nothing selected selects nothing.
     shift_click(&mut h, n);
     assert_eq!(h.state().views[0].selected_text(), None);
+}
+
+/// Issue #1024: multi-click selection triggers immediately on pointer press, before release.
+#[test]
+fn multiclick_selects_on_pointer_press_before_release() {
+    let (mut h, at) = harness(|_| {});
+    // First click: press and release.
+    click(&mut h, at);
+    // Second click: press and HOLD (do not release).
+    h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run_steps(1);
+    assert_eq!(h.state().views[0].selected_text().as_deref(), Some("quick"), "word highlights on press");
+    // Release the second click: still selected.
+    h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run_steps(1);
+    assert_eq!(h.state().views[0].selected_text().as_deref(), Some("quick"), "word stays selected on release");
+
+    // Third click: press and HOLD.
+    h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run_steps(1);
+    assert_eq!(h.state().views[0].selected_text().as_deref(), Some("The quick brown fox"), "line highlights on press");
+    // Release third click.
+    h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run_steps(1);
+    assert_eq!(h.state().views[0].selected_text().as_deref(), Some("The quick brown fox"), "line stays selected on release");
 }

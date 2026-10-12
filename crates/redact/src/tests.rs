@@ -533,6 +533,33 @@ fn hidden_information_is_counted_and_removed() {
     assert!(shown, "the field's value stays visible as page content");
 }
 
+/// Issue #1325: removing comments keeps the annotations that are not comments: the multimedia
+/// and print-production ones (Watermark, PrinterMark, TrapNet, Screen, Movie, RichMedia, 3D).
+#[test]
+fn removing_comments_keeps_annotations_that_are_not_comments() {
+    use crate::sanitize::{Hidden, remove_hidden, scan};
+    let kept = ["Link", "Watermark", "PrinterMark", "TrapNet", "Screen", "Movie", "RichMedia", "3D"];
+    let annots: Vec<String> = (0..=kept.len()).map(|i| format!("{} 0 R", i + 4)).collect();
+    let mut objs = vec![
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        format!("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Resources << >> /Annots [{}] >>", annots.join(" ")).into_bytes(),
+        b"<< /Type /Annot /Subtype /Square /Rect [10 10 50 50] >>".to_vec(),
+    ];
+    objs.extend(kept.iter().map(|s| format!("<< /Type /Annot /Subtype /{s} /Rect [60 60 90 90] >>").into_bytes()));
+    let mut doc = pdf(objs);
+    let counts: std::collections::HashMap<Hidden, usize> = scan(&doc).into_iter().collect();
+    assert_eq!(counts[&Hidden::Comments], 1, "only the Square");
+    assert_eq!(remove_hidden(&mut doc, &[Hidden::Comments]).unwrap(), [(Hidden::Comments, 1)]);
+    let doc = reopen(&doc);
+    let p = pdfcraft_model::pages(&doc).swap_remove(0);
+    let left: Vec<String> = annots_of(&doc, &p.dict)
+        .iter()
+        .filter_map(|a| doc.resolve(a).as_dict().and_then(|d| d.name(b"Subtype")).map(|s| String::from_utf8_lossy(s).into_owned()))
+        .collect();
+    assert_eq!(left, kept);
+}
+
 #[test]
 fn overlay_text_takes_its_font_size_colour_alignment_and_repeats() {
     let mut doc = one_page(b"BT /F1 12 Tf 20 250 Td (Secret salary figures) Tj ET", "", Vec::new());
@@ -558,6 +585,39 @@ fn overlay_text_takes_its_font_size_colour_alignment_and_repeats() {
         .and_then(|r| r.get(b"Font").and_then(|f| doc.resolve(f).as_dict().cloned()))
         .unwrap();
     assert!(fonts.contains(b"PCCour") && !fonts.contains(b"PCTimes"));
+}
+
+/// Overlay text the standard fonts can't draw: refused when it is marked, and for a mark another
+/// program made, refused when it is applied, before anything is redacted, rather than burnt into
+/// the page as `?`.
+#[test]
+fn overlay_text_the_standard_fonts_cannot_draw_is_refused() {
+    let mut doc = one_page(b"BT /F1 12 Tf 20 250 Td (Secret salary figures) Tj ET", "", Vec::new());
+    let look = pdfcraft_annot::OverlayLook::default();
+    let mark = |overlay: &str| Shape::Redact { quads: vec![rect_quad([10.0, 200.0, 290.0, 270.0])], overlay: overlay.into(), look };
+    let add = |doc: &mut Document, shape: Shape| {
+        let style = Style::default_for(&shape);
+        add_annotation(doc, &NewAnnotation { page: 0, shape, style, contents: String::new(), author: "T".into() }, &Meta::default())
+    };
+    let err = add(&mut doc, mark("机密")).unwrap_err().to_string();
+    assert!(err.contains("\"机\" (U+673A)") && err.contains("overlay text"), "{err}");
+    assert!(marks(&doc).is_empty());
+    // A mark whose overlay text was written by another program.
+    add(&mut doc, mark("REDACTED")).unwrap();
+    let obj = marks(&doc)[0].obj;
+    doc.update_dict(obj, |d| d.set(b"OverlayText".to_vec(), pdfcraft_cos::PdfString::text("机密"))).unwrap();
+    let before = content(&doc, 0);
+    let err = apply(&mut doc, None).unwrap_err();
+    assert!(
+        matches!(&err, RedactError::Undrawable(m) if m.contains("page 1") && m.contains("U+673A") && m.contains("nothing was redacted")),
+        "{err:?}"
+    );
+    assert_eq!(content(&doc, 0), before, "nothing was redacted");
+    assert_eq!(marks(&doc).len(), 1, "the mark is still there");
+    // Cleared, it applies.
+    doc.update_dict(obj, |d| d.set(b"OverlayText".to_vec(), pdfcraft_cos::PdfString::text(""))).unwrap();
+    apply(&mut doc, None).unwrap();
+    assert!(!content(&reopen(&doc), 0).contains("Secret"));
 }
 
 #[test]
@@ -597,4 +657,72 @@ fn tags_lose_what_redaction_removed() {
     let public = doc.get(pdfcraft_cos::ObjRef::new(10, 0)).as_dict().cloned().unwrap();
     assert_eq!(public.get(b"K").and_then(Object::as_int), Some(1));
     assert!(public.get(b"ActualText").is_some(), "untouched content keeps its tags");
+}
+
+fn assert_no_secret(doc: &Document, secret: &[u8]) {
+    let saved = reopen(doc);
+    for (r, object) in saved.scan_objects() {
+        let mut bytes = Vec::new();
+        pdfcraft_cos::serialize(&object, &mut bytes);
+        assert!(!bytes.windows(secret.len()).any(|w| w == secret), "secret remains in object {r:?}");
+        if let Object::Stream(s) = &*object {
+            let data = s.decoded().unwrap();
+            assert!(!data.windows(secret.len()).any(|w| w == secret), "secret remains in stream {r:?}");
+        }
+    }
+}
+
+#[test]
+fn named_mcids_and_indirect_content_references_lose_descriptions() {
+    let mut doc = one_page(
+        b"/P /P0 BDC BT /F1 10 Tf 10 200 Td (SECRET) Tj ET EMC /P <</MCID 1>> BDC BT /F1 10 Tf 10 100 Td (Public) Tj ET EMC",
+        "/Properties << /P0 7 0 R >>",
+        vec![
+            b"<< /MCID 0 >>".to_vec(),
+            b"<< /Type /StructTreeRoot /K 9 0 R >>".to_vec(),
+            b"<< /S /Document /P 8 0 R /K [10 0 R 11 0 R] >>".to_vec(),
+            b"<< /S /P /P 9 0 R /Pg 3 0 R /ActualText (LEAK_TAG) /K 12 0 R >>".to_vec(),
+            b"<< /S /P /P 9 0 R /Pg 3 0 R /ActualText (Public) /K 1 >>".to_vec(),
+            b"<< /Type /MCR /Pg 3 0 R /MCID 0 >>".to_vec(),
+        ],
+    );
+    doc.update_dict(doc.root().unwrap(), |d| d.set(b"StructTreeRoot".to_vec(), Object::Ref(ObjRef::new(8, 0)))).unwrap();
+    mark(&mut doc, 0, &[[5.0, 195.0, 60.0, 212.0]], "");
+    assert_eq!(apply(&mut doc, None).unwrap().tags, 1);
+    assert_no_secret(&doc, b"LEAK_");
+    assert!(!doc.get(ObjRef::new(10, 0)).as_dict().unwrap().contains(b"K"));
+    assert_eq!(doc.get(ObjRef::new(11, 0)).as_dict().unwrap().get(b"ActualText").unwrap().as_string().unwrap().to_text(), "Public");
+}
+
+#[test]
+fn form_tags_are_cleaned_and_surviving_references_point_at_the_copy() {
+    let mut doc = one_page(
+        b"/Fm Do",
+        "/XObject << /Fm 7 0 R >>",
+        vec![
+            stream(
+                "/Type /XObject /Subtype /Form /BBox [0 0 300 300] /StructParents 0 /Resources << /Font << /F1 5 0 R >> /Properties << /P0 << /MCID 0 >> >> >>",
+                b"/P /P0 BDC BT /F1 10 Tf 10 200 Td (SECRET) Tj ET EMC /P <</MCID 1>> BDC BT /F1 10 Tf 10 100 Td (Public) Tj ET EMC",
+            ),
+            b"<< /Type /StructTreeRoot /K 9 0 R /ParentTree 14 0 R >>".to_vec(),
+            b"<< /S /Document /P 8 0 R /K [10 0 R 11 0 R] >>".to_vec(),
+            b"<< /S /P /P 9 0 R /Pg 3 0 R /ActualText (LEAK_FORM_TAG) /K 12 0 R >>".to_vec(),
+            b"<< /S /P /P 9 0 R /Pg 3 0 R /ActualText (Public) /K 13 0 R >>".to_vec(),
+            b"<< /Type /MCR /Pg 3 0 R /Stm 7 0 R /MCID 0 >>".to_vec(),
+            b"<< /Type /MCR /Pg 3 0 R /Stm 7 0 R /StmOwn 7 0 R /MCID 1 >>".to_vec(),
+            b"<< /Nums [0 [10 0 R 11 0 R]] >>".to_vec(),
+        ],
+    );
+    doc.update_dict(doc.root().unwrap(), |d| d.set(b"StructTreeRoot".to_vec(), Object::Ref(ObjRef::new(8, 0)))).unwrap();
+    mark(&mut doc, 0, &[[5.0, 195.0, 60.0, 212.0]], "");
+    apply(&mut doc, None).unwrap();
+    assert_no_secret(&doc, b"LEAK_");
+    assert_no_secret(&doc, b"SECRET");
+    assert!(!doc.get(ObjRef::new(10, 0)).as_dict().unwrap().contains(b"K"));
+    let reference = doc.get(ObjRef::new(13, 0)).as_dict().unwrap().get(b"Stm").unwrap().as_ref().unwrap();
+    assert_ne!(reference, ObjRef::new(7, 0));
+    assert_eq!(doc.get(ObjRef::new(13, 0)).as_dict().unwrap().get(b"StmOwn").unwrap().as_ref(), Some(reference));
+    let Object::Stream(s) = &*doc.get(reference) else { panic!() };
+    assert!(String::from_utf8(s.decoded().unwrap()).unwrap().contains("Public"));
+    assert!(doc.get(ObjRef::new(11, 0)).as_dict().unwrap().contains(b"ActualText"));
 }

@@ -10,7 +10,7 @@ fn harness() -> Harness<'static, PdfCraftApp> {
     let mut h = Harness::builder().with_size(egui::vec2(1400.0, 900.0)).build_eframe(|_cc| {
         let mut app = PdfCraftApp::new();
         app.set_option("language", "en").unwrap();
-        app.open_bytes("form.pdf", None, include_bytes!("data/form.pdf").to_vec()).unwrap();
+        app.open_bytes("form.pdf", None, include_bytes!("../data/form.pdf").to_vec()).unwrap();
         app.set_option("zoom", "150").unwrap();
         app
     });
@@ -132,6 +132,28 @@ fn redacting_an_imported_word_list() {
     let too_big = vec![b'a'; 2 << 20];
     h.state_mut().use_files(pdfcraft_ui_egui::FilePurpose::RedactWords, vec![("huge.txt".into(), too_big)]);
     assert_eq!(h.state().redact_search.words, "Ada\nprivate\nabsent", "an oversized list changes nothing");
+}
+
+#[test]
+fn redaction_search_can_match_case_and_whole_words() {
+    let memo = pdfcraft_engine::Session::new().create_from_text("memo", "Ada ada Adaline\nAda beta betamax").unwrap().to_vec();
+    let mut h = Harness::builder().with_size(egui::vec2(1400.0, 900.0)).build_eframe(move |_cc| {
+        let mut app = PdfCraftApp::new();
+        app.set_option("language", "en").unwrap();
+        app.open_bytes("memo.pdf", None, memo.clone()).unwrap();
+        app
+    });
+    h.run_steps(4);
+    h.state_mut().execute("redact.search");
+    h.state_mut().redact_search.text = "Ada".into();
+    h.run_steps(2);
+    h.get_by_label("Whole words only").click();
+    h.get_by_label("Case-sensitive").click();
+    h.run_steps(2);
+    assert!(h.state().redact_search.whole_words && h.state().redact_search.case_sensitive);
+    h.get_by_label("Mark all").click();
+    h.run_steps(3);
+    assert_eq!((marks(&h), h.state().redact_search.found), (2, Some(2)));
 }
 
 #[test]

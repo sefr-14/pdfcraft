@@ -274,6 +274,41 @@ fn theme_commands_and_options_report_preference_and_effective_colours() {
     assert_eq!(ok(&mut h, &c, "ui.state", json!({}))["theme_preference"], "System");
 }
 
+#[test]
+fn lithuanian_password_dialog_translates_dynamic_labels_and_validation() {
+    let (mut h, c) = harness();
+    ok(&mut h, &c, "ui.set", json!({ "key": "language", "value": "lt" }));
+    ok(&mut h, &c, "ui.set", json!({ "key": "dialog", "value": "protect" }));
+    h.run_steps(2);
+    h.get_by_role_and_label(egui::accesskit::Role::RadioButton, "Peržiūrėti");
+    h.get_by_role_and_label(egui::accesskit::Role::RadioButton, "Redaguoti").click();
+    h.run_steps(2);
+    assert!(!h.state().protect_draft.viewing);
+    h.get_by_role_and_label(egui::accesskit::Role::PasswordInput, "Įveskite slaptažodį");
+    h.get_by_role_and_label(egui::accesskit::Role::PasswordInput, "Pakartokite slaptažodį");
+    h.state_mut().protect_draft.password = "abc".into();
+    h.state_mut().protect_draft.confirm = "xyz".into();
+    h.run_steps(2);
+    h.get_by_label("Slaptažodžiai nesutampa.");
+}
+
+#[test]
+fn lithuanian_inspector_title_updates_through_the_control_channel() {
+    let (mut h, c) = harness();
+    ok(&mut h, &c, "ui.set", json!({ "key": "panel", "value": "comments" }));
+    h.run_steps(2);
+    h.get_by_role_and_label(egui::accesskit::Role::Tab, "Inspector");
+    let documents = ok(&mut h, &c, "ui.state", json!({}))["documents"].clone();
+    ok(&mut h, &c, "ui.set", json!({ "key": "language", "value": "lt" }));
+    h.run_steps(2);
+    h.get_by_role_and_label(egui::accesskit::Role::Tab, "Inspektorius");
+    assert!(h.query_by_role_and_label(egui::accesskit::Role::Tab, "Inspector").is_none());
+    assert_eq!(ok(&mut h, &c, "ui.state", json!({}))["documents"], documents);
+    ok(&mut h, &c, "ui.set", json!({ "key": "language", "value": "en" }));
+    h.run_steps(2);
+    h.get_by_role_and_label(egui::accesskit::Role::Tab, "Inspector");
+}
+
 /// Switching the interface language changes labels only: documents, their dirty state and the
 /// command ids agents drive stay exactly the same.
 #[test]
@@ -285,7 +320,7 @@ fn language_switch_preserves_document_and_command_ids() {
     let documents = ok(&mut h, &c, "ui.state", json!({}))["documents"].clone();
     assert_eq!(documents[0]["dirty"], true);
     let commands = ok(&mut h, &c, "ui.commands", json!({}));
-    for code in ["ja", "zh-hans", "fr", "de", "uk", "en"] {
+    for code in ["ja", "zh-hans", "fr", "de", "uk", "lt", "en"] {
         ok(&mut h, &c, "ui.set", json!({ "key": "language", "value": code }));
         h.run_steps(2);
         let state = ok(&mut h, &c, "ui.state", json!({}));
@@ -304,7 +339,8 @@ fn language_switch_preserves_document_and_command_ids() {
         h.run_steps(2);
     }
     let error = call(&mut h, &c, "ui.set", json!({ "key": "language", "value": "xx" })).unwrap_err();
-    assert!(error.contains("auto, en, ja"), "{error}");
+    let codes = std::iter::once(i18n::AUTO).chain(i18n::Lang::all().map(i18n::Lang::code)).collect::<Vec<_>>().join(", ");
+    assert_eq!(error, format!("language must be one of {codes}"));
     assert_eq!(ok(&mut h, &c, "ui.state", json!({}))["language"], "en");
 }
 
@@ -990,6 +1026,28 @@ fn state_reports_the_selected_pages() {
     assert_eq!(ok(&mut h, &c, "ui.state", json!({}))["active"]["selected_pages"], json!([]));
     ok(&mut h, &c, "ui.set", json!({ "key": "select", "value": "2,4" }));
     assert_eq!(ok(&mut h, &c, "ui.state", json!({}))["active"]["selected_pages"], json!([2, 4]));
+    ok(&mut h, &c, "ui.set", json!({ "key": "select", "value": "4-2,3" }));
+    assert_eq!(ok(&mut h, &c, "ui.state", json!({}))["active"]["selected_pages"], json!([2, 3, 4]));
+    assert!(call(&mut h, &c, "ui.set", json!({ "key": "select", "value": "0,6" })).is_err());
+    assert_eq!(ok(&mut h, &c, "ui.state", json!({}))["active"]["selected_pages"], json!([2, 3, 4]));
+    ok(&mut h, &c, "ui.set", json!({ "key": "select", "value": "" }));
+    assert_eq!(ok(&mut h, &c, "ui.state", json!({}))["active"]["selected_pages"], json!([]));
+}
+
+#[test]
+fn organize_overview_is_reachable_through_the_control_channel() {
+    let (mut h, c) = harness();
+    ok(&mut h, &c, "ui.set", json!({ "key": "tool", "value": "organize" }));
+    assert_eq!(ok(&mut h, &c, "ui.state", json!({}))["active"]["organize"], true);
+    h.run_steps(3);
+    for label in ["Select page 1", "Select page 3", "Rotate page 1 clockwise"] {
+        ok(&mut h, &c, "ui.click", json!({ "label": label }));
+        h.run_steps(3);
+    }
+    assert_eq!(ok(&mut h, &c, "ui.state", json!({}))["active"]["selected_pages"], json!([1, 3]));
+    let app = h.state();
+    let rotations: Vec<_> = app.session.get(app.views[0].id).unwrap().info.pages.iter().map(|p| p.rotation).collect();
+    assert_eq!(rotations, [90, 0, 0, 0, 0]);
 }
 
 #[test]
@@ -1367,7 +1425,7 @@ fn rail_reveals_its_remembered_inactive_inspector_then_closes_the_visible_panel(
 fn control_quit_retains_inactive_fill_sign_typing_after_cancel() {
     let (mut h, c) = harness();
     h.state_mut().views[0].fill_text =
-        Some(pdfcraft_ui_egui::fill_sign::TypeBox { page: 0, at: [40.0, 200.0], text: "Unsaved signature note".into(), focus: false });
+        Some(pdfcraft_ui_egui::fill_sign::TypeBox { page: 0, at: [40.0, 200.0], text: "Unsaved signature note".into(), size: 10.0, focus: false });
     h.state_mut().active = None;
     assert!(!h.state().session.get(h.state().views[0].id).unwrap().dirty);
     assert_eq!(ok(&mut h, &c, "ui.quit", json!({})), json!({"quitting":false,"needs_confirmation":true}));
@@ -1410,4 +1468,85 @@ fn read_mode_retains_existing_rail_click_to_close_policy() {
     h.run_steps(3);
     assert_eq!(h.state().right, None);
     assert_eq!(h.state().mode, pdfcraft_ui_egui::Mode::Read);
+}
+
+fn navigation_frame(h: &mut Harness<'static, PdfCraftApp>, events: Vec<egui::Event>) {
+    h.input_mut().events.extend(events);
+    h.step();
+}
+
+fn navigation_wheel(h: &mut Harness<'static, PdfCraftApp>, pos: egui::Pos2, delta: f32, ctrl: bool) {
+    let modifiers = egui::Modifiers { ctrl, command: ctrl, ..egui::Modifiers::NONE };
+    navigation_frame(
+        h,
+        vec![
+            egui::Event::ModifiersChanged(modifiers),
+            egui::Event::PointerMoved(pos),
+            egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: egui::vec2(0.0, delta), modifiers, phase: egui::TouchPhase::Move },
+        ],
+    );
+    h.run_steps(20);
+    navigation_frame(h, vec![egui::Event::ModifiersChanged(egui::Modifiers::NONE)]);
+}
+
+#[test]
+fn ctrl_wheel_anchors_visible_page_and_plain_wheel_only_scrolls() {
+    for percent in [100, 200, 400] {
+        for fraction in [0.1, 0.5, 0.9] {
+            let (mut h, c) = harness_pages(20);
+            ok(&mut h, &c, "ui.set", json!({"key":"zoom", "value":percent.to_string()}));
+            h.run_steps(4);
+            let viewport = h.state().views[0].viewport_rect();
+            let before = h.state().views[0].page_screen_rect(0).unwrap();
+            let visible = before.intersect(viewport).shrink(15.0);
+            let p = egui::pos2(visible.left() + fraction * visible.width(), visible.top() + fraction * visible.height());
+            let normalised = (p - before.min) / before.size();
+            let old_zoom = h.state().views[0].zoom;
+            navigation_wheel(&mut h, p, 20.0, true);
+            let enlarged = h.state().views[0].page_screen_rect(0).unwrap();
+            let anchored = enlarged.min + normalised * enlarged.size();
+            assert!(h.state().views[0].zoom > old_zoom);
+            assert!((anchored.y - p.y).abs() < 2.0, "percent={percent}, fraction={fraction}");
+            if before.width() > viewport.width() {
+                assert!((anchored.x - p.x).abs() < 2.0);
+            }
+            navigation_wheel(&mut h, p, -20.0, true);
+            assert!((h.state().views[0].zoom - old_zoom).abs() < 0.01);
+            let zoom = h.state().views[0].zoom;
+            let top = h.state().views[0].page_screen_rect(0).unwrap().top();
+            navigation_wheel(&mut h, p, -80.0, false);
+            assert_eq!(h.state().views[0].zoom, zoom);
+            assert!(h.state().views[0].page_screen_rect(0).unwrap().top() < top - 20.0);
+        }
+    }
+}
+
+#[test]
+fn wheel_zoom_is_scoped_to_the_viewport_and_respects_existing_limits() {
+    let (mut h, c) = harness();
+    let outside = egui::pos2(5.0, 5.0);
+    let zoom = h.state().views[0].zoom;
+    navigation_wheel(&mut h, outside, 40.0, true);
+    assert_eq!(h.state().views[0].zoom, zoom);
+    for (percent, delta, expected) in [(6400, 80.0, 64.0), (8, -80.0, 0.08)] {
+        ok(&mut h, &c, "ui.set", json!({"key":"zoom", "value":percent.to_string()}));
+        h.run_steps(4);
+        let p = h.state().views[0].viewport_rect().center();
+        navigation_wheel(&mut h, p, delta, true);
+        assert_eq!(h.state().views[0].zoom, expected);
+    }
+}
+
+#[test]
+fn initial_zoom_option_is_applied_before_the_first_viewport_layout() {
+    for percent in [50, 100, 200, 400] {
+        let h = Harness::builder().with_size(egui::vec2(1400.0, 900.0)).build_eframe(move |_cc| {
+            let mut app = PdfCraftApp::new();
+            app.open_bytes("initial-zoom.pdf", None, fixture(3)).unwrap();
+            app.set_option("zoom", &percent.to_string()).unwrap();
+            assert_eq!(app.views[0].zoom, percent as f32 / 100.0, "initial options must work before the viewport exists");
+            app
+        });
+        assert_eq!(h.state().views[0].zoom, percent as f32 / 100.0);
+    }
 }

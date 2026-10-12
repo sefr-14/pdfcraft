@@ -89,6 +89,7 @@ pub(crate) fn xml_nesting_depth(text: &str) -> usize {
     max
 }
 
+pub use data::{DataImport, ImportNode, export_data, import_data, parse_data_file, write_data_image};
 pub use data::{
     DataNode, DataOp, DataPath, DatasetsWrite, FieldData, FieldDatum, add_data_instances, build_data, data_path, iso_to_pattern, parse_datasets,
     pattern_to_iso, read_values, read_values_with, remove_data_instance, som_to_path, write_data_ops, write_data_value, write_datasets,
@@ -100,7 +101,7 @@ pub use parse::{measure, parse};
 pub use pdf::{CLICK_KEY, LAYOUT_KEY, SOM_KEY, existing_layout};
 pub use script::{
     FormNode, LiveForm, MAX_FORM_NODES, NodeKind, OVERRIDES_KEY, Overrides, ScriptEvent, apply_overrides, data_of, fields_by_som, form_tree,
-    has_scripts, overrides, rerender, set_overrides, template_of,
+    has_scripts, overrides, refresh_value, rerender, set_overrides, template_of,
 };
 
 #[derive(Debug, thiserror::Error)]

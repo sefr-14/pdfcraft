@@ -29,6 +29,9 @@
 //! - `ui.type {text}`, `ui.key {key, modifiers?}`: keyboard input to the focused widget / app.
 //! - `ui.command {id}`: run a registry command (as the menu would). `ui.commands` lists them.
 //! - `ui.set {key, value}`: view options (`--page`, `--zoom`, …), plus persistent preferences.
+//!   `select` accepts physical page numbers and ranges such as `1,12,16-18`; blank clears the
+//!   explicit selection. This is the same bounded parser as the Organize Pages field; invalid
+//!   input leaves the previous selection unchanged. `ui.state.active.selected_pages` reports it.
 //!   `default-mode=all|read|edit|convert|sign` applies to future PDF opens; `mode` overrides it
 //!   for this session without changing the saved preference. `ui.state.default_mode` reports it.
 //!   `theme=light|dark|system` changes the saved theme preference; `ui.state.theme_preference`
@@ -678,6 +681,7 @@ impl Host for crate::PdfCraftApp {
                 crate::QuickTool::Select => "select".to_string(),
                 crate::QuickTool::Hand => "hand".to_string(),
                 crate::QuickTool::Crop => "crop".to_string(),
+                crate::QuickTool::EnhanceCamera => "enhance-camera".to_string(),
                 crate::QuickTool::Redact => "redact".to_string(),
                 crate::QuickTool::AddText => "add-text".to_string(),
                 crate::QuickTool::EditText => "edit-text".to_string(),
@@ -697,6 +701,7 @@ impl Host for crate::PdfCraftApp {
             "mode": format!("{:?}", self.mode),
             "default_mode": self.default_mode,
             "left_panel": if self.left_open { json!(format!("{:?}", self.left)) } else { Value::Null },
+            "tools_side": if self.docking.tools_on_right() { "right" } else { "left" },
             "right_panel": self.right.map(|r| format!("{r:?}")),
             "dialog": self.dialog.map(|d| format!("{d:?}")),
             "palette_open": self.palette_open,
@@ -783,7 +788,8 @@ pub fn serve(client: ControlClient) -> std::io::Result<Endpoint> {
                         continue;
                     }
                     let (reply, close) = match serde_json::from_str::<Value>(&line) {
-                        Err(e) => (rpc_error(Value::Null, -32700, &format!("parse error: {e}")), false),
+                        // Before `auth`, like any other first request, this closes the connection.
+                        Err(e) => (rpc_error(Value::Null, -32700, &format!("parse error: {e}")), !authed),
                         Ok(msg) => {
                             let id = msg.get("id").cloned().unwrap_or(Value::Null);
                             let method = msg.get("method").and_then(Value::as_str).unwrap_or("");
@@ -833,4 +839,32 @@ fn random_token() -> std::io::Result<String> {
     let mut bytes = [0u8; 16];
     getrandom::fill(&mut bytes).map_err(|e| std::io::Error::other(e.to_string()))?;
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+#[cfg(test)]
+mod transport_tests {
+    /// Before authenticating, a line that isn't JSON gets a parse error and closes the
+    /// connection, as [`super::serve`] documents for any first request other than `auth`.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn malformed_input_before_auth_closes_the_connection() {
+        use std::io::{BufRead, BufReader, ErrorKind, Write};
+        let (_control, client) = super::attach(&egui::Context::default());
+        let ep = super::serve(client).unwrap();
+        let s = std::net::TcpStream::connect(("127.0.0.1", ep.port)).unwrap();
+        s.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        writeln!(s.try_clone().unwrap(), "not json").unwrap();
+        let mut r = BufReader::new(s);
+        let mut first = String::new();
+        r.read_line(&mut first).unwrap();
+        let reply: serde_json::Value = serde_json::from_str(&first).unwrap();
+        assert_eq!(reply["error"]["code"], -32700, "{first}");
+        // Closed: end of stream (or a reset), not a connection left waiting for more input.
+        let mut next = String::new();
+        let closed = match r.read_line(&mut next) {
+            Ok(n) => n == 0,
+            Err(e) => matches!(e.kind(), ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted),
+        };
+        assert!(closed, "the connection stayed open: {next:?}");
+    }
 }
