@@ -3828,6 +3828,7 @@ dependencies = [
  "pdfcraft-content",
  "pdfcraft-cos",
  "pdfcraft-model",
+ "pdfcraft-organize",
 ]
 
 [[package]]

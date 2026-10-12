@@ -13,6 +13,14 @@ pub enum OverlayError {
     NotFinite { what: &'static str },
     /// A value that must be positive isn't.
     NotPositive { what: &'static str, value: f64 },
+    /// A value outside its allowed range, such as a light-tone threshold outside [0.5, 1].
+    OutOfRange { what: &'static str, value: f64, min: f64, max: f64 },
+    /// A source page couldn't be read or copied. `side` is 'A' or 'B'; `page` is 0-based.
+    Source { side: char, page: usize, reason: String },
+    /// Neither document has a page here, so there is nothing to compose.
+    NoSources,
+    /// The output document can't take the page (it has no page tree, for example).
+    Output { reason: String },
 }
 
 impl OverlayError {
@@ -37,6 +45,10 @@ impl fmt::Display for OverlayError {
             }
             OverlayError::NotFinite { what } => write!(f, "{what} isn't a finite number"),
             OverlayError::NotPositive { what, value } => write!(f, "{what} must be positive, not {value}"),
+            OverlayError::OutOfRange { what, value, min, max } => write!(f, "{what} must be between {min} and {max}, not {value}"),
+            OverlayError::Source { side, page, reason } => write!(f, "document {side}, page {}: {reason}", page.saturating_add(1)),
+            OverlayError::NoSources => write!(f, "neither document has a page here, so there is nothing to overlay"),
+            OverlayError::Output { reason } => write!(f, "the overlay can't be written: {reason}"),
         }
     }
 }

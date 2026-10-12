@@ -3,8 +3,8 @@
 Layer L5. Overlay comparison, this fork's addition to PdfCraft: two documents drawn on one page,
 each in its own colour, so shared content prints dark and every difference shows in colour.
 
-Step 2 of the overlay plan (this crate so far) is the geometry, as pure functions with no PDF
-writing and no UI:
+Step 2 of the overlay plan is the geometry, as pure functions with no PDF writing and no UI.
+Step 3 adds `composite`, which writes the overlay page:
 
 - `frame`: a page's displayed frame. The visible box (crop ∩ media), upright after `/Rotate`, in
   points after `/UserUnit`, with its lower-left corner at (0, 0). It inverts pdfcraft's own
@@ -23,11 +23,19 @@ writing and no UI:
 - `place`: the output page (A's sheet, or expanded to hold both), the matrices that put A and B
   on it, B's outline, clipping, and an output `/UserUnit` past 14,400 units.
 - `settings`: every limit, with the starting values from the PRDs.
+- `composite` (step 3): one overlay page from two source pages and a placement, in the overlay
+  PRD's structure. Each document draws a rectangle in its layer colour under Multiply and a
+  luminosity soft mask; the mask's group draws the source page (copied by
+  `pdfcraft_organize::page_as_form`, its `/BBox` set to the visible box and its `/Matrix` to the
+  identity) under the placement matrix, written at full precision, over a white backdrop, through
+  the light-tone function m_t(L) = clamp(1 − L / t, 0, 1) as one shared Type 2 function. Source
+  content is copied, never rewritten, so vectors stay vectors. Sources are only read.
 
 Conventions: points (1/72 in), y up, origin at the displayed sheet's lower-left corner;
 matrices in PDF order `[a b c d e f]` (`pdfcraft_content::Matrix`); rotation counter-clockwise
 in radians; f64 throughout; every input checked to be finite. Nothing here panics on any input.
 
-Sources: ISO 32000-2 §14.11.2 (page boxes), §7.7.3.3 (`/Rotate`, `/UserUnit`); S. Umeyama,
+Sources: ISO 32000-2 §14.11.2 (page boxes), §7.7.3.3 (`/Rotate`, `/UserUnit`), §11.6.5
+(soft masks), §7.10.3 (Type 2 functions); S. Umeyama,
 "Least-squares estimation of transformation parameters between two point patterns", IEEE TPAMI
 13(4), 1991; B. Iglewicz and D. Hoaglin, "How to Detect and Handle Outliers", ASQC, 1993.
