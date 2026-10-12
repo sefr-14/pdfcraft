@@ -6,6 +6,7 @@
 pub mod composite;
 mod error;
 pub mod frame;
+pub mod layers;
 pub mod place;
 pub mod register;
 pub mod settings;
@@ -14,6 +15,7 @@ pub mod sheet;
 pub use composite::{CYAN, RED, Side, Source, Style, compose, compose_page, light_tone, luminosity, transfer_function};
 pub use error::{OverlayError, Warning};
 pub use frame::{DisplayFrame, frame, frame_of, frame_of_page};
+pub use layers::{LayerGroups, LayerStyle, LayeredOutput, RegistrationKind, RegistrationNote, Revision, Roles, check_output, compose_layered};
 pub use place::{Placement, place};
 pub use register::{
     Affine, Doc, Fit, Flag, Limits, Model, Point, PointPair, PointReport, RANGE_SLACK, Refusal, Similarity, Verdict, fit, report, residuals, verdict,

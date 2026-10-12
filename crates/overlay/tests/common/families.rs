@@ -11,13 +11,18 @@
 #![allow(dead_code)]
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use pdfcraft_content::Matrix;
 use pdfcraft_cos::{Dict, Document, Object};
 use pdfcraft_overlay::{
-    Affine, DisplayFrame, Limits, Model, Placement, Point, PointPair, Settings, SheetCase, SheetMatch, Side, Similarity, Source, Style, fit, frame,
-    light_tone, luminosity, place, propose,
+    Affine, DisplayFrame, LayerStyle, LayeredOutput, Limits, Model, Placement, Point, PointPair, RegistrationNote, Roles, Settings, SheetCase,
+    SheetMatch, Side, Similarity, Source, Style, fit, frame, light_tone, luminosity, place, propose,
 };
+
+/// Build every overlay through step 4's layered output (`Old` = A, `New` = B, both on) instead of
+/// OV3's `compose_page`. The step 4 proof sets it to rerun the OV3 suite with layers (L4).
+pub static LAYERED: AtomicBool = AtomicBool::new(false);
 
 use super::measure::Pair;
 use super::synth::{self, MM, Page, Res};
@@ -286,6 +291,7 @@ pub fn build(name: &'static str, family: &'static str, specs: Vec<Spec>) -> Set 
     let b_bytes = synth::pdf(&b_pages);
     let (a_doc, b_doc) = (synth::open(&a_bytes), synth::open(&b_bytes));
     let mut out = Document::new_empty();
+    let mut layered = LAYERED.load(Ordering::Relaxed).then(|| LayeredOutput::new().expect("a layered output"));
     let mut cases = Vec::new();
     let (mut ai, mut bi) = (0, 0);
     for (page, s) in specs.into_iter().enumerate() {
@@ -322,7 +328,15 @@ pub fn build(name: &'static str, family: &'static str, specs: Vec<Spec>) -> Set 
         };
         let placement = place(&fa, &fb, sheet, &registration, s.expand, &Settings::default()).expect("placement");
         let style = Style { colour_a: s.pair.a, colour_b: s.pair.b, threshold: s.threshold };
-        pdfcraft_overlay::compose_page(&mut out, sa, sb, &placement, &style).expect("composes");
+        match layered.as_mut() {
+            Some(l) => {
+                let layer_style = LayerStyle { old: s.pair.a, new: s.pair.b, threshold: s.threshold };
+                l.add_page(sa, sb, &placement, &layer_style, Roles::default(), RegistrationNote::PLACED).expect("composes with layers");
+            }
+            None => {
+                pdfcraft_overlay::compose_page(&mut out, sa, sb, &placement, &style).expect("composes");
+            }
+        }
 
         // A's displayed point → output; B's displayed point → output.
         let to_out = |side: Side, p: (f64, f64)| -> (f64, f64) {
@@ -381,6 +395,9 @@ pub fn build(name: &'static str, family: &'static str, specs: Vec<Spec>) -> Set 
             lines,
             checks: Vec::new(),
         });
+    }
+    if let Some(l) = layered {
+        out = l.finish().expect("the layered overlay passes its check");
     }
     let overlay = synth::save(&out, true);
     // Facts checked on the written file: each page box is the placement's.

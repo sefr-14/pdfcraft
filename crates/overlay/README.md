@@ -30,6 +30,16 @@ Step 3 adds `composite`, which writes the overlay page:
   identity) under the placement matrix, written at full precision, over a white backdrop, through
   the light-tone function m_t(L) = clamp(1 − L / t, 0, 1) as one shared Type 2 function. Source
   content is copied, never rewritten, so vectors stay vectors. Sources are only read.
+- `layers` (step 4, OV4.1): the output's two layers. `LayeredOutput` builds a document with
+  exactly two optional content groups, `Old` and `New` (both on, listed Old then New), and wraps
+  each document's fill in its role's marker (`/OC /PCOld BDC … EMC`); with both layers on, a page
+  is `composite`'s page plus the markers. `Roles` says which side is which (A Old, B New by
+  default) and `LayerStyle` gives each role its colour. A failed page leaves the document as it
+  was. `finish` writes the registration into the metadata (`/Subject`, XMP `dc:description`) and
+  runs `check_output`, the defensive check: any other optional content, `/OC` entry, annotation,
+  form, action, script or unreadable content stream is an error, so no output is returned.
+  Until source preparation lands (OV4.3, OV4.4), a source with optional content or annotations is
+  refused.
 
 Conventions: points (1/72 in), y up, origin at the displayed sheet's lower-left corner;
 matrices in PDF order `[a b c d e f]` (`pdfcraft_content::Matrix`); rotation counter-clockwise

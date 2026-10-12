@@ -21,6 +21,12 @@ pub enum OverlayError {
     NoSources,
     /// The output document can't take the page (it has no page tree, for example).
     Output { reason: String },
+    /// Both documents were given the same role: one must be `Old` and the other `New`.
+    SameRole { role: &'static str },
+    /// The finished overlay failed its own safety check (step 4 PRD, Defensive check): it holds
+    /// optional content other than its two layers, an annotation, a form, an action or a script.
+    /// Nothing is returned, so nothing can be saved.
+    Check { found: String },
 }
 
 impl OverlayError {
@@ -49,6 +55,8 @@ impl fmt::Display for OverlayError {
             OverlayError::Source { side, page, reason } => write!(f, "document {side}, page {}: {reason}", page.saturating_add(1)),
             OverlayError::NoSources => write!(f, "neither document has a page here, so there is nothing to overlay"),
             OverlayError::Output { reason } => write!(f, "the overlay can't be written: {reason}"),
+            OverlayError::SameRole { role } => write!(f, "documents A and B are both {role}: one must be Old and the other New"),
+            OverlayError::Check { found } => write!(f, "the overlay failed its safety check, so nothing was produced: {found}"),
         }
     }
 }
