@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use pdfcraft_cos::Document;
 
+pub mod evaluate;
 pub mod families;
 pub mod measure;
 pub mod synth;

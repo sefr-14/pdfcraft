@@ -299,25 +299,50 @@ pub fn nearest_colour(pixel: [u8; 3], pair: Pair) -> Class {
     }
 }
 
-/// Unique pixels along the segment from (x0, y0) to (x1, y1), in pixel units (pixel centres at
-/// +0.5), sampled every 0.25 px.
+/// Every pixel the segment from `from` to `to` passes through or touches (its supercover), in
+/// pixel units with pixel (x, y) spanning [x, x + 1] × [y, y + 1], ordered along the segment.
+///
+/// A walk that samples points along the segment and takes the pixel under each one steps
+/// diagonally from one pixel to the next where the segment crosses a pixel corner, and so skips
+/// the two pixels beside that corner. At 45° that is every other pixel, including the one a line
+/// lies on (found in the first full run of the line study). The supercover can't skip one.
 pub fn profile(img: &Image, from: (f64, f64), to: (f64, f64)) -> Vec<(usize, usize)> {
+    // Squares are grown by this much so a segment through a corner meets all four pixels there,
+    // however the corner's coordinates round.
+    const EPS: f64 = 1e-6;
     let (dx, dy) = (to.0 - from.0, to.1 - from.1);
-    let len = (dx * dx + dy * dy).sqrt();
-    let steps = (len / 0.25).ceil().max(1.0) as usize;
-    let mut out: Vec<(usize, usize)> = Vec::new();
-    for i in 0..=steps {
-        let t = i as f64 / steps as f64;
-        let (x, y) = (from.0 + t * dx, from.1 + t * dy);
-        if x < 0.0 || y < 0.0 {
-            continue;
-        }
-        let p = (x.floor() as usize, y.floor() as usize);
-        if p.0 < img.width && p.1 < img.height && out.last() != Some(&p) && !out.contains(&p) {
-            out.push(p);
+    let lo = |a: f64, b: f64| (a.min(b) - 1.0).floor().max(0.0) as usize;
+    let hi = |a: f64, b: f64| (a.max(b) + 1.0).floor().max(0.0) as usize;
+    let mut hits: Vec<(f64, usize, usize)> = Vec::new();
+    for y in lo(from.1, to.1)..=hi(from.1, to.1).min(img.height.saturating_sub(1)) {
+        for x in lo(from.0, to.0)..=hi(from.0, to.0).min(img.width.saturating_sub(1)) {
+            // Liang–Barsky: the part of t ∈ [0, 1] inside the grown square, if any.
+            let (xf, yf) = (x as f64, y as f64);
+            let mut span = (0.0_f64, 1.0_f64);
+            let inside = [(-dx, from.0 - xf + EPS), (dx, xf + 1.0 + EPS - from.0), (-dy, from.1 - yf + EPS), (dy, yf + 1.0 + EPS - from.1)]
+                .iter()
+                .all(|&(p, q)| clip(p, q, &mut span));
+            if inside {
+                hits.push((span.0, x, y));
+            }
         }
     }
-    out
+    hits.sort_by(|a, b| a.0.total_cmp(&b.0).then((a.2, a.1).cmp(&(b.2, b.1))));
+    hits.into_iter().map(|(_, x, y)| (x, y)).collect()
+}
+
+/// One Liang–Barsky step: keep the part of `span` where p·t ≤ q. False when nothing is left.
+fn clip(p: f64, q: f64, span: &mut (f64, f64)) -> bool {
+    if p == 0.0 {
+        return q >= 0.0;
+    }
+    let r = q / p;
+    if p < 0.0 {
+        span.0 = span.0.max(r);
+    } else {
+        span.1 = span.1.min(r);
+    }
+    span.0 <= span.1
 }
 
 /// Per-channel median of the pixels in [x0, x1) × [y0, y1) (pixel indices, clamped).
