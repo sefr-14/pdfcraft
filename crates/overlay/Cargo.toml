@@ -13,3 +13,7 @@ pdfcraft-content = { workspace = true }
 pdfcraft-cos = { workspace = true }
 pdfcraft-model = { workspace = true }
 pdfcraft-organize = { workspace = true }
+
+[dev-dependencies]
+# Renders overlays in process for the pixel tests and checks the vendored mask fix (step 3).
+pdfcraft-render = { workspace = true }

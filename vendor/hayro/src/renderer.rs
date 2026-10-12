@@ -1476,7 +1476,8 @@ fn draw_soft_mask(mask: &SoftMask<'_>, settings: RenderSettings, width: u16, hei
     renderer.ctx.render_to_pixmap(&mut resources, &mut pix);
 
     let mut rendered_mask = match mask.mask_type() {
-        MaskType::Luminosity => Mask::new_luminance(&pix),
+        // PdfCraft patch (this fork, overlay step 3): PDF's luminosity, not Rec. 709 luma.
+        MaskType::Luminosity => pdf_luminosity_mask(&pix),
         MaskType::Alpha => Mask::new_alpha(&pix),
     };
 
@@ -1496,6 +1497,25 @@ fn draw_soft_mask(mask: &SoftMask<'_>, settings: RenderSettings, width: u16, hei
     }
 
     rendered_mask
+}
+
+/// PdfCraft patch (this fork, overlay step 3): a luminosity soft mask from PDF's luminosity
+/// weights, 0.30 R + 0.59 G + 0.11 B (the Lum function of ISO 32000's non-separable blend
+/// modes), as Poppler and PDFium compute luminosity masks. vello's `Mask::new_luminance` uses
+/// Rec. 709 weights (0.2126, 0.7152, 0.0722, from CSS masking), which put coloured mask content
+/// up to 32 levels off; gray and white come out the same either way. The pixels are
+/// premultiplied, so uncovered areas count as the black backdrop they stand for, as before.
+/// Alpha masks are untouched.
+fn pdf_luminosity_mask(pix: &Pixmap) -> Mask {
+    let data = pix
+        .data()
+        .iter()
+        .map(|p| {
+            let luma = 0.30 * f32::from(p.r) + 0.59 * f32::from(p.g) + 0.11 * f32::from(p.b);
+            (luma + 0.5).clamp(0.0, 255.0) as u8
+        })
+        .collect::<Vec<u8>>();
+    Mask::from_parts(data, pix.width(), pix.height())
 }
 
 pub(crate) fn max_factor(transform: &Affine) -> f32 {
