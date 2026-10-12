@@ -26,11 +26,11 @@ use std::process::{Command, ExitCode};
 use std::sync::Arc;
 use std::time::Instant;
 
-use evaluate::{LineRow, PatchRow, Renderer, TargetRow, measure_lines, measure_patches, measure_targets, render, run};
-use families::{LineKind, Set};
+use evaluate::{LineRow, PatchRow, Render, Renderer, TargetRow, measure_lines, measure_patches, measure_targets, render, run};
+use families::{Case, Expect, LineKind, Set};
 use measure::Image;
 use pdfcraft_cos::{Dict, Document, Object, PdfString, Stream};
-use pdfcraft_overlay::Side;
+use pdfcraft_overlay::{Side, light_tone, luminosity};
 
 struct Args {
     out: PathBuf,
@@ -418,6 +418,261 @@ fn side_by_side(renders: &[(Renderer, &Image)]) -> Option<Image> {
     Some(Image { width, height: h, rgb })
 }
 
+/// The compositing control for one case: each source page rendered alone by the same renderer at
+/// the same dpi, then put through the model pixel by pixel (m_t of the pixel's PDF luminosity for
+/// each document, then the layer colours multiplied). The overlay should match it whatever the
+/// renderer draws, so it separates the compositing from how a renderer draws the sources. Only
+/// where both placements are the identity, the unit is 1 and the renders line up pixel for pixel.
+fn control(set: &Set, case: &Case, renderer: Renderer, overlay: &Render, dir: &Path, tmp: &Path) -> Option<Render> {
+    const IDENTITY: [f64; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+    if case.placement.a.0 != IDENTITY || case.placement.b.0 != IDENTITY || case.placement.unit != 1.0 {
+        return None;
+    }
+    let (w, h) = (overlay.img.width, overlay.img.height);
+    let side = |bytes: &Arc<Vec<u8>>, name: &str, page: Option<usize>| -> Option<Option<Image>> {
+        let Some(page) = page else { return Some(None) };
+        let file = dir.join(format!("sources/{}-{name}.pdf", set.name));
+        let r = render(renderer, bytes, &file, page, overlay.dpi, case, tmp).ok()?;
+        (r.img.width == w && r.img.height == h).then_some(Some(r.img))
+    };
+    let (a, b) = (side(&set.a, "A", case.a_page)?, side(&set.b, "B", case.b_page)?);
+    let t = case.style.threshold;
+    let alpha = |img: &Option<Image>, x: usize, y: usize| -> f64 {
+        img.as_ref().and_then(|i| i.get(x, y)).and_then(|p| light_tone(t, luminosity(p.map(|v| f64::from(v) / 255.0)))).unwrap_or(0.0)
+    };
+    let mut rgb = Vec::with_capacity(w * h * 3);
+    for y in 0..h {
+        for x in 0..w {
+            rgb.extend(case.pair.predict(alpha(&a, x, y), alpha(&b, x, y)).map(|v| v.round().clamp(0.0, 255.0) as u8));
+        }
+    }
+    Some(Render {
+        img: Image { width: w, height: h, rgb },
+        scale_x: overlay.scale_x,
+        scale_y: overlay.scale_y,
+        height_units: overlay.height_units,
+        honours_unit: overlay.honours_unit,
+        dpi: overlay.dpi,
+        effective_dpi: overlay.effective_dpi,
+        millis: 0,
+    })
+}
+
+fn number(o: &Object) -> Option<f64> {
+    match o {
+        Object::Int(i) => Some(*i as f64),
+        Object::Real(r) => Some(*r),
+        _ => None,
+    }
+}
+
+fn numbers(doc: &Document, o: Option<&Object>) -> Option<Vec<f64>> {
+    match &*doc.resolve(o?) {
+        Object::Array(a) => a.iter().map(number).collect(),
+        _ => None,
+    }
+}
+
+/// Criterion 7 for one overlay file: on every page, the layers' soft masks share one transfer
+/// function object, and it is a Type 2 function with Domain [0 1], C0 [1], C1 [1 − 1/t] exactly
+/// (t from the case), N 1. The preview is PdfCraft's render of this same file.
+fn transfer_check(set: &Set) -> (bool, String) {
+    let doc = synth::open(&set.overlay);
+    let pages = pdfcraft_model::pages(&doc);
+    let mut bad = Vec::new();
+    for case in &set.cases {
+        let Some(page) = pages.get(case.page) else {
+            bad.push(format!("{}: no page {}", case.id, case.page + 1));
+            continue;
+        };
+        let dict = |o: Option<&Object>| o.and_then(|o| doc.resolve(o).as_dict().cloned());
+        let states = dict(dict(page.dict.get(b"Resources")).as_ref().and_then(|r| r.get(b"ExtGState")));
+        let mut refs = Vec::new();
+        for (_, gs) in states.iter().flat_map(|d| d.iter()) {
+            match dict(dict(Some(gs)).as_ref().and_then(|g| g.get(b"SMask"))).as_ref().and_then(|m| m.get(b"TR")) {
+                Some(Object::Ref(r)) => refs.push(*r),
+                _ => bad.push(format!("{}: a soft mask without an indirect /TR", case.id)),
+            }
+        }
+        let want = usize::from(case.a_page.is_some()) + usize::from(case.b_page.is_some());
+        refs.dedup();
+        let [tr] = refs.as_slice() else {
+            bad.push(format!("{}: {} transfer functions for {want} layers", case.id, refs.len()));
+            continue;
+        };
+        let f = doc.get(*tr);
+        let Some(f) = f.as_dict() else {
+            bad.push(format!("{}: /TR is not a dictionary", case.id));
+            continue;
+        };
+        let t = case.style.threshold;
+        let ok = f.get(b"FunctionType").and_then(number) == Some(2.0)
+            && numbers(&doc, f.get(b"Domain")) == Some(vec![0.0, 1.0])
+            && numbers(&doc, f.get(b"C0")) == Some(vec![1.0])
+            && numbers(&doc, f.get(b"C1")) == Some(vec![1.0 - 1.0 / t])
+            && f.get(b"N").and_then(number) == Some(1.0);
+        if !ok {
+            bad.push(format!("{}: /TR is not FunctionType 2, Domain [0 1], C0 [1], C1 [{}], N 1", case.id, 1.0 - 1.0 / t));
+        }
+    }
+    let ok = bad.is_empty();
+    let text = if ok {
+        format!("- {}: {} pages, one shared Type 2 function per page with C1 = 1 − 1/t exactly: pass", set.name, set.cases.len())
+    } else {
+        format!("- {}: FAIL: {}", set.name, bad.join("; "))
+    };
+    (ok, text)
+}
+
+/// A zoomed mosaic of one width's cells on a line-study page, for every renderer side by side:
+/// 8 columns (sub-pixel offsets 0 to 7) by 9 rows (displacement 0, 0.025, 0.05, 0.1, 0.15, 0.25,
+/// 0.5 mm, A only, B only), each tile 12 × 12 pt around the cell centre, enlarged to about
+/// 100 px with nearest-neighbour pixels.
+fn zoom_mosaic(case: &Case, width_mm: f64, renders: &[(Renderer, Render)]) -> Option<Image> {
+    let tile_pt = 12.0;
+    let (cols, rows, gap, panel_gap) = (8usize, 9usize, 10usize, 40usize);
+    let kinds: Vec<LineKind> = families::DISPLACEMENTS_MM
+        .iter()
+        .map(|d| if *d == 0.0 { LineKind::Shared } else { LineKind::Displaced(*d) })
+        .chain([LineKind::AOnly, LineKind::BOnly])
+        .collect();
+    let first = &renders.first()?.1;
+    let src = (tile_pt * first.scale_x).round().max(1.0) as usize;
+    let zoom = (100 / src).max(1);
+    let tile = src * zoom;
+    let panel_w = cols * tile + (cols - 1) * gap;
+    let panel_h = rows * tile + (rows - 1) * gap;
+    let width = renders.len() * panel_w + (renders.len() - 1) * panel_gap;
+    // Light gray between tiles, darker between renderers, so neither reads as a drawn line.
+    let mut rgb = vec![232u8; width * panel_h * 3];
+    for k in 1..renders.len() {
+        for y in 0..panel_h {
+            let x0 = k * (panel_w + panel_gap) - panel_gap;
+            let at = (y * width + x0) * 3;
+            rgb[at..at + panel_gap * 3].fill(190);
+        }
+    }
+    for (k, (_, r)) in renders.iter().enumerate() {
+        for (row, kind) in kinds.iter().enumerate() {
+            for col in 0..cols {
+                let Some(l) = case.lines.iter().find(|l| l.width_mm == width_mm && l.kind == *kind && usize::from(l.offset) == col) else { continue };
+                let (cx, cy) = r.to_px(l.centre.0, l.centre.1);
+                let (x0, y0) = ((cx - src as f64 / 2.0).round().max(0.0) as usize, (cy - src as f64 / 2.0).round().max(0.0) as usize);
+                for ty in 0..tile {
+                    for tx in 0..tile {
+                        let px = r.img.get(x0 + tx / zoom, y0 + ty / zoom).unwrap_or([255, 255, 255]);
+                        let (ox, oy) = (k * (panel_w + panel_gap) + col * (tile + gap) + tx, row * (tile + gap) + ty);
+                        let at = (oy * width + ox) * 3;
+                        rgb[at..at + 3].copy_from_slice(&px);
+                    }
+                }
+            }
+        }
+    }
+    Some(Image { width, height: panel_h, rgb })
+}
+
+/// The case map (PRD deliverable): every probe with its file, page, region, expected value,
+/// tolerance and criterion, as CSV, and one row per overlay page as a readable table.
+fn case_map(sets: &[Set]) -> (String, String) {
+    let mut csv = String::from(
+        "set,case,overlay_file,overlay_page,a_file,a_page,b_file,b_page,threshold,probe_kind,probe,region_or_centre,expected,tolerance,criterion,dpis\n",
+    );
+    let mut md = String::from(
+        "# Case map\n\nOne row per overlay page. Every probe (patch, target, line) with its region, expected value, tolerance and criterion is in cases.csv. Coordinates are the output page's user space units, origin bottom left.\n\n| Case | Title | Overlay page | A page | B page | t | Patches | Targets | Lines | dpi |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
+    );
+    let page = |p: Option<usize>| p.map_or("-".to_string(), |p| (p + 1).to_string());
+    for set in sets {
+        for c in &set.cases {
+            let dpis: Vec<String> = c.dpis.iter().map(|d| format!("{d}")).collect();
+            let head = format!(
+                "{},{},overlays/{}.pdf,{},sources/{}-A.pdf,{},sources/{}-B.pdf,{},{}",
+                set.name,
+                c.id,
+                set.name,
+                c.page + 1,
+                set.name,
+                page(c.a_page),
+                set.name,
+                page(c.b_page),
+                c.style.threshold
+            );
+            for p in &c.patches {
+                let (expected, tol) = match &p.expect {
+                    Expect::Colour { rgb, tol } => (format!("median {}", fmt3(*rgb)), format!("{tol} levels")),
+                    Expect::Mean { rgb, tol } => (format!("mean {}", fmt3(*rgb)), format!("{tol} levels")),
+                    Expect::Mask { m, tol } => (format!("mask m = {m:.4}"), format!("{tol} levels")),
+                    Expect::Report => ("report only".to_string(), "-".to_string()),
+                };
+                let r = p.rect;
+                let _ = writeln!(
+                    csv,
+                    "{head},patch,\"{}\",{} {} {} {},\"{expected}\",{tol},{},{}",
+                    p.name,
+                    r[0],
+                    r[1],
+                    r[2],
+                    r[3],
+                    p.criterion,
+                    dpis.join(" ")
+                );
+            }
+            for t in &c.targets {
+                let _ = writeln!(
+                    csv,
+                    "{head},target,{} ({:?}{}),{:.4} {:.4},\"{}\",0.5 px at 300 dpi,8,{}",
+                    t.name,
+                    t.side,
+                    t.partner.as_ref().map_or(String::new(), |p| format!(", coincides with {p}")),
+                    t.centre.0,
+                    t.centre.1,
+                    if t.on_page { "centroid at the centre" } else { "absent (off the page)" },
+                    dpis.join(" ")
+                );
+            }
+            for l in &c.lines {
+                let _ = writeln!(
+                    csv,
+                    "{head},line,{:?} {} mm {}deg offset {},{:.4} {:.4},\"{}\",D1 rule,{},{}",
+                    l.kind,
+                    l.width_mm,
+                    l.orientation_deg,
+                    l.offset,
+                    l.centre.0,
+                    l.centre.1,
+                    match l.kind {
+                        LineKind::Shared => "no A or B pixel",
+                        LineKind::AOnly => "an A pixel on the profile",
+                        LineKind::BOnly => "a B pixel on the profile",
+                        LineKind::Displaced(_) => "reported: A and B pixels on the profile",
+                    },
+                    match l.kind {
+                        LineKind::Shared => "4",
+                        LineKind::AOnly | LineKind::BOnly => "3",
+                        LineKind::Displaced(_) => "5",
+                    },
+                    dpis.join(" ")
+                );
+            }
+            let _ = writeln!(
+                md,
+                "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |",
+                c.id,
+                c.title.replace('|', "/"),
+                c.page + 1,
+                page(c.a_page),
+                page(c.b_page),
+                c.style.threshold,
+                c.patches.len(),
+                c.targets.len(),
+                c.lines.len(),
+                dpis.join(", ")
+            );
+        }
+    }
+    (csv, md)
+}
+
 // ── Reporting ────────────────────────────────────────────────────────────────────────────────
 
 fn fmt3(v: [f64; 3]) -> String {
@@ -463,10 +718,15 @@ fn main() -> ExitCode {
     let versions: Vec<(String, String)> = vec![
         ("pdftoppm".into(), run(Command::new("pdftoppm").arg("-v")).unwrap_or_else(|e| e).lines().next().unwrap_or_default().to_string()),
         ("pdfium".into(), run(Command::new("python3").args(["-m", "pypdfium2_cli", "--version"])).unwrap_or_else(|e| e).trim().replace('\n', "; ")),
-        ("pdfcraft".into(), run(Command::new("git").args(["rev-parse", "--short", "HEAD"])).unwrap_or_else(|e| e).trim().to_string()),
+        (
+            "pdfcraft".into(),
+            run(Command::new("git").args(["describe", "--always", "--dirty", "--abbrev=7"])).unwrap_or_else(|e| e).trim().to_string(),
+        ),
     ];
 
     let mut patches = Vec::new();
+    let mut controls: Vec<PatchRow> = Vec::new();
+    let mut no_control: Vec<String> = Vec::new();
     let mut targets = Vec::new();
     let mut lines = Vec::new();
     let mut render_notes = Vec::new();
@@ -508,6 +768,12 @@ fn main() -> ExitCode {
                     }
                     timings.push((case.id.clone(), renderer, dpi, r.millis, r.img.width, r.img.height));
                     measure_patches(set.name, case, &r, renderer, &mut patches);
+                    if !case.patches.is_empty() {
+                        match control(set, case, renderer, &r, &out, &tmp) {
+                            Some(c) => measure_patches(set.name, case, &c, renderer, &mut controls),
+                            None => no_control.push(format!("{} ({} at {dpi} dpi)", case.id, renderer.name())),
+                        }
+                    }
                     measure_targets(set.name, case, &r, renderer, &mut targets);
                     measure_lines(case, &r, renderer, &mut lines);
                     if dpi <= 150.0 || set.name == "f01-overlap" || set.name == "f17-light-tones" {
@@ -526,15 +792,21 @@ fn main() -> ExitCode {
     }
 
     // ── Results ──
-    let mut md = String::new();
-    let _ = writeln!(md, "# Step 3 compositing proof: results\n");
-    let _ = writeln!(md, "Generated by `cargo run -p pdfcraft-overlay --example ov3_proof` in {:.0} s.\n", started.elapsed().as_secs_f64());
+    let mut head = String::new();
+    let _ = writeln!(head, "# Step 3 compositing proof: results\n");
+    let _ = writeln!(head, "Generated by `cargo run -p pdfcraft-overlay --example ov3_proof` in {:.0} s.\n", started.elapsed().as_secs_f64());
     for (k, v) in &versions {
-        let _ = writeln!(md, "- {k}: {v}");
+        let _ = writeln!(head, "- {k}: {v}");
     }
     let renderer_names: Vec<&str> = args.renderers.iter().map(|r| r.name()).collect();
-    let _ = writeln!(md, "- renderers: {}", renderer_names.join(", "));
-    let _ = writeln!(md);
+    let _ = writeln!(head, "- renderers: {}", renderer_names.join(", "));
+    let _ = writeln!(head);
+    // One row per criterion: (criterion, verdict, measured).
+    let mut summary: Vec<(&str, String, String)> = Vec::new();
+    let verdict = |ok: bool| if ok { "pass".to_string() } else { "FAIL".to_string() };
+    // A criterion this run measured nothing for (a partial run with --only) is "not run", not a failure.
+    let judged = |measured: bool, ok: bool| if measured { verdict(ok) } else { "not run".to_string() };
+    let mut md = String::new();
 
     // Criterion table.
     let mut crit: BTreeMap<String, (usize, usize, f64, String)> = BTreeMap::new();
@@ -556,6 +828,7 @@ fn main() -> ExitCode {
     for (k, (n, f, w, where_)) in &crit {
         let _ = writeln!(md, "| {k} | {n} | {f} | {w:.2} | {where_} |");
     }
+    let crit_row = |k: &str| crit.get(k).cloned().unwrap_or((0, 0, 0.0, String::new()));
 
     // Light tones (criterion 6): agreement between renderers too.
     let _ = writeln!(
@@ -579,6 +852,20 @@ fn main() -> ExitCode {
         let _ = writeln!(md, "| {case} | {patch} | {want:.4} | {} ({dpi}) | {worst:.2} | {spread:.2} |", per.join(", "));
     }
     let _ = writeln!(md, "\nRenderer spread above 1 level: {spread_fail} patches.");
+    for (k, label) in [("1", "1 Overlap and exclusive colour"), ("2", "2 Synthetic suite (patches)")] {
+        let (n, f, w, where_) = crit_row(k);
+        summary.push((label, judged(n > 0, f == 0), format!("{n} checks, {f} failed; worst {w:.2} levels ({where_})")));
+    }
+    {
+        let (n, f, w, where_) = crit_row("6");
+        summary.push((
+            "6 Light tones",
+            judged(n > 0, f == 0 && spread_fail == 0),
+            format!(
+                "{n} checks against m_t(L), {f} failed, worst {w:.2} levels ({where_}); renderers apart by more than 1 level on {spread_fail} patches"
+            ),
+        ));
+    }
 
     // Report-only patches (CMYK, separation, hatching at t < 1): values per renderer.
     let _ = writeln!(
@@ -636,7 +923,7 @@ fn main() -> ExitCode {
             && let (Some(m), Some(n)) = (t.measured, p.measured)
         {
             coincide_n += 1;
-            let unit = 1.0;
+            let unit = sets.iter().flat_map(|s| s.cases.iter()).find(|c| c.id == t.case).map_or(1.0, |c| c.placement.unit);
             let d = ((m.0 - n.0).powi(2) + (m.1 - n.1).powi(2)).sqrt() * unit;
             if d > tol_pt {
                 coincide_fail += 1;
@@ -651,6 +938,16 @@ fn main() -> ExitCode {
         "- A and B targets that must coincide: {coincide_n} pairs; past the tolerance: {coincide_fail}; worst {:.4} pt, {}.",
         coincide_worst.0, coincide_worst.1
     );
+    summary.push((
+        "8 Geometry in the output",
+        judged(!on.is_empty(), missing == 0 && failures == 0 && coincide_fail == 0),
+        format!(
+            "{} targets: {missing} not found, {failures} past {tol_pt:.3} pt, worst {:.4} pt; {coincide_n} A–B pairs: {coincide_fail} apart by more, worst {:.4} pt",
+            on.len(),
+            worst.0,
+            coincide_worst.0
+        ),
+    ));
     let _ = writeln!(md, "\n| Case | Renderer | dpi | Worst target error, pt | Worst A–B distance, pt |\n| --- | --- | --- | --- | --- |");
     let mut per_case: BTreeMap<(String, &'static str, u32), (f64, f64)> = BTreeMap::new();
     for t in &on {
@@ -661,7 +958,8 @@ fn main() -> ExitCode {
             && let Some(p) = on.iter().find(|u| u.case == t.case && &u.target == pname && u.renderer == t.renderer && u.dpi == t.dpi)
             && let (Some(m), Some(n)) = (t.measured, p.measured)
         {
-            e.1 = e.1.max(((m.0 - n.0).powi(2) + (m.1 - n.1).powi(2)).sqrt());
+            let unit = sets.iter().flat_map(|s| s.cases.iter()).find(|c| c.id == t.case).map_or(1.0, |c| c.placement.unit);
+            e.1 = e.1.max(((m.0 - n.0).powi(2) + (m.1 - n.1).powi(2)).sqrt() * unit);
         }
     }
     for ((case, r, dpi), (e, d)) in &per_case {
@@ -678,6 +976,9 @@ fn main() -> ExitCode {
     for l in &lines {
         groups.entry(key(l)).or_default().push(l);
     }
+    let mut non_monotonic: Vec<String> = Vec::new();
+    let mut non_monotonic_old = 0usize;
+    let mut worst_d: Vec<(f64, Key)> = Vec::new();
     let mut table = String::new();
     let _ = writeln!(table, "renderer,dpi,pair,orientation_deg,width_mm,min_distinguishable_mm_d1,min_distinguishable_mm_nearest_colour");
     let mut md_table = String::from(
@@ -698,29 +999,49 @@ fn main() -> ExitCode {
             zero_hits.2 += 1;
             zero_old += l.nearest.a + l.nearest.b;
         }
-        let min_d = |old: bool| -> String {
-            for d in families::DISPLACEMENTS_MM.iter().skip(1) {
-                let all = (0..8).all(|o| {
-                    rows.iter().any(|l| {
-                        l.kind == LineKind::Displaced(*d) && l.offset == o && {
-                            let c = if old { &l.nearest } else { &l.d1 };
-                            c.a > 0 && c.b > 0
-                        }
-                    })
-                });
-                if all {
-                    return format!("{d}");
-                }
-            }
-            "not distinguished up to 0.5".into()
+        // A displacement is distinguished when every one of the 8 offsets shows both colours
+        // (D4: the worst offset counts). The minimum is the smallest displacement from which
+        // every larger one in the study is distinguished too; where a smaller one is distinguished
+        // but a larger one isn't, the condition is listed as non-monotonic with its raw results.
+        let distinguished = |d: f64, old: bool| {
+            (0..8).all(|o| {
+                rows.iter().any(|l| {
+                    l.kind == LineKind::Displaced(d) && l.offset == o && {
+                        let c = if old { &l.nearest } else { &l.d1 };
+                        c.a > 0 && c.b > 0
+                    }
+                })
+            })
         };
-        let (a, b) = (min_d(false), min_d(true));
+        let steps: Vec<f64> = families::DISPLACEMENTS_MM.iter().skip(1).copied().collect();
+        let min_d = |old: bool| -> (String, Option<String>) {
+            let pass: Vec<bool> = steps.iter().map(|d| distinguished(*d, old)).collect();
+            let from = (0..steps.len()).find(|i| pass[*i..].iter().all(|p| *p));
+            let value = from.map_or("not distinguished up to 0.5".to_string(), |i| format!("{}", steps[i]));
+            let first = pass.iter().position(|p| *p);
+            let odd = (first != from)
+                .then(|| steps.iter().zip(&pass).map(|(d, p)| format!("{d}: {}", if *p { "yes" } else { "no" })).collect::<Vec<_>>().join(", "));
+            (value, odd)
+        };
+        let ((a, odd_a), (b, odd_b)) = (min_d(false), min_d(true));
+        if let Some(o) = odd_a {
+            non_monotonic.push(format!("{} {} dpi, {}, {}°, {:.2} mm (D1): {o}", k.0, k.1, k.2, k.3, k.4 as f64 / 100.0));
+        }
+        if odd_b.is_some() {
+            non_monotonic_old += 1;
+        }
+        if a == "not distinguished up to 0.5" {
+            worst_d.push((f64::INFINITY, *k));
+        } else if let Ok(v) = a.parse::<f64>() {
+            worst_d.push((v, *k));
+        }
         let _ = writeln!(table, "{},{},{},{},{},{},{}", k.0, k.1, k.2, k.3, k.4 as f64 / 100.0, a, b);
         let _ = writeln!(md_table, "| {} | {} | {} | {}° | {:.2} | {a} | {b} |", k.0, k.1, k.2, k.3, k.4 as f64 / 100.0);
     }
     write(&out.join("displacement.csv"), table.as_bytes());
+    let expected_conditions = args.renderers.len() * 2 * 2 * families::ORIENTATIONS.len() * families::WIDTHS_MM.len();
     let _ = writeln!(md, "\n## Lines (criteria 3 to 5)\n");
-    let _ = writeln!(md, "- Conditions: {} (renderer × dpi × pair × angle × width).", groups.len());
+    let _ = writeln!(md, "- Conditions: {} of {expected_conditions} (renderer × dpi × pair × angle × width).", groups.len());
     let _ = writeln!(
         md,
         "- Criterion 3, a one-document line visible at every offset: {} failures{}.",
@@ -732,7 +1053,87 @@ fn main() -> ExitCode {
         "- Criterion 4, identical lines: {} A or B pixels in {} profiles under D1 ({} reported ambiguous); the nearest-colour rule finds {} A or B pixels in the same profiles.",
         zero_hits.0, zero_hits.2, zero_hits.1, zero_old
     );
+    let _ = writeln!(
+        md,
+        "- Criterion 5: the minimum is the smallest displacement from which every larger one is distinguished at all 8 offsets. Non-monotonic conditions under D1: {}{}. Under the nearest-colour rule: {non_monotonic_old}.",
+        non_monotonic.len(),
+        if non_monotonic.is_empty() { String::new() } else { format!(" ({})", non_monotonic.join("; ")) }
+    );
+    summary.push((
+        "3 Thin lines visible",
+        judged(!groups.is_empty(), groups.len() == expected_conditions && vis_fail.is_empty()),
+        format!("{} conditions × A-only and B-only × 8 offsets: {} failures", groups.len(), vis_fail.len()),
+    ));
+    summary.push((
+        "4 Zero displacement",
+        judged(zero_hits.2 > 0, zero_hits.0 == 0),
+        format!(
+            "{} A or B pixels in {} identical-line profiles ({} ambiguous); the old nearest-colour rule finds {}",
+            zero_hits.0, zero_hits.2, zero_hits.1, zero_old
+        ),
+    ));
+    summary.push((
+        "5 Displacement study",
+        judged(!groups.is_empty(), groups.len() == expected_conditions),
+        format!("reported for {} of {expected_conditions} conditions; {} non-monotonic under D1 (listed)", groups.len(), non_monotonic.len()),
+    ));
     let _ = writeln!(md, "\n### Minimum distinguishable displacement (criterion 5)\n\n{md_table}");
+
+    // Zoomed side by sides of the worst conditions: the largest minimum overall, the largest for
+    // each renderer and dpi, and every non-monotonic condition.
+    let overall = worst_d.iter().map(|(v, _)| *v).fold(0.0, f64::max);
+    let mut chosen: Vec<Key> = worst_d.iter().filter(|(v, _)| *v == overall).map(|(_, k)| *k).collect();
+    for r in &args.renderers {
+        for dpi in [150u32, 300] {
+            let mine: Vec<&(f64, Key)> = worst_d.iter().filter(|(_, k)| k.0 == r.name() && k.1 == dpi).collect();
+            let top = mine.iter().map(|(v, _)| *v).fold(0.0, f64::max);
+            if let Some((_, k)) = mine.iter().find(|(v, _)| *v == top) {
+                chosen.push(*k);
+            }
+        }
+    }
+    for n in &non_monotonic {
+        if let Some((_, k)) =
+            worst_d.iter().find(|(_, k)| n.starts_with(&format!("{} {} dpi, {}, {}°, {:.2} mm", k.0, k.1, k.2, k.3, k.4 as f64 / 100.0)))
+        {
+            chosen.push(*k);
+        }
+    }
+    // One mosaic per page, dpi and width, showing every renderer.
+    let mut mosaics: Vec<(String, u32, i64)> = Vec::new();
+    for k in &chosen {
+        let id = format!("F01-08-lines-{}-{}deg", k.2, k.3);
+        if !mosaics.contains(&(id.clone(), k.1, k.4)) {
+            mosaics.push((id, k.1, k.4));
+        }
+    }
+    let mut zoom_list = Vec::new();
+    if let Some(set) = sets.iter().find(|s| s.name == "f01-08-lines") {
+        let path = out.join(format!("overlays/{}.pdf", set.name));
+        for (id, dpi, w) in &mosaics {
+            let Some(case) = set.cases.iter().find(|c| &c.id == id) else { continue };
+            let renders: Vec<(Renderer, Render)> = args
+                .renderers
+                .iter()
+                .filter_map(|r| render(*r, &set.overlay, &path, case.page, f64::from(*dpi), case, &tmp).ok().map(|x| (*r, x)))
+                .collect();
+            let width_mm = *w as f64 / 100.0;
+            if let Some(img) = zoom_mosaic(case, width_mm, &renders) {
+                let name = format!("compare/zoom/{id}-{dpi}dpi-{width_mm}mm.png");
+                write_png(&out.join(&name), &img);
+                zoom_list.push(name);
+            }
+        }
+    }
+    let _ = writeln!(
+        md,
+        "\nZoomed side by sides of the worst conditions ({}), each renderer a panel in the order {}: columns are the 8 sub-pixel offsets, rows the displacements 0, 0.025, 0.05, 0.1, 0.15, 0.25, 0.5 mm, then A only and B only; each tile is 12 × 12 pt around the cell centre.\n",
+        zoom_list.len(),
+        renderer_names.join(", ")
+    );
+    for z in &zoom_list {
+        let _ = writeln!(md, "- {z}");
+    }
 
     // Facts checked without rendering.
     let _ = writeln!(md, "\n## Checks on the files\n");
@@ -749,6 +1150,14 @@ fn main() -> ExitCode {
     }
     let n_checks: usize = sets.iter().map(|s| s.cases.iter().map(|c| c.checks.len()).sum::<usize>()).sum();
     let _ = writeln!(md, "- {n_checks} checks (page box and unit equal the placement's, criterion 9a), {checks_fail} failed.");
+    let mut tr_ok = true;
+    let mut tr_md = String::new();
+    for set in &sets {
+        let (ok, text) = transfer_check(set);
+        tr_ok &= ok;
+        let _ = writeln!(tr_md, "  {text}");
+    }
+    let _ = writeln!(md, "- Transfer function (criterion 7): {}.\n{tr_md}", if tr_ok { "pass" } else { "FAIL" });
     let mut vec_md = String::from("# Vector check (criterion 10)\n\n");
     let mut vec_ok = true;
     for set in &sets {
@@ -768,6 +1177,59 @@ fn main() -> ExitCode {
     let _ = writeln!(md, "- Sources unchanged (criterion 11): {}.\n{src_md}", if src_ok { "pass" } else { "FAIL" });
     let det_ok = determinism.iter().all(|(_, ok)| *ok);
     let _ = writeln!(md, "- Determinism (criterion 13): two generations byte-identical: {}.", if det_ok { "pass" } else { "FAIL" });
+    summary.push((
+        "7 Same function in preview and export",
+        verdict(tr_ok),
+        "one Type 2 function per page with C1 = 1 − 1/t exactly, read back from every overlay file; the preview is PdfCraft's render of the same file".into(),
+    ));
+    {
+        let (n, f, w, where_) = crit_row("9b");
+        summary.push((
+            "9a Expansion and clipping",
+            judged(n_checks > 0, checks_fail == 0),
+            format!("{n_checks} page box and unit checks, {checks_fail} failed"),
+        ));
+        summary.push(("9b Coloured content", judged(n > 0, f == 0), format!("{n} checks, {f} failed; worst {w:.2} levels ({where_})")));
+    }
+    summary.push((
+        "10 Vectors kept",
+        verdict(vec_ok),
+        "source content unchanged inside forms, no image added, page operators q Q gs rg re f only (vector-check.md)".into(),
+    ));
+    summary.push(("11 Sources unchanged", verdict(src_ok), "SHA-256 in memory and on disk after every render, cross-checked with sha256sum".into()));
+    summary.push((
+        "12 No panics",
+        "see cargo test".into(),
+        "not measured by this run: tests/composite.rs hostile_input_never_panics, 10,000 seeded cases".into(),
+    ));
+    summary.push(("13 Reproducible", verdict(det_ok), "two generations byte-identical; seeds and versions in run.md".into()));
+    summary.push(("14 No regressions", "see cargo test".into(), "not measured by this run: the OV2 tests and API".into()));
+    summary.push(("15 Gates", "see the gate log".into(), "not measured by this run".into()));
+
+    // The compositing control: the overlay against the model applied to each renderer's own
+    // render of the sources.
+    let _ = writeln!(md, "\n## Compositing control (diagnostic, not a criterion)\n");
+    let _ = writeln!(
+        md,
+        "Each source page is rendered alone by the same renderer at the same dpi and put through the model pixel by pixel (m_t of PDF luminosity, layer colours multiplied). The overlay should match it whatever the renderer draws, so a difference here is in the compositing; a difference from the expected value that the control shares is in how the renderer draws the source.\n"
+    );
+    let ctl_key = |p: &PatchRow| (p.case.clone(), p.patch.clone(), p.renderer, p.dpi as u32);
+    let ctl: BTreeMap<_, &PatchRow> = controls.iter().map(|c| (ctl_key(c), c)).collect();
+    let diff = |p: &PatchRow| ctl.get(&ctl_key(p)).map(|c| (0..3).map(|i| (p.value[i] - c.value[i]).abs()).fold(0.0, f64::max));
+    let _ = writeln!(
+        md,
+        "| Renderer | Patches with a control | Worst overlay − control, levels | Where | Above 2 levels |\n| --- | --- | --- | --- | --- |"
+    );
+    for r in &args.renderers {
+        let ds: Vec<(f64, &PatchRow)> = patches.iter().filter(|p| p.renderer == *r).filter_map(|p| diff(p).map(|d| (d, p))).collect();
+        let worst = ds.iter().fold((0.0, None), |acc, (d, p)| if *d > acc.0 { (*d, Some(*p)) } else { acc });
+        let above = ds.iter().filter(|(d, _)| *d > 2.0).count();
+        let where_ = worst.1.map_or(String::new(), |p| format!("{} / {} at {} dpi", p.case, p.patch, p.dpi));
+        let _ = writeln!(md, "| {} | {} | {:.2} | {where_} | {above} |", r.name(), ds.len(), worst.0);
+    }
+    if !no_control.is_empty() {
+        let _ = writeln!(md, "\nNo control (placement not the identity, unit not 1, or renders not aligned): {}.", no_control.join(", "));
+    }
 
     // Renders that hit a limit or a /UserUnit question.
     let _ = writeln!(md, "\n## Render notes\n");
@@ -777,7 +1239,7 @@ fn main() -> ExitCode {
 
     // Incompatibilities: patch cases where renderers disagree beyond the tolerance.
     let mut inc = String::from(
-        "# Renderer incompatibilities\n\nPatches where at least one renderer misses the expected value while another meets it, or where renderers differ by more than the tolerance.\n\n| Case | Patch | dpi | Expected | Values | Errors, levels |\n| --- | --- | --- | --- | --- | --- |\n",
+        "# Renderer incompatibilities\n\nPatches where at least one renderer misses the expected value. \"All fail\" means no renderer meets it. The control column is each renderer's own render of the sources put through the model (see results.md, Compositing control): when the overlay matches its control but not the expected value, the renderer draws the source differently from the expected value, before any compositing.\n\n| Case | Patch | dpi | Expected | Values | Errors, levels | Control | Overlay − control, levels |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n",
     );
     let mut n_inc = 0;
     let mut grouped: BTreeMap<(String, String, u32), Vec<&PatchRow>> = BTreeMap::new();
@@ -792,12 +1254,20 @@ fn main() -> ExitCode {
             let vals: Vec<String> = rows.iter().map(|r| format!("{} ({})", r.renderer.name(), fmt3(r.value))).collect();
             let errs: Vec<String> = rows.iter().map(|r| format!("{} {:.1}", r.renderer.name(), r.error)).collect();
             let exp = rows.first().and_then(|r| r.expected).map(fmt3).unwrap_or_else(|| "mask".into());
+            let ctl_vals: Vec<String> = rows
+                .iter()
+                .map(|r| ctl.get(&ctl_key(r)).map_or(format!("{} -", r.renderer.name()), |c| format!("{} ({})", r.renderer.name(), fmt3(c.value))))
+                .collect();
+            let ctl_diff: Vec<String> =
+                rows.iter().map(|r| diff(r).map_or(format!("{} -", r.renderer.name()), |d| format!("{} {d:.1}", r.renderer.name()))).collect();
             let _ = writeln!(
                 inc,
-                "| {case}{} | {patch} | {dpi} | {exp} | {} | {} |",
+                "| {case}{} | {patch} | {dpi} | {exp} | {} | {} | {} | {} |",
                 if any_pass { "" } else { " (all fail)" },
                 vals.join("; "),
-                errs.join("; ")
+                errs.join("; "),
+                ctl_vals.join("; "),
+                ctl_diff.join("; ")
             );
         }
     }
@@ -882,6 +1352,9 @@ fn main() -> ExitCode {
         );
     }
     write(&out.join("lines.csv"), lcsv.as_bytes());
+    let (map_csv, map_md) = case_map(&sets);
+    write(&out.join("cases.csv"), map_csv.as_bytes());
+    write(&out.join("cases.md"), map_md.as_bytes());
 
     // Run record.
     let mut run_md = String::from("# Run record\n\n");
@@ -891,7 +1364,7 @@ fn main() -> ExitCode {
     let _ = writeln!(run_md, "- seeds: SplitMix64 0x5CA0_0003 (scan image); the rest of the suite is fixed geometry");
     let _ = writeln!(
         run_md,
-        "- commands: pdftoppm -r DPI -f N -l N -singlefile; python3 -m pypdfium2_cli render --scale DPI/72 --format ppm --no-x-channel; PdfCraft in process (PageRenderer, scale DPI/72), each renderer's default antialiasing"
+        "- commands: pdftoppm -r DPI -f N -l N -singlefile; python3 -m pypdfium2_cli render --pages N --scale DPI/72 --format ppm --no-x-channel --linear; PdfCraft in process (PageRenderer, scale DPI/72), each renderer's default antialiasing"
     );
     if let Ok(status) = std::fs::read_to_string("/proc/self/status")
         && let Some(l) = status.lines().find(|l| l.starts_with("VmHWM"))
@@ -905,8 +1378,19 @@ fn main() -> ExitCode {
         }
     }
     write(&out.join("run.md"), run_md.as_bytes());
-    write(&out.join("results.md"), md.as_bytes());
+    // In the PRD's order: by number, then letter.
+    summary.sort_by_key(|(c, _, _)| {
+        let digits: String = c.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+        (digits.parse::<u32>().unwrap_or(u32::MAX), c.chars().nth(digits.len()).filter(|ch| ch.is_ascii_lowercase()))
+    });
+    let mut table = String::from("## Criteria\n\n| Criterion | Result | Measured |\n| --- | --- | --- |\n");
+    for (c, v, m) in &summary {
+        let _ = writeln!(table, "| {c} | {v} | {} |", m.replace('|', "/"));
+    }
+    let _ = writeln!(table, "\nThe case map is in cases.md and cases.csv; per-probe values in patches.csv, targets.csv and lines.csv.\n");
+    let results = format!("{head}{table}{md}");
+    write(&out.join("results.md"), results.as_bytes());
     let _ = std::fs::remove_dir_all(&tmp);
-    println!("{}", md);
+    println!("{results}");
     ExitCode::SUCCESS
 }
