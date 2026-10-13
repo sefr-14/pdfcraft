@@ -27,7 +27,7 @@ use pdfcraft_content::{Op, parse, write_op};
 use pdfcraft_cos::{Dict, Document, ObjRef, Object};
 
 use super::Rule;
-use super::eval::{Evaluator, Problem};
+use super::eval::{Evaluator, Note, Problem};
 
 /// A stream's named resources.
 pub(crate) struct Names<'a> {
@@ -335,9 +335,13 @@ pub(crate) fn plan(ops: &[Op], skipped: usize, names: &Names<'_>, ev: &mut Evalu
                             }
                             vis_of(v.visible)
                         }
+                        // A name the resources don't define names no group or membership
+                        // dictionary, so the block isn't optional content (ISO 32000-1
+                        // §8.11.3.2) and every viewer shows it, PdfCraft's display included.
+                        // Its marker is removed like a visible layer's, with a note.
                         (None, Some(Object::Name(_))) => {
-                            plan.problems.push(Problem { objects: Vec::new(), rule: Rule::UnknownProperty, settleable: false });
-                            Vis::Unknown
+                            ev.note(Note::UndefinedMarker);
+                            Vis::On
                         }
                         (None, _) => {
                             plan.problems.push(Problem { objects: Vec::new(), rule: Rule::Inline, settleable: false });

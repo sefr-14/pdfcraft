@@ -77,7 +77,9 @@ pub enum Rule {
     Inline,
     /// Nested past the limit, or a cycle, while following references.
     TooDeep,
-    /// A marker names a property the stream's resources don't define.
+    /// A marker names a property the stream's resources don't define. No longer raised: such a
+    /// block isn't optional content and is shown, with a note (`Note::UndefinedMarker`, found
+    /// on real Bluebeam drawing sets).
     UnknownProperty,
     /// A content stream that has to be checked or rewritten can't be decoded, or the parser
     /// skipped bytes in it.

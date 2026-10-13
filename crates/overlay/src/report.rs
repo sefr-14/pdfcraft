@@ -74,6 +74,10 @@ pub(crate) fn note_text(note: &Note, name: &dyn Fn(pdfcraft_cos::ObjRef) -> Stri
             "the default layer configuration's intent is {}, but the standard says it shall be View (ISO 32000-1 Table 101); layers are matched with it as written, and any it leaves out are reported as unresolved",
             intents.join(", ")
         ),
+        Note::UndefinedMarker => {
+            "some content is marked as a layer with a name the page doesn't define; that isn't a layer (ISO 32000-1 §8.11.3.2), so the content is shown, as PdfCraft and other viewers show it"
+                .into()
+        }
         Note::BaseStateOff => {
             "the default layer configuration's base state is OFF, which the standard doesn't allow; it is followed as viewers do: layers not listed as on are hidden"
                 .into()

@@ -389,8 +389,15 @@ fn structural_conditions_are_unresolved() {
     let c = |name, content: Vec<Node>| simple(name, groups3(), D, content);
     // An inline dictionary after /OC: nothing can name it.
     assert_eq!(rules(c("inline", vec![BASE, Ops("/OC << /Type /OCMD /OCGs [] >> BDC"), Canary, Ops("EMC")])), [(Rule::Inline, false)]);
-    // A marker naming a property the resources don't have.
-    assert_eq!(rules(c("unknown-property", vec![BASE, Ops("/OC /Nope BDC"), Canary, Ops("EMC")])), [(Rule::UnknownProperty, false)]);
+    // A marker whose name the resources don't define isn't optional content (ISO 32000-1
+    // §8.11.3.2): its content is shown, as viewers show it, with a note (real Bluebeam sets).
+    let undefined = c("undefined-marker", vec![BASE, Ops("/OC /Nope BDC"), MORE, Ops("EMC")]);
+    let built = twins::build(&undefined);
+    let src = synth::open(&built.source);
+    let p = prepare(&src, &[0], &visibility(&undefined, &built)).expect("prepares");
+    assert!(p.reports()[0].unresolved.is_empty(), "{:?}", p.reports()[0].unresolved);
+    assert_eq!(p.reports()[0].markers_removed, 1);
+    assert!(p.notes().contains(&Note::UndefinedMarker));
     // An end without a beginning, and a beginning never ended, around a layer.
     assert_eq!(rules(c("unbalanced-emc", vec![BASE, Layer("L2", false, vec![Canary]), Ops("EMC")])), [(Rule::Unbalanced, false)]);
     assert_eq!(rules(c("unclosed-bdc", vec![BASE, Ops("/OC /L2 BDC"), Canary])), [(Rule::Unbalanced, false)]);
