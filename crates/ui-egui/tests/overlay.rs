@@ -30,6 +30,31 @@ fn drawing(x: u32) -> Vec<u8> {
     out
 }
 
+/// An `n`-page drawing set whose page `i` draws a box at a height that identifies the sheet.
+fn sheets(n: usize) -> Vec<u8> {
+    let kids: Vec<String> = (0..n).map(|i| format!("{} 0 R", 3 + 2 * i)).collect();
+    let mut objs: Vec<String> =
+        vec!["<< /Type /Catalog /Pages 2 0 R >>".into(), format!("<< /Type /Pages /Kids [{}] /Count {n} /MediaBox [0 0 300 200] >>", kids.join(" "))];
+    for i in 0..n {
+        objs.push(format!("<< /Type /Page /Parent 2 0 R /Contents {} 0 R >>", 4 + 2 * i));
+        let body = format!("0 g 20 {} 40 10 re f", 10 + 5 * i);
+        objs.push(format!("<< /Length {} >>\nstream\n{body}\nendstream", body.len()));
+    }
+    let mut out = b"%PDF-1.7\n".to_vec();
+    let mut offsets = Vec::new();
+    for (i, o) in objs.iter().enumerate() {
+        offsets.push(out.len());
+        out.extend_from_slice(format!("{} 0 obj\n{o}\nendobj\n", i + 1).as_bytes());
+    }
+    let xref = out.len();
+    out.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", objs.len() + 1).as_bytes());
+    for o in offsets {
+        out.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
+    }
+    out.extend_from_slice(format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", objs.len() + 1).as_bytes());
+    out
+}
+
 fn harness() -> Harness<'static, PdfCraftApp> {
     let mut h = Harness::builder().with_size(egui::vec2(1500.0, 1000.0)).build_eframe(|_cc| {
         let mut app = PdfCraftApp::new();
@@ -222,4 +247,51 @@ fn picking_two_points_registers_b_on_a() {
     assert!((scale - 1.0).abs() < 0.01, "{readout}");
     // Exactly two points: no residual check is possible yet.
     h.get_by_label_contains("no residual check is possible");
+}
+
+/// Step 2 with a sheet inserted in New (Old 6 pages, New 7, the new sheet at New p. 3): the row
+/// menu marks it, Next opens once every page has a partner, re-pairing in order asks first and
+/// Cancel keeps the pairing, and Undo brings back what re-pairing replaced.
+#[test]
+fn pages_step_marks_an_inserted_sheet_and_asks_before_re_pairing() {
+    let mut h = Harness::builder().with_size(egui::vec2(1500.0, 1000.0)).build_eframe(|_cc| {
+        let mut app = PdfCraftApp::new();
+        app.set_option("language", "en").unwrap();
+        app.open_bytes("new.pdf", None, sheets(7)).unwrap();
+        app.open_bytes("old.pdf", None, sheets(6)).unwrap();
+        app
+    });
+    h.run_steps(4);
+    assert!(h.state_mut().execute("doc.overlay"));
+    h.run_steps(3);
+    next(&mut h);
+    h.get_by_label("2. Pages");
+    h.get_by_label("7 output page(s): 6 matched, 0 Old only, 0 New only, 1 without a partner yet");
+    assert!(h.get_by_label("Next").accesskit_node().is_disabled(), "an unplaced page blocks Next");
+    // Row 3's menu: New p. 3 is the inserted sheet.
+    h.get_all_by_label("⋯").nth(2).unwrap().click();
+    h.run_steps(2);
+    h.get_by_label("Mark New p. 3 as inserted (blank on the Old side)").click();
+    h.run_steps(3);
+    h.get_by_label("7 output page(s): 6 matched, 0 Old only, 1 New only");
+    assert!(!h.get_by_label("Next").accesskit_node().is_disabled());
+    if let Ok(dir) = std::env::var("PDFCRAFT_SHOT") {
+        h.render().unwrap().save(std::path::Path::new(&dir).join("pages-inserted.png")).unwrap();
+    }
+    // Re-pairing would replace that: it asks, and Cancel keeps it.
+    h.get_by_label("Re-pair in order").click();
+    h.run_steps(2);
+    h.get_by_label_contains("Re-pairing in order replaces the pairings you made");
+    h.get_by_label("Cancel").click();
+    h.run_steps(2);
+    h.get_by_label("7 output page(s): 6 matched, 0 Old only, 1 New only");
+    // Confirmed, it re-pairs; Undo restores the marked insertion.
+    h.get_by_label("Re-pair in order").click();
+    h.run_steps(2);
+    h.get_all_by_label("Re-pair in order").last().unwrap().click();
+    h.run_steps(3);
+    h.get_by_label("7 output page(s): 6 matched, 0 Old only, 0 New only, 1 without a partner yet");
+    h.get_by_label("Undo").click();
+    h.run_steps(3);
+    h.get_by_label("7 output page(s): 6 matched, 0 Old only, 1 New only");
 }

@@ -108,3 +108,43 @@ fn snapshot_decisions_follow_the_tab() {
     // Not a layer of this file: ignored.
     assert_eq!(pdfcraft_overlay::snapshot_decisions(&doc, &[(r(3), true)]), []);
 }
+
+fn contains(hay: &[u8], needle: &[u8]) -> bool {
+    hay.windows(needle.len()).any(|w| w == needle)
+}
+
+/// Unmatched rows (a page from one document only) each make one output page that keeps that
+/// page's vector content, inside the layer of that document's role, with roles as given.
+#[test]
+fn unmatched_rows_keep_their_vectors_in_their_documents_layer() {
+    let a = synth::open(&synth::pdf(&[Page::new(200.0, 100.0, "0 g 13 17 29 31 re f"), Page::new(200.0, 100.0, "0 g 1 2 3 4 re f")]));
+    let b = synth::open(&synth::pdf(&[Page::new(300.0, 150.0, "0 g 41 43 47 53 re f")]));
+    let v = Visibility::default();
+    for (roles, a_layer, b_layer) in [(Roles::default(), "/PCOld", "/PCNew"), (Roles::SWAPPED, "/PCNew", "/PCOld")] {
+        // Old-only (deleted), New-only (inserted), then a matched row.
+        let pairs = vec![PairPlan::placed(Some(0), None), PairPlan::placed(None, Some(0)), PairPlan::placed(Some(1), Some(0))];
+        let out = generate(&a, &b, &v, &v, &Plan { roles, ..plan(pairs) }).expect("generates");
+        let doc = &out.doc;
+        assert_eq!(pdfcraft_model::pages(doc).len(), 3, "one output page per row");
+        check_output(doc).expect("only Old and New");
+        let (p0, p1, p2) = (synth::page_content(doc, 0), synth::page_content(doc, 1), synth::page_content(doc, 2));
+        assert!(contains(&p0, a_layer.as_bytes()) && !contains(&p0, b_layer.as_bytes()), "A-only row in A's layer");
+        assert!(contains(&p1, b_layer.as_bytes()) && !contains(&p1, a_layer.as_bytes()), "B-only row in B's layer");
+        assert!(contains(&p2, b"/PCOld") && contains(&p2, b"/PCNew"));
+        // A blank side takes the other document's sheet: B's 300 × 150 page.
+        let box1 = pdfcraft_model::pages(doc)[1].dict.get(b"MediaBox").map(|o| format!("{:?}", doc.resolve(o))).unwrap_or_default();
+        assert!(box1.contains("300") && box1.contains("150"), "{box1}");
+        // The sources' drawing operators are copied as vectors, and nothing is rasterized.
+        let mut found = (false, false);
+        for (_, o) in doc.scan_objects() {
+            let pdfcraft_cos::Object::Stream(s) = &*o else { continue };
+            assert_ne!(s.dict.name(b"Subtype"), Some(&b"Image"[..]), "no image in the output");
+            let Ok(d) = s.decoded() else { continue };
+            found.0 |= contains(&d, b"13 17 29 31 re f");
+            found.1 |= contains(&d, b"41 43 47 53 re f");
+        }
+        assert_eq!(found, (true, true));
+        assert_eq!(out.report.pages[0].b, None);
+        assert_eq!(out.report.pages[1].a, None);
+    }
+}

@@ -87,6 +87,14 @@ Step 3 adds `composite`, which writes the overlay page:
   also a swatch), complements, what shared content prints as (`A × B / 255`), and the
   readability checks behind its warnings (contrast on white at least 1.9, ΔE at least 50, the
   overlap's contrast at least 7). Warnings are advice; generation works with any pair.
+- `pairing` (step 6, the wizard's Pages step): which page of A goes with which page of B on each
+  output page, for revised drawing sets with inserted, deleted and moved sheets. Two columns of
+  cells, each a page (its 0-based physical index, never its label) or a blank; row `i` pairs the
+  columns' cells `i`, and a shorter column leaves the other's extra pages unplaced until the user
+  places them. Operations insert or remove a blank (later cells of that column shift by one),
+  move a cell up or down, put a page at a row by swapping it with what is there, place unplaced
+  pages against blanks, or apply a new page range keeping the existing pairing. None can lose or
+  duplicate a page, and one that would leave a row with no page is refused and changes nothing.
 - `job` (step 6, used by the wizard; later `doc_overlay`): a whole overlay from two documents.
   `generate` takes the page pairs (a blank side allowed, never both), each with its confirmed
   sheet match and registration, prepares both sources once for the pages used, and returns
