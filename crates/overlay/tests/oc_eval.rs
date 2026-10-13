@@ -206,20 +206,65 @@ fn an_unknown_policy_is_unresolved() {
     }
 }
 
-/// Row 12: `/OCGs` absent, null, empty, or holding only nulls and references to deleted
-/// objects, without `/VE`: no effect on visibility (PDF Reference 1.7, Table 4.49), so the
-/// content is shown, and the report says why. Nulls and deleted references among real groups
-/// are ignored.
+/// Row 12: `/OCGs` absent, null or empty, without `/VE`: no effect on visibility (ISO 32000-1
+/// Table 99, recorded as a deviation from the PRD's "unresolved until confirmed"), so the content
+/// is shown, and the report says why. Nulls among real groups are ignored.
 #[test]
 fn an_empty_membership_has_no_effect() {
-    for ocgs in ["", "/OCGs null", "/OCGs []", "/OCGs [null 99 0 R]", "/OCGs 99 0 R"] {
+    for ocgs in ["", "/OCGs null", "/OCGs []", "/OCGs [null]"] {
         let doc = file(TWO, &[&group("on"), &group("off"), &format!("<< /Type /OCMD {ocgs} /P /AllOff >>")]);
         let mut ev = Evaluator::new(&doc, &Visibility::default());
         visible(&ev.visibility(&Object::Ref(r(7))), true);
         assert_eq!(ev.notes(), [Note::MembershipNoEffect { membership: Some(r(7)) }], "{ocgs}");
     }
-    let doc = file(TWO, &[&group("on"), &group("off"), "<< /Type /OCMD /OCGs [null 6 0 R 99 0 R] /P /AllOn >>"]);
+    let doc = file(TWO, &[&group("on"), &group("off"), "<< /Type /OCMD /OCGs [null 6 0 R] /P /AllOn >>"]);
     visible(&of(&doc, 7), false);
+}
+
+/// OV4.7, F2: references to deleted objects in `/OCGs`. The standard ignores them (Table 99);
+/// pdfcraft's display counts them as groups that are on. Where the two readings agree the result
+/// stands; where they differ the dictionary is unresolved, and a decision on it settles it.
+#[test]
+fn deleted_members_that_change_the_result_are_unresolved() {
+    // 5 on, 6 off; 99 doesn't exist.
+    for (ocgs, p, want) in [
+        // Only deleted members: no effect (shown), against the display's reading.
+        ("[null 99 0 R]", "/AnyOn", Some(true)),
+        ("[99 0 R]", "/AllOn", Some(true)),
+        ("99 0 R", "/AnyOn", Some(true)),
+        ("[null 99 0 R]", "/AllOff", None),
+        ("99 0 R", "/AllOff", None),
+        ("[99 0 R]", "/AnyOff", None),
+        // Deleted members beside real groups.
+        ("[null 6 0 R 99 0 R]", "/AllOn", Some(false)),
+        ("[5 0 R 99 0 R]", "/AllOff", Some(false)),
+        ("[5 0 R 99 0 R]", "/AnyOn", Some(true)),
+        ("[6 0 R 99 0 R]", "/AllOff", None),
+        ("[6 0 R 99 0 R]", "/AnyOn", None),
+    ] {
+        let doc = file(TWO, &[&group("on"), &group("off"), &format!("<< /Type /OCMD /OCGs {ocgs} /P {p} >>")]);
+        match want {
+            Some(w) => visible(&of(&doc, 7), w),
+            None => {
+                unresolved(&of(&doc, 7), &[(Rule::DeletedMember, true)]);
+                visible(&verdict(&doc, &[(7, false)], Object::Ref(r(7))), false);
+                visible(&verdict(&doc, &[(7, true)], Object::Ref(r(7))), true);
+            }
+        }
+    }
+    // With a visibility expression: the standard's reading has no group, so /VE alone decides;
+    // the display's reading has one, and disagrees.
+    let doc = file(TWO, &[&group("on"), &group("off"), "<< /Type /OCMD /VE [/Not 6 0 R] /OCGs [99 0 R] /P /AllOff >>"]);
+    unresolved(&of(&doc, 7), &[(Rule::ExpressionDisagrees, true), (Rule::DeletedMember, true)]);
+    let doc = file(TWO, &[&group("on"), &group("off"), "<< /Type /OCMD /VE [/Not 6 0 R] /OCGs [99 0 R] /P /AnyOn >>"]);
+    visible(&of(&doc, 7), true);
+    // Inline, nothing can name the dictionary, so no decision settles it.
+    let doc = file(TWO, &[&group("on"), &group("off")]);
+    let mut d = pdfcraft_cos::Dict::new();
+    d.set(b"Type".to_vec(), Object::name("OCMD"));
+    d.set(b"OCGs".to_vec(), Object::Array(vec![Object::Ref(r(99))]));
+    d.set(b"P".to_vec(), Object::name("AllOff"));
+    unresolved(&verdict(&doc, &[], Object::Dict(d)), &[(Rule::DeletedMember, false)]);
 }
 
 /// Members that aren't groups.
@@ -278,26 +323,91 @@ fn visibility_expressions() {
         let mut ev = Evaluator::new(&doc, &Visibility::default());
         ev.visibility(&Object::Ref(r(7)));
         // No /OCGs: pdfcraft's display, which reads only /OCGs and /P, shows the content.
-        assert_eq!(ev.notes(), [Note::ExpressionIgnoredByDisplay { membership: Some(r(7)), display_differs: Some(!want) }], "{ve}");
+        assert_eq!(
+            ev.notes(),
+            [Note::ExpressionIgnoredByDisplay { membership: Some(r(7)), with_policy: false, display_differs: Some(!want) }],
+            "{ve}"
+        );
     }
-    // With /OCGs and /P too, /VE is used in preference (PDF Reference 1.7, §4.10.1); the report
-    // says whether pdfcraft's display, which ignores /VE, shows the content differently.
-    for (ve, p, want, differs) in [
-        ("[/Not 6 0 R]", "/OCGs [5 0 R] /P /AnyOn", true, Some(false)),
-        ("[/Not 5 0 R]", "/OCGs [5 0 R] /P /AnyOn", false, Some(true)),
-        ("[/Not 5 0 R]", "/OCGs [5 0 R] /P /Bogus", false, None),
-        ("[/Not 5 0 R]", "/OCGs [5 0 R 7] /P /AnyOn", false, None),
-    ] {
-        let doc = file(TWO, &[&group("on"), &group("off"), &format!("<< /Type /OCMD /VE {ve} {p} >>")]);
-        let mut ev = Evaluator::new(&doc, &Visibility::default());
-        visible(&ev.visibility(&Object::Ref(r(7))), want);
-        assert_eq!(ev.notes(), [Note::ExpressionIgnoredByDisplay { membership: Some(r(7)), display_differs: differs }], "{ve} {p}");
-    }
-    let doc = file(TWO, &[&group("on"), &group("off"), "<< /Type /OCMD /VE [/Not 5 0 R] /OCGs [5 0 R] >>"]);
-    visible(&verdict(&doc, &[(7, true)], Object::Ref(r(7))), true);
     // An expression in an indirect array.
     let doc = file(TWO, &[&group("on"), &group("off"), "<< /Type /OCMD /VE 8 0 R >>", "[/Or 6 0 R 9 0 R]", "[/Not 6 0 R]"]);
     visible(&of(&doc, 7), true);
+}
+
+/// OV4.7, F1: with `/VE` and `/OCGs` + `/P` both present, both readings are evaluated, and they
+/// must both resolve and agree. ISO 32000-1 prefers `/VE` only in an informative note
+/// (§8.11.2.2, NOTE 2), and pdfcraft's display reads `/P`, so a disagreement is unresolved; an
+/// explicit decision on the dictionary settles it.
+#[test]
+fn an_expression_and_a_policy_must_agree() {
+    // 5 on, 6 off.
+    for (ve, p, want) in [
+        // Agree: visible, and hidden.
+        ("[/Not 6 0 R]", "/OCGs [5 0 R] /P /AnyOn", Some(true)),
+        ("[/And 5 0 R 6 0 R]", "/OCGs [5 0 R 6 0 R] /P /AllOn", Some(false)),
+        ("[/Or 5 0 R]", "/OCGs 5 0 R", Some(true)),
+        // Disagree, both ways: the review's case E4 (/VE shows, /P hides), and the reverse.
+        ("[/Or 5 0 R]", "/OCGs [6 0 R] /P /AllOn", None),
+        ("[/Not 5 0 R]", "/OCGs [5 0 R] /P /AnyOn", None),
+        ("[/Not 5 0 R]", "/OCGs [5 0 R]", None),
+    ] {
+        let doc = file(TWO, &[&group("on"), &group("off"), &format!("<< /Type /OCMD /VE {ve} {p} >>")]);
+        let mut ev = Evaluator::new(&doc, &Visibility::default());
+        let v = ev.visibility(&Object::Ref(r(7)));
+        match want {
+            Some(w) => {
+                visible(&v, w);
+                assert_eq!(
+                    ev.notes(),
+                    [Note::ExpressionIgnoredByDisplay { membership: Some(r(7)), with_policy: true, display_differs: Some(false) }],
+                    "{ve} {p}"
+                );
+            }
+            None => {
+                unresolved(&v, &[(Rule::ExpressionDisagrees, true)]);
+                assert!(ev.notes().is_empty(), "{:?}", ev.notes());
+                visible(&verdict(&doc, &[(7, true)], Object::Ref(r(7))), true);
+                visible(&verdict(&doc, &[(7, false)], Object::Ref(r(7))), false);
+            }
+        }
+    }
+    // One reading unresolved: the dictionary is unresolved with that reading's problem.
+    for (ve, p, rule) in [
+        ("[/Not 5 0 R]", "/OCGs [5 0 R] /P /Bogus", Rule::UnknownPolicy),
+        ("[/Not 6 0 R]", "/OCGs [5 0 R] /P /Bogus", Rule::UnknownPolicy),
+        ("[/Not 5 0 R]", "/OCGs [5 0 R 7] /P /AnyOn", Rule::MalformedMembership),
+        ("[/Xor 5 0 R]", "/OCGs [5 0 R] /P /AnyOn", Rule::MalformedExpression),
+    ] {
+        let doc = file(TWO, &[&group("on"), &group("off"), &format!("<< /Type /OCMD /VE {ve} {p} >>")]);
+        unresolved(&of(&doc, 7), &[(rule, true)]);
+        visible(&verdict(&doc, &[(7, true)], Object::Ref(r(7))), true);
+    }
+    // A member unresolved (a Design group under View): unresolved with the group's problem,
+    // which a decision on the group settles, then compared again.
+    let props = "/OCProperties << /OCGs [5 0 R 6 0 R 8 0 R] /D << /OFF [6 0 R] >> >>";
+    let design = "<< /Type /OCG /Name (design) /Intent /Design >>";
+    let doc = file(props, &[&group("on"), &group("off"), "<< /Type /OCMD /VE [/Or 5 0 R] /OCGs [8 0 R] /P /AllOn >>", design]);
+    unresolved(&of(&doc, 7), &[(Rule::IntentMismatch, true)]);
+    visible(&verdict(&doc, &[(8, true)], Object::Ref(r(7))), true);
+    unresolved(&verdict(&doc, &[(8, false)], Object::Ref(r(7))), &[(Rule::ExpressionDisagrees, true)]);
+}
+
+/// OV4.7, F7: a default configuration whose `/Intent` isn't View (ISO 32000-1 Table 101 says it
+/// shall be) is followed as written, with a note.
+#[test]
+fn a_configuration_intent_other_than_view_is_noted() {
+    for (intent, note) in [
+        ("", None),
+        ("/Intent /View", None),
+        ("/Intent [/View]", None),
+        ("/Intent /All", Some(vec!["All"])),
+        ("/Intent [/View /Design]", Some(vec!["View", "Design"])),
+    ] {
+        let doc = file(&format!("/OCProperties << /OCGs [5 0 R] /D << {intent} >> >>"), &[&group("x")]);
+        let ev = Evaluator::new(&doc, &Visibility::default());
+        let want: Vec<Note> = note.into_iter().map(|i| Note::ConfigurationIntent { intents: i.into_iter().map(String::from).collect() }).collect();
+        assert_eq!(ev.notes(), want, "{intent}");
+    }
 }
 
 /// Row 8b: malformed expressions, each unresolved with no fallback to `/P`.

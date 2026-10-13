@@ -3,7 +3,8 @@
 //!
 //! The rules (step 4 PRD, Resolving optional content), checked on 12 Oct against Adobe's PDF
 //! Reference 1.7 (sixth edition, the basis of ISO 32000-1), §4.10, and against the Arlington
-//! model of ISO 32000-2:
+//! model of ISO 32000-2; the membership rules rechecked on 13 Oct against ISO 32000-1 §8.11
+//! (OV4.7):
 //!
 //! - A group's state starts from the default configuration (`/D`): `/BaseState` (ON when
 //!   absent; the standard allows only ON there, and OFF is followed with a note, as viewers do),
@@ -13,9 +14,13 @@
 //!   configuration's set (`/D /Intent`, View when absent; All is every intent). Otherwise the
 //!   standard says it has no effect on visibility, but pdfcraft's display uses its state anyway,
 //!   so it is unresolved until an explicit decision settles it (O13).
-//! - Membership dictionaries follow `/VE` when present (And, Or, Not with one operand; groups as
-//!   leaves; at most 32 deep), otherwise `/P` (AnyOn by default) over `/OCGs`. With no group left
-//!   and no `/VE`, a membership dictionary has no effect: its content is shown.
+//! - Membership dictionaries: `/VE` (And, Or, Not with one operand; groups as leaves; at most 32
+//!   deep) and `/P` (AnyOn by default) over `/OCGs` are evaluated independently. When both are
+//!   present they must both resolve and agree, or the dictionary is unresolved (the standard
+//!   prefers `/VE` only in an informative note, and pdfcraft's display reads `/P`). With no group
+//!   left and no `/VE`, a membership dictionary has no effect: its content is shown (ISO 32000-1
+//!   Table 99). References to deleted objects in `/OCGs`, which pdfcraft's display counts as
+//!   groups that are on, leave it unresolved whenever they change the result.
 //! - Auto-states: Print and Export events aren't applied (they don't change the display). A View
 //!   event with category View is unresolved when it would change a group's state, and recorded
 //!   when it wouldn't; any other category is unresolved for groups whose usage dictionary has it.
@@ -121,10 +126,12 @@ pub enum Note {
     PrintExportNotApplied { groups: Vec<ObjRef> },
     /// A View auto-state that leaves the group as the default configuration has it.
     AutoStateNoChange { group: ObjRef },
-    /// A membership dictionary with a visibility expression, which the overlay follows and
-    /// pdfcraft's own display ignores (it reads `/OCGs` and `/P`). `display_differs` says whether
-    /// pdfcraft shows the content differently from the overlay (`None`: can't be told).
-    ExpressionIgnoredByDisplay { membership: Option<ObjRef>, display_differs: Option<bool> },
+    /// A membership dictionary with a visibility expression, which pdfcraft's own display ignores
+    /// (it reads `/OCGs` and `/P`). `with_policy`: the dictionary also has groups in `/OCGs`, and
+    /// the two readings agree (they must, OV4.7); otherwise the expression alone decides.
+    /// `display_differs` says whether pdfcraft shows the content differently from the overlay
+    /// (`None`: can't be told).
+    ExpressionIgnoredByDisplay { membership: Option<ObjRef>, with_policy: bool, display_differs: Option<bool> },
     /// A membership dictionary with no group in `/OCGs` and no `/VE`: it has no effect on
     /// visibility, so its content is shown.
     MembershipNoEffect { membership: Option<ObjRef> },
@@ -132,6 +139,11 @@ pub enum Note {
     /// (its value must be ON); the overlay follows it, as pdfcraft's display and pdf.js do: groups
     /// not listed in `/ON` are hidden.
     BaseStateOff,
+    /// The default configuration's `/Intent` isn't View, which ISO 32000-1 Table 101 requires
+    /// there ("shall be View for the document's default configuration"). Groups are matched with
+    /// it as written: it can only leave more groups unresolved, never show more than the source's
+    /// tab (OV4.7, F7).
+    ConfigurationIntent { intents: Vec<String> },
 }
 
 /// A group listed in `/OCGs`: its default state and anything that makes it unresolved.
@@ -242,6 +254,9 @@ impl<'a> Evaluator<'a> {
             self.global_problem(Rule::MalformedConfiguration);
             return;
         };
+        if config_intents.iter().any(|i| i != b"View") {
+            self.note(Note::ConfigurationIntent { intents: config_intents.iter().map(|i| String::from_utf8_lossy(i).into_owned()).collect() });
+        }
         let (on, off): (HashSet<ObjRef>, HashSet<ObjRef>) = (on.into_iter().collect(), off.into_iter().collect());
         let all = config_intents.iter().any(|i| i == b"All");
         for g in listed {
@@ -429,10 +444,22 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    /// A membership dictionary (`r` when it is an indirect object). PDF Reference 1.7, §4.10.1,
-    /// Table 4.49: `/VE`, when present and supported, is used in preference to `/OCGs` and `/P`;
-    /// null entries and references to deleted objects in `/OCGs` are ignored; with no group left
-    /// (and no `/VE`) the dictionary has no effect on the visibility of any content.
+    /// A membership dictionary (`r` when it is an indirect object).
+    ///
+    /// ISO 32000-1 §8.11.2.2 and Table 99: `/OCGs` is a group or an array of groups; null entries
+    /// and references to deleted objects are ignored, and with none left the dictionary "shall
+    /// have no effect on the visibility of any content" (recorded deviation from the step 4 PRD,
+    /// which held this row unresolved until the clause was confirmed). `/P` is AnyOn by default.
+    ///
+    /// `/VE` and `/OCGs` with `/P` are two readings of one dictionary. The standard prefers `/VE`
+    /// only in an informative note (§8.11.2.2, NOTE 2), and pdfcraft's display reads only `/OCGs`
+    /// and `/P`. So when both are present they must agree (OV4.7, F1): both resolved and equal,
+    /// or the dictionary is unresolved (`Rule::ExpressionDisagrees` when they differ). With only
+    /// one present, that one decides.
+    ///
+    /// pdfcraft's display counts references to deleted objects in `/OCGs` as groups that are on,
+    /// where the standard ignores them. The dictionary is evaluated both ways, and when the two
+    /// differ it is unresolved (`Rule::DeletedMember`, OV4.7, F2).
     fn membership(&mut self, r: Option<ObjRef>, d: &Dict) -> Verdict {
         if let Some(v) = r.and_then(|r| self.decided(r)) {
             return v;
@@ -440,23 +467,30 @@ impl<'a> Evaluator<'a> {
         let own = |rule: Rule| Problem { objects: r.into_iter().collect(), rule, settleable: r.is_some() };
         let doc = self.doc;
 
-        // `/OCGs`: one group by reference, or an array of groups.
-        let members: Result<Vec<ObjRef>, ()> = match d.get(b"OCGs") {
-            None => Ok(Vec::new()),
+        // `/OCGs`: one group by reference, or an array of groups, with the references to deleted
+        // objects counted apart. Direct nulls are ignored by every reader.
+        let members: Result<(Vec<ObjRef>, usize), ()> = match d.get(b"OCGs") {
+            None => Ok((Vec::new(), 0)),
             Some(o) => {
                 let resolved = doc.resolve(o);
                 match (o, &*resolved) {
-                    (_, Object::Null) => Ok(Vec::new()),
-                    (Object::Ref(g), Object::Dict(_)) => Ok(vec![*g]),
-                    (_, Object::Array(a)) if a.len() <= MAX_LIST => a
-                        .iter()
-                        .filter_map(|x| match x {
-                            Object::Null => None,
-                            Object::Ref(g) if matches!(&*doc.get(*g), Object::Null) => None,
-                            Object::Ref(g) => Some(Ok(*g)),
-                            _ => Some(Err(())),
-                        })
-                        .collect(),
+                    (Object::Ref(_), Object::Null) => Ok((Vec::new(), 1)),
+                    (_, Object::Null) => Ok((Vec::new(), 0)),
+                    (Object::Ref(g), Object::Dict(_)) => Ok((vec![*g], 0)),
+                    (_, Object::Array(a)) if a.len() <= MAX_LIST => {
+                        let mut live = Vec::new();
+                        let mut deleted = 0usize;
+                        let mut ok = true;
+                        for x in a.iter() {
+                            match x {
+                                Object::Null => {}
+                                Object::Ref(g) if matches!(&*doc.get(*g), Object::Null) => deleted = deleted.saturating_add(1),
+                                Object::Ref(g) => live.push(*g),
+                                _ => ok = false,
+                            }
+                        }
+                        if ok { Ok((live, deleted)) } else { Err(()) }
+                    }
                     _ => Err(()),
                 }
             }
@@ -472,51 +506,60 @@ impl<'a> Evaluator<'a> {
             },
         };
         let is_group = |g: &ObjRef| doc.dict(&Object::Ref(*g)).is_some_and(|d| d.name(b"Type") == Some(&b"OCG"[..]));
-        // `None`: no group, so no effect.
-        let by_policy: Option<(Tri, Vec<Problem>)> = match &members {
-            Err(()) => Some((Tri::Unknown, vec![own(Rule::MalformedMembership)])),
-            Ok(m) if m.is_empty() => None,
-            Ok(m) if !m.iter().all(is_group) => Some((Tri::Unknown, vec![own(Rule::MalformedMembership)])),
-            Ok(m) => Some(match policy {
-                None => (Tri::Unknown, vec![own(Rule::UnknownPolicy)]),
-                Some(policy) => {
-                    let verdicts: Vec<Verdict> = m.iter().map(|g| self.group(*g)).collect();
-                    policy.combine(&verdicts)
+        // The `/OCGs` and `/P` reading, with deleted references ignored (the standard) or counted
+        // as groups that are on (pdfcraft's display). `None`: no group, so no effect.
+        let by_policy = |ev: &Evaluator, deleted_on: bool| -> Option<(Tri, Vec<Problem>)> {
+            match &members {
+                Err(()) => Some((Tri::Unknown, vec![own(Rule::MalformedMembership)])),
+                Ok((live, deleted)) => {
+                    let deleted = if deleted_on { *deleted } else { 0 };
+                    if live.is_empty() && deleted == 0 {
+                        None
+                    } else if !live.iter().all(is_group) {
+                        Some((Tri::Unknown, vec![own(Rule::MalformedMembership)]))
+                    } else {
+                        Some(match policy {
+                            None => (Tri::Unknown, vec![own(Rule::UnknownPolicy)]),
+                            Some(policy) => {
+                                let mut verdicts: Vec<Verdict> = live.iter().map(|g| ev.group(*g)).collect();
+                                verdicts.extend(std::iter::repeat_n(Verdict::known(true), deleted));
+                                policy.combine(&verdicts)
+                            }
+                        })
+                    }
                 }
-            }),
+            }
         };
+        let standard = by_policy(self, false);
+        let deleted = members.as_ref().map(|(_, n)| *n).unwrap_or(0);
+        let display = if deleted > 0 { by_policy(self, true) } else { standard.clone() };
 
-        match d.get(b"VE") {
+        let expression = match d.get(b"VE") {
             Some(ve) => {
                 let mut budget = MAX_EXPRESSION_NODES;
-                let (t, problems) = match self.expression(ve, 0, &mut Vec::new(), &mut budget) {
+                Some(match self.expression(ve, 0, &mut Vec::new(), &mut budget) {
                     Ok(x) => x,
                     Err(rule) => (Tri::Unknown, vec![own(rule)]),
-                };
-                let v = Verdict::from_tri(t, problems);
-                // pdfcraft's display ignores /VE and reads /OCGs and /P: does it show this
-                // content differently? (Unknown when that reading isn't resolved itself.)
-                let display = match &by_policy {
-                    None => Some(true),
-                    Some((Tri::On, _)) => Some(true),
-                    Some((Tri::Off, _)) => Some(false),
-                    Some((Tri::Unknown, _)) => None,
-                };
-                let display_differs = match (v.visible, display) {
-                    (Some(a), Some(b)) => Some(a != b),
-                    _ => None,
-                };
-                self.note(Note::ExpressionIgnoredByDisplay { membership: r, display_differs });
-                v
+                })
             }
-            None => match by_policy {
-                None => {
-                    self.note(Note::MembershipNoEffect { membership: r });
-                    Verdict::known(true)
-                }
-                Some((t, problems)) => Verdict::from_tri(t, problems),
-            },
+            None => None,
+        };
+        let disagree = own(Rule::ExpressionDisagrees);
+        let (v, note) = combine_readings(r, expression.clone(), standard.clone(), &display, &disagree);
+        if deleted > 0 {
+            let (shown, _) = combine_readings(r, expression, display.clone(), &display, &disagree);
+            if shown != v {
+                let mut problems = v.problems;
+                problems.extend(shown.problems);
+                problems.push(own(Rule::DeletedMember));
+                dedup(&mut problems);
+                return Verdict { visible: None, problems };
+            }
         }
+        if let Some(n) = note {
+            self.note(n);
+        }
+        v
     }
 
     /// A visibility expression. `Err` for a malformed one.
@@ -581,6 +624,56 @@ impl<'a> Evaluator<'a> {
             _ => or(&values),
         };
         Ok((t, if t == Tri::Unknown { problems } else { Vec::new() }))
+    }
+}
+
+/// One membership dictionary's verdict from its two readings: the visibility expression (when
+/// present) and the `/OCGs` and `/P` reading (`None`: no group, so no effect). `display` is how
+/// pdfcraft's own display reads `/OCGs` and `/P`, for the note. Both readings present: they must
+/// both resolve and agree (OV4.7, F1); otherwise the dictionary is unresolved.
+fn combine_readings(
+    r: Option<ObjRef>,
+    expression: Option<(Tri, Vec<Problem>)>,
+    policy: Option<(Tri, Vec<Problem>)>,
+    display: &Option<(Tri, Vec<Problem>)>,
+    disagree: &Problem,
+) -> (Verdict, Option<Note>) {
+    match (expression, policy) {
+        (None, None) => (Verdict::known(true), Some(Note::MembershipNoEffect { membership: r })),
+        (None, Some((t, problems))) => (Verdict::from_tri(t, problems), None),
+        (Some((t, problems)), None) => {
+            let v = Verdict::from_tri(t, problems);
+            // pdfcraft's display ignores /VE: with no group it shows the content.
+            let shown = match display {
+                None => Some(true),
+                Some((Tri::On, _)) => Some(true),
+                Some((Tri::Off, _)) => Some(false),
+                Some((Tri::Unknown, _)) => None,
+            };
+            let display_differs = match (v.visible, shown) {
+                (Some(a), Some(b)) => Some(a != b),
+                _ => None,
+            };
+            let note = v.visible.map(|_| Note::ExpressionIgnoredByDisplay { membership: r, with_policy: false, display_differs });
+            (v, note)
+        }
+        (Some((te, pe)), Some((tp, pp))) => match (te, tp) {
+            (Tri::Unknown, _) | (_, Tri::Unknown) => {
+                let mut problems = Vec::new();
+                if te == Tri::Unknown {
+                    problems.extend(pe);
+                }
+                if tp == Tri::Unknown {
+                    problems.extend(pp);
+                }
+                (Verdict::from_tri(Tri::Unknown, problems), None)
+            }
+            (a, b) if a == b => (
+                Verdict::from_tri(a, Vec::new()),
+                Some(Note::ExpressionIgnoredByDisplay { membership: r, with_policy: true, display_differs: Some(false) }),
+            ),
+            _ => (Verdict { visible: None, problems: vec![disagree.clone()] }, None),
+        },
     }
 }
 

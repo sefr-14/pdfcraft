@@ -192,8 +192,9 @@ fn case_visibility_expressions() -> Case {
         ("E2", "<< /Type /OCMD /VE [/Or {G2} [/And {G1} {G2}]] >>"),
         // Three deep: Not(Or(And(G1, G2), Not(G1))) = Not(Or(false, false)) = true.
         ("E3", "<< /Type /OCMD /VE [/Not [/Or [/And {G1} {G2}] [/Not {G1}]]] >>"),
-        // /VE and /P disagree: /VE is used in preference (PDF Reference 1.7, Table 4.49).
-        ("E4", "<< /Type /OCMD /OCGs [{G2}] /P /AllOn /VE [/Or {G1}] >>"),
+        // /VE and /P both present: they must agree (OV4.7, F1). Both show, and both hide.
+        ("E4", "<< /Type /OCMD /OCGs [{G1}] /P /AllOn /VE [/Or {G1}] >>"),
+        ("E5", "<< /Type /OCMD /OCGs [{G2}] /P /AnyOn /VE [/And {G1} {G2}] >>"),
     ] {
         objects.push((name, body.to_string()));
     }
@@ -201,13 +202,14 @@ fn case_visibility_expressions() -> Case {
         name: "visibility-expressions",
         objects,
         oc_properties: Some("<< /OCGs [{G1} {G2} {G3}] /D << /OFF [{G2}] >> >>".into()),
-        properties: vec![("X1", "E1"), ("X2", "E2"), ("X3", "E3"), ("X4", "E4")],
+        properties: vec![("X1", "E1"), ("X2", "E2"), ("X3", "E3"), ("X4", "E4"), ("X5", "E5")],
         contents: vec![vec![
             BASE,
             Layer("X1", true, vec![Ops("0.1 g 10 150 20 20 re f")]),
             Layer("X2", false, vec![Canary]),
             Layer("X3", true, vec![Ops("0.3 g 40 150 20 20 re f")]),
             Layer("X4", true, vec![Ops("0.4 g 70 150 20 20 re f")]),
+            Layer("X5", false, vec![Canary]),
         ]],
         ..Case::default()
     }
@@ -346,6 +348,21 @@ fn case_live_state() -> Case {
     }
 }
 
+/// OV4.7, F1: `/VE` and `/P` that disagree (the review's E4), settled by a decision on the
+/// dictionary.
+pub fn ve_p_disagree(name: &'static str, decided: Option<bool>) -> Case {
+    let shown = decided.unwrap_or(false);
+    Case {
+        decisions: decided.map(|d| vec![("M", d)]).unwrap_or_default(),
+        ..simple(
+            name,
+            with_ocmd("<< /Type /OCMD /OCGs [{G2}] /P /AllOn /VE [/Or {G1}] >>"),
+            D,
+            vec![BASE, Layer("M", shown, vec![if shown { Ops("0.4 g 70 150 20 20 re f") } else { Canary }])],
+        )
+    }
+}
+
 /// Every resolved T4 and T5 case, in a fixed order.
 pub fn resolved() -> Vec<Case> {
     vec![
@@ -369,6 +386,8 @@ pub fn resolved() -> Vec<Case> {
         t5("g1-off", vec![("G1", false)], false, false, false),
         t5("m-on", vec![("M", true)], true, false, true),
         settles(vec![("U1", false), ("U2", false)]),
+        ve_p_disagree("ve-p-disagree-shown", Some(true)),
+        ve_p_disagree("ve-p-disagree-hidden", Some(false)),
     ]
 }
 

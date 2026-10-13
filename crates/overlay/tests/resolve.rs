@@ -170,9 +170,49 @@ fn membership_policies() {
 }
 
 #[test]
-fn visibility_expressions_take_precedence() {
+fn visibility_expressions() {
     let p = check_twin(&catalogue::get("visibility-expressions"));
-    assert!(p.notes().iter().any(|n| matches!(n, Note::ExpressionIgnoredByDisplay { display_differs: Some(true), .. })), "{:?}", p.notes());
+    assert!(
+        p.notes().iter().any(|n| matches!(n, Note::ExpressionIgnoredByDisplay { with_policy: false, display_differs: Some(true), .. })),
+        "{:?}",
+        p.notes()
+    );
+    assert!(p.notes().iter().any(|n| matches!(n, Note::ExpressionIgnoredByDisplay { with_policy: true, .. })), "{:?}", p.notes());
+}
+
+/// OV4.7, F1: `/VE` and `/P` that disagree are unresolved, in both directions, and nothing is
+/// written; a decision on the dictionary settles it either way (twins).
+#[test]
+fn an_expression_and_a_policy_that_disagree_are_unresolved() {
+    let case = |name, body: &str| simple(name, with_ocmd(body), D, vec![BASE, Layer("M", false, vec![Canary])]);
+    for (name, body) in [
+        // The review's E4: /VE shows the content, /P (and pdfcraft's display) hides it.
+        ("ve-shows-p-hides", "<< /Type /OCMD /OCGs [{G2}] /P /AllOn /VE [/Or {G1}] >>"),
+        ("ve-hides-p-shows", "<< /Type /OCMD /OCGs [{G1}] /P /AnyOn /VE [/Not {G1}] >>"),
+    ] {
+        let got = unresolved(&case(name, body));
+        assert_eq!(got.iter().map(|x| (x.0, x.1)).collect::<Vec<_>>(), [(Rule::ExpressionDisagrees, true)], "{name}");
+    }
+    // A valid expression beside an unknown policy: no fallback to the expression.
+    let got = unresolved(&case("ve-with-unknown-policy", "<< /Type /OCMD /OCGs [{G1}] /P /Most /VE [/Or {G1}] >>"));
+    assert_eq!(got.iter().map(|x| (x.0, x.1)).collect::<Vec<_>>(), [(Rule::UnknownPolicy, true)]);
+    check_twin(&catalogue::get("ve-p-disagree-shown"));
+    check_twin(&catalogue::get("ve-p-disagree-hidden"));
+}
+
+/// OV4.7, F2: deleted members of `/OCGs` that change the result are unresolved.
+#[test]
+fn deleted_members_that_change_the_result_are_unresolved() {
+    let case = |name, body: &str| simple(name, with_ocmd(body), D, vec![BASE, Layer("M", false, vec![Canary])]);
+    let got = unresolved(&case("deleted-all-off", "<< /Type /OCMD /OCGs [999 0 R] /P /AllOff >>"));
+    assert_eq!(got.iter().map(|x| (x.0, x.1)).collect::<Vec<_>>(), [(Rule::DeletedMember, true)]);
+    // Agreeing readings stand: G2 is off, so AllOn is off whether the deleted member counts or not.
+    check_twin(&simple(
+        "deleted-agree",
+        with_ocmd("<< /Type /OCMD /OCGs [{G2} 999 0 R] /P /AllOn >>"),
+        D,
+        vec![BASE, Layer("M", false, vec![Canary])],
+    ));
 }
 
 #[test]

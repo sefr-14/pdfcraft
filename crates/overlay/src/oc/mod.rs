@@ -58,6 +58,14 @@ pub enum Rule {
     /// A visibility expression with an unknown operator, a wrong operand count, a leaf that isn't
     /// a group, a cycle, or nesting deeper than 32.
     MalformedExpression,
+    /// A membership dictionary's visibility expression (`/VE`) and its `/OCGs` with `/P` give
+    /// different results. ISO 32000-1 prefers `/VE` only in an informative note (§8.11.2.2,
+    /// NOTE 2), and pdfcraft's display reads `/OCGs` and `/P`, so neither is followed (OV4.7, F1).
+    ExpressionDisagrees,
+    /// A membership dictionary's `/OCGs` names deleted objects, and the result depends on them:
+    /// the standard ignores them (Table 99), pdfcraft's display counts them as groups that are on
+    /// (OV4.7, F2).
+    DeletedMember,
     /// A membership dictionary's `/P` isn't AllOn, AnyOn, AnyOff or AllOff.
     UnknownPolicy,
     /// A membership dictionary's `/OCGs` isn't a group or an array of groups.
@@ -120,6 +128,8 @@ impl Rule {
             Rule::AutoStateEnvironment => "a layer's visibility depends on the viewer (zoom, language or user)",
             Rule::MalformedAutoState => "an automatic layer state isn't valid",
             Rule::MalformedExpression => "a visibility expression isn't valid",
+            Rule::ExpressionDisagrees => "a layer's visibility expression and its layer list give different results",
+            Rule::DeletedMember => "a layer membership names a deleted layer, and viewers disagree on what it shows",
             Rule::UnknownPolicy => "a layer policy isn't AllOn, AnyOn, AnyOff or AllOff",
             Rule::MalformedMembership => "a layer membership list isn't valid",
             Rule::NotOptionalContent => "content is marked with something that isn't a layer",

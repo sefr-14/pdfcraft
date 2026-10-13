@@ -42,10 +42,15 @@ Step 3 adds `composite`, which writes the overlay page:
 - `oc::eval` (step 4, OV4.2): what a source's optional-content reference shows under its default
   configuration and the caller's explicit decisions (`Visibility`). Groups (state from
   `/BaseState`, `/ON`, `/OFF`; intents matched with the configuration's), membership dictionaries
-  (`/VE` in preference, else `/P` over `/OCGs`), and auto-states. Every result is either decided
-  by the standard or unresolved with a `Rule` and whether a decision settles it; values combine in
+  and auto-states. A membership dictionary's `/VE` and its `/P` over `/OCGs` are evaluated
+  independently; when both are present they must both resolve and agree, or the dictionary is
+  unresolved (OV4.7, F1). Absent, null or empty `/OCGs` has no effect (ISO 32000-1 Table 99);
+  references to deleted objects, which pdfcraft's display counts as groups that are on, leave it
+  unresolved whenever they change the result (F2). Every result is either decided by the
+  standard or unresolved with a `Rule` and whether a decision settles it; values combine in
   three-valued logic, so a result that doesn't depend on an unresolved operand is still resolved.
-  Checked against Adobe's PDF Reference 1.7 §4.10 and the Arlington model of ISO 32000-2.
+  Checked against Adobe's PDF Reference 1.7 §4.10, the Arlington model of ISO 32000-2 and, for
+  the membership rules, ISO 32000-1 §8.11.
 - `oc::resolve` and `oc::prepare` (step 4, OV4.3): an in-memory copy of a source whose pages show
   what the source shows, with no optional content left. Every stream a page draws (its content,
   forms, tiling patterns, Type 3 glyphs, soft-mask groups) is resolved once: a visible block loses

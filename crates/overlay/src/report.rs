@@ -49,18 +49,30 @@ pub(crate) fn note_text(note: &Note, name: &dyn Fn(pdfcraft_cos::ObjRef) -> Stri
         Note::AutoStateNoChange { group } => {
             format!("an automatic View state of layer {} leaves it as the default configuration has it", name(*group))
         }
-        Note::ExpressionIgnoredByDisplay { membership, display_differs } => format!(
-            "a layer visibility expression{} is followed as the standard says; pdfcraft's own display ignores it{}",
-            membership.map(|m| format!(" (object {} {})", m.num, m.generation)).unwrap_or_default(),
-            match display_differs {
-                Some(true) => " and shows that content differently",
-                Some(false) => ", with the same result here",
-                None => "",
+        Note::ExpressionIgnoredByDisplay { membership, with_policy, display_differs } => {
+            let object = membership.map(|m| format!(" (object {} {})", m.num, m.generation)).unwrap_or_default();
+            if *with_policy {
+                format!(
+                    "a layer membership{object} has a visibility expression and a layer list that give the same result; pdfcraft's own display reads only the list"
+                )
+            } else {
+                format!(
+                    "a layer visibility expression{object} decides what shows (ISO 32000-1 §8.11.2.2 recommends expressions over layer lists in an informative note, not a requirement); pdfcraft's own display ignores it{}",
+                    match display_differs {
+                        Some(true) => " and shows that content differently",
+                        Some(false) => ", with the same result here",
+                        None => "",
+                    }
+                )
             }
-        ),
+        }
         Note::MembershipNoEffect { membership } => format!(
-            "a layer membership{} names no layer, so it has no effect on visibility and its content is shown",
+            "a layer membership{} names no layer, so it has no effect on visibility and its content is shown (ISO 32000-1 Table 99)",
             membership.map(|m| format!(" (object {} {})", m.num, m.generation)).unwrap_or_default()
+        ),
+        Note::ConfigurationIntent { intents } => format!(
+            "the default layer configuration's intent is {}, but the standard says it shall be View (ISO 32000-1 Table 101); layers are matched with it as written, and any it leaves out are reported as unresolved",
+            intents.join(", ")
         ),
         Note::BaseStateOff => {
             "the default layer configuration's base state is OFF, which the standard doesn't allow; it is followed as viewers do: layers not listed as on are hidden"
