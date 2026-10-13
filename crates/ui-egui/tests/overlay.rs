@@ -154,13 +154,21 @@ fn back_and_next_keep_settings_and_generate_opens_a_layered_tab() {
 
 /// A primary click at `pos` (the image views pick on a click, not a drag).
 fn click_at(h: &mut Harness<'static, PdfCraftApp>, pos: egui::Pos2) {
+    click_with(h, pos, egui::Modifiers::NONE);
+}
+
+/// A primary click at `pos` with `modifiers` held throughout.
+fn click_with(h: &mut Harness<'static, PdfCraftApp>, pos: egui::Pos2, modifiers: egui::Modifiers) {
+    h.event(egui::Event::ModifiersChanged(modifiers));
     h.event(egui::Event::PointerMoved(pos));
     h.run_steps(1);
     for pressed in [true, false] {
-        h.event(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE });
+        h.event(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers });
         h.run_steps(1);
     }
     h.run_steps(2);
+    h.event(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+    h.run_steps(1);
 }
 
 fn settle(h: &mut Harness<'static, PdfCraftApp>, frames: usize) {
@@ -247,6 +255,64 @@ fn picking_two_points_registers_b_on_a() {
     assert!((scale - 1.0).abs() < 0.01, "{readout}");
     // Exactly two points: no residual check is possible yet.
     h.get_by_label_contains("no residual check is possible");
+}
+
+/// The fit's shift, rotation and scale as the readout shows them.
+fn readout(h: &Harness<'static, PdfCraftApp>) -> [f64; 4] {
+    let node = h.get_by_label_contains(" mm · rotation ");
+    let text = node.accesskit_node().label().or_else(|| node.value()).unwrap_or_default().to_string();
+    let numbers: Vec<f64> = text.split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-')).filter_map(|t| t.parse::<f64>().ok()).collect();
+    let [x, y, rotation, scale] = numbers[..] else { panic!("{text}") };
+    [x, y, rotation, scale]
+}
+
+/// Clicks a few pixels off the box's corners snap onto them, so the fit is exact (B's box is
+/// 20 pt, 7.056 mm, right of A's); with Alt held the same clicks stay where they land.
+#[test]
+fn picks_snap_to_line_ends_and_alt_places_them_freely() {
+    let mut h = harness();
+    assert!(h.state_mut().execute("doc.overlay"));
+    h.run_steps(3);
+    for _ in 0..4 {
+        next(&mut h);
+    }
+    h.get_by_label("5. Alignment");
+    // The pages render and their lines are read on their own threads.
+    for _ in 0..800 {
+        h.run_steps(1);
+        if h.query_by_label("Pick on document A").is_some()
+            && h.query_by_label("Pick on document B").is_some()
+            && h.query_by_label_contains("Snapping to ").is_some()
+        {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    h.get_by_label_contains("Snapping to 5 lines on A and 5 lines on B");
+    let (va, vb) = (h.get_by_label("Pick on document A").rect(), h.get_by_label("Pick on document B").rect());
+    // Different misses on A and B, so a fit of the raw clicks isn't a pure shift.
+    let corners = [((100.0, 100.0), (120.0, 100.0)), ((140.0, 60.0), (160.0, 60.0))];
+    let pick = |h: &mut Harness<'static, PdfCraftApp>, modifiers: egui::Modifiers| {
+        for ((ax, ay), (bx, by)) in corners {
+            click_with(h, on_page(va, ax, ay) + egui::vec2(3.0, -2.0), modifiers);
+            click_with(h, on_page(vb, bx, by) + egui::vec2(-2.0, 3.0), modifiers);
+        }
+    };
+    pick(&mut h, egui::Modifiers::NONE);
+    let [x, y, rotation, scale] = readout(&h);
+    assert_eq!((x, y, rotation, scale), (-7.056, 0.0, 0.0, 1.0));
+    h.get_by_label("Clear the alignment").click();
+    h.run_steps(3);
+    pick(&mut h, egui::Modifiers::ALT);
+    let [x, y, _, _] = readout(&h);
+    assert!((x + 7.056).abs() > 0.5 && y.abs() > 0.5, "Alt clicks snapped: {x}, {y}");
+    // Snapping off: clicks stay where they land, without Alt.
+    h.get_by_label("Clear the alignment").click();
+    h.get_by_label("Snap to the drawing").click();
+    h.run_steps(3);
+    pick(&mut h, egui::Modifiers::NONE);
+    let [x, y, _, _] = readout(&h);
+    assert!((x + 7.056).abs() > 0.5 && y.abs() > 0.5, "clicks snapped with snapping off: {x}, {y}");
 }
 
 /// Step 2 with a sheet inserted in New (Old 6 pages, New 7, the new sheet at New p. 3): the row

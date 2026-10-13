@@ -18,6 +18,7 @@ use egui::{Align, Color32, Layout, Pos2, Rect, RichText, Sense, Stroke, Vec2, po
 use pdfcraft_cos::ObjRef;
 use pdfcraft_engine::DocId;
 use pdfcraft_overlay::colour;
+use pdfcraft_overlay::snap::{Lines, SnapKind, SnapOptions};
 use pdfcraft_overlay::{
     Affine, Fit, LayerStyle, Limits, Matrix, Model, OverlayError, PT_PER_MM, PairPlan, Plan, Point, PointPair, RegistrationKind, RegistrationNote,
     Revision, Roles, Rule, Settings, SheetCase, SheetMatch, Similarity, Unresolved, Visibility,
@@ -46,6 +47,8 @@ pub(crate) fn toolbar_button(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
 
 /// Longest side, in pixels, of a source page rendered for picking reference points.
 const PICK_PIXELS: f64 = 2400.0;
+/// How near the pointer, in screen pixels, a line end or crossing must be for a click to snap.
+const SNAP_PIXELS: f64 = 10.0;
 /// Longest side, in pixels, of a rendered preview.
 const PREVIEW_PIXELS: f64 = 2400.0;
 /// The pairing table never grows past this (each row is a page of the output).
@@ -235,6 +238,11 @@ impl Snapshot {
         self.layers.iter().map(|((n, g), _, v)| (i32::try_from(*n).unwrap_or(i32::MAX), i32::from(*g), *v)).collect()
     }
 
+    /// The layers the tab hides: their content isn't snapped to.
+    fn hidden(&self) -> HashSet<ObjRef> {
+        self.layers.iter().filter(|(_, _, shown)| !shown).map(|((n, g), _, _)| ObjRef::new(*n, *g)).collect()
+    }
+
     fn layer_name(&self, r: ObjRef) -> Option<&str> {
         self.layers.iter().find(|((n, g), _, _)| *n == r.num && *g == r.generation).map(|(_, name, _)| name.as_str())
     }
@@ -344,6 +352,7 @@ impl FitReport {
 
 enum Done {
     Page { side: Side, page: usize, image: Result<egui::ColorImage, String> },
+    Lines { side: Side, page: usize, lines: Result<Lines, String> },
     Preview { key: String, result: Result<PreviewOut, Failure> },
     Generated { result: Result<GeneratedOut, Failure> },
 }
@@ -527,6 +536,8 @@ struct Shown {
     rect: Rect,
     image: Rect,
     clicked: Option<Vec2>,
+    /// Where the pointer rests on the image (not while dragging).
+    hover: Option<Vec2>,
 }
 
 impl Shown {
@@ -546,7 +557,7 @@ fn image_view(ui: &mut egui::Ui, label: &str, view: &mut View, image: Option<&Pa
     painter.rect_filled(rect, 4.0, t.pasteboard);
     let Some(img) = image else {
         painter.text(rect.center(), egui::Align2::CENTER_CENTER, placeholder, theme::regular(13.0), t.text_muted);
-        return Shown { rect, image: rect, clicked: None };
+        return Shown { rect, image: rect, clicked: None, hover: None };
     };
     let fit = (rect.width() / img.size.x).min(rect.height() / img.size.y).max(1e-6);
     let shown_size = img.size * fit * view.zoom;
@@ -574,11 +585,13 @@ fn image_view(ui: &mut egui::Ui, label: &str, view: &mut View, image: Option<&Pa
     painter.rect_filled(image_rect, 0.0, Color32::WHITE);
     painter.image(img.texture.id(), image_rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
     let clicked = resp.clicked().then(|| resp.interact_pointer_pos()).flatten().map(|p| (p - image_rect.min) / image_rect.size());
-    let clicked = clicked.filter(|n| (0.0..=1.0).contains(&n.x) && (0.0..=1.0).contains(&n.y));
+    let on_image = |n: &Vec2| (0.0..=1.0).contains(&n.x) && (0.0..=1.0).contains(&n.y);
+    let clicked = clicked.filter(on_image);
+    let hover = (!resp.dragged()).then(|| resp.hover_pos()).flatten().map(|p| (p - image_rect.min) / image_rect.size()).filter(on_image);
     if ui.input(|i| i.pointer.any_down()) || resp.hovered() {
         ui.ctx().set_cursor_icon(if resp.dragged() { egui::CursorIcon::Grabbing } else { egui::CursorIcon::Crosshair });
     }
-    Shown { rect, image: image_rect, clicked }
+    Shown { rect, image: image_rect, clicked, hover }
 }
 
 // ── The wizard ──────────────────────────────────────────────────────────────────────────────
@@ -679,6 +692,13 @@ pub struct Wizard {
     pages: HashMap<(Side, usize), PageImage>,
     pages_pending: HashSet<(Side, usize)>,
     page_errors: HashMap<(Side, usize), String>,
+    /// Clicks snap to the drawing's line ends and crossings (and, if chosen, midpoints and lines).
+    pub snap_enabled: bool,
+    pub snap: SnapOptions,
+    /// The drawn lines of the pages on show, for snapping.
+    lines: HashMap<(Side, usize), Arc<Lines>>,
+    lines_pending: HashSet<(Side, usize)>,
+    lines_errors: HashMap<(Side, usize), String>,
     // 6. Preview
     preview: Preview,
     // 7. Generate
@@ -732,6 +752,11 @@ impl Wizard {
             pages: HashMap::new(),
             pages_pending: HashSet::new(),
             page_errors: HashMap::new(),
+            snap_enabled: true,
+            snap: SnapOptions::default(),
+            lines: HashMap::new(),
+            lines_pending: HashSet::new(),
+            lines_errors: HashMap::new(),
             preview: Preview::default(),
             expand: false,
             decisions: [HashMap::new(), HashMap::new()],
@@ -784,6 +809,8 @@ impl Wizard {
     fn forget_side(&mut self, side: Side) {
         self.pages.retain(|(s, _), _| *s != side);
         self.page_errors.retain(|(s, _), _| *s != side);
+        self.lines.retain(|(s, _), _| *s != side);
+        self.lines_errors.retain(|(s, _), _| *s != side);
         self.decisions[side.index()].clear();
         self.omit[side.index()].clear();
         self.unresolved = None;
@@ -1164,6 +1191,17 @@ impl Wizard {
                         }
                     }
                 }
+                Done::Lines { side, page, lines } => {
+                    self.lines_pending.remove(&(side, page));
+                    match lines {
+                        Ok(l) => {
+                            self.lines.insert((side, page), Arc::new(l));
+                        }
+                        Err(e) => {
+                            self.lines_errors.insert((side, page), e);
+                        }
+                    }
+                }
                 Done::Preview { key, result } => {
                     if self.preview.pending.as_ref() == Some(&key) {
                         self.preview.pending = None;
@@ -1228,6 +1266,27 @@ impl Wizard {
             &self.tx,
             move || Done::Page { side, page, image: render_page(&file, overrides, page, size, pixels) },
             move |m| Done::Page { side, page, image: Err(m) },
+        );
+    }
+
+    /// Read the drawn lines of `page` for snapping, off the UI thread, once per snapshot.
+    fn request_lines(&mut self, ctx: &egui::Context, side: Side, page: usize) {
+        let key = (side, page);
+        if self.lines.contains_key(&key) || self.lines_pending.contains(&key) || self.lines_errors.contains_key(&key) {
+            return;
+        }
+        let Some(snap) = self.snapshot(side) else { return };
+        let (file, hidden) = (snap.source(), snap.hidden());
+        self.lines_pending.insert(key);
+        spawn(
+            ctx,
+            &self.tx,
+            move || Done::Lines {
+                side,
+                page,
+                lines: file.open().and_then(|doc| pdfcraft_overlay::snap::lines(&doc, page, &hidden).map_err(|e| e.to_string())),
+            },
+            move |m| Done::Lines { side, page, lines: Err(m) },
         );
     }
 
@@ -2025,7 +2084,7 @@ fn alignment(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
         ui,
         t,
         tx(
-            "Optional. Click the same feature on A, then on B (or B, then A); each pair of clicks is one reference point. Two points fix shift, rotation and scale; three or more let the residuals check them. Scroll to zoom, drag to pan.",
+            "Optional. Click the same feature on A, then on B (or B, then A); each pair of clicks is one reference point. Two points fix shift, rotation and scale; three or more let the residuals check them. Clicks snap to the nearest line end or crossing, so the same point is picked on both. Scroll to zoom, drag to pan.",
         ),
     );
     ui.add_space(6.0);
@@ -2062,6 +2121,15 @@ fn alignment(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
     let ctx = ui.ctx().clone();
     w.request_page(&ctx, Side::A, key.0);
     w.request_page(&ctx, Side::B, key.1);
+    // Lines are kept for the pages on show only: a dense sheet's are a few megabytes.
+    w.lines.retain(|k, _| *k == (Side::A, key.0) || *k == (Side::B, key.1));
+    if w.snap_enabled {
+        w.request_lines(&ctx, Side::A, key.0);
+        w.request_lines(&ctx, Side::B, key.1);
+    }
+    let snapping = w.snap_enabled && !ui.input(|i| i.modifiers.alt);
+    let options = w.snap;
+    let lines = [w.lines.get(&(Side::A, key.0)).cloned(), w.lines.get(&(Side::B, key.1)).cloned()];
     let mut align = w.aligns.get(&key).cloned().unwrap_or_default();
     let width = ((ui.available_width() - 12.0) / 2.0).max(200.0);
     let height = (ui.available_height() - 200.0).clamp(260.0, 620.0);
@@ -2102,8 +2170,23 @@ fn alignment(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
                     painter.line_segment([at - vec2(10.0, 0.0), at + vec2(10.0, 0.0)], Stroke::new(1.0, Color32::from_rgb(20, 120, 230)));
                     painter.line_segment([at - vec2(0.0, 10.0), at + vec2(0.0, 10.0)], Stroke::new(1.0, Color32::from_rgb(20, 120, 230)));
                 }
+                // A click lands on the nearest line end or crossing within reach (SNAP_PIXELS at
+                // the current zoom), or where it is when there is none or Alt is held.
+                let tolerance = SNAP_PIXELS * size.0 / f64::from(shown.image.width()).max(1e-6);
+                let snapped = |n: Vec2| -> (Point, Option<SnapKind>) {
+                    let p = Point::new(f64::from(n.x) * size.0, (1.0 - f64::from(n.y)) * size.1);
+                    match lines.get(i).and_then(Option::as_ref).filter(|_| snapping).and_then(|l| l.snap(p, tolerance, options)) {
+                        Some(s) => (s.point, Some(s.kind)),
+                        None => (p, None),
+                    }
+                };
+                if let Some(n) = shown.hover
+                    && let (p, Some(kind)) = snapped(n)
+                {
+                    snap_marker(&painter, shown.to_screen(to_norm(p)), kind);
+                }
                 if let Some(n) = shown.clicked {
-                    clicks[i] = Some(Point::new(f64::from(n.x) * size.0, (1.0 - f64::from(n.y)) * size.1));
+                    clicks[i] = Some(snapped(n).0);
                 }
             });
         }
@@ -2120,6 +2203,7 @@ fn alignment(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
         align.pending_b = None;
         align.manual = None;
     }
+    snapping_controls(w, ui, t, key);
     ui.horizontal(|ui| {
         if ui.add_enabled(!align.picks.is_empty(), egui::Button::new(tx("Remove the last point"))).clicked() {
             align.picks.pop();
@@ -2149,6 +2233,76 @@ fn alignment(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
         }
         Ok(r) => registration_readout(w, ui, t, key, &r, &align),
     }
+}
+
+/// Whether and to what clicks snap, and what the two pages' lines allow.
+fn snapping_controls(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, key: (usize, usize)) {
+    ui.horizontal_wrapped(|ui| {
+        ui.add(widgets::checkbox(&mut w.snap_enabled, tx("Snap to the drawing")));
+        if w.snap_enabled {
+            ui.add(widgets::checkbox(&mut w.snap.ends, tx("Line ends")));
+            ui.add(widgets::checkbox(&mut w.snap.intersections, tx("Intersections")));
+            ui.add(widgets::checkbox(&mut w.snap.midpoints, tx("Midpoints")));
+            ui.add(widgets::checkbox(&mut w.snap.on_line, tx("Along lines")));
+            muted(ui, t, tx("Hold Alt to place a point without snapping."));
+        }
+    });
+    if !w.snap_enabled {
+        return;
+    }
+    let mut notes = Vec::new();
+    let mut counts = Vec::new();
+    for (side, page) in [(Side::A, key.0), (Side::B, key.1)] {
+        let s = side.letter();
+        if let Some(e) = w.lines_errors.get(&(side, page)) {
+            notes.push(crate::i18n::fmt(tx("{side} can't snap: {error}"), &[("side", s), ("error", e)]));
+        } else if let Some(l) = w.lines.get(&(side, page)) {
+            if l.is_empty() {
+                notes.push(crate::i18n::fmt(tx("{side} has no drawn lines to snap to (a scan, or text only)."), &[("side", s)]));
+            } else if l.truncated {
+                notes.push(crate::i18n::fmt(tx("{side} has more lines than snapping reads; only the first ones snap."), &[("side", s)]));
+            } else if l.unreadable > 0 {
+                notes.push(crate::i18n::fmt(tx("Some of {side}'s content can't be read; snapping uses the rest."), &[("side", s)]));
+            }
+            counts.push(crate::i18n::fmt(tx("{n} lines on {side}"), &[("n", &l.segments().len().to_string()), ("side", s)]));
+        } else {
+            notes.push(crate::i18n::fmt(tx("Reading {side}'s lines…"), &[("side", s)]));
+        }
+    }
+    for n in notes {
+        ui.colored_label(Color32::from_rgb(200, 110, 20), n);
+    }
+    if counts.len() == 2 {
+        muted(ui, t, &crate::i18n::fmt(tx("Snapping to {counts}."), &[("counts", &counts.join(tx(" and ")))]));
+    }
+}
+
+/// The snap target under the pointer, marked as drawing programs mark them: a square on a line
+/// end, a cross on a crossing, a triangle on a midpoint, an hourglass on a line; with its name.
+fn snap_marker(painter: &egui::Painter, at: Pos2, kind: SnapKind) {
+    let colour = Color32::from_rgb(0, 150, 70);
+    let stroke = Stroke::new(2.0, colour);
+    let r = 6.0;
+    let segs: Vec<[Vec2; 2]> = match kind {
+        SnapKind::End => vec![[vec2(-r, -r), vec2(r, -r)], [vec2(r, -r), vec2(r, r)], [vec2(r, r), vec2(-r, r)], [vec2(-r, r), vec2(-r, -r)]],
+        SnapKind::Intersection => vec![[vec2(-r, -r), vec2(r, r)], [vec2(-r, r), vec2(r, -r)]],
+        SnapKind::Midpoint => vec![[vec2(-r, r), vec2(r, r)], [vec2(r, r), vec2(0.0, -r)], [vec2(0.0, -r), vec2(-r, r)]],
+        SnapKind::OnLine => vec![[vec2(-r, -r), vec2(r, -r)], [vec2(r, -r), vec2(-r, r)], [vec2(-r, r), vec2(r, r)], [vec2(r, r), vec2(-r, -r)]],
+    };
+    for [a, b] in segs {
+        painter.line_segment([at + a, at + b], stroke);
+    }
+    let name = match kind {
+        SnapKind::End => tx("End"),
+        SnapKind::Intersection => tx("Intersection"),
+        SnapKind::Midpoint => tx("Midpoint"),
+        SnapKind::OnLine => tx("On line"),
+    };
+    // On a white backing, so the name reads over dense linework.
+    let galley = painter.layout_no_wrap(name.to_string(), theme::semibold(12.0), colour);
+    let corner = at + vec2(r + 4.0, r + 2.0);
+    painter.rect_filled(Rect::from_min_size(corner, galley.size()).expand(2.0), 2.0, Color32::from_white_alpha(230));
+    painter.galley(corner, galley, colour);
 }
 
 fn registration_readout(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, key: (usize, usize), r: &Registration, align: &Picks) {

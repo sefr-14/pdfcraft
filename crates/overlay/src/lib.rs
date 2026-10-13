@@ -17,6 +17,7 @@ pub mod register;
 pub mod report;
 pub mod settings;
 pub mod sheet;
+pub mod snap;
 
 pub use annotations::{AnnotationEntry, AppearanceSource, Exclusion, Outcome, SourceWarning};
 pub use composite::{CYAN, RED, Side, Source, Style, compose, compose_page, light_tone, luminosity, transfer_function};

@@ -103,6 +103,14 @@ Step 3 adds `composite`, which writes the overlay page:
   pages where B is clipped. `snapshot_decisions` turns a tab's layer states into explicit
   decisions only where they differ from what the file's default configuration resolves to; a
   layer the default can't resolve gets none, so the wizard asks rather than settling it silently.
+- `snap` (step 6, the wizard's Alignment step): a page's drawn lines in its displayed frame, so a
+  click snaps to the nearest line end or crossing (and, if chosen, a straight line's midpoint or
+  the nearest point on a line) and the same feature is picked on A and B. Paths are read as
+  `pdfcraft-measure` reads them (painted subpaths, rectangles, curves flattened to 0.2 units,
+  nested forms and their matrices), with limits sized for dense sheets (400,000 segments; the
+  densest real 36 × 24 in structural sheet tried has about 42,000), and content in a layer the
+  tab hides is left out. Text, images, shadings and annotations aren't snap targets. Reading is
+  lenient: an undecodable stream is skipped and counted, and a limit stops it with `truncated`.
 
 The wizard itself is `crates/ui-egui/src/overlay_ui.rs` (Overlay compare… on the toolbar, in All
 tools ▸ Compare files, and the command `doc.overlay`).
