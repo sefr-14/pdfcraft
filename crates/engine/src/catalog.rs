@@ -427,7 +427,14 @@ pub static TOOL_GROUPS: &[ToolGroup] = &[
         hue: PINK,
         badge: None,
         availability: Ready,
-        sections: &[ToolSection { title: "Compare", items: &[item("Select files to compare", "git-compare", "doc.compare", Ready)] }],
+        sections: &[ToolSection {
+            title: "Compare",
+            items: &[
+                item("Select files to compare", "git-compare", "doc.compare", Ready),
+                // This fork: two revisions on one page, each in its own colour.
+                item("Overlay two revisions", "blend", "doc.overlay", Ready),
+            ],
+        }],
     },
     ToolGroup {
         id: "actions",

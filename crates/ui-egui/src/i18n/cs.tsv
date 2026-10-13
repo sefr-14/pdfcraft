@@ -2412,3 +2412,6 @@ animation effects	Off	Vypnuto
 	The linked PDF opened, but its named destination was not applied.	Odkazovaný PDF se otevřel, ale jeho pojmenovaný cíl nebyl použit.
 	The linked PDF opened, but its page destination was out of range.	Odkazovaný PDF se otevřel, ale cílová stránka je mimo rozsah.
 	Local cross-PDF links require the desktop app	Místní odkazy mezi soubory PDF vyžadují desktopovou aplikaci
+# This fork (sefr-14/pdfcraft): Overlay compare, the command and its All tools item.
+	Overlay compare…	Porovnání překrytím…
+	Overlay two revisions	Překrýt dvě revize
