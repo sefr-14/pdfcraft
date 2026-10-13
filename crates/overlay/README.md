@@ -40,6 +40,13 @@ Step 3 adds `composite`, which writes the overlay page:
   form, action, script or unreadable content stream is an error, so no output is returned.
   Until source preparation lands (OV4.3, OV4.4), a source with optional content or annotations is
   refused.
+- `oc::eval` (step 4, OV4.2): what a source's optional-content reference shows under its default
+  configuration and the caller's explicit decisions (`Visibility`). Groups (state from
+  `/BaseState`, `/ON`, `/OFF`; intents matched with the configuration's), membership dictionaries
+  (`/VE` in preference, else `/P` over `/OCGs`), and auto-states. Every result is either decided
+  by the standard or unresolved with a `Rule` and whether a decision settles it; values combine in
+  three-valued logic, so a result that doesn't depend on an unresolved operand is still resolved.
+  Checked against Adobe's PDF Reference 1.7 §4.10 and the Arlington model of ISO 32000-2.
 
 Conventions: points (1/72 in), y up, origin at the displayed sheet's lower-left corner;
 matrices in PDF order `[a b c d e f]` (`pdfcraft_content::Matrix`); rotation counter-clockwise
