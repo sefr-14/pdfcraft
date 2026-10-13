@@ -68,7 +68,7 @@ impl fmt::Display for OverlayError {
             OverlayError::SameRole { role } => write!(f, "documents A and B are both {role}: one must be Old and the other New"),
             OverlayError::Check { found } => write!(f, "the overlay failed its safety check, so nothing was produced: {found}"),
             OverlayError::Unresolved { a, b, roles } => {
-                write!(f, "the overlay can't decide what some layers of the sources show, so nothing was composed")?;
+                write!(f, "the overlay can't show some content as the sources show it, so nothing was composed")?;
                 for (side, role, list) in [('A', roles.a, a), ('B', roles.b, b)] {
                     for u in list {
                         write!(f, "; document {side} ({}), {u}", role.name())?;

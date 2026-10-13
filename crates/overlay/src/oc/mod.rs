@@ -20,9 +20,15 @@ pub use eval::{Evaluator, Note, Problem, Verdict};
 /// Explicit visibility decisions (O5): optional content groups, membership dictionaries or other
 /// objects a file uses as optional content, each set on (`true`) or off. Empty: the file's
 /// default configuration alone.
+///
+/// `omit` names annotations the caller accepts leaving out of the overlay although the source
+/// shows them (step 4: an appearance the overlay can't reproduce faithfully, O15). Without that
+/// decision such an annotation leaves its page unresolved; with it, the report lists it as
+/// omitted.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Visibility {
     pub decisions: Vec<(ObjRef, bool)>,
+    pub omit: Vec<ObjRef>,
 }
 
 /// Why an optional-content reference can't be resolved.
@@ -86,6 +92,19 @@ pub enum Rule {
     /// Optional content referenced from data the overlay copies but doesn't draw (private
     /// application data, for example), so the output's two layers can't be the only ones.
     InResources,
+    /// An annotation whose stored appearance PdfCraft drew with `?` in place of characters its
+    /// fonts can't draw (the PCUndrawn mark, O15): drawing it would show `?` as if it were the
+    /// text.
+    AnnotationUndrawnText,
+    /// An annotation without a usable appearance whose text the standard fonts (or a form field's
+    /// font) can't draw: generating one would show `?` in its place.
+    AnnotationUndrawableText,
+    /// An annotation the overlay doesn't draw (3D, RichMedia, Screen, Movie, Sound) that has an
+    /// appearance the source shows.
+    AnnotationNotDrawn,
+    /// The page's content leaves graphics states saved or a text object open at its end, or
+    /// restores more than it saves, so its annotations can't be placed where viewers place them.
+    AnnotationPlacement,
 }
 
 impl Rule {
@@ -114,6 +133,10 @@ impl Rule {
             Rule::HiddenClippingText => "hidden text may clip what is drawn after it",
             Rule::AmbiguousResources => "a drawing without its own resources is used in places with different resources",
             Rule::InResources => "layers are referenced from data the page carries but doesn't draw",
+            Rule::AnnotationUndrawnText => "an annotation's appearance shows ? in place of characters PdfCraft's fonts couldn't draw",
+            Rule::AnnotationUndrawableText => "an annotation has text the fonts can't draw, so its appearance would show ?",
+            Rule::AnnotationNotDrawn => "an annotation of a kind the overlay doesn't draw (3D, media, sound) has a visible appearance",
+            Rule::AnnotationPlacement => "the page's content doesn't end in its initial graphics state, so its annotations can't be placed reliably",
         }
     }
 }
@@ -124,9 +147,11 @@ impl fmt::Display for Rule {
     }
 }
 
-/// One unresolved item of a source page: the optional-content objects involved (by reference,
-/// with the group's name where it has one), the rule that failed, and whether an explicit
-/// decision on one of those objects settles it.
+/// One unresolved item of a source page: the objects involved (optional-content objects by
+/// reference, with the group's name where it has one; an annotation by reference, with its kind
+/// and position), the rule that failed, whether an explicit decision on one of those objects
+/// settles it (a layer decision, or omitting the annotation), and any detail (the character that
+/// can't be drawn, say).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Unresolved {
     /// 0-based.
@@ -134,6 +159,7 @@ pub struct Unresolved {
     pub objects: Vec<(ObjRef, Option<String>)>,
     pub rule: Rule,
     pub settleable: bool,
+    pub detail: Option<String>,
 }
 
 impl fmt::Display for Unresolved {
@@ -150,8 +176,19 @@ impl fmt::Display for Unresolved {
         if !names.is_empty() {
             write!(f, " [{}]", names.join(", "))?;
         }
+        if let Some(d) = &self.detail {
+            write!(f, " ({d})")?;
+        }
         if self.settleable {
-            write!(f, "; an explicit layer decision settles it")?;
+            let annotation = matches!(
+                self.rule,
+                Rule::AnnotationUndrawnText | Rule::AnnotationUndrawableText | Rule::AnnotationNotDrawn | Rule::AnnotationPlacement
+            );
+            write!(
+                f,
+                "; {}",
+                if annotation { "an explicit decision to omit the annotation settles it" } else { "an explicit layer decision settles it" }
+            )?;
         }
         Ok(())
     }

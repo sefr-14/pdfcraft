@@ -38,8 +38,7 @@ Step 3 adds `composite`, which writes the overlay page:
   was. `finish` writes the registration into the metadata (`/Subject`, XMP `dc:description`) and
   runs `check_output`, the defensive check: any other optional content, `/OC` entry, annotation,
   form, action, script or unreadable content stream is an error, so no output is returned.
-  Its pages take prepared sources (`oc::prepare`); a page with annotations is refused until OV4.4
-  flattens them.
+  Its pages take prepared sources (`oc::prepare`).
 - `oc::eval` (step 4, OV4.2): what a source's optional-content reference shows under its default
   configuration and the caller's explicit decisions (`Visibility`). Groups (state from
   `/BaseState`, `/ON`, `/OFF`; intents matched with the configuration's), membership dictionaries
@@ -61,6 +60,17 @@ Step 3 adds `composite`, which writes the overlay page:
   visible content, unreadable streams, forms nested too deep or used with different resources) is
   reported per page as `Unresolved`, and `LayeredOutput::add_page` refuses the page with every
   item of both documents. A document without layers or decisions is copied unchanged.
+- `annotations` (step 4, OV4.4): preparation draws each page's annotations into its content as
+  the source shows them, after the page's content (closing any graphics states it leaves open),
+  and the page keeps none. The normal appearance (the `/AS` state of a state dictionary) is
+  placed by Algorithm 8.1, NoRotate keeps it upright about the upper-left corner of `/Rect`, and
+  `/CA` applies to it as one transparency group. A comment without an appearance gets the one
+  PdfCraft's builder draws; a form field is redrawn from its value only when its appearance is
+  missing or `/NeedAppearances` is set (O8). Hidden, NoView, pop-ups, links, annotations whose
+  layer is off and appearances that can't be used are excluded and counted. Text the fonts can't
+  draw is never drawn as `?` (O15): such an annotation, and media annotations the overlay doesn't
+  draw, leave the page unresolved until the caller decides to omit them (`Visibility::omit`).
+  Every annotation is in the page's report: drawn, excluded, omitted or unresolved.
 
 Conventions: points (1/72 in), y up, origin at the displayed sheet's lower-left corner;
 matrices in PDF order `[a b c d e f]` (`pdfcraft_content::Matrix`); rotation counter-clockwise

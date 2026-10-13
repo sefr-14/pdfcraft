@@ -34,7 +34,7 @@ fn r(n: u32) -> ObjRef {
 }
 
 fn visibility(case: &Case, built: &twins::Built) -> Visibility {
-    Visibility { decisions: case.decisions.iter().map(|(name, on)| (r(built.numbers[name]), *on)).collect() }
+    Visibility { decisions: case.decisions.iter().map(|(name, on)| (r(built.numbers[name]), *on)).collect(), ..Visibility::default() }
 }
 
 fn placement(doc: &Document) -> Placement {
@@ -783,11 +783,11 @@ fn decisions_that_cant_apply_are_errors() {
         (vec![(r(999), true)], "an object that isn't in the file"),
         (vec![(g1, true), (g1, false)], "both on and off"),
     ] {
-        let e = prepare(&src, &[0], &Visibility { decisions }).err();
+        let e = prepare(&src, &[0], &Visibility { decisions, ..Visibility::default() }).err();
         assert!(matches!(e, Some(OverlayError::Decision { .. })), "{what}: {e:?}");
     }
     // The same decision twice is the same decision.
-    assert!(prepare(&src, &[0], &Visibility { decisions: vec![(g1, true), (g1, true)] }).is_ok());
+    assert!(prepare(&src, &[0], &Visibility { decisions: vec![(g1, true), (g1, true)], ..Visibility::default() }).is_ok());
 }
 
 #[test]
@@ -1000,7 +1000,7 @@ fn hostile_sources_never_panic() {
             1 => vec![(r(num("M")), false)],
             _ => Vec::new(),
         };
-        match prepare(&doc, &[0], &Visibility { decisions }) {
+        match prepare(&doc, &[0], &Visibility { decisions, ..Visibility::default() }) {
             Err(_) => refused += 1,
             Ok(prepared) => {
                 if prepared.reports()[0].unresolved.is_empty() {

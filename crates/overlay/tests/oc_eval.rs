@@ -36,7 +36,7 @@ fn group(name: &str) -> String {
 const TWO: &str = "/OCProperties << /OCGs [5 0 R 6 0 R] /D << /OFF [6 0 R] >> >>";
 
 fn verdict(doc: &Document, decisions: &[(u32, bool)], o: Object) -> Verdict {
-    let v = Visibility { decisions: decisions.iter().map(|(n, b)| (r(*n), *b)).collect() };
+    let v = Visibility { decisions: decisions.iter().map(|(n, b)| (r(*n), *b)).collect(), ..Visibility::default() };
     Evaluator::new(doc, &v).visibility(&o)
 }
 
@@ -535,7 +535,7 @@ fn hostile_configurations_never_panic() {
         let doc = file(&props, &objs.iter().map(String::as_str).collect::<Vec<_>>());
         let decisions: Vec<(ObjRef, bool)> =
             (0..rng.next_u64() % 3).map(|_| (r(5 + (rng.next_u64() % 5) as u32), rng.next_u64().is_multiple_of(2))).collect();
-        let mut ev = Evaluator::new(&doc, &Visibility { decisions });
+        let mut ev = Evaluator::new(&doc, &Visibility { decisions, ..Visibility::default() });
         for n in 5..=10 {
             let v = ev.visibility(&Object::Ref(r(n)));
             assert!(v.visible.is_some() == v.problems.is_empty(), "{v:?}");

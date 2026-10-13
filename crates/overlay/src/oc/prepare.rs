@@ -13,8 +13,12 @@
 //! into the overlay at all. Finally the copied resources are searched for any optional content
 //! left (private application data, say), which makes the page unresolved too.
 //!
-//! The source document is only read. A document without optional content and without decisions
-//! is copied unchanged, so its overlay is the overlay OV3 makes.
+//! Annotations (OV4.4, [`annotations`](crate::annotations)) are drawn into the copy's page as the
+//! source shows them, after its content, and the page keeps none: each is drawn, excluded by a
+//! named rule, omitted by the caller's decision, or unresolved.
+//!
+//! The source document is only read. A document without optional content, annotations and
+//! decisions is copied unchanged, so its overlay is the overlay OV3 makes.
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -25,6 +29,7 @@ use pdfcraft_cos::{Dict, Document, ObjRef, Object, Stream};
 use super::eval::{Evaluator, Note, Problem};
 use super::resolve::{self, Names, Plan, Uses};
 use super::{Rule, Unresolved, Visibility};
+use crate::annotations::{self as an, AnnotationEntry, AppearanceSource, Exclusion, Outcome, Stored};
 use crate::{OverlayError, Source};
 
 /// Deepest chain of streams drawn inside streams that is followed (forms in forms, say).
@@ -58,6 +63,8 @@ pub struct PageReport {
     /// Resource entries left out because only hidden content used them, and optional-content
     /// properties removed.
     pub resources_removed: usize,
+    /// Every annotation of the page, in `/Annots` order, with what happened to it.
+    pub annotations: Vec<AnnotationEntry>,
     /// Why the page can't be composed into layers yet. Empty: it can.
     pub unresolved: Vec<Unresolved>,
 }
@@ -165,6 +172,10 @@ pub fn prepare(doc: &Document, pages: &[usize], visibility: &Visibility) -> Resu
         done: HashMap::new(),
         active: Vec::new(),
         visits: 0,
+        omit: visibility.omit.iter().copied().collect(),
+        fields: None,
+        need_appearances: pdfcraft_forms::need_appearances(doc),
+        pending_detail: None,
     };
     let mut reports = Vec::with_capacity(wanted.len());
     let mut names = HashMap::new();
@@ -193,6 +204,15 @@ pub fn prepare(doc: &Document, pages: &[usize], visibility: &Visibility) -> Resu
             names.entry(g).or_insert(n);
         }
     }
+    // An untyped dictionary can be decided only where these pages use it as optional content.
+    for &(r, _) in &visibility.decisions {
+        let untyped = doc.dict(&Object::Ref(r)).is_some_and(|d| d.name(b"Type").is_none());
+        if untyped && !reports.iter().any(|p| p.layers.iter().any(|(l, _, _)| *l == r)) {
+            return Err(OverlayError::Decision {
+                reason: format!("object {} {} isn't a layer, and these pages don't use it as one", r.num, r.generation),
+            });
+        }
+    }
     let notes = w.ev.notes().to_vec();
     Ok(Prepared { doc: w.copy, reports, notes, names, touched })
 }
@@ -209,6 +229,13 @@ fn check_decisions(doc: &Document, visibility: &Visibility) -> Result<(), Overla
         }
         if seen.insert(r, on).is_some_and(|before| before != on) {
             return Err(OverlayError::Decision { reason: format!("{what} is set both on and off") });
+        }
+    }
+    for &r in &visibility.omit {
+        let annotation =
+            doc.dict(&Object::Ref(r)).is_some_and(|d| d.contains(b"Subtype") && (d.name(b"Type") == Some(&b"Annot"[..]) || d.contains(b"Rect")));
+        if !annotation {
+            return Err(OverlayError::Decision { reason: format!("object {} {} isn't an annotation of this document", r.num, r.generation) });
         }
     }
     Ok(())
@@ -228,6 +255,9 @@ struct Tally {
     kept_clips: usize,
     streams_rewritten: usize,
     resources_removed: usize,
+    annotations: Vec<AnnotationEntry>,
+    /// Annotations that can't be drawn faithfully: (rule, the annotation, its label, detail).
+    annotation_items: Vec<(Rule, Option<ObjRef>, String, Option<String>)>,
 }
 
 impl Tally {
@@ -268,8 +298,25 @@ impl Tally {
         let mut unresolved: Vec<Unresolved> = self
             .problems
             .iter()
-            .map(|p| Unresolved { page, objects: p.objects.iter().copied().map(named).collect(), rule: p.rule, settleable: p.settleable })
-            .chain(self.issues.iter().map(|rule| Unresolved { page, objects: Vec::new(), rule: *rule, settleable: false }))
+            .map(|p| Unresolved {
+                page,
+                objects: p.objects.iter().copied().map(named).collect(),
+                rule: p.rule,
+                settleable: p.settleable,
+                detail: None,
+            })
+            .chain(self.issues.iter().map(|rule| Unresolved { page, objects: Vec::new(), rule: *rule, settleable: false, detail: None }))
+            .chain(self.annotation_items.iter().map(|(rule, r, label, detail)| Unresolved {
+                page,
+                objects: r.iter().map(|r| (*r, Some(label.clone()))).collect(),
+                rule: *rule,
+                settleable: r.is_some(),
+                detail: match (r, detail) {
+                    (Some(_), d) => d.clone(),
+                    (None, Some(d)) => Some(format!("{label}: {d}")),
+                    (None, None) => Some(label.clone()),
+                },
+            }))
             .collect();
         let mut kept: Vec<Unresolved> = Vec::with_capacity(unresolved.len());
         for u in unresolved.drain(..) {
@@ -288,6 +335,7 @@ impl Tally {
             kept_clips: self.kept_clips,
             streams_rewritten: self.streams_rewritten,
             resources_removed: self.resources_removed,
+            annotations: self.annotations,
             unresolved: kept,
         }
     }
@@ -326,6 +374,24 @@ struct Walker<'a> {
     /// Streams being resolved, to stop at a stream that draws itself.
     active: Vec<ObjRef>,
     visits: usize,
+    /// Annotations the caller decided to omit.
+    omit: HashSet<ObjRef>,
+    /// Form fields by widget, read when a page has a widget to redraw.
+    fields: Option<HashMap<ObjRef, (pdfcraft_forms::Field, pdfcraft_forms::Widget)>>,
+    /// The form's `/NeedAppearances` (O8).
+    need_appearances: bool,
+    /// The detail of the last annotation found unresolved (the character that can't be drawn).
+    pending_detail: Option<String>,
+}
+
+/// One annotation to draw: its appearance in the copy, the matrix that places it, and its opacity.
+struct Draw {
+    appearance: ObjRef,
+    matrix: [f64; 6],
+    /// The page-space box the placed appearance covers.
+    covers: [f64; 4],
+    opacity: Option<(f64, f64, Option<Object>)>,
+    source: AppearanceSource,
 }
 
 impl Walker<'_> {
@@ -350,7 +416,136 @@ impl Walker<'_> {
             }
         }
         let joined = Pieces::join(&pieces);
-        let (new, uses) = self.content(joined.data(), &resources, false, 0, t);
+        let (new, mut uses) = self.content(joined.data(), &resources, false, 0, t);
+
+        // Annotations, drawn after the content.
+        let annots: Vec<Object> = dict.get(b"Annots").map(|a| src.resolve(a)).and_then(|a| a.as_array().cloned()).unwrap_or_default();
+        let rotate = dict.get(b"Rotate").and_then(|r| src.resolve(r).as_int()).unwrap_or(0);
+        let mut draws: Vec<(usize, Draw)> = Vec::new();
+        for (k, entry) in annots.iter().enumerate() {
+            let r = entry.as_ref();
+            let Some(d) = src.dict(entry) else {
+                t.annotations.push(AnnotationEntry {
+                    index: k,
+                    object: r,
+                    subtype: String::new(),
+                    outcome: Outcome::Excluded(Exclusion::UnusableAppearance("it isn't a dictionary".into())),
+                });
+                continue;
+            };
+            let subtype = String::from_utf8_lossy(d.name(b"Subtype").unwrap_or_default()).into_owned();
+            let label = format!("{} annotation {}", if subtype.is_empty() { "an untyped" } else { subtype.as_str() }, k.saturating_add(1));
+            let decided = self.annotation(r, &d, &resources, rotate, t, &mut uses);
+            let omitted = r.is_some_and(|r| self.omit.contains(&r));
+            let outcome = match decided {
+                Ok(draw) if omitted => {
+                    let _ = draw;
+                    Outcome::Omitted(None)
+                }
+                Ok(draw) => {
+                    let source = draw.source;
+                    draws.push((t.annotations.len(), draw));
+                    Outcome::Drawn(source)
+                }
+                Err(Outcome::Unresolved(rule)) if omitted && is_annotation_rule(rule) => Outcome::Omitted(Some(rule)),
+                Err(Outcome::Unresolved(rule)) => {
+                    if is_annotation_rule(rule) {
+                        let detail = self.pending_detail.take();
+                        t.annotation_items.push((rule, r, label, detail));
+                    }
+                    Outcome::Unresolved(rule)
+                }
+                Err(other) => other,
+            };
+            self.pending_detail = None;
+            t.annotations.push(AnnotationEntry { index: k, object: r, subtype, outcome });
+        }
+
+        // The content must end in its initial graphics state for the annotations to be placed as
+        // viewers place them: close what it leaves open, or refuse if it restores too much.
+        let mut drawing = String::new();
+        let mut extra_xobjects = Dict::new();
+        let mut extra_states = Dict::new();
+        if !draws.is_empty() {
+            let resolved = parse(new.as_deref().unwrap_or(joined.data()));
+            let (mut depth, mut lowest, mut text) = (0i64, 0i64, false);
+            for op in &resolved.ops {
+                match op.op.as_slice() {
+                    b"q" => depth = depth.saturating_add(1),
+                    b"Q" => {
+                        depth = depth.saturating_sub(1);
+                        lowest = lowest.min(depth);
+                    }
+                    b"BT" => text = true,
+                    b"ET" => text = false,
+                    _ => {}
+                }
+            }
+            if lowest < 0 || text {
+                for (i, _) in draws.drain(..) {
+                    if let Some(e) = t.annotations.get_mut(i) {
+                        let omitted = e.object.is_some_and(|r| self.omit.contains(&r));
+                        e.outcome =
+                            if omitted { Outcome::Omitted(Some(Rule::AnnotationPlacement)) } else { Outcome::Unresolved(Rule::AnnotationPlacement) };
+                        if !omitted {
+                            t.annotation_items.push((
+                                Rule::AnnotationPlacement,
+                                e.object,
+                                format!("{} annotation {}", e.subtype, e.index.saturating_add(1)),
+                                None,
+                            ));
+                        }
+                    }
+                }
+            } else {
+                drawing.push_str(&"Q\n".repeat(usize::try_from(depth).unwrap_or(0).saturating_add(1)));
+                let taken = |cat: &[u8], name: &str| resources.get(cat).and_then(|c| src.dict(c)).is_some_and(|c| c.contains(name.as_bytes()));
+                let mut n = 0usize;
+                for (_, draw) in &draws {
+                    let (xname, gname) = loop {
+                        let (x, g) = (format!("PCAn{n}"), format!("PCAg{n}"));
+                        n = n.saturating_add(1);
+                        if !taken(b"XObject", &x) && !taken(b"ExtGState", &g) {
+                            break (x, g);
+                        }
+                    };
+                    match &draw.opacity {
+                        None => {
+                            drawing.push_str(&format!("q {} cm /{xname} Do Q\n", an::matrix(draw.matrix)));
+                            extra_xobjects.set(xname.into_bytes(), Object::Ref(draw.appearance));
+                        }
+                        Some((stroke, fill, blend)) => {
+                            // The appearance as one transparency group, so its parts don't compound.
+                            let mut inner = Dict::new();
+                            inner.set(b"A".to_vec(), Object::Ref(draw.appearance));
+                            let mut res = Dict::new();
+                            res.set(b"XObject".to_vec(), Object::Dict(inner));
+                            let mut group = Dict::new();
+                            group.set(b"S".to_vec(), Object::name("Transparency"));
+                            let mut fd = Dict::new();
+                            fd.set(b"Type".to_vec(), Object::name("XObject"));
+                            fd.set(b"Subtype".to_vec(), Object::name("Form"));
+                            fd.set(b"BBox".to_vec(), Object::Array(draw.covers.iter().map(|v| Object::Real(*v)).collect()));
+                            fd.set(b"Group".to_vec(), Object::Dict(group));
+                            fd.set(b"Resources".to_vec(), Object::Dict(res));
+                            let body = format!("q {} cm /A Do Q\n", an::matrix(draw.matrix));
+                            let form = self.copy.add(Object::Stream(Stream::flate(fd, body.as_bytes())));
+                            let mut gs = Dict::new();
+                            gs.set(b"Type".to_vec(), Object::name("ExtGState"));
+                            gs.set(b"CA".to_vec(), Object::Real(*stroke));
+                            gs.set(b"ca".to_vec(), Object::Real(*fill));
+                            if let Some(bm) = blend {
+                                gs.set(b"BM".to_vec(), bm.clone());
+                            }
+                            drawing.push_str(&format!("q /{gname} gs /{xname} Do Q\n"));
+                            extra_xobjects.set(xname.into_bytes(), Object::Ref(form));
+                            extra_states.set(gname.into_bytes(), Object::Dict(gs));
+                        }
+                    }
+                }
+            }
+        }
+
         let contents = new.map(|data| {
             t.streams_rewritten = t.streams_rewritten.saturating_add(1);
             self.copy.add(Object::Stream(Stream::flate(Dict::new(), &data)))
@@ -359,18 +554,233 @@ impl Walker<'_> {
         if let Some((_, removed)) = &pruned {
             t.resources_removed = t.resources_removed.saturating_add(*removed);
         }
-        if contents.is_some() || pruned.is_some() {
-            let updated = self.copy.update_dict(obj, |d| {
-                if let Some(c) = contents {
-                    d.set(b"Contents".to_vec(), Object::Ref(c));
+        let drawn = !drawing.is_empty();
+        if contents.is_none() && pruned.is_none() && !drawn && annots.is_empty() {
+            return;
+        }
+        let mut res = pruned.map(|(p, _)| p).unwrap_or_else(|| resources.clone());
+        if drawn {
+            for (cat, extra) in [(&b"XObject"[..], &extra_xobjects), (b"ExtGState", &extra_states)] {
+                if extra.is_empty() {
+                    continue;
                 }
-                if let Some((p, _)) = pruned {
-                    d.set(b"Resources".to_vec(), Object::Dict(p));
+                let mut merged = res.get(cat).and_then(|c| src.dict(c)).unwrap_or_default();
+                for (k, v) in extra.iter() {
+                    merged.set(k.clone(), v.clone());
                 }
-            });
-            if updated.is_err() {
-                t.issues.push(Rule::Unreadable);
+                res.set(cat.to_vec(), Object::Dict(merged));
             }
+        }
+        let body: Vec<Object> = match contents {
+            Some(c) => vec![Object::Ref(c)],
+            None => list.clone(),
+        };
+        let new_contents = if drawn {
+            let before = self.copy.add(Object::Stream(Stream::flate(Dict::new(), b"q\n")));
+            let after = self.copy.add(Object::Stream(Stream::flate(Dict::new(), drawing.as_bytes())));
+            let mut all = vec![Object::Ref(before)];
+            all.extend(body);
+            all.push(Object::Ref(after));
+            Some(Object::Array(all))
+        } else {
+            contents.map(Object::Ref)
+        };
+        let set_resources = pruned_or_drawn(self.prune, drawn);
+        let updated = self.copy.update_dict(obj, |d| {
+            if let Some(c) = new_contents {
+                d.set(b"Contents".to_vec(), c);
+            }
+            if set_resources {
+                d.set(b"Resources".to_vec(), Object::Dict(res));
+            }
+            // Nothing interactive goes on: every annotation is drawn, excluded or reported.
+            d.remove(b"Annots");
+        });
+        if updated.is_err() {
+            t.issues.push(Rule::Unreadable);
+        }
+    }
+
+    /// Decide one annotation. `Ok`: draw it as given. `Err`: why not (excluded, or unresolved
+    /// with the rule; layer problems go into `t`).
+    fn annotation(&mut self, r: Option<ObjRef>, d: &Dict, resources: &Dict, rotate: i64, t: &mut Tally, uses: &mut Uses) -> Result<Draw, Outcome> {
+        let src = self.src;
+        let subtype = d.name(b"Subtype").unwrap_or_default().to_vec();
+        let flags = an::flags(src, d);
+        let excluded = |e: Exclusion| Err(Outcome::Excluded(e));
+        match subtype.as_slice() {
+            b"Popup" => return excluded(Exclusion::Popup),
+            b"Link" => return excluded(Exclusion::Link),
+            _ => {}
+        }
+        if flags & an::HIDDEN != 0 {
+            return excluded(Exclusion::Hidden);
+        }
+        if flags & an::NO_VIEW != 0 {
+            return excluded(Exclusion::NoView);
+        }
+        if flags & an::INVISIBLE != 0 && !an::is_known(&subtype) {
+            return excluded(Exclusion::InvisibleUnknown);
+        }
+        if let Some(oc) = d.get(b"OC") {
+            let v = self.ev.visibility(oc);
+            if let Some(g) = oc.as_ref() {
+                t.seen.push((g, v.visible));
+            }
+            t.optional = true;
+            match v.visible {
+                Some(false) => return excluded(Exclusion::LayerOff),
+                Some(true) => {}
+                None => {
+                    let rule = v.problems.first().map_or(Rule::NotOptionalContent, |p| p.rule);
+                    t.problems.extend(v.problems);
+                    return Err(Outcome::Unresolved(rule));
+                }
+            }
+        }
+        let Some(rect) = an::rect(src, d) else { return excluded(Exclusion::NoRect) };
+        let stored = an::stored(src, d);
+        let usable = |ap: ObjRef| -> Result<(), String> {
+            let Object::Stream(s) = &*src.get(ap) else { return Err("it isn't a stream".into()) };
+            s.decoded().map_err(|e| format!("it can't be decoded: {e}"))?;
+            let (bbox, matrix) = an::form_box(src, &s.dict)?;
+            an::fit(bbox, matrix, rect).map(|_| ()).ok_or_else(|| "its bounding box has no area".to_string())
+        };
+        let stored_ok: Result<ObjRef, (bool, String)> = match stored {
+            Stored::Stream(ap) => usable(ap).map(|_| ap).map_err(|why| (false, why)),
+            Stored::Missing => Err((true, "it has none".into())),
+            Stored::NoState => return excluded(Exclusion::NoAppearance),
+            Stored::Invalid => Err((false, "it isn't a stream".into())),
+        };
+        if an::NOT_DRAWN.contains(&subtype.as_slice()) {
+            return match stored_ok {
+                Ok(_) => Err(Outcome::Unresolved(Rule::AnnotationNotDrawn)),
+                Err((true, _)) => excluded(Exclusion::NoAppearance),
+                Err((false, why)) => excluded(Exclusion::UnusableAppearance(why)),
+            };
+        }
+        let mark = pdfcraft_fonts::undrawn_mark(d);
+
+        // Choose the appearance: stored, generated (comments) or redrawn from the value (fields).
+        let (appearance, source) = if subtype == b"Widget" {
+            self.widget(r, d, &stored_ok)?
+        } else {
+            match &stored_ok {
+                Ok(ap) => (*ap, AppearanceSource::Stored),
+                Err((missing, why)) => {
+                    if let Some((what, c)) = pdfcraft_annot::appearance::undrawable_text(d) {
+                        self.pending_detail = Some(format!("\"{}\" (U+{:04X}) in {what}", c.escape_debug(), u32::from(c)));
+                        return Err(Outcome::Unresolved(Rule::AnnotationUndrawableText));
+                    }
+                    match pdfcraft_annot::appearance::build(d) {
+                        Some(stream) => (self.copy.add(Object::Stream(stream)), AppearanceSource::Generated),
+                        None if *missing => return excluded(Exclusion::NoAppearance),
+                        None => return excluded(Exclusion::UnusableAppearance(why.clone())),
+                    }
+                }
+            }
+        };
+        if source == AppearanceSource::Stored
+            && let Some(c) = mark
+        {
+            // O15: PdfCraft drew this appearance with ? in place of characters its fonts can't
+            // draw; drawing it would show ? as if it were the text.
+            self.pending_detail = Some(format!("? drawn in place of \"{}\" (U+{:04X})", c.escape_debug(), u32::from(c)));
+            return Err(Outcome::Unresolved(Rule::AnnotationUndrawnText));
+        }
+
+        // The appearance's own optional content, and any inside it.
+        if source == AppearanceSource::Stored {
+            if let Some(oc) = src.dict(&Object::Ref(appearance)).and_then(|a| a.get(b"OC").cloned()) {
+                let v = self.ev.visibility(&oc);
+                if let Some(g) = oc.as_ref() {
+                    t.seen.push((g, v.visible));
+                }
+                t.optional = true;
+                match v.visible {
+                    Some(false) => return excluded(Exclusion::LayerOff),
+                    Some(true) => {
+                        self.strip_oc.insert(appearance);
+                    }
+                    None => {
+                        let rule = v.problems.first().map_or(Rule::NotOptionalContent, |p| p.rule);
+                        t.problems.extend(v.problems);
+                        return Err(Outcome::Unresolved(rule));
+                    }
+                }
+            }
+            self.child(appearance, Kind::Content, resources, 1, t, uses);
+        }
+
+        // Placement: Algorithm 8.1, then NoRotate.
+        let form = self.copy.dict(&Object::Ref(appearance)).unwrap_or_default();
+        let (bbox, fm) = an::form_box(&self.copy, &form).map_err(|why| Outcome::Excluded(Exclusion::UnusableAppearance(why)))?;
+        let a = an::fit(bbox, fm, rect).ok_or_else(|| Outcome::Excluded(Exclusion::UnusableAppearance("its bounding box has no area".into())))?;
+        let matrix = if flags & an::NO_ROTATE != 0 { an::upright(a, rect, rotate) } else { a };
+        let whole = an::then(fm, matrix);
+        let corners = [(bbox[0], bbox[1]), (bbox[2], bbox[1]), (bbox[0], bbox[3]), (bbox[2], bbox[3])]
+            .map(|(x, y)| (whole[0] * x + whole[2] * y + whole[4], whole[1] * x + whole[3] * y + whole[5]));
+        let mut covers = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+        for (x, y) in corners {
+            covers = [covers[0].min(x), covers[1].min(y), covers[2].max(x), covers[3].max(y)];
+        }
+        if !matrix.iter().chain(covers.iter()).all(|v| v.is_finite()) {
+            return excluded(Exclusion::UnusableAppearance("its placement isn't finite".into()));
+        }
+        Ok(Draw { appearance, matrix, covers, opacity: an::opacity(src, d), source })
+    }
+
+    /// A widget's appearance (O8): redrawn from the field's value when its appearance is missing or
+    /// the form sets `/NeedAppearances`; otherwise, or when redrawing would show `?`, the stored one.
+    fn widget(&mut self, r: Option<ObjRef>, d: &Dict, stored: &Result<ObjRef, (bool, String)>) -> Result<(ObjRef, AppearanceSource), Outcome> {
+        use pdfcraft_forms::FieldKind;
+        let missing = matches!(stored, Err((true, _)));
+        let wanted = missing || self.need_appearances;
+        let field = if wanted {
+            let src = self.src;
+            let fields = self.fields.get_or_insert_with(|| {
+                pdfcraft_forms::fields(src).into_iter().flat_map(|f| f.widgets.clone().into_iter().map(move |w| (w.obj, (f.clone(), w)))).collect()
+            });
+            r.and_then(|r| fields.get(&r).cloned())
+        } else {
+            None
+        };
+        let clean_stored = || match stored {
+            Ok(ap) if pdfcraft_fonts::undrawn_mark(d).is_none() => Some(*ap),
+            _ => None,
+        };
+        if let Some((f, w)) = field {
+            match f.kind {
+                FieldKind::Text | FieldKind::Combo | FieldKind::List => {
+                    let (stream, bad) = pdfcraft_forms::appearance::field_appearance_drawn(self.src, &f, &w, &f.value, true);
+                    match bad {
+                        None => return Ok((self.copy.add(Object::Stream(stream)), AppearanceSource::Regenerated)),
+                        Some(c) => {
+                            if let Some(ap) = clean_stored() {
+                                return Ok((ap, AppearanceSource::Stored));
+                            }
+                            self.pending_detail = Some(format!("\"{}\" (U+{:04X}) in the field's value", c.escape_debug(), u32::from(c)));
+                            return Err(Outcome::Unresolved(Rule::AnnotationUndrawableText));
+                        }
+                    }
+                }
+                FieldKind::CheckBox | FieldKind::Radio if missing => {
+                    let on = w.on_state.clone().unwrap_or_else(|| "Yes".into());
+                    let states = pdfcraft_forms::appearance::check_box_states(&mut self.copy, &w, f.kind, &on);
+                    let state = d.name(b"AS").map(<[u8]>::to_vec).unwrap_or_else(|| b"Off".to_vec());
+                    let picked = states.get(b"N").and_then(|n| self.copy.dict(n)).and_then(|n| n.get(&state).and_then(Object::as_ref));
+                    return match picked {
+                        Some(ap) => Ok((ap, AppearanceSource::Regenerated)),
+                        None => Err(Outcome::Excluded(Exclusion::NoAppearance)),
+                    };
+                }
+                _ => {}
+            }
+        }
+        match stored {
+            Ok(ap) => Ok((*ap, AppearanceSource::Stored)),
+            Err((true, _)) => Err(Outcome::Excluded(Exclusion::NoAppearance)),
+            Err((false, why)) => Err(Outcome::Excluded(Exclusion::UnusableAppearance(why.clone()))),
         }
     }
 
@@ -541,6 +951,17 @@ impl Walker<'_> {
             }
         }
     }
+}
+
+/// Whether the page's resources are rewritten: pruned (a document with layers), or extended with
+/// the annotations drawn.
+fn pruned_or_drawn(prune: bool, drawn: bool) -> bool {
+    prune || drawn
+}
+
+/// The rules an omit decision settles.
+fn is_annotation_rule(rule: Rule) -> bool {
+    matches!(rule, Rule::AnnotationUndrawnText | Rule::AnnotationUndrawableText | Rule::AnnotationNotDrawn | Rule::AnnotationPlacement)
 }
 
 /// `resources` keeping only what `uses` names in the categories content draws by name, and

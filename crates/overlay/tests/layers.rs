@@ -323,7 +323,7 @@ fn a_failed_page_leaves_the_output_unchanged() {
 
 /// Sources are prepared before they are composed: a source's own layers are resolved (here a
 /// layer off by default disappears), an undeclared layer is unresolved and refused with the item
-/// named, and a page with annotations is still refused until OV4.4 flattens them.
+/// named, and annotations are drawn into the page (OV4.4).
 #[test]
 fn sources_are_prepared_and_the_rest_refused() {
     let b = src(Page::new(300.0, 300.0, "0 g 10 10 50 50 re f"));
@@ -373,19 +373,20 @@ fn sources_are_prepared_and_the_rest_refused() {
         .collect();
     assert!(forms.iter().all(|f| !f.windows(6).any(|w| w == b"1 0 0 r")), "the hidden red square isn't copied");
 
+    // The annotation is drawn into the page (OV4.4); the output carries none.
     let p = placement(&annotated, &b);
     let pa = prep(&annotated);
-    match compose_layered(
+    assert_eq!(pa.reports()[0].annotations.len(), 1);
+    let out = compose_layered(
         Some(pa.source(0).expect("page")),
         Some(pb.source(0).expect("page")),
         &p,
         &LayerStyle::default(),
         Roles::default(),
         RegistrationNote::PLACED,
-    ) {
-        Err(OverlayError::Source { side: 'A', page: 0, reason }) => assert!(reason.contains("annotations"), "{reason}"),
-        other => panic!("expected a refusal: {other:?}"),
-    }
+    )
+    .expect("composes");
+    assert!(check_output(&written(&out)).is_ok());
 
     let p = placement(&undeclared, &b);
     let pu = prep(&undeclared);

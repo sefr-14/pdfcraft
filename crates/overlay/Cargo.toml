@@ -9,8 +9,14 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+# Appearances for comments without one (step 4, OV4.4).
+pdfcraft-annot = { workspace = true }
 pdfcraft-content = { workspace = true }
 pdfcraft-cos = { workspace = true }
+# The PCUndrawn mark on appearances drawn with `?` (O15).
+pdfcraft-fonts = { workspace = true }
+# Form field appearances from their values (O8).
+pdfcraft-forms = { workspace = true }
 pdfcraft-model = { workspace = true }
 pdfcraft-organize = { workspace = true }
 

@@ -200,7 +200,6 @@ impl LayeredOutput {
     /// ([`prepare`](crate::oc::prepare::prepare)); a page with anything unresolved is refused,
     /// with every item of both sides.
     ///
-    /// Until annotations are flattened (OV4.4), a page with annotations is refused too.
     pub fn add_page(
         &mut self,
         a: Option<PreparedSource<'_>>,
@@ -220,7 +219,7 @@ impl LayeredOutput {
         let (a, b) = (a.map(|s| s.source()), b.map(|s| s.source()));
         for (side, source) in [(Side::A, a), (Side::B, b)] {
             if let Some(s) = source {
-                refuse_annotations(s, side)?;
+                annotations_drawn(s, side)?;
             }
         }
         let markers = [Side::A, Side::B].map(|side| {
@@ -267,9 +266,9 @@ pub fn compose_layered(
     out.finish()
 }
 
-/// The guard until annotations are flattened (OV4.4): a page with annotations can't be composed
-/// into layers yet without dropping them.
-fn refuse_annotations(source: Source<'_>, side: Side) -> Result<(), OverlayError> {
+/// Preparation draws every annotation into its page's content and removes `/Annots`; a page that
+/// still has them didn't come from it, and is refused rather than losing them.
+fn annotations_drawn(source: Source<'_>, side: Side) -> Result<(), OverlayError> {
     let doc = source.doc;
     let pages = pdfcraft_model::pages(doc);
     let Some(page) = pages.get(source.page) else {
@@ -280,7 +279,7 @@ fn refuse_annotations(source: Source<'_>, side: Side) -> Result<(), OverlayError
         return Err(OverlayError::Source {
             side: side.letter(),
             page: source.page,
-            reason: "the page has annotations, which this build doesn't flatten yet".into(),
+            reason: "the page still has annotations, so it wasn't prepared".into(),
         });
     }
     Ok(())
