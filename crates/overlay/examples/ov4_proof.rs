@@ -1041,6 +1041,9 @@ fn pdfjs_toggles(p: &mut Proof, toggles: &[Toggle], dist: Option<&Path>, driver:
 
 // ── T4 and T5: source layers (L5, L6, L12) ───────────────────────────────────────────────────
 
+/// A source-interpretation cell for a case with an explicit visibility state.
+const EXPLICIT: &str = "not compared: explicit state (viewers show the default)";
+
 fn t4(p: &mut Proof, dist: Option<&Path>, driver: Option<&Path>) {
     let cases = catalogue::resolved();
     let mut sources = Vec::new();
@@ -1092,7 +1095,12 @@ fn t4(p: &mut Proof, dist: Option<&Path>, driver: Option<&Path>) {
             if !good {
                 p.check("L5", false, format!("{} in {}: the overlay differs from the twin's", case.name, r.name()));
             }
-            // Source interpretation: the source as the viewer shows it, against its twin.
+            // Source interpretation: the source as the viewer shows it, against its twin. A case
+            // with an explicit state has a twin of that state, which no viewer shows by itself.
+            if !case.decisions.is_empty() {
+                row[k + 1] = EXPLICIT.into();
+                continue;
+            }
             let (s, tw) = (render(*r, &built.source, &spath, 100.0, &tmp), render(*r, &built.twin, &tpath, 100.0, &tmp));
             row[k + 1] = match (s, tw) {
                 (Ok(s), Ok(tw)) => match diff(&s, &tw) {
@@ -1125,6 +1133,10 @@ fn t4(p: &mut Proof, dist: Option<&Path>, driver: Option<&Path>) {
         .collect();
     let dir = pdfjs(p, dist, driver, &files, true, "T4/pdfjs");
     for row in p.interpretation.iter_mut() {
+        if row[1] == EXPLICIT {
+            row[4] = EXPLICIT.into();
+            continue;
+        }
         row[4] = match &dir {
             None => "not run".into(),
             Some(d) => {
