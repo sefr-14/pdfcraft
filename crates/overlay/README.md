@@ -83,6 +83,22 @@ Step 3 adds `composite`, which writes the overlay page:
   annotations. Nothing in it, or in the output, says the output is signed or redacted; the
   defensive check also refuses any signature dictionary or `/ByteRange`.
 
+- `colour` (step 6): the wizard's palette (four complementary pairs, each colour's complement
+  also a swatch), complements, what shared content prints as (`A × B / 255`), and the
+  readability checks behind its warnings (contrast on white at least 1.9, ΔE at least 50, the
+  overlap's contrast at least 7). Warnings are advice; generation works with any pair.
+- `job` (step 6, used by the wizard; later `doc_overlay`): a whole overlay from two documents.
+  `generate` takes the page pairs (a blank side allowed, never both), each with its confirmed
+  sheet match and registration, prepares both sources once for the pages used, and returns
+  every unresolved item of every page of both documents in one `Unresolved` error before
+  composing anything (O12); otherwise the layered document, its report, frame warnings and the
+  pages where B is clipped. `snapshot_decisions` turns a tab's layer states into explicit
+  decisions only where they differ from what the file's default configuration resolves to; a
+  layer the default can't resolve gets none, so the wizard asks rather than settling it silently.
+
+The wizard itself is `crates/ui-egui/src/overlay_ui.rs` (Overlay compare… on the toolbar, in All
+tools ▸ Compare files, and the command `doc.overlay`).
+
 Conventions: points (1/72 in), y up, origin at the displayed sheet's lower-left corner;
 matrices in PDF order `[a b c d e f]` (`pdfcraft_content::Matrix`); rotation counter-clockwise
 in radians; f64 throughout; every input checked to be finite. Nothing here panics on any input.
