@@ -21,6 +21,8 @@ pdfcraft-model = { workspace = true }
 pdfcraft-organize = { workspace = true }
 
 [dev-dependencies]
+# The step 4 proof's annotation controls: pages flattened by PdfCraft's own Flatten command.
+pdfcraft-edit = { workspace = true }
 # Independent checks for step 4 (OV4.5): redaction marks and signatures in the sources and outputs.
 pdfcraft-redact = { workspace = true }
 # Renders overlays in process for the pixel tests and checks the vendored mask fix (step 3).

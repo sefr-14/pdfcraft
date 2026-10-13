@@ -16,6 +16,7 @@ mod common;
 
 use std::sync::Arc;
 
+use common::annots::{form, signed_source};
 use common::measure::{Image, Pair};
 use common::synth;
 use pdfcraft_content::{Matrix, parse};
@@ -90,28 +91,6 @@ fn outcomes(p: &Prepared) -> Vec<Outcome> {
 }
 
 // ── T8: form fields (O8) ─────────────────────────────────────────────────────────────────────
-
-/// A form: a text field whose stored appearance is stale, a text field without one, a combo box,
-/// a check box and a radio button with stored states, and a check box without appearances.
-fn form(need_appearances: bool) -> Arc<Vec<u8>> {
-    let need = if need_appearances { "/NeedAppearances true" } else { "" };
-    synth::raw_pdf(&[
-        format!("<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [6 0 R 7 0 R 8 0 R 9 0 R 10 0 R 11 0 R] /DA (/Helv 10 Tf 0 g) /DR << /Font << /Helv 4 0 R >> >> {need} >> >>"),
-        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".into(),
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 5 0 R /Annots [6 0 R 7 0 R 8 0 R 9 0 R 10 0 R 11 0 R] >>".into(),
-        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>".into(),
-        synth::raw_stream("", "0 g 10 10 20 20 re f"),
-        "<< /Type /Annot /Subtype /Widget /FT /Tx /T (name) /V (New value) /F 4 /Rect [20 150 160 170] /AP << /N 12 0 R >> >>".into(),
-        "<< /Type /Annot /Subtype /Widget /FT /Tx /T (city) /V (Lisbon) /F 4 /Rect [20 120 160 140] >>".into(),
-        "<< /Type /Annot /Subtype /Widget /FT /Ch /Ff 131072 /T (size) /Opt [(Small) (Large)] /V (Large) /F 4 /Rect [20 90 160 110] >>".into(),
-        "<< /Type /Annot /Subtype /Widget /FT /Btn /T (agree) /V /Yes /AS /Yes /F 4 /Rect [200 150 214 164] /AP << /N << /Yes 13 0 R /Off 14 0 R >> >> >>".into(),
-        "<< /Type /Annot /Subtype /Widget /FT /Btn /Ff 49152 /T (pick) /V /B /AS /B /F 4 /Rect [200 120 214 134] /AP << /N << /B 13 0 R /Off 14 0 R >> >> >>".into(),
-        "<< /Type /Annot /Subtype /Widget /FT /Btn /T (later) /V /Yes /AS /Yes /F 4 /Rect [200 90 214 104] /MK << >> >>".into(),
-        synth::raw_stream("/Type /XObject /Subtype /Form /BBox [0 0 140 20] /Resources << /Font << /Helv 4 0 R >> >>", "/Tx BMC BT /Helv 10 Tf 0 g 2 6 Td (Old value) Tj ET EMC"),
-        synth::raw_stream("/Type /XObject /Subtype /Form /BBox [0 0 14 14]", "0 G 1 w 0.5 0.5 13 13 re S 0 g 3 3 8 8 re f"),
-        synth::raw_stream("/Type /XObject /Subtype /Form /BBox [0 0 14 14]", "0 G 1 w 0.5 0.5 13 13 re S"),
-    ])
-}
 
 #[test]
 fn fields_are_redrawn_only_when_they_must_be() {
@@ -191,22 +170,6 @@ fn a_redraw_that_would_show_a_question_mark_falls_back_or_is_unresolved() {
 }
 
 // ── T9: signatures and redaction marks ───────────────────────────────────────────────────────
-
-fn signed_source() -> Vec<u8> {
-    let unsigned = synth::raw_pdf(&[
-        "<< /Type /Catalog /Pages 2 0 R >>".into(),
-        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".into(),
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>".into(),
-        synth::raw_stream("", "BT /F1 14 Tf 20 250 Td (Contract text) Tj ET"),
-        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".into(),
-    ]);
-    // The sign crate's own test identity.
-    let p12 = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../sign/tests/data/ec-p256.p12")).expect("the sign crate's test identity");
-    let id = pdfcraft_sign::pkcs12::open(&p12, "test").expect("opens");
-    let opts =
-        pdfcraft_sign::pdf::SignOptions { page: 0, rect: Some([20.0, 100.0, 220.0, 150.0]), date: "D:20261013120000Z".into(), ..Default::default() };
-    pdfcraft_sign::pdf::sign(&synth::open(&unsigned), &id, &opts).expect("signs")
-}
 
 /// Text that would claim the output is signed, or that redactions were applied.
 fn claims(text: &str) -> bool {

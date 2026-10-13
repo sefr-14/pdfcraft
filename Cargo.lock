@@ -3859,6 +3859,7 @@ dependencies = [
  "pdfcraft-annot",
  "pdfcraft-content",
  "pdfcraft-cos",
+ "pdfcraft-edit",
  "pdfcraft-fonts",
  "pdfcraft-forms",
  "pdfcraft-model",

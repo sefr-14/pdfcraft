@@ -13,6 +13,7 @@ mod common;
 
 use std::sync::Arc;
 
+use common::catalogue::{self, BASE, D, MORE, group, groups3, props3, settles, simple, t5, with_ocmd};
 use common::measure::Image;
 use common::synth;
 use common::twins::{self, CANARY_OPERANDS, CANARY_RGB, CANARY_TEXT, Case, Node, XObject};
@@ -25,7 +26,7 @@ use pdfcraft_overlay::{
 };
 use pdfcraft_render::{PageRenderer, RenderConfig, RenderRequest};
 
-use Node::{Begin, Canary, Do, End, Layer, Live, LiveClip, Ops, Tag};
+use Node::{Canary, Do, Layer, Ops};
 
 // ── Helpers ──────────────────────────────────────────────────────────────────────────────────
 
@@ -145,288 +146,82 @@ fn check_twin(case: &Case) -> Prepared {
     prepared
 }
 
-fn group(name: &str) -> String {
-    format!("<< /Type /OCG /Name ({name}) >>")
-}
-
-fn groups3() -> Vec<(&'static str, String)> {
-    vec![("G1", group("Base")), ("G2", group("Notes")), ("G3", group("Hatch"))]
-}
-
-fn props3() -> Vec<(&'static str, &'static str)> {
-    vec![("L1", "G1"), ("L2", "G2"), ("L3", "G3")]
-}
-
-/// A visible drawing in an ordinary colour, so the overlay has something to show.
-const BASE: Node = Ops("0.2 g 20 20 100 40 re f");
-const MORE: Node = Ops("0 0 1 RG 3 w 30 200 m 250 200 l S");
-
 // ── L5: resolved cases (T4) ──────────────────────────────────────────────────────────────────
 
 #[test]
 fn default_configuration_lists() {
-    // /BaseState ON (absent) with /OFF.
-    check_twin(&Case {
-        name: "base-on-off-list",
-        objects: groups3(),
-        oc_properties: Some("<< /OCGs [{G1} {G2} {G3}] /D << /OFF [{G2}] >> >>".into()),
-        properties: props3(),
-        contents: vec![vec![BASE, Layer("L1", true, vec![MORE]), Layer("L2", false, vec![Canary]), Ops("0.5 g 150 20 40 40 re f")]],
-        ..Case::default()
-    });
+    check_twin(&catalogue::get("base-on-off-list"));
     // /BaseState OFF with /ON: followed as viewers do, with a note.
-    let p = check_twin(&Case {
-        name: "base-off-on-list",
-        objects: groups3(),
-        oc_properties: Some("<< /OCGs [{G1} {G2} {G3}] /D << /BaseState /OFF /ON [{G1}] >> >>".into()),
-        properties: props3(),
-        contents: vec![vec![BASE, Layer("L1", true, vec![MORE]), Layer("L2", false, vec![Canary]), Layer("L3", false, vec![Canary])]],
-        ..Case::default()
-    });
+    let p = check_twin(&catalogue::get("base-off-on-list"));
     assert!(p.notes().contains(&Note::BaseStateOff));
-    // /ON and /OFF lists.
-    check_twin(&Case {
-        name: "on-off-lists",
-        objects: groups3(),
-        oc_properties: Some("<< /OCGs [{G1} {G2} {G3}] /D << /BaseState /ON /ON [{G1}] /OFF [{G2} {G3}] >> >>".into()),
-        properties: props3(),
-        contents: vec![vec![Layer("L3", false, vec![Canary]), BASE, Layer("L1", true, vec![MORE]), Layer("L2", false, vec![Canary])]],
-        ..Case::default()
-    });
+    check_twin(&catalogue::get("on-off-lists"));
 }
 
 #[test]
 fn nested_blocks_three_deep() {
-    let p = check_twin(&Case {
-        name: "nested-3-deep",
-        objects: groups3(),
-        oc_properties: Some("<< /OCGs [{G1} {G2} {G3}] /D << /OFF [{G3}] >> >>".into()),
-        properties: props3(),
-        contents: vec![vec![
-            BASE,
-            Layer(
-                "L1",
-                true,
-                vec![
-                    Ops("1 0 0 rg 10 150 30 30 re f"),
-                    Layer("L2", true, vec![MORE, Layer("L3", false, vec![Canary]), Ops("0 1 0 rg 60 150 30 30 re f")]),
-                ],
-            ),
-            // Visible layers inside a hidden one stay hidden.
-            Layer("L3", false, vec![Layer("L1", true, vec![Canary, Layer("L2", true, vec![Canary])])]),
-        ]],
-        ..Case::default()
-    });
+    let p = check_twin(&catalogue::get("nested-3-deep"));
     let rep = &p.reports()[0];
     assert_eq!((rep.hidden_blocks, rep.markers_removed), (2, 2), "{rep:?}");
 }
 
 #[test]
 fn membership_policies() {
-    let mut objects = groups3();
-    for (name, body) in [
-        ("M1", "<< /Type /OCMD /OCGs [{G1} {G2}] /P /AnyOn >>"),
-        ("M2", "<< /Type /OCMD /OCGs [{G1} {G2}] /P /AllOn >>"),
-        ("M3", "<< /Type /OCMD /OCGs [{G1} {G2}] /P /AnyOff >>"),
-        ("M4", "<< /Type /OCMD /OCGs [{G1} {G2}] /P /AllOff >>"),
-        ("M5", "<< /Type /OCMD /OCGs {G1} /P /AllOn >>"),
-        ("M6", "<< /Type /OCMD /OCGs {G2} /P /AllOff >>"),
-        ("M7", "<< /Type /OCMD /OCGs [{G1} {G2}] >>"),
-    ] {
-        objects.push((name, body.to_string()));
-    }
-    check_twin(&Case {
-        name: "ocmd-policies",
-        objects,
-        oc_properties: Some("<< /OCGs [{G1} {G2} {G3}] /D << /OFF [{G2}] >> >>".into()),
-        properties: vec![("A1", "M1"), ("A2", "M2"), ("A3", "M3"), ("A4", "M4"), ("A5", "M5"), ("A6", "M6"), ("A7", "M7")],
-        contents: vec![vec![
-            BASE,
-            Layer("A1", true, vec![Ops("0.1 g 10 150 20 20 re f")]),
-            Layer("A2", false, vec![Canary]),
-            Layer("A3", true, vec![Ops("0.3 g 40 150 20 20 re f")]),
-            Layer("A4", false, vec![Canary]),
-            Layer("A5", true, vec![Ops("0.5 g 70 150 20 20 re f")]),
-            Layer("A6", true, vec![Ops("0.6 g 100 150 20 20 re f")]),
-            Layer("A7", true, vec![Ops("0.7 g 130 150 20 20 re f")]),
-        ]],
-        ..Case::default()
-    });
+    check_twin(&catalogue::get("ocmd-policies"));
 }
 
 #[test]
 fn visibility_expressions_take_precedence() {
-    let mut objects = groups3();
-    for (name, body) in [
-        ("E1", "<< /Type /OCMD /VE [/And {G1} [/Not {G2}]] >>"),
-        ("E2", "<< /Type /OCMD /VE [/Or {G2} [/And {G1} {G2}]] >>"),
-        // Three deep: Not(Or(And(G1, G2), Not(G1))) = Not(Or(false, false)) = true.
-        ("E3", "<< /Type /OCMD /VE [/Not [/Or [/And {G1} {G2}] [/Not {G1}]]] >>"),
-        // /VE and /P disagree: /VE is used in preference (PDF Reference 1.7, Table 4.49).
-        ("E4", "<< /Type /OCMD /OCGs [{G2}] /P /AllOn /VE [/Or {G1}] >>"),
-    ] {
-        objects.push((name, body.to_string()));
-    }
-    let p = check_twin(&Case {
-        name: "visibility-expressions",
-        objects,
-        oc_properties: Some("<< /OCGs [{G1} {G2} {G3}] /D << /OFF [{G2}] >> >>".into()),
-        properties: vec![("X1", "E1"), ("X2", "E2"), ("X3", "E3"), ("X4", "E4")],
-        contents: vec![vec![
-            BASE,
-            Layer("X1", true, vec![Ops("0.1 g 10 150 20 20 re f")]),
-            Layer("X2", false, vec![Canary]),
-            Layer("X3", true, vec![Ops("0.3 g 40 150 20 20 re f")]),
-            Layer("X4", true, vec![Ops("0.4 g 70 150 20 20 re f")]),
-        ]],
-        ..Case::default()
-    });
+    let p = check_twin(&catalogue::get("visibility-expressions"));
     assert!(p.notes().iter().any(|n| matches!(n, Note::ExpressionIgnoredByDisplay { display_differs: Some(true), .. })), "{:?}", p.notes());
 }
 
 #[test]
 fn optional_content_on_forms_and_images() {
-    let p = check_twin(&Case {
-        name: "oc-on-form-and-image",
-        objects: groups3(),
-        oc_properties: Some("<< /OCGs [{G1} {G2} {G3}] /D << /OFF [{G2}] >> >>".into()),
-        properties: props3(),
-        contents: vec![vec![BASE, Do("F1"), Do("F2"), Ops("q 40 0 0 40 150 150 cm"), Do("I1"), Ops("Q q 40 0 0 40 200 150 cm"), Do("I2"), Ops("Q")]],
-        xobjects: vec![
-            XObject::form("F1", vec![Ops("0 0.5 0 rg 10 100 30 30 re f")]).with_oc("G1", true),
-            XObject::form("F2", vec![Canary]).with_oc("G2", false),
-            XObject::image("I1").with_oc("G1", true),
-            XObject::image("I2").with_oc("G2", false),
-        ],
-        ..Case::default()
-    });
+    let p = check_twin(&catalogue::get("oc-on-form-and-image"));
     assert_eq!(p.reports()[0].hidden_xobjects, 2);
 }
 
 #[test]
 fn one_form_drawn_in_a_visible_and_a_hidden_block() {
-    check_twin(&Case {
-        name: "form-in-visible-and-hidden",
-        objects: groups3(),
-        oc_properties: Some("<< /OCGs [{G1} {G2} {G3}] /D << /OFF [{G2}] >> >>".into()),
-        properties: props3(),
-        contents: vec![vec![
-            BASE,
-            Layer("L1", true, vec![Do("F3")]),
-            Layer("L2", false, vec![Ops("q 1 0 0 1 50 50 cm"), Do("F3"), Ops("Q"), Canary]),
-        ]],
-        xobjects: vec![XObject::form("F3", vec![Ops("0 0 0.5 rg 100 100 40 40 re f")])],
-        ..Case::default()
-    });
+    check_twin(&catalogue::get("form-in-visible-and-hidden"));
 }
 
 #[test]
 fn markers_split_across_content_streams() {
-    check_twin(&Case {
-        name: "split-across-streams",
-        objects: groups3(),
-        oc_properties: Some("<< /OCGs [{G1} {G2} {G3}] /D << /OFF [{G2}] >> >>".into()),
-        properties: props3(),
-        contents: vec![vec![BASE, Begin("L2", false)], vec![Canary, End, Begin("L1", true), MORE], vec![Ops("0.4 g 200 20 30 30 re f"), End]],
-        ..Case::default()
-    });
+    check_twin(&catalogue::get("split-across-streams"));
 }
 
 #[test]
 fn tagged_content_inside_layers() {
-    check_twin(&Case {
-        name: "tagged-text",
-        objects: groups3(),
-        oc_properties: Some("<< /OCGs [{G1} {G2} {G3}] /D << /OFF [{G2}] >> >>".into()),
-        properties: props3(),
-        contents: vec![vec![
-            BASE,
-            Layer("L1", true, vec![Tag("/P << /MCID 0 >> BDC", vec![Ops("BT /FC 12 Tf 20 260 Td (Visible) Tj ET")])]),
-            Layer("L2", false, vec![Tag("/P << /MCID 1 >> BDC", vec![Canary])]),
-            Tag("/Span << /ActualText (x) >> BDC", vec![Layer("L1", true, vec![MORE])]),
-        ]],
-        ..Case::default()
-    });
+    check_twin(&catalogue::get("tagged-text"));
 }
 
 #[test]
 fn intents_matched_with_the_configuration() {
-    let objects = vec![
-        ("G1", "<< /Type /OCG /Name (Both) /Intent [/View /Design] >>".to_string()),
-        ("G2", group("Plain")),
-        ("G3", "<< /Type /OCG /Name (Design) /Intent /Design >>".to_string()),
-    ];
-    check_twin(&Case {
-        name: "intent-all",
-        objects: objects.clone(),
-        oc_properties: Some("<< /OCGs [{G1} {G2} {G3}] /D << /Intent /All /OFF [{G3}] >> >>".into()),
-        properties: props3(),
-        contents: vec![vec![
-            BASE,
-            Layer("L1", true, vec![MORE]),
-            Layer("L2", true, vec![Ops("0.6 g 200 20 30 30 re f")]),
-            Layer("L3", false, vec![Canary]),
-        ]],
-        ..Case::default()
-    });
-    check_twin(&Case {
-        name: "intent-view-design",
-        objects,
-        oc_properties: Some("<< /OCGs [{G1} {G2} {G3}] /D << /Intent [/View /Design] /OFF [{G2}] >> >>".into()),
-        properties: props3(),
-        contents: vec![vec![
-            BASE,
-            Layer("L1", true, vec![MORE]),
-            Layer("L2", false, vec![Canary]),
-            Layer("L3", true, vec![Ops("0.6 g 200 20 30 30 re f")]),
-        ]],
-        ..Case::default()
-    });
+    check_twin(&catalogue::get("intent-all"));
+    check_twin(&catalogue::get("intent-view-design"));
 }
 
 #[test]
 fn layers_inside_forms_patterns_and_soft_masks() {
-    let mask = XObject { group: true, ..XObject::form("SMG", vec![Ops("1 g 0 0 300 300 re f"), Layer("L2", false, vec![Canary])]) };
-    check_twin(&Case {
-        name: "inside-forms",
-        objects: groups3(),
-        oc_properties: Some("<< /OCGs [{G1} {G2} {G3}] /D << /OFF [{G2}] >> >>".into()),
-        properties: props3(),
-        contents: vec![vec![BASE, Do("F4"), Ops("q /Pattern cs /P1 scn 150 150 100 100 re f Q"), Ops("q /SM gs 0 0 0.6 rg 150 20 60 60 re f Q")]],
-        xobjects: vec![
-            XObject::form("F4", vec![Layer("L1", true, vec![Ops("0.3 0 0 rg 10 100 40 40 re f")]), Layer("L2", false, vec![Canary])]),
-            mask,
-        ],
-        patterns: vec![("P1", vec![Ops("0 0.4 0 rg 0 0 10 10 re f"), Layer("L2", false, vec![Canary])])],
-        soft_masks: vec![("SM", "SMG")],
-        ..Case::default()
-    });
+    check_twin(&catalogue::get("inside-forms"));
 }
 
 /// Graphics-state changes in hidden content that later content uses are kept (viewers apply
 /// them); the rest goes with the block.
 #[test]
 fn live_state_in_hidden_blocks_is_kept() {
-    let p = check_twin(&Case {
-        name: "live-state",
-        objects: groups3(),
-        oc_properties: Some("<< /OCGs [{G1} {G2} {G3}] /D << /OFF [{G2}] >> >>".into()),
-        properties: props3(),
-        contents: vec![vec![
-            BASE,
-            Layer("L2", false, vec![Ops("0.9 g"), Live("0.2 0.4 0.6 rg"), Canary, Live("1 0 0 1 10 0 cm"), Live("4 w")]),
-            Ops("150 20 40 40 re f"),
-            // Overwritten before use: the hidden block's colour isn't kept.
-            Layer("L2", false, vec![Ops("0.8 0.1 0.1 rg"), Canary]),
-            Ops("0 0 0 rg 0 0 1 RG 20 150 m 120 150 l S"),
-            // A clipping path later content is drawn through.
-            Layer("L2", false, vec![LiveClip("100 100 100 100"), Canary]),
-            Ops("0.5 g 0 0 300 300 re f"),
-        ]],
-        ..Case::default()
-    });
+    let p = check_twin(&catalogue::get("live-state"));
     let rep = &p.reports()[0];
     assert_eq!((rep.kept_state, rep.kept_clips), (3, 1), "{rep:?}");
+}
+
+/// Every case of the catalogue (the proof renders the same ones).
+#[test]
+fn the_whole_catalogue_matches_its_twins() {
+    for case in catalogue::resolved() {
+        check_twin(&case);
+    }
 }
 
 // ── L5: unresolved cases (T4) ────────────────────────────────────────────────────────────────
@@ -456,20 +251,6 @@ fn unresolved(case: &Case) -> Vec<(Rule, bool, Vec<String>)> {
     v.sort_by(|x, y| format!("{x:?}").cmp(&format!("{y:?}")));
     v
 }
-
-fn simple(name: &'static str, objects: Vec<(&'static str, String)>, props: &str, content: Vec<Node>) -> Case {
-    let properties =
-        [("L1", "G1"), ("L2", "G2"), ("L3", "G3"), ("M", "M")].into_iter().filter(|(_, o)| objects.iter().any(|(n, _)| n == o)).collect();
-    Case { name, objects, oc_properties: Some(props.to_string()), properties, contents: vec![content], ..Case::default() }
-}
-
-fn with_ocmd(body: &str) -> Vec<(&'static str, String)> {
-    let mut o = groups3();
-    o.push(("M", body.to_string()));
-    o
-}
-
-const D: &str = "<< /OCGs [{G1} {G2} {G3}] /D << /OFF [{G2}] >> >>";
 
 #[test]
 fn configuration_and_group_rules_are_unresolved() {
@@ -529,14 +310,7 @@ fn configuration_and_group_rules_are_unresolved() {
 
 #[test]
 fn auto_states_that_change_nothing_are_noted() {
-    let mut g = groups3();
-    g[1].1 = "<< /Type /OCG /Name (Notes) /Usage << /View << /ViewState /ON >> /Print << /PrintState /ON >> >> >>".into();
-    let p = check_twin(&simple(
-        "as-view-no-change-and-print",
-        g,
-        "<< /OCGs [{G1} {G2} {G3}] /D << /OFF [{G3}] /AS [<< /Event /View /Category [/View] /OCGs [{G2}] >> << /Event /Print /Category [/Print] /OCGs [{G2}] >>] >> >>",
-        vec![BASE, Layer("L2", true, vec![MORE]), Layer("L3", false, vec![Canary])],
-    ));
+    let p = check_twin(&catalogue::get("as-view-no-change-and-print"));
     assert!(p.notes().iter().any(|n| matches!(n, Note::AutoStateNoChange { .. })));
     assert!(p.notes().iter().any(|n| matches!(n, Note::PrintExportNotApplied { .. })));
 }
@@ -726,35 +500,15 @@ fn both_documents_items_are_listed_at_once() {
 
 // ── L6: visibility state (T5) ────────────────────────────────────────────────────────────────
 
-fn t5(name: &'static str, decisions: Vec<(&'static str, bool)>, g1: bool, g2: bool, m: bool) -> Case {
-    let mut objects = groups3();
-    objects.push(("M", "<< /Type /OCMD /OCGs [{G1} {G2}] /P /AllOn >>".into()));
-    let node = |shown: bool, colour: &'static str| if shown { Ops(colour) } else { Canary };
-    Case {
-        name,
-        objects,
-        oc_properties: Some(D.into()),
-        properties: vec![("L1", "G1"), ("L2", "G2"), ("M", "M")],
-        contents: vec![vec![
-            BASE,
-            Layer("L1", g1, vec![node(g1, "0.1 g 10 150 30 30 re f")]),
-            Layer("L2", g2, vec![node(g2, "0.4 g 60 150 30 30 re f")]),
-            Layer("M", m, vec![node(m, "0.7 g 110 150 30 30 re f")]),
-        ]],
-        decisions,
-        ..Case::default()
-    }
-}
-
 #[test]
 fn explicit_states_give_their_twins() {
     // The default configuration: G1 on, G2 off, so M (AllOn) is off.
-    check_twin(&t5("default", vec![], true, false, false));
+    check_twin(&catalogue::get("default"));
     // Two explicit states.
-    check_twin(&t5("g2-on", vec![("G2", true)], true, true, true));
-    check_twin(&t5("g1-off", vec![("G1", false)], false, false, false));
+    check_twin(&catalogue::get("g2-on"));
+    check_twin(&catalogue::get("g1-off"));
     // A decision on the membership dictionary itself.
-    check_twin(&t5("m-on", vec![("M", true)], true, false, true));
+    check_twin(&catalogue::get("m-on"));
 }
 
 #[test]
@@ -792,22 +546,10 @@ fn decisions_that_cant_apply_are_errors() {
 
 #[test]
 fn a_decision_settles_exactly_what_it_names() {
-    let mut objects = groups3();
-    objects.push(("U1", group("Loose 1")));
-    objects.push(("U2", group("Loose 2")));
-    let case = |decisions| Case {
-        name: "settles",
-        objects: objects.clone(),
-        oc_properties: Some(D.into()),
-        properties: vec![("U1", "U1"), ("U2", "U2")],
-        contents: vec![vec![BASE, Layer("U1", false, vec![Canary]), Layer("U2", false, vec![Canary])]],
-        decisions,
-        ..Case::default()
-    };
     let names = |c: &Case| unresolved(c).into_iter().map(|(rule, _, n)| (rule, n)).collect::<Vec<_>>();
-    assert_eq!(names(&case(vec![])), [(Rule::NotInOcgs, vec!["Loose 1".to_string()]), (Rule::NotInOcgs, vec!["Loose 2".to_string()])]);
-    assert_eq!(names(&case(vec![("U1", false)])), [(Rule::NotInOcgs, vec!["Loose 2".to_string()])]);
-    check_twin(&case(vec![("U1", false), ("U2", false)]));
+    assert_eq!(names(&settles(vec![])), [(Rule::NotInOcgs, vec!["Loose 1".to_string()]), (Rule::NotInOcgs, vec!["Loose 2".to_string()])]);
+    assert_eq!(names(&settles(vec![("U1", false)])), [(Rule::NotInOcgs, vec!["Loose 2".to_string()])]);
+    check_twin(&settles(vec![("U1", false), ("U2", false)]));
 }
 
 // ── Pages without layers, rewriting, sources ─────────────────────────────────────────────────
@@ -1021,4 +763,26 @@ fn hostile_sources_never_panic() {
         assert!(started.elapsed().as_secs_f64() < 2.0, "case {i} took {:?}", started.elapsed());
     }
     assert!(composed > 100 && unresolved_pages > 100, "both outcomes: {composed} composed, {unresolved_pages} unresolved, {refused} refused");
+}
+
+/// T10 (the proof renders it in full): the drawing-like pair prepares cleanly, with HVAC hidden by
+/// default and shown when decided on; its annotations are drawn.
+#[test]
+fn the_drawing_pair_resolves() {
+    use common::drawing::{self, HVAC, HVAC_OPERANDS, Rev};
+    for rev in [Rev::Old, Rev::New] {
+        let doc = synth::open(&drawing::sheet(rev));
+        for (decisions, shown) in [(Vec::new(), false), (vec![(r(HVAC), true)], true)] {
+            let p = prepare(&doc, &[0], &Visibility { decisions, ..Visibility::default() }).expect("prepares");
+            let rep = &p.reports()[0];
+            assert!(rep.unresolved.is_empty(), "{rev:?}: {:?}", rep.unresolved);
+            assert!(rep.annotations.iter().all(|a| matches!(a.outcome, pdfcraft_overlay::Outcome::Drawn(_))), "{:?}", rep.annotations);
+            let out = layered_one(&p, &placement(&doc)).expect("composes");
+            let back = synth::open(&synth::save(&out, true));
+            let has_hvac = back
+                .scan_objects()
+                .any(|(_, o)| matches!(&*o, Object::Stream(s) if s.decoded().is_ok_and(|d| contains(&d, HVAC_OPERANDS.as_bytes()))));
+            assert_eq!(has_hvac, shown, "{rev:?}: HVAC shown {shown}");
+        }
+    }
 }
