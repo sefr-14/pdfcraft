@@ -135,6 +135,32 @@ pub struct AnnotationEntry {
     pub outcome: Outcome,
 }
 
+/// A warning about a source document, each one the output is demonstrably correct with.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SourceWarning {
+    /// Signature fields with a value: the overlay shows their appearance only.
+    Signed { fields: usize },
+    /// Redaction marks not yet applied on a page (0-based): drawn as they appear, never applied.
+    RedactionMarks { page: usize, count: usize },
+}
+
+impl SourceWarning {
+    /// The warning's text, for document `side` ('A' or 'B').
+    pub fn text(&self, side: char) -> String {
+        match self {
+            SourceWarning::Signed { fields } => format!(
+                "Document {side} has {fields} signed signature field{}. The overlay shows their appearance only. It is not signed and proves nothing about those signatures.",
+                if *fields == 1 { "" } else { "s" }
+            ),
+            SourceWarning::RedactionMarks { page, count } => format!(
+                "Document {side}, page {}: {count} redaction mark{} not applied: the content under them is still in the overlay.",
+                page.saturating_add(1),
+                if *count == 1 { "" } else { "s" }
+            ),
+        }
+    }
+}
+
 pub(crate) fn flags(src: &Document, d: &Dict) -> i64 {
     d.get(b"F").and_then(|f| src.resolve(f).as_int()).unwrap_or(0)
 }
@@ -254,6 +280,16 @@ pub(crate) fn opacity(src: &Document, d: &Dict) -> Option<(f64, f64, Option<Obje
         d.get(b"BM").map(|b| (*src.resolve(b)).clone()).filter(|b| b.as_name() != Some(&b"Normal"[..]) && b.as_name() != Some(&b"Compatible"[..]));
     let (s, f) = (ca_stroke.unwrap_or(1.0), ca_fill.unwrap_or(1.0));
     (s < 1.0 || f < 1.0 || bm.is_some()).then_some((s, f, bm))
+}
+
+/// Signature fields with a value, counted from the form's field tree (and from widgets on pages
+/// the tree doesn't list).
+pub(crate) fn signed_fields(src: &Document) -> usize {
+    pdfcraft_forms::fields(src)
+        .iter()
+        .filter(|f| f.kind == pdfcraft_forms::FieldKind::Signature)
+        .filter(|f| src.dict(&Object::Ref(f.obj)).and_then(|d| d.get(b"V").map(|v| src.resolve(v))).is_some_and(|v| !matches!(*v, Object::Null)))
+        .count()
 }
 
 /// A number for a content stream: finite, at most six decimals, no exponent.

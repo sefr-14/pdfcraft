@@ -71,6 +71,12 @@ Step 3 adds `composite`, which writes the overlay page:
   draw is never drawn as `?` (O15): such an annotation, and media annotations the overlay doesn't
   draw, leave the page unresolved until the caller decides to omit them (`Visibility::omit`).
   Every annotation is in the page's report: drawn, excluded, omitted or unresolved.
+- `report` (step 4, OV4.5): `LayeredOutput::finish_with_report` returns the generation report with
+  the document: each document's role and warnings (signed signature fields, whose appearance is
+  drawn as plain graphics; redaction marks not applied, drawn as they appear and never applied;
+  the layer notes the output is correct with), and each page's registration, layers and
+  annotations. Nothing in it, or in the output, says the output is signed or redacted; the
+  defensive check also refuses any signature dictionary or `/ByteRange`.
 
 Conventions: points (1/72 in), y up, origin at the displayed sheet's lower-left corner;
 matrices in PDF order `[a b c d e f]` (`pdfcraft_content::Matrix`); rotation counter-clockwise

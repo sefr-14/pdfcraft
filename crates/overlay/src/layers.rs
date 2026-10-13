@@ -17,6 +17,7 @@ use pdfcraft_cos::{Dict, Document, ObjRef, Object, PdfString, Stream};
 
 use crate::composite::{Marker, compose_page_marked};
 use crate::oc::prepare::PreparedSource;
+use crate::report::{DocumentReport, OverlayReport, PageEntry};
 use crate::{CYAN, OverlayError, Placement, RED, Side, Source, Style};
 
 /// Which revision a document is.
@@ -134,6 +135,11 @@ impl RegistrationNote {
     /// A page placed without registration.
     pub const PLACED: RegistrationNote = RegistrationNote { kind: RegistrationKind::Placed, rms_mm: None, max_mm: None };
 
+    /// The registration as the metadata and the report state it.
+    pub fn text(&self) -> String {
+        self.describe().unwrap_or_else(|e| e.to_string())
+    }
+
     fn describe(&self) -> Result<String, OverlayError> {
         let mut s = match self.kind {
             RegistrationKind::Placed => "no registration (placed by the sheet match)",
@@ -177,6 +183,9 @@ pub struct LayeredOutput {
     doc: Document,
     groups: LayerGroups,
     notes: Vec<RegistrationNote>,
+    report: OverlayReport,
+    /// Documents already in the report: (prepared document, side).
+    listed: Vec<(u64, Side)>,
 }
 
 impl LayeredOutput {
@@ -184,7 +193,7 @@ impl LayeredOutput {
     pub fn new() -> Result<Self, OverlayError> {
         let mut doc = Document::new_empty();
         let groups = add_layers(&mut doc)?;
-        Ok(LayeredOutput { doc, groups, notes: Vec::new() })
+        Ok(LayeredOutput { doc, groups, notes: Vec::new(), report: OverlayReport::default(), listed: Vec::new() })
     }
 
     pub fn groups(&self) -> LayerGroups {
@@ -211,6 +220,7 @@ impl LayeredOutput {
     ) -> Result<ObjRef, OverlayError> {
         roles.check()?;
         registration.describe()?;
+        let (prepared_a, prepared_b) = (a, b);
         let unresolved = |s: Option<PreparedSource<'_>>| s.map(|s| s.unresolved().to_vec()).unwrap_or_default();
         let (ua, ub) = (unresolved(a), unresolved(b));
         if !ua.is_empty() || !ub.is_empty() {
@@ -231,6 +241,23 @@ impl LayeredOutput {
         match compose_page_marked(&mut self.doc, a, b, placement, &style.for_roles(roles), Some(markers)) {
             Ok(page) => {
                 self.notes.push(registration);
+                for (side, source) in [(Side::A, prepared_a), (Side::B, prepared_b)] {
+                    let Some(p) = source.map(|s| s.prepared()) else { continue };
+                    if !self.listed.contains(&(p.id(), side)) {
+                        self.listed.push((p.id(), side));
+                        self.report.documents.push(DocumentReport {
+                            side,
+                            role: roles.of(side),
+                            warnings: p.warnings().to_vec(),
+                            notes: p.note_texts(),
+                        });
+                    }
+                }
+                self.report.pages.push(PageEntry {
+                    registration,
+                    a: prepared_a.map(|s| s.report().clone()),
+                    b: prepared_b.map(|s| s.report().clone()),
+                });
                 Ok(page)
             }
             Err(e) => {
@@ -240,15 +267,25 @@ impl LayeredOutput {
         }
     }
 
+    /// The report so far.
+    pub fn report(&self) -> &OverlayReport {
+        &self.report
+    }
+
     /// Write the metadata (O2) and check the document ([`check_output`]). The document is
     /// returned only if the check passes.
-    pub fn finish(mut self) -> Result<Document, OverlayError> {
+    pub fn finish(self) -> Result<Document, OverlayError> {
+        self.finish_with_report().map(|(doc, _)| doc)
+    }
+
+    /// [`finish`](Self::finish), with the generation report.
+    pub fn finish_with_report(mut self) -> Result<(Document, OverlayReport), OverlayError> {
         if self.notes.is_empty() {
             return Err(OverlayError::NoSources);
         }
         write_metadata(&mut self.doc, &self.notes)?;
         check_output(&self.doc)?;
-        Ok(self.doc)
+        Ok((self.doc, self.report))
     }
 }
 
@@ -363,7 +400,7 @@ const MAX_DEPTH: usize = 64;
 ///   object has an `/OC` entry;
 /// - the only optional-content markers are the page markers, each naming its page's `Old` or
 ///   `New` property, balanced, and no content stream holds an inline optional-content dictionary;
-/// - there are no annotations, no interactive form, no actions and no JavaScript;
+/// - there are no annotations, no interactive form, no signatures, no actions and no JavaScript;
 /// - every content stream can be read completely, so none of this can hide in unread bytes.
 ///
 /// Returns the two groups.
@@ -492,9 +529,10 @@ fn check_object(r: ObjRef, obj: &Object, groups: &LayerGroups, depth: usize) -> 
                 Some(b"OCMD") => return fail("an optional content membership dictionary".into()),
                 Some(b"Annot") => return fail("an annotation".into()),
                 Some(b"Action") => return fail("an action".into()),
+                Some(b"Sig" | b"DocTimeStamp") => return fail("a signature".into()),
                 _ => {}
             }
-            for key in [&b"OC"[..], b"AA", b"JS", b"OpenAction"] {
+            for key in [&b"OC"[..], b"AA", b"JS", b"OpenAction", b"ByteRange"] {
                 if d.contains(key) {
                     return fail(format!("an /{} entry", String::from_utf8_lossy(key)));
                 }

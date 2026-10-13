@@ -21,5 +21,8 @@ pdfcraft-model = { workspace = true }
 pdfcraft-organize = { workspace = true }
 
 [dev-dependencies]
+# Independent checks for step 4 (OV4.5): redaction marks and signatures in the sources and outputs.
+pdfcraft-redact = { workspace = true }
 # Renders overlays in process for the pixel tests and checks the vendored mask fix (step 3).
 pdfcraft-render = { workspace = true }
+pdfcraft-sign = { workspace = true }

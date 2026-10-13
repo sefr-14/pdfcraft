@@ -11,10 +11,11 @@ pub mod layers;
 pub mod oc;
 pub mod place;
 pub mod register;
+pub mod report;
 pub mod settings;
 pub mod sheet;
 
-pub use annotations::{AnnotationEntry, AppearanceSource, Exclusion, Outcome};
+pub use annotations::{AnnotationEntry, AppearanceSource, Exclusion, Outcome, SourceWarning};
 pub use composite::{CYAN, RED, Side, Source, Style, compose, compose_page, light_tone, luminosity, transfer_function};
 pub use error::{OverlayError, Warning};
 pub use frame::{DisplayFrame, frame, frame_of, frame_of_page};
@@ -25,6 +26,7 @@ pub use place::{Placement, place};
 pub use register::{
     Affine, Doc, Fit, Flag, Limits, Model, Point, PointPair, PointReport, RANGE_SLACK, Refusal, Similarity, Verdict, fit, report, residuals, verdict,
 };
+pub use report::{DocumentReport, OverlayReport, PageEntry};
 pub use settings::Settings;
 pub use sheet::{SheetCase, SheetMatch, SheetProposal, propose};
 

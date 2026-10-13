@@ -29,7 +29,7 @@ use pdfcraft_cos::{Dict, Document, ObjRef, Object, Stream};
 use super::eval::{Evaluator, Note, Problem};
 use super::resolve::{self, Names, Plan, Uses};
 use super::{Rule, Unresolved, Visibility};
-use crate::annotations::{self as an, AnnotationEntry, AppearanceSource, Exclusion, Outcome, Stored};
+use crate::annotations::{self as an, AnnotationEntry, AppearanceSource, Exclusion, Outcome, SourceWarning, Stored};
 use crate::{OverlayError, Source};
 
 /// Deepest chain of streams drawn inside streams that is followed (forms in forms, say).
@@ -69,11 +69,17 @@ pub struct PageReport {
     pub unresolved: Vec<Unresolved>,
 }
 
+/// Identifies each prepared document, so a report lists a document once however many pages it
+/// gives.
+static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
 /// A prepared copy of one source document.
 pub struct Prepared {
+    id: u64,
     doc: Document,
     reports: Vec<PageReport>,
     notes: Vec<Note>,
+    warnings: Vec<SourceWarning>,
     names: HashMap<ObjRef, String>,
     touched: bool,
 }
@@ -100,6 +106,11 @@ impl Prepared {
     /// like).
     pub fn notes(&self) -> &[Note] {
         &self.notes
+    }
+
+    /// Warnings the output is correct with: signed signature fields, redaction marks not applied.
+    pub fn warnings(&self) -> &[SourceWarning] {
+        &self.warnings
     }
 
     /// A layer's name, for messages about [`notes`](Self::notes).
@@ -147,6 +158,22 @@ impl<'a> PreparedSource<'a> {
     pub fn source(&self) -> Source<'a> {
         Source { doc: &self.prepared.doc, page: self.report.page }
     }
+
+    pub(crate) fn prepared(&self) -> &'a Prepared {
+        self.prepared
+    }
+}
+
+impl Prepared {
+    pub(crate) fn id(&self) -> u64 {
+        self.id
+    }
+
+    /// The layer notes as the report states them.
+    pub(crate) fn note_texts(&self) -> Vec<String> {
+        let name = |g: ObjRef| self.name(g).map_or_else(|| format!("object {} {}", g.num, g.generation), |n| format!("\"{n}\""));
+        self.notes.iter().map(|n| crate::report::note_text(n, &name)).collect()
+    }
 }
 
 /// Prepare pages `pages` (0-based) of `doc` under its default layer configuration and
@@ -177,6 +204,7 @@ pub fn prepare(doc: &Document, pages: &[usize], visibility: &Visibility) -> Resu
         need_appearances: pdfcraft_forms::need_appearances(doc),
         pending_detail: None,
     };
+    let mut warnings = Vec::new();
     let mut reports = Vec::with_capacity(wanted.len());
     let mut names = HashMap::new();
     for p in wanted {
@@ -190,6 +218,11 @@ pub fn prepare(doc: &Document, pages: &[usize], visibility: &Visibility) -> Resu
             && let Err(rule) = scan(&w.copy, page.obj)
         {
             t.issues.push(rule);
+        }
+        let marks = page.dict.get(b"Annots").map(|a| doc.resolve(a)).and_then(|a| a.as_array().cloned()).unwrap_or_default();
+        let count = marks.iter().filter(|a| doc.dict(a).is_some_and(|d| d.name(b"Subtype") == Some(&b"Redact"[..]))).count();
+        if count > 0 {
+            warnings.push(SourceWarning::RedactionMarks { page: p, count });
         }
         let report = t.report(p, &w.ev);
         for (r, name, _) in &report.layers {
@@ -213,8 +246,12 @@ pub fn prepare(doc: &Document, pages: &[usize], visibility: &Visibility) -> Resu
             });
         }
     }
+    let signed = an::signed_fields(doc);
+    if signed > 0 {
+        warnings.insert(0, SourceWarning::Signed { fields: signed });
+    }
     let notes = w.ev.notes().to_vec();
-    Ok(Prepared { doc: w.copy, reports, notes, names, touched })
+    Ok(Prepared { id: NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed), doc: w.copy, reports, notes, warnings, names, touched })
 }
 
 /// Decisions must name dictionaries that can be optional content (a group, a membership
