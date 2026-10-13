@@ -2334,3 +2334,6 @@ animation effects	Off	Kapalı
 	The linked PDF opened, but its named destination was not applied.	Bağlantılı PDF açıldı, ancak adlandırılmış hedefi uygulanmadı.
 	The linked PDF opened, but its page destination was out of range.	Bağlantılı PDF açıldı, ancak sayfa hedefi aralık dışında.
 	Local cross-PDF links require the desktop app	PDF'ler arası yerel bağlantılar masaüstü uygulamasını gerektirir
+# This fork (sefr-14/pdfcraft): Overlay compare, the command and its All tools item.
+	Overlay compare…	Üst üste bindirerek karşılaştır…
+	Overlay two revisions	İki revizyonu üst üste bindir

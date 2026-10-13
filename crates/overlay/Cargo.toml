@@ -9,11 +9,22 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+# Appearances for comments without one (step 4, OV4.4).
+pdfcraft-annot = { workspace = true }
 pdfcraft-content = { workspace = true }
 pdfcraft-cos = { workspace = true }
+# The PCUndrawn mark on appearances drawn with `?` (O15).
+pdfcraft-fonts = { workspace = true }
+# Form field appearances from their values (O8).
+pdfcraft-forms = { workspace = true }
 pdfcraft-model = { workspace = true }
 pdfcraft-organize = { workspace = true }
 
 [dev-dependencies]
+# The step 4 proof's annotation controls: pages flattened by PdfCraft's own Flatten command.
+pdfcraft-edit = { workspace = true }
+# Independent checks for step 4 (OV4.5): redaction marks and signatures in the sources and outputs.
+pdfcraft-redact = { workspace = true }
 # Renders overlays in process for the pixel tests and checks the vendored mask fix (step 3).
 pdfcraft-render = { workspace = true }
+pdfcraft-sign = { workspace = true }

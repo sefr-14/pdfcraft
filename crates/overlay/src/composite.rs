@@ -124,6 +124,28 @@ pub fn compose_page(
     placement: &Placement,
     style: &Style,
 ) -> Result<ObjRef, OverlayError> {
+    compose_page_marked(out, a, b, placement, style, None)
+}
+
+/// An optional-content marker around one document's fill (step 4): the property-list name the
+/// page's `/Resources /Properties` gives the group, and the group itself.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Marker {
+    pub name: &'static str,
+    pub group: ObjRef,
+}
+
+/// [`compose_page`], with each document's fill optionally wrapped in its layer's marker:
+/// `/OC /<name> BDC … EMC`, the name mapped to the group in the page's `/Properties`. Without
+/// markers the page is exactly what [`compose_page`] has always written.
+pub(crate) fn compose_page_marked(
+    out: &mut Document,
+    a: Option<Source<'_>>,
+    b: Option<Source<'_>>,
+    placement: &Placement,
+    style: &Style,
+    markers: Option<[Marker; 2]>,
+) -> Result<ObjRef, OverlayError> {
     check_threshold(style.threshold)?;
     check_placement(placement)?;
     if a.is_none() && b.is_none() {
@@ -133,8 +155,11 @@ pub fn compose_page(
     let tr = out.add(Object::Dict(transfer_function(style.threshold)?));
 
     let mut states = Dict::new();
+    let mut properties = Dict::new();
     let mut ops = Vec::new();
-    for (side, source, matrix, colour) in [(Side::A, a, &placement.a, style.colour_a), (Side::B, b, &placement.b, style.colour_b)] {
+    for (i, (side, source, matrix, colour)) in
+        [(Side::A, a, &placement.a, style.colour_a), (Side::B, b, &placement.b, style.colour_b)].into_iter().enumerate()
+    {
         let Some(source) = source else { continue };
         let form = source_form(out, source, side)?;
         let group = mask_group(out, form, matrix.0, page_box);
@@ -142,18 +167,29 @@ pub fn compose_page(
             Side::A => "GA",
             Side::B => "GB",
         };
+        let marker = markers.and_then(|m| m.get(i).copied());
         states.set(name.as_bytes().to_vec(), Object::Ref(out.add(Object::Dict(graphics_state(group, tr)))));
+        if let Some(m) = marker {
+            properties.set(m.name.as_bytes().to_vec(), Object::Ref(m.group));
+            ops.push(Op::new("BDC", vec![Object::name("OC"), Object::name(m.name)]));
+        }
         ops.push(Op::new("q", Vec::new()));
         ops.push(Op::new("gs", vec![Object::name(name)]));
         ops.push(Op::new("rg", colour.iter().map(|c| Object::Real(f64::from(*c) / 255.0)).collect()));
         ops.push(Op::new("re", vec![Object::Int(0), Object::Int(0), Object::Real(page_box[2]), Object::Real(page_box[3])]));
         ops.push(Op::new("f", Vec::new()));
         ops.push(Op::new("Q", Vec::new()));
+        if marker.is_some() {
+            ops.push(Op::new("EMC", Vec::new()));
+        }
     }
     let contents = out.add(Object::Stream(Stream::flate(Dict::new(), &serialize_ops(&ops))));
 
     let mut resources = Dict::new();
     resources.set(b"ExtGState".to_vec(), Object::Dict(states));
+    if !properties.is_empty() {
+        resources.set(b"Properties".to_vec(), Object::Dict(properties));
+    }
     let mut page = Dict::new();
     page.set(b"Type".to_vec(), Object::name("Page"));
     page.set(b"MediaBox".to_vec(), real_array(&page_box));

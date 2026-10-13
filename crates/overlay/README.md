@@ -30,6 +30,90 @@ Step 3 adds `composite`, which writes the overlay page:
   identity) under the placement matrix, written at full precision, over a white backdrop, through
   the light-tone function m_t(L) = clamp(1 − L / t, 0, 1) as one shared Type 2 function. Source
   content is copied, never rewritten, so vectors stay vectors. Sources are only read.
+- `layers` (step 4, OV4.1): the output's two layers. `LayeredOutput` builds a document with
+  exactly two optional content groups, `Old` and `New` (both on, listed Old then New), and wraps
+  each document's fill in its role's marker (`/OC /PCOld BDC … EMC`); with both layers on, a page
+  is `composite`'s page plus the markers. `Roles` says which side is which (A Old, B New by
+  default) and `LayerStyle` gives each role its colour. A failed page leaves the document as it
+  was. `finish` writes the registration into the metadata (`/Subject`, XMP `dc:description`) and
+  runs `check_output`, the defensive check: any other optional content, `/OC` entry, annotation,
+  form, action, script or unreadable content stream is an error, so no output is returned.
+  Its pages take prepared sources (`oc::prepare`).
+- `oc::eval` (step 4, OV4.2): what a source's optional-content reference shows under its default
+  configuration and the caller's explicit decisions (`Visibility`). Groups (state from
+  `/BaseState`, `/ON`, `/OFF`; intents matched with the configuration's), membership dictionaries
+  and auto-states. A membership dictionary's `/VE` and its `/P` over `/OCGs` are evaluated
+  independently; when both are present they must both resolve and agree, or the dictionary is
+  unresolved (OV4.7, F1). Absent, null or empty `/OCGs` has no effect (ISO 32000-1 Table 99);
+  references to deleted objects, which pdfcraft's display counts as groups that are on, leave it
+  unresolved whenever they change the result (F2). Every result is either decided by the
+  standard or unresolved with a `Rule` and whether a decision settles it; values combine in
+  three-valued logic, so a result that doesn't depend on an unresolved operand is still resolved.
+  Checked against Adobe's PDF Reference 1.7 §4.10, the Arlington model of ISO 32000-2 and, for
+  the membership rules, ISO 32000-1 §8.11.
+- `oc::resolve` and `oc::prepare` (step 4, OV4.3): an in-memory copy of a source whose pages show
+  what the source shows, with no optional content left. Every stream a page draws (its content,
+  forms, tiling patterns, Type 3 glyphs, soft-mask groups) is resolved once: a visible block loses
+  its `BDC`/`EMC`, a hidden block and every `Do` of a hidden XObject are removed by byte range
+  (the rewritten stream is parsed again and must give exactly the expected operators), and a
+  visible XObject loses its `/OC`. Viewers apply the graphics-state changes of hidden content, so
+  a state change or clipping path in a hidden block that later content uses is kept on its own.
+  In a document with layers, each resource dictionary keeps only what kept content uses, so
+  hidden content isn't carried along, and what the overlay will copy is then searched for any
+  optional content left. Anything that can't be decided (the evaluator's rules, unbalanced
+  markers, a hidden block crossing a save, text object or path, hidden text that moves or clips
+  visible content, unreadable streams, forms nested too deep or used with different resources) is
+  reported per page as `Unresolved`, and `LayeredOutput::add_page` refuses the page with every
+  item of both documents. A document without layers or decisions is copied unchanged.
+- `annotations` (step 4, OV4.4): preparation draws each page's annotations into its content as
+  the source shows them, after the page's content (closing any graphics states it leaves open),
+  and the page keeps none. The normal appearance (the `/AS` state of a state dictionary) is
+  placed by Algorithm 8.1, NoRotate keeps it upright about the upper-left corner of `/Rect`, and
+  `/CA` applies to it as one transparency group. A comment without an appearance gets the one
+  PdfCraft's builder draws; a form field is redrawn from its value only when its appearance is
+  missing or `/NeedAppearances` is set (O8). Hidden, NoView, pop-ups, links, annotations whose
+  layer is off and appearances that can't be used are excluded and counted. Text the fonts can't
+  draw is never drawn as `?` (O15): such an annotation, and media annotations the overlay doesn't
+  draw, leave the page unresolved until the caller decides to omit them (`Visibility::omit`).
+  Every annotation is in the page's report: drawn, excluded, omitted or unresolved.
+- `report` (step 4, OV4.5): `LayeredOutput::finish_with_report` returns the generation report with
+  the document: each document's role and warnings (signed signature fields, whose appearance is
+  drawn as plain graphics; redaction marks not applied, drawn as they appear and never applied;
+  the layer notes the output is correct with), and each page's registration, layers and
+  annotations. Nothing in it, or in the output, says the output is signed or redacted; the
+  defensive check also refuses any signature dictionary or `/ByteRange`.
+
+- `colour` (step 6): the wizard's palette (four complementary pairs, each colour's complement
+  also a swatch), complements, what shared content prints as (`A × B / 255`), and the
+  readability checks behind its warnings (contrast on white at least 1.9, ΔE at least 50, the
+  overlap's contrast at least 7). Warnings are advice; generation works with any pair.
+- `pairing` (step 6, the wizard's Pages step): which page of A goes with which page of B on each
+  output page, for revised drawing sets with inserted, deleted and moved sheets. Two columns of
+  cells, each a page (its 0-based physical index, never its label) or a blank; row `i` pairs the
+  columns' cells `i`, and a shorter column leaves the other's extra pages unplaced until the user
+  places them. Operations insert or remove a blank (later cells of that column shift by one),
+  move a cell up or down, put a page at a row by swapping it with what is there, place unplaced
+  pages against blanks, or apply a new page range keeping the existing pairing. None can lose or
+  duplicate a page, and one that would leave a row with no page is refused and changes nothing.
+- `job` (step 6, used by the wizard; later `doc_overlay`): a whole overlay from two documents.
+  `generate` takes the page pairs (a blank side allowed, never both), each with its confirmed
+  sheet match and registration, prepares both sources once for the pages used, and returns
+  every unresolved item of every page of both documents in one `Unresolved` error before
+  composing anything (O12); otherwise the layered document, its report, frame warnings and the
+  pages where B is clipped. `snapshot_decisions` turns a tab's layer states into explicit
+  decisions only where they differ from what the file's default configuration resolves to; a
+  layer the default can't resolve gets none, so the wizard asks rather than settling it silently.
+- `snap` (step 6, the wizard's Alignment step): a page's drawn lines in its displayed frame, so a
+  click snaps to the nearest line end or crossing (and, if chosen, a straight line's midpoint or
+  the nearest point on a line) and the same feature is picked on A and B. Paths are read as
+  `pdfcraft-measure` reads them (painted subpaths, rectangles, curves flattened to 0.2 units,
+  nested forms and their matrices), with limits sized for dense sheets (400,000 segments; the
+  densest real 36 × 24 in structural sheet tried has about 42,000), and content in a layer the
+  tab hides is left out. Text, images, shadings and annotations aren't snap targets. Reading is
+  lenient: an undecodable stream is skipped and counted, and a limit stops it with `truncated`.
+
+The wizard itself is `crates/ui-egui/src/overlay_ui.rs` (Overlay compare… on the toolbar, in All
+tools ▸ Compare files, and the command `doc.overlay`).
 
 Conventions: points (1/72 in), y up, origin at the displayed sheet's lower-left corner;
 matrices in PDF order `[a b c d e f]` (`pdfcraft_content::Matrix`); rotation counter-clockwise

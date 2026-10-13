@@ -17,6 +17,8 @@ pdfcraft-cos = { workspace = true }
 pdfcraft-render = { workspace = true }
 pdfcraft-model = { workspace = true }
 pdfcraft-platform = { workspace = true }
+# This fork's overlay compare (the wizard in src/overlay_ui.rs).
+pdfcraft-overlay = { path = "../overlay", version = "0.7.0" }
 egui = { workspace = true, features = ["bytemuck"] }
 egui_extras = { workspace = true }
 eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "persistence", "links"] }

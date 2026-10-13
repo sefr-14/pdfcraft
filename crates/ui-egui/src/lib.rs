@@ -23,12 +23,14 @@ macro_rules! tl_ctx {
 }
 
 mod a11y_ui;
+// This fork's overlay compare wizard.
 mod actions_ui;
 mod appearance;
 pub mod canvas;
 mod chrome;
 mod combine_grid;
 mod image_pick;
+mod overlay_ui;
 mod tags_ui;
 pub use combine_grid::ThumbState as CombineThumb;
 mod combine_ui;
@@ -597,6 +599,8 @@ pub struct PdfCraftApp {
     /// Compare files: the chosen older document and the last result.
     pub compare_old: Option<DocId>,
     pub compare: Option<compare_ui::CompareState>,
+    /// Overlay compare (this fork): the wizard, kept while closed so it resumes where it was left.
+    pub(crate) overlay: Option<Box<overlay_ui::Wizard>>,
     /// The JavaScript console and the Document JavaScripts draft.
     pub js_console: js_ui::JsConsole,
     pub doc_js: js_ui::DocJsDraft,
@@ -887,6 +891,7 @@ impl PdfCraftApp {
             pdfa: Default::default(),
             compare_old: None,
             compare: None,
+            overlay: None,
             js_console: Default::default(),
             doc_js: Default::default(),
             a11y: a11y_ui::A11yState::default(),
@@ -2603,6 +2608,7 @@ impl eframe::App for PdfCraftApp {
         self.process_pending_edits();
         palette::show(self, &ctx);
         dialogs::show(self, &ctx);
+        overlay_ui::show(self, &ctx);
         self.show_progress(&ctx);
         widgets::toast(self, &ctx);
         self.finish_render_frame(&ctx);

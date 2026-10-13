@@ -257,6 +257,8 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("actions.distribution", "Prepare for distribution…", None, None, Nothing, "send"),
     c("actions.optimize_scans", "Optimize scanned documents…", None, None, Nothing, "scan-text"),
     c("doc.compare", "Compare files…", None, None, Document, "git-compare"),
+    // This fork: overlay two revisions in two colours (crates/overlay, the wizard in ui-egui).
+    c("doc.overlay", "Overlay compare…", None, None, Document, "blend"),
     c("form.detect", "Detect form fields", None, None, Modification, "scan"),
     c("form.merge_data", "Merge data files into spreadsheet…", None, None, Nothing, "file-spreadsheet"),
     c("form.flatten", "Flatten form fields", None, None, HasFields, "layers"),

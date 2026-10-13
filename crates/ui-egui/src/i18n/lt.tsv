@@ -2582,3 +2582,6 @@ key	Esc	Esc
 key	Home	Home
 key	End	End
 key	Space	Tarpas
+# This fork (sefr-14/pdfcraft): Overlay compare, the command and its All tools item.
+	Overlay compare…	Palyginti uždedant…
+	Overlay two revisions	Uždėti dvi redakcijas

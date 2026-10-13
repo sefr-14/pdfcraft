@@ -242,13 +242,19 @@ fn row13_study_original_scenarios() {
     assert!(misses.is_empty(), "the 1 % target is missed: {misses:?}");
 }
 
+/// The alternative floor kept for future comparison only (review of 11 Oct): the same rule with
+/// a cap of 1e-4 × τ instead of 0.01 × τ. The crate uses the approved bounded floor.
+fn alternative_floor(diag_a: f64) -> f64 {
+    (1e-9 * diag_a).min(1e-4 * TAU)
+}
+
 /// Row 14 (1) and (2): exact picks under transforms other than the identity raise no flag, on
 /// ordinary and very large sheets, at extreme scales, for both fits. Prints how far the
 /// rounding-driven MAD stays below the floor.
 #[test]
 fn row14_exact_picks_raise_no_rounding_flags() {
     let mut rng = Rng(0x14);
-    let mut worst_ratio = 0.0f64;
+    let (mut worst_ratio, mut worst_alt_ratio) = (0.0f64, 0.0f64);
     let mut runs = 0;
     for side in [2592.0f64, 14_400.0, 1_000_000.0, 1.08e9] {
         let size = (side, side * 2.0 / 3.0);
@@ -272,6 +278,7 @@ fn row14_exact_picks_raise_no_rounding_flags() {
                 );
                 if let Some(m) = f.mad {
                     worst_ratio = worst_ratio.max(m / f.mad_floor);
+                    worst_alt_ratio = worst_alt_ratio.max(m / alternative_floor(l.diag_a));
                 }
                 runs += 1;
             }
@@ -291,18 +298,22 @@ fn row14_exact_picks_raise_no_rounding_flags() {
                 assert!(f.points.iter().all(|p| p.flags.is_empty()) && f.verdict == Verdict::Consistent, "affine side {side}: {f:?}");
                 if let Some(m) = f.mad {
                     worst_ratio = worst_ratio.max(m / f.mad_floor);
+                    worst_alt_ratio = worst_alt_ratio.max(m / alternative_floor(l.diag_a));
                 }
                 runs += 1;
             }
         }
     }
-    println!("ROW14 exact sets: {runs} fits, no flag; largest rounding MAD / floor = {worst_ratio:e}");
+    println!(
+        "ROW14 exact sets: {runs} fits, no flag; largest rounding MAD / floor = {worst_ratio:e}; for comparison, / alternative floor (cap 1e-4 τ) = {worst_alt_ratio:e}"
+    );
 }
 
 /// Row 14 (3): a real deviation near the tolerance is not hidden by the floor. Exact picks
 /// except one moved d × τ, on an ordinary sheet and on a 1.08e9 pt sheet. Reports how often the
-/// robust test ran, how often the moved pick was flagged, and how often an unbounded floor
-/// (1e-9 × A's diagonal) would have skipped the robust test.
+/// robust test ran, how often the moved pick was flagged, and, for comparison, how often an
+/// unbounded floor (1e-9 × A's diagonal) or the alternative floor (cap 1e-4 × τ) would have
+/// skipped the robust test.
 #[test]
 fn row14_real_deviations_near_the_tolerance_are_not_hidden() {
     let mut out = Vec::new();
@@ -312,6 +323,7 @@ fn row14_real_deviations_near_the_tolerance_are_not_hidden() {
         for frac in [0.5, 0.8, 0.9, 1.0, 1.1, 1.2] {
             let mut rng = Rng(0x14_00 + (frac * 10.0) as u64);
             let (mut cases, mut applied, mut flagged, mut unbounded_skips, mut min_mad_ratio, mut floor_skips) = (0, 0, 0, 0, f64::INFINITY, 0);
+            let mut alternative_skips = 0;
             for t in 0..400 {
                 let n = [5usize, 6, 8, 10][t % 4];
                 let bad = t % n;
@@ -344,6 +356,9 @@ fn row14_real_deviations_near_the_tolerance_are_not_hidden() {
                 if f.mad.is_some_and(|m| m <= f.mad_floor) {
                     floor_skips += 1;
                 }
+                if f.mad.is_some_and(|m| m <= alternative_floor(d)) {
+                    alternative_skips += 1;
+                }
                 // A deviation past the tolerance is always flagged, whatever the floor does.
                 if frac >= 1.1 {
                     assert!(f.points[bad].flagged(), "side {side}, {frac}τ, set {t}: the moved pick isn't flagged");
@@ -357,7 +372,7 @@ fn row14_real_deviations_near_the_tolerance_are_not_hidden() {
                 assert_eq!(floor_skips, 0, "side {side}, {frac}τ: the floor skipped the robust test");
             }
             out.push(format!(
-                "ROW14 deviation {frac}τ side {side:e}: {cases} sets, robust test ran {applied}, skipped by the bounded floor {floor_skips}, moved pick flagged {flagged}, an unbounded floor would skip the robust test in {unbounded_skips}; smallest MAD / bounded floor {min_mad_ratio:.3e}"
+                "ROW14 deviation {frac}τ side {side:e}: {cases} sets, robust test ran {applied}, skipped by the bounded floor {floor_skips}, moved pick flagged {flagged}, an unbounded floor would skip the robust test in {unbounded_skips}, the alternative floor (cap 1e-4 τ) in {alternative_skips}; smallest MAD / bounded floor {min_mad_ratio:.3e}"
             ));
         }
     }

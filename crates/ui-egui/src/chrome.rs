@@ -412,6 +412,9 @@ pub fn mode_bar(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                         if icons::button(ui, "info", 32.0, false, &tip).clicked() {
                             app.dialog = Some(Dialog::Properties(PropsTab::Description));
                         }
+                        // This fork: Overlay compare.
+                        ui.add_space(4.0);
+                        crate::overlay_ui::toolbar_button(app, ui);
                     });
                     ui.add_space(8.0);
                     if widgets::search_box(ui, tl!("Find tools and commands"), 260.0).clicked() {

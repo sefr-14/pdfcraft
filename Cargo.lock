@@ -3856,11 +3856,17 @@ dependencies = [
 name = "pdfcraft-overlay"
 version = "0.7.1"
 dependencies = [
+ "pdfcraft-annot",
  "pdfcraft-content",
  "pdfcraft-cos",
+ "pdfcraft-edit",
+ "pdfcraft-fonts",
+ "pdfcraft-forms",
  "pdfcraft-model",
  "pdfcraft-organize",
+ "pdfcraft-redact",
  "pdfcraft-render",
+ "pdfcraft-sign",
 ]
 
 [[package]]
@@ -3981,6 +3987,7 @@ dependencies = [
  "pdfcraft-engine",
  "pdfcraft-fonts",
  "pdfcraft-model",
+ "pdfcraft-overlay",
  "pdfcraft-platform",
  "pdfcraft-render",
  "pdfcraft-xfa",
