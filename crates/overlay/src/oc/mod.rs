@@ -8,6 +8,8 @@
 //! PRD, Resolving optional content).
 
 pub mod eval;
+pub mod prepare;
+pub(crate) mod resolve;
 
 use std::fmt;
 
@@ -61,6 +63,29 @@ pub enum Rule {
     Inline,
     /// Nested past the limit, or a cycle, while following references.
     TooDeep,
+    /// A marker names a property the stream's resources don't define.
+    UnknownProperty,
+    /// A content stream that has to be checked or rewritten can't be decoded, or the parser
+    /// skipped bytes in it.
+    Unreadable,
+    /// Marked content that doesn't balance (an end without a beginning, or a beginning never
+    /// ended) where optional content is involved: viewers close these differently.
+    Unbalanced,
+    /// A hidden block whose graphics-state saves and restores, or text object, cross its
+    /// boundary.
+    HiddenBlockCrossesStructure,
+    /// Hidden text that changes where visible text goes: inside a text object that visible text
+    /// after it continues from, or setting spacing or leading (`"`, `TD`) that later text uses.
+    HiddenTextMovesVisibleText,
+    /// Hidden text that may be in a clipping render mode, with content drawn after it: viewers
+    /// differ on whether hidden text clips.
+    HiddenClippingText,
+    /// A form without its own resources is drawn from places with different resources, so its
+    /// layer markers can't be resolved once for all of them.
+    AmbiguousResources,
+    /// Optional content referenced from data the overlay copies but doesn't draw (private
+    /// application data, for example), so the output's two layers can't be the only ones.
+    InResources,
 }
 
 impl Rule {
@@ -81,6 +106,14 @@ impl Rule {
             Rule::NotOptionalContent => "content is marked with something that isn't a layer",
             Rule::Inline => "a layer is written inline, so nothing can name it",
             Rule::TooDeep => "layer references nest too deeply or loop",
+            Rule::UnknownProperty => "content is marked with a layer name the page doesn't define",
+            Rule::Unreadable => "a content stream with layers can't be read completely",
+            Rule::Unbalanced => "layer markers don't balance",
+            Rule::HiddenBlockCrossesStructure => "hidden content starts or ends inside a graphics-state group or text object",
+            Rule::HiddenTextMovesVisibleText => "hidden text changes where visible text goes",
+            Rule::HiddenClippingText => "hidden text may clip what is drawn after it",
+            Rule::AmbiguousResources => "a drawing without its own resources is used in places with different resources",
+            Rule::InResources => "layers are referenced from data the page carries but doesn't draw",
         }
     }
 }

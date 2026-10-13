@@ -16,6 +16,7 @@ use pdfcraft_content::parse;
 use pdfcraft_cos::{Dict, Document, ObjRef, Object, PdfString, Stream};
 
 use crate::composite::{Marker, compose_page_marked};
+use crate::oc::prepare::PreparedSource;
 use crate::{CYAN, OverlayError, Placement, RED, Side, Source, Style};
 
 /// Which revision a document is.
@@ -195,14 +196,15 @@ impl LayeredOutput {
     }
 
     /// Append one overlay page: A's and B's fills wrapped in their roles' layers, as OV3 draws
-    /// them otherwise. Either side may be blank, not both.
+    /// them otherwise. Either side may be blank, not both. The sources are prepared pages
+    /// ([`prepare`](crate::oc::prepare::prepare)); a page with anything unresolved is refused,
+    /// with every item of both sides.
     ///
-    /// OV4.1 only: a source page with optional content or annotations is refused here. Source
-    /// preparation (OV4.3, OV4.4) resolves them first.
+    /// Until annotations are flattened (OV4.4), a page with annotations is refused too.
     pub fn add_page(
         &mut self,
-        a: Option<Source<'_>>,
-        b: Option<Source<'_>>,
+        a: Option<PreparedSource<'_>>,
+        b: Option<PreparedSource<'_>>,
         placement: &Placement,
         style: &LayerStyle,
         roles: Roles,
@@ -210,9 +212,15 @@ impl LayeredOutput {
     ) -> Result<ObjRef, OverlayError> {
         roles.check()?;
         registration.describe()?;
+        let unresolved = |s: Option<PreparedSource<'_>>| s.map(|s| s.unresolved().to_vec()).unwrap_or_default();
+        let (ua, ub) = (unresolved(a), unresolved(b));
+        if !ua.is_empty() || !ub.is_empty() {
+            return Err(OverlayError::Unresolved { a: ua, b: ub, roles });
+        }
+        let (a, b) = (a.map(|s| s.source()), b.map(|s| s.source()));
         for (side, source) in [(Side::A, a), (Side::B, b)] {
             if let Some(s) = source {
-                refuse_unprepared(s, side)?;
+                refuse_annotations(s, side)?;
             }
         }
         let markers = [Side::A, Side::B].map(|side| {
@@ -247,8 +255,8 @@ impl LayeredOutput {
 
 /// A new layered document with one overlay page. See [`LayeredOutput::add_page`].
 pub fn compose_layered(
-    a: Option<Source<'_>>,
-    b: Option<Source<'_>>,
+    a: Option<PreparedSource<'_>>,
+    b: Option<PreparedSource<'_>>,
     placement: &Placement,
     style: &LayerStyle,
     roles: Roles,
@@ -259,22 +267,21 @@ pub fn compose_layered(
     out.finish()
 }
 
-/// OV4.1's guard until sources are prepared: a document with optional content, or a page with
-/// annotations, can't be composed into layers yet without leaking or dropping something.
-fn refuse_unprepared(source: Source<'_>, side: Side) -> Result<(), OverlayError> {
-    let fail = |reason: &str| Err(OverlayError::Source { side: side.letter(), page: source.page, reason: reason.into() });
+/// The guard until annotations are flattened (OV4.4): a page with annotations can't be composed
+/// into layers yet without dropping them.
+fn refuse_annotations(source: Source<'_>, side: Side) -> Result<(), OverlayError> {
     let doc = source.doc;
-    let catalog = doc.root().map(|r| doc.get(r)).and_then(|c| c.as_dict().cloned()).unwrap_or_default();
-    if catalog.get(b"OCProperties").is_some() {
-        return fail("the document has optional content (layers), which this build doesn't resolve yet");
-    }
     let pages = pdfcraft_model::pages(doc);
     let Some(page) = pages.get(source.page) else {
         return Err(OverlayError::NoSuchPage { page: source.page, count: pages.len() });
     };
     let annots = page.dict.get(b"Annots").map(|a| doc.resolve(a));
     if annots.as_deref().and_then(Object::as_array).is_some_and(|a| !a.is_empty()) {
-        return fail("the page has annotations, which this build doesn't flatten yet");
+        return Err(OverlayError::Source {
+            side: side.letter(),
+            page: source.page,
+            reason: "the page has annotations, which this build doesn't flatten yet".into(),
+        });
     }
     Ok(())
 }

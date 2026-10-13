@@ -38,8 +38,8 @@ Step 3 adds `composite`, which writes the overlay page:
   was. `finish` writes the registration into the metadata (`/Subject`, XMP `dc:description`) and
   runs `check_output`, the defensive check: any other optional content, `/OC` entry, annotation,
   form, action, script or unreadable content stream is an error, so no output is returned.
-  Until source preparation lands (OV4.3, OV4.4), a source with optional content or annotations is
-  refused.
+  Its pages take prepared sources (`oc::prepare`); a page with annotations is refused until OV4.4
+  flattens them.
 - `oc::eval` (step 4, OV4.2): what a source's optional-content reference shows under its default
   configuration and the caller's explicit decisions (`Visibility`). Groups (state from
   `/BaseState`, `/ON`, `/OFF`; intents matched with the configuration's), membership dictionaries
@@ -47,6 +47,20 @@ Step 3 adds `composite`, which writes the overlay page:
   by the standard or unresolved with a `Rule` and whether a decision settles it; values combine in
   three-valued logic, so a result that doesn't depend on an unresolved operand is still resolved.
   Checked against Adobe's PDF Reference 1.7 §4.10 and the Arlington model of ISO 32000-2.
+- `oc::resolve` and `oc::prepare` (step 4, OV4.3): an in-memory copy of a source whose pages show
+  what the source shows, with no optional content left. Every stream a page draws (its content,
+  forms, tiling patterns, Type 3 glyphs, soft-mask groups) is resolved once: a visible block loses
+  its `BDC`/`EMC`, a hidden block and every `Do` of a hidden XObject are removed by byte range
+  (the rewritten stream is parsed again and must give exactly the expected operators), and a
+  visible XObject loses its `/OC`. Viewers apply the graphics-state changes of hidden content, so
+  a state change or clipping path in a hidden block that later content uses is kept on its own.
+  In a document with layers, each resource dictionary keeps only what kept content uses, so
+  hidden content isn't carried along, and what the overlay will copy is then searched for any
+  optional content left. Anything that can't be decided (the evaluator's rules, unbalanced
+  markers, a hidden block crossing a save, text object or path, hidden text that moves or clips
+  visible content, unreadable streams, forms nested too deep or used with different resources) is
+  reported per page as `Unresolved`, and `LayeredOutput::add_page` refuses the page with every
+  item of both documents. A document without layers or decisions is copied unchanged.
 
 Conventions: points (1/72 in), y up, origin at the displayed sheet's lower-left corner;
 matrices in PDF order `[a b c d e f]` (`pdfcraft_content::Matrix`); rotation counter-clockwise

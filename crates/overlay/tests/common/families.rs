@@ -17,7 +17,7 @@ use pdfcraft_content::Matrix;
 use pdfcraft_cos::{Dict, Document, Object};
 use pdfcraft_overlay::{
     Affine, DisplayFrame, LayerStyle, LayeredOutput, Limits, Model, Placement, Point, PointPair, RegistrationNote, Roles, Settings, SheetCase,
-    SheetMatch, Side, Similarity, Source, Style, fit, frame, light_tone, luminosity, place, propose,
+    SheetMatch, Side, Similarity, Source, Style, Visibility, fit, frame, light_tone, luminosity, place, prepare, propose,
 };
 
 /// Build every overlay through step 4's layered output (`Old` = A, `New` = B, both on) instead of
@@ -292,6 +292,14 @@ pub fn build(name: &'static str, family: &'static str, specs: Vec<Spec>) -> Set 
     let (a_doc, b_doc) = (synth::open(&a_bytes), synth::open(&b_bytes));
     let mut out = Document::new_empty();
     let mut layered = LAYERED.load(Ordering::Relaxed).then(|| LayeredOutput::new().expect("a layered output"));
+    // Layered sets prepare their sources first (OV4.3); these have no layers, so nothing changes.
+    let all = |d: &Document| (0..pdfcraft_model::pages(d).len()).collect::<Vec<_>>();
+    let prepared = layered.is_some().then(|| {
+        (
+            prepare(&a_doc, &all(&a_doc), &Visibility::default()).expect("A prepares"),
+            prepare(&b_doc, &all(&b_doc), &Visibility::default()).expect("B prepares"),
+        )
+    });
     let mut cases = Vec::new();
     let (mut ai, mut bi) = (0, 0);
     for (page, s) in specs.into_iter().enumerate() {
@@ -331,7 +339,12 @@ pub fn build(name: &'static str, family: &'static str, specs: Vec<Spec>) -> Set 
         match layered.as_mut() {
             Some(l) => {
                 let layer_style = LayerStyle { old: s.pair.a, new: s.pair.b, threshold: s.threshold };
-                l.add_page(sa, sb, &placement, &layer_style, Roles::default(), RegistrationNote::PLACED).expect("composes with layers");
+                let (pa, pb) = prepared.as_ref().expect("prepared with the layered output");
+                // No layers: the copies are the sources, so the pages are OV3's (L4).
+                assert!(!pa.doc().is_modified() && !pb.doc().is_modified());
+                let qa = sa.map(|s| pa.source(s.page).expect("A's page"));
+                let qb = sb.map(|s| pb.source(s.page).expect("B's page"));
+                l.add_page(qa, qb, &placement, &layer_style, Roles::default(), RegistrationNote::PLACED).expect("composes with layers");
             }
             None => {
                 pdfcraft_overlay::compose_page(&mut out, sa, sb, &placement, &style).expect("composes");

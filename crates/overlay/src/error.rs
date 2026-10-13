@@ -2,6 +2,9 @@
 
 use std::fmt;
 
+use crate::layers::Roles;
+use crate::oc::Unresolved;
+
 /// Something the overlay can't work with. Public functions return these; nothing panics.
 #[derive(Clone, Debug, PartialEq)]
 pub enum OverlayError {
@@ -27,6 +30,13 @@ pub enum OverlayError {
     /// optional content other than its two layers, an annotation, a form, an action or a script.
     /// Nothing is returned, so nothing can be saved.
     Check { found: String },
+    /// A source page still has optional content the overlay can't resolve (step 4 PRD, Resolving
+    /// optional content): each item of document A's and B's page, with the documents' roles, so
+    /// nothing is composed until a decision or a fixed source settles them.
+    Unresolved { a: Vec<Unresolved>, b: Vec<Unresolved>, roles: Roles },
+    /// An explicit layer decision that can't apply to the document (it names something that isn't
+    /// a layer, or sets one both on and off).
+    Decision { reason: String },
 }
 
 impl OverlayError {
@@ -57,6 +67,16 @@ impl fmt::Display for OverlayError {
             OverlayError::Output { reason } => write!(f, "the overlay can't be written: {reason}"),
             OverlayError::SameRole { role } => write!(f, "documents A and B are both {role}: one must be Old and the other New"),
             OverlayError::Check { found } => write!(f, "the overlay failed its safety check, so nothing was produced: {found}"),
+            OverlayError::Unresolved { a, b, roles } => {
+                write!(f, "the overlay can't decide what some layers of the sources show, so nothing was composed")?;
+                for (side, role, list) in [('A', roles.a, a), ('B', roles.b, b)] {
+                    for u in list {
+                        write!(f, "; document {side} ({}), {u}", role.name())?;
+                    }
+                }
+                Ok(())
+            }
+            OverlayError::Decision { reason } => write!(f, "a layer decision can't apply: {reason}"),
         }
     }
 }

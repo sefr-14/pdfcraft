@@ -1,7 +1,8 @@
 //! The output's two layers (OV4.1): structure (L1), toggling in PdfCraft through the Layers
 //! panel's own render overrides (L2, in process), OV3's page unchanged with both layers on (L4,
 //! structure and pixels), roles and colours (O1), metadata (O2), the defensive check, and no
-//! panics. Step 4 PRD.
+//! panics. Sources go through preparation (OV4.3); these sources have no layers of their own, so
+//! preparation leaves them as they are. Step 4 PRD.
 
 mod common;
 
@@ -13,13 +14,19 @@ use common::synth::{self, Page};
 use pdfcraft_content::{Matrix, parse};
 use pdfcraft_cos::{Dict, Document, ObjRef, Object, PdfString, Stream};
 use pdfcraft_overlay::{
-    CYAN, LayerStyle, LayeredOutput, OverlayError, Placement, RED, RegistrationKind, RegistrationNote, Revision, Roles, Settings, SheetMatch, Source,
-    Style, check_output, compose, compose_layered, frame_of_page, place,
+    CYAN, LayerStyle, LayeredOutput, OverlayError, Placement, Prepared, PreparedSource, RED, RegistrationKind, RegistrationNote, Revision, Roles,
+    Rule, Settings, SheetMatch, Source, Style, Visibility, check_output, compose, compose_layered, frame_of_page, place, prepare,
 };
 use pdfcraft_render::{PageRenderer, RenderConfig, RenderRequest};
 
 fn src(page: Page) -> Document {
     synth::open(&synth::pdf(&[page]))
+}
+
+/// Every page of `doc`, prepared under its default configuration.
+fn prep(doc: &Document) -> Prepared {
+    let n = pdfcraft_model::pages(doc).len();
+    prepare(doc, &(0..n).collect::<Vec<_>>(), &Visibility::default()).expect("prepares")
 }
 
 fn placement(a: &Document, b: &Document) -> Placement {
@@ -64,7 +71,7 @@ fn ops(bytes: &[u8]) -> Vec<(String, Vec<Object>)> {
     parse(bytes).ops.into_iter().map(|o| (String::from_utf8_lossy(&o.op).into_owned(), o.operands)).collect()
 }
 
-fn layered(a: Option<Source<'_>>, b: Option<Source<'_>>, p: &Placement, style: &LayerStyle, roles: Roles) -> Document {
+fn layered(a: Option<PreparedSource<'_>>, b: Option<PreparedSource<'_>>, p: &Placement, style: &LayerStyle, roles: Roles) -> Document {
     compose_layered(a, b, p, style, roles, RegistrationNote::PLACED).expect("composes")
 }
 
@@ -72,8 +79,9 @@ fn layered(a: Option<Source<'_>>, b: Option<Source<'_>>, p: &Placement, style: &
 #[test]
 fn the_output_has_exactly_two_layers() {
     let (a, b) = two_pages();
+    let (pa, pb) = (prep(&a), prep(&b));
     let p = placement(&a, &b);
-    let out = written(&layered(Some(Source { doc: &a, page: 0 }), Some(Source { doc: &b, page: 0 }), &p, &LayerStyle::default(), Roles::default()));
+    let out = written(&layered(Some(pa.source(0).expect("page")), Some(pb.source(0).expect("page")), &p, &LayerStyle::default(), Roles::default()));
     let catalog = dict(&out, &Object::Ref(out.root().expect("catalog")));
     let props = dict(&out, catalog.get(b"OCProperties").expect("optional content properties"));
     let ocgs = refs(&out, props.get(b"OCGs"));
@@ -127,7 +135,10 @@ fn with_both_layers_on_the_page_is_ov3s_page_plus_the_markers() {
     let p = placement(&a, &b);
     let (sa, sb) = (Some(Source { doc: &a, page: 0 }), Some(Source { doc: &b, page: 0 }));
     let ov3 = written(&compose(sa, sb, &p, &Style::default()).expect("composes"));
-    let ov4 = written(&layered(sa, sb, &p, &LayerStyle::default(), Roles::default()));
+    let (pa, pb) = (prep(&a), prep(&b));
+    assert!(!pa.touched() && !pb.touched(), "no layers: copied unchanged");
+    assert!(!pa.doc().is_modified() && !pb.doc().is_modified(), "not a single object of the copies changed");
+    let ov4 = written(&layered(Some(pa.source(0).expect("page")), Some(pb.source(0).expect("page")), &p, &LayerStyle::default(), Roles::default()));
     let (p3, p4) = (page_dict(&ov3, 0), page_dict(&ov4, 0));
     let c3 = ops(&data(&ov3, p3.get(b"Contents").expect("contents")));
     let c4 = ops(&data(&ov4, p4.get(b"Contents").expect("contents")));
@@ -162,10 +173,11 @@ fn with_both_layers_on_the_page_is_ov3s_page_plus_the_markers() {
 #[test]
 fn roles_can_be_swapped_and_colours_follow_the_role() {
     let (a, b) = two_pages();
+    let (pa, pb) = (prep(&a), prep(&b));
     let p = placement(&a, &b);
     let rgb = |c: [u8; 3]| c.iter().map(|v| Object::Real(f64::from(*v) / 255.0)).collect::<Vec<_>>();
     for (roles, first, second) in [(Roles::default(), ("PCOld", RED), ("PCNew", CYAN)), (Roles::SWAPPED, ("PCNew", CYAN), ("PCOld", RED))] {
-        let out = written(&layered(Some(Source { doc: &a, page: 0 }), Some(Source { doc: &b, page: 0 }), &p, &LayerStyle::default(), roles));
+        let out = written(&layered(Some(pa.source(0).expect("page")), Some(pb.source(0).expect("page")), &p, &LayerStyle::default(), roles));
         let page = page_dict(&out, 0);
         let c = ops(&data(&out, page.get(b"Contents").expect("contents")));
         // A is drawn first (graphics state GA), as in OV3.
@@ -178,15 +190,15 @@ fn roles_can_be_swapped_and_colours_follow_the_role() {
     }
     // Colours chosen by the caller follow the role too.
     let style = LayerStyle { old: [10, 20, 30], new: [200, 210, 220], threshold: 1.0 };
-    let out = written(&layered(Some(Source { doc: &a, page: 0 }), Some(Source { doc: &b, page: 0 }), &p, &style, Roles::SWAPPED));
+    let out = written(&layered(Some(pa.source(0).expect("page")), Some(pb.source(0).expect("page")), &p, &style, Roles::SWAPPED));
     let c = ops(&data(&out, page_dict(&out, 0).get(b"Contents").expect("contents")));
     assert_eq!(c[3].1, rgb([200, 210, 220]), "A is New");
     assert_eq!(c[11].1, rgb([10, 20, 30]), "B is Old");
 
     for role in [Revision::Old, Revision::New] {
         let r = compose_layered(
-            Some(Source { doc: &a, page: 0 }),
-            Some(Source { doc: &b, page: 0 }),
+            Some(pa.source(0).expect("page")),
+            Some(pb.source(0).expect("page")),
             &p,
             &LayerStyle::default(),
             Roles { a: role, b: role },
@@ -200,9 +212,10 @@ fn roles_can_be_swapped_and_colours_follow_the_role() {
 #[test]
 fn a_blank_side_has_no_marker() {
     let (a, b) = two_pages();
+    let (pa, pb) = (prep(&a), prep(&b));
     let p = placement(&a, &b);
     for (one_a, marker) in [(true, "PCOld"), (false, "PCNew")] {
-        let (sa, sb) = if one_a { (Some(Source { doc: &a, page: 0 }), None) } else { (None, Some(Source { doc: &b, page: 0 })) };
+        let (sa, sb) = if one_a { (Some(pa.source(0).expect("page")), None) } else { (None, Some(pb.source(0).expect("page"))) };
         let out = written(&layered(sa, sb, &p, &LayerStyle::default(), Roles::default()));
         let page = page_dict(&out, 0);
         let properties = dict(&out, dict(&out, page.get(b"Resources").expect("resources")).get(b"Properties").expect("properties"));
@@ -224,6 +237,7 @@ fn a_blank_side_has_no_marker() {
 #[test]
 fn the_metadata_states_the_registration() {
     let (a, b) = two_pages();
+    let (pa, pb) = (prep(&a), prep(&b));
     let p = placement(&a, &b);
     let mut out = LayeredOutput::new().expect("output");
     let notes = [
@@ -233,7 +247,7 @@ fn the_metadata_states_the_registration() {
         RegistrationNote { kind: RegistrationKind::Matrix, rms_mm: None, max_mm: None },
     ];
     for n in notes {
-        out.add_page(Some(Source { doc: &a, page: 0 }), Some(Source { doc: &b, page: 0 }), &p, &LayerStyle::default(), Roles::default(), n)
+        out.add_page(Some(pa.source(0).expect("page")), Some(pb.source(0).expect("page")), &p, &LayerStyle::default(), Roles::default(), n)
             .expect("page");
     }
     let doc = written(&out.finish().expect("finishes"));
@@ -255,7 +269,7 @@ fn the_metadata_states_the_registration() {
 
     for bad in [f64::NAN, f64::INFINITY, -1.0] {
         let note = RegistrationNote { kind: RegistrationKind::Affine, rms_mm: Some(bad), max_mm: None };
-        let r = compose_layered(Some(Source { doc: &a, page: 0 }), None, &p, &LayerStyle::default(), Roles::default(), note);
+        let r = compose_layered(Some(pa.source(0).expect("page")), None, &p, &LayerStyle::default(), Roles::default(), note);
         assert!(matches!(r, Err(OverlayError::NotFinite { .. })), "{bad}");
     }
 }
@@ -264,11 +278,12 @@ fn the_metadata_states_the_registration() {
 #[test]
 fn a_failed_page_leaves_the_output_unchanged() {
     let (a, b) = two_pages();
+    let (pa, pb) = (prep(&a), prep(&b));
     let p = placement(&a, &b);
     let mut out = LayeredOutput::new().expect("output");
     out.add_page(
-        Some(Source { doc: &a, page: 0 }),
-        Some(Source { doc: &b, page: 0 }),
+        Some(pa.source(0).expect("page")),
+        Some(pb.source(0).expect("page")),
         &p,
         &LayerStyle::default(),
         Roles::default(),
@@ -279,8 +294,8 @@ fn a_failed_page_leaves_the_output_unchanged() {
     bad.b = Matrix([f64::NAN, 0.0, 0.0, 1.0, 0.0, 0.0]);
     assert!(
         out.add_page(
-            Some(Source { doc: &a, page: 0 }),
-            Some(Source { doc: &b, page: 0 }),
+            Some(pa.source(0).expect("page")),
+            Some(pb.source(0).expect("page")),
             &bad,
             &LayerStyle::default(),
             Roles::default(),
@@ -288,14 +303,15 @@ fn a_failed_page_leaves_the_output_unchanged() {
         )
         .is_err()
     );
-    assert!(out.add_page(Some(Source { doc: &a, page: 7 }), None, &p, &LayerStyle::default(), Roles::default(), RegistrationNote::PLACED).is_err());
+    assert_eq!(pa.source(7).err(), Some(OverlayError::NoSuchPage { page: 7, count: 1 }));
+    assert_eq!(prepare(&a, &[7], &Visibility::default()).err(), Some(OverlayError::NoSuchPage { page: 7, count: 1 }));
     assert_eq!(out.page_count(), 1);
     let before = synth::save(&out.finish().expect("finishes"), false);
     let mut again = LayeredOutput::new().expect("output");
     again
         .add_page(
-            Some(Source { doc: &a, page: 0 }),
-            Some(Source { doc: &b, page: 0 }),
+            Some(pa.source(0).expect("page")),
+            Some(pb.source(0).expect("page")),
             &p,
             &LayerStyle::default(),
             Roles::default(),
@@ -305,12 +321,13 @@ fn a_failed_page_leaves_the_output_unchanged() {
     assert_eq!(before, synth::save(&again.finish().expect("finishes"), false), "the same file as without the failed pages");
 }
 
-/// OV4.1 has no source preparation yet: a source with optional content or annotations is refused,
-/// never composed with its layers or annotations lost. A group the catalog doesn't declare is
-/// caught by the defensive check.
+/// Sources are prepared before they are composed: a source's own layers are resolved (here a
+/// layer off by default disappears), an undeclared layer is unresolved and refused with the item
+/// named, and a page with annotations is still refused until OV4.4 flattens them.
 #[test]
-fn unprepared_layers_and_annotations_are_refused() {
+fn sources_are_prepared_and_the_rest_refused() {
     let b = src(Page::new(300.0, 300.0, "0 g 10 10 50 50 re f"));
+    let pb = prep(&b);
     let layered_src = synth::open(&synth::raw_pdf(&[
         "<< /Type /Catalog /Pages 2 0 R /OCProperties << /OCGs [5 0 R] /D << /OFF [5 0 R] >> >> >>".into(),
         "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".into(),
@@ -332,31 +349,72 @@ fn unprepared_layers_and_annotations_are_refused() {
         synth::raw_stream("", "/OC /L BDC 1 0 0 rg 0 0 300 300 re f EMC"),
         "<< /Type /OCG /Name (Undeclared) >>".into(),
     ]));
-    for (doc, expect) in [(&layered_src, "optional content"), (&annotated, "annotations")] {
-        let p = placement(doc, &b);
-        match compose_layered(
-            Some(Source { doc, page: 0 }),
-            Some(Source { doc: &b, page: 0 }),
-            &p,
-            &LayerStyle::default(),
-            Roles::default(),
-            RegistrationNote::PLACED,
-        ) {
-            Err(OverlayError::Source { side: 'A', page: 0, reason }) => assert!(reason.contains(expect), "{reason}"),
-            other => panic!("expected a refusal: {other:?}"),
-        }
+
+    let p = placement(&layered_src, &b);
+    let prepared = prep(&layered_src);
+    let report = &prepared.reports()[0];
+    assert!(report.unresolved.is_empty() && report.hidden_blocks == 1, "{report:?}");
+    let out = compose_layered(
+        Some(prepared.source(0).expect("page")),
+        Some(pb.source(0).expect("page")),
+        &p,
+        &LayerStyle::default(),
+        Roles::default(),
+        RegistrationNote::PLACED,
+    )
+    .expect("composes");
+    assert!(check_output(&written(&out)).is_ok());
+    let forms: Vec<Vec<u8>> = out
+        .scan_objects()
+        .filter_map(|(_, o)| match &*o {
+            Object::Stream(s) if s.dict.name(b"Subtype") == Some(&b"Form"[..]) => s.decoded().ok(),
+            _ => None,
+        })
+        .collect();
+    assert!(forms.iter().all(|f| !f.windows(6).any(|w| w == b"1 0 0 r")), "the hidden red square isn't copied");
+
+    let p = placement(&annotated, &b);
+    let pa = prep(&annotated);
+    match compose_layered(
+        Some(pa.source(0).expect("page")),
+        Some(pb.source(0).expect("page")),
+        &p,
+        &LayerStyle::default(),
+        Roles::default(),
+        RegistrationNote::PLACED,
+    ) {
+        Err(OverlayError::Source { side: 'A', page: 0, reason }) => assert!(reason.contains("annotations"), "{reason}"),
+        other => panic!("expected a refusal: {other:?}"),
     }
+
     let p = placement(&undeclared, &b);
-    let r = compose_layered(Some(Source { doc: &undeclared, page: 0 }), None, &p, &LayerStyle::default(), Roles::default(), RegistrationNote::PLACED);
-    assert!(matches!(r, Err(OverlayError::Check { .. })), "{r:?}");
+    let pu = prep(&undeclared);
+    match compose_layered(
+        Some(pb.source(0).expect("page")),
+        Some(pu.source(0).expect("page")),
+        &p,
+        &LayerStyle::default(),
+        Roles::default(),
+        RegistrationNote::PLACED,
+    ) {
+        Err(OverlayError::Unresolved { a, b, .. }) => {
+            assert!(a.is_empty());
+            assert_eq!(b.len(), 1);
+            assert_eq!(b[0].rule, Rule::NotInOcgs);
+            assert_eq!(b[0].objects[0].1.as_deref(), Some("Undeclared"));
+            assert!(b[0].settleable);
+        }
+        other => panic!("expected the unresolved layer: {other:?}"),
+    }
 }
 
 /// The defensive check turns down every kind of leak or interactive content, each on its own.
 #[test]
 fn the_defensive_check_finds_every_leak() {
     let (a, b) = two_pages();
+    let (pa, pb) = (prep(&a), prep(&b));
     let p = placement(&a, &b);
-    let good = layered(Some(Source { doc: &a, page: 0 }), Some(Source { doc: &b, page: 0 }), &p, &LayerStyle::default(), Roles::default());
+    let good = layered(Some(pa.source(0).expect("page")), Some(pb.source(0).expect("page")), &p, &LayerStyle::default(), Roles::default());
     let groups = check_output(&good).expect("the good document passes");
     let page_ref = pdfcraft_model::pages(&good).first().expect("page").obj;
     let root = good.root().expect("catalog");
@@ -488,8 +546,9 @@ fn the_sources_are_not_modified() {
     let (bytes_a, bytes_b) =
         (synth::pdf(&[Page::new(612.0, 792.0, "0 g 1 1 10 10 re f")]), synth::pdf(&[Page::new(500.0, 700.0, "0 g 2 2 10 10 re f")]));
     let (a, b) = (synth::open(&bytes_a), synth::open(&bytes_b));
+    let (pa, pb) = (prep(&a), prep(&b));
     let p = placement(&a, &b);
-    let out = layered(Some(Source { doc: &a, page: 0 }), Some(Source { doc: &b, page: 0 }), &p, &LayerStyle::default(), Roles::SWAPPED);
+    let out = layered(Some(pa.source(0).expect("page")), Some(pb.source(0).expect("page")), &p, &LayerStyle::default(), Roles::SWAPPED);
     let _ = synth::save(&out, true);
     assert!(!a.is_modified() && !b.is_modified());
     assert_eq!(**a.bytes(), *bytes_a);
@@ -529,6 +588,9 @@ fn recompose(set: &Set, case: &Case, roles: Roles) -> Composed {
     let (a_doc, b_doc) = (synth::open(&set.a), synth::open(&set.b));
     let sa = case.a_page.map(|page| Source { doc: &a_doc, page });
     let sb = case.b_page.map(|page| Source { doc: &b_doc, page });
+    let (pa, pb) = (prep(&a_doc), prep(&b_doc));
+    let qa = case.a_page.map(|page| pa.source(page).expect("page"));
+    let qb = case.b_page.map(|page| pb.source(page).expect("page"));
     let style = LayerStyle {
         old: if roles.a == Revision::Old { case.style.colour_a } else { case.style.colour_b },
         new: if roles.a == Revision::Old { case.style.colour_b } else { case.style.colour_a },
@@ -536,14 +598,14 @@ fn recompose(set: &Set, case: &Case, roles: Roles) -> Composed {
     };
     let save = |d: Document| synth::save(&d, true);
     let ov3 = save(compose(sa, sb, &case.placement, &case.style).expect("OV3 composes"));
-    let layered_bytes = save(compose_layered(sa, sb, &case.placement, &style, roles, RegistrationNote::PLACED).expect("layered"));
-    let one = |a: Option<Source<'_>>, b: Option<Source<'_>>| {
+    let layered_bytes = save(compose_layered(qa, qb, &case.placement, &style, roles, RegistrationNote::PLACED).expect("layered"));
+    let one = |a: Option<PreparedSource<'_>>, b: Option<PreparedSource<'_>>| {
         (a.is_some() || b.is_some()).then(|| save(compose_layered(a, b, &case.placement, &style, roles, RegistrationNote::PLACED).expect("one side")))
     };
     let back = synth::open(&layered_bytes);
     let g = check_output(&back).expect("passes the check");
     let n = |r: ObjRef| (r.num as i32, i32::from(r.generation));
-    Composed { ov3, a_blank: one(None, sb), b_blank: one(sa, None), layered: layered_bytes, old: n(g.old), new: n(g.new) }
+    Composed { ov3, a_blank: one(None, qb), b_blank: one(qa, None), layered: layered_bytes, old: n(g.old), new: n(g.new) }
 }
 
 /// L2 and L4 for one family: with both layers on the layered page renders exactly as OV3's; with
@@ -638,17 +700,21 @@ fn hostile_layered_input_never_panics() {
     .map(synth::open)
     .chain([src(Page::new(100.0, 100.0, "0 g 1 1 10 10 re f"))])
     .collect();
+    let prepared: Vec<Prepared> = pool.iter().map(prep).collect();
     let mut rng = common::Rng(0x0154_0001);
     let (mut ok, mut err) = (0, 0);
     for _ in 0..2_000 {
         // The well-formed source half the time; a hostile one, a missing page or a blank otherwise.
         let pick = |rng: &mut common::Rng| match rng.next_u64() % 12 {
-            0 => None,
-            k @ 1..=4 => Some(Source { doc: &pool[k as usize - 1], page: 0 }),
-            5 => Some(Source { doc: &pool[4], page: 1 }),
-            _ => Some(Source { doc: &pool[4], page: 0 }),
+            0 => Ok(None),
+            k @ 1..=4 => prepared[k as usize - 1].source(0).map(Some),
+            5 => prepared[4].source(1).map(Some),
+            _ => prepared[4].source(0).map(Some),
         };
-        let (a, b) = (pick(&mut rng), pick(&mut rng));
+        let (Ok(a), Ok(b)) = (pick(&mut rng), pick(&mut rng)) else {
+            err += 1;
+            continue;
+        };
         let reference = &pool[4];
         let mut p = placement(reference, reference);
         if rng.next_u64().is_multiple_of(4) {

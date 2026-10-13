@@ -17,6 +17,7 @@ pub use composite::{CYAN, RED, Side, Source, Style, compose, compose_page, light
 pub use error::{OverlayError, Warning};
 pub use frame::{DisplayFrame, frame, frame_of, frame_of_page};
 pub use layers::{LayerGroups, LayerStyle, LayeredOutput, RegistrationKind, RegistrationNote, Revision, Roles, check_output, compose_layered};
+pub use oc::prepare::{PageReport, Prepared, PreparedSource, prepare};
 pub use oc::{Rule, Unresolved, Visibility};
 pub use place::{Placement, place};
 pub use register::{
