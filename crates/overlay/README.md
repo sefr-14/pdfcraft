@@ -123,6 +123,16 @@ Step 3 adds `composite`, which writes the overlay page:
 The wizard itself is `crates/ui-egui/src/overlay_ui.rs` (Overlay compare… on the toolbar, in All
 tools ▸ Compare files, and the command `doc.overlay`).
 
+Known limitation (R3, pre-existing; recorded at the upstream 0.8.0 sync, not fixed): a source
+page's resources are taken as one dictionary, its own `/Resources` or else its nearest page-tree
+ancestor's, both by `pdfcraft_organize::page_as_form`, which `composite` uses to copy the page,
+and by the OV4 walker. A page that has its own `/Resources` but relies on an ancestor for some
+fonts, XObjects or other named resources shows them in PdfCraft's display, whose renderer looks
+names up the tree, yet can lose them in the overlay: lines, text or symbols the source tab shows
+may be missing. Upstream 0.8.0 (da9cefa) merges such ancestor-only names when pages are imported,
+not in `page_as_form`. Engineering drawing sets are where this matters most; compare an overlay
+with its sources, and report a page where something is missing.
+
 Conventions: points (1/72 in), y up, origin at the displayed sheet's lower-left corner;
 matrices in PDF order `[a b c d e f]` (`pdfcraft_content::Matrix`); rotation counter-clockwise
 in radians; f64 throughout; every input checked to be finite. Nothing here panics on any input.
