@@ -144,11 +144,11 @@ pub enum Note {
     /// it as written: it can only leave more groups unresolved, never show more than the source's
     /// tab (OV4.7, F7).
     ConfigurationIntent { intents: Vec<String> },
-    /// Content marked `/OC /Name BDC` with a name the resources don't define (seen in Bluebeam
-    /// output, often in files without any layer configuration). It names no group or membership
-    /// dictionary, so it isn't optional content (ISO 32000-1 §8.11.3.2; without `/OCProperties`,
-    /// §8.11.4.2 has readers ignore optional content altogether), and viewers, PdfCraft's display
-    /// included, show it. It is shown.
+    /// Content marked `/OC /Name BDC` with a name neither the stream's resources nor any resources
+    /// around it define (OV4.9; seen in Bluebeam output, often in files without any layer
+    /// configuration). It names no group or membership dictionary, so it isn't optional content
+    /// (ISO 32000-1 §8.11.3.2; without `/OCProperties`, §8.11.4.2 has readers ignore optional
+    /// content altogether), and viewers, PdfCraft's display included, show it. It is shown.
     UndefinedMarker,
 }
 

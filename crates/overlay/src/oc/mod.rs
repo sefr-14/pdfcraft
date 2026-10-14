@@ -77,9 +77,14 @@ pub enum Rule {
     Inline,
     /// Nested past the limit, or a cycle, while following references.
     TooDeep,
-    /// A marker names a property the stream's resources don't define. No longer raised: such a
-    /// block isn't optional content and is shown, with a note (`Note::UndefinedMarker`, found
-    /// on real Bluebeam drawing sets).
+    /// A marker names a property its stream's own resources don't define, and a resource
+    /// dictionary around the stream (of a stream or page drawing it, or of the page's ancestors in
+    /// the page tree) defines the name as a layer that is off or can't be decided (OV4.9). The
+    /// standard doesn't apply that dictionary to the stream, but some renderers look names up
+    /// there (Poppler 24.02 hides such content; PdfCraft's display shows it), so viewers would
+    /// disagree on whether it is hidden, and under the conservative source-visibility policy it
+    /// isn't decided. A name defined nowhere is shown, with a note (`Note::UndefinedMarker`,
+    /// OV4.8, found on real Bluebeam drawing sets).
     UnknownProperty,
     /// A content stream that has to be checked or rewritten can't be decoded, or the parser
     /// skipped bytes in it.
@@ -137,7 +142,9 @@ impl Rule {
             Rule::NotOptionalContent => "content is marked with something that isn't a layer",
             Rule::Inline => "a layer is written inline, so nothing can name it",
             Rule::TooDeep => "layer references nest too deeply or loop",
-            Rule::UnknownProperty => "content is marked with a layer name the page doesn't define",
+            Rule::UnknownProperty => {
+                "content is marked with a layer name its own resources don't define, but a surrounding page or drawing defines it as a layer that is off or undecided, so viewers may disagree on whether it shows"
+            }
             Rule::Unreadable => "a content stream with layers can't be read completely",
             Rule::Unbalanced => "layer markers don't balance",
             Rule::HiddenBlockCrossesStructure => "hidden content starts or ends inside a graphics-state group or text object",

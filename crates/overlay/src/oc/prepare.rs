@@ -195,6 +195,8 @@ pub fn prepare(doc: &Document, pages: &[usize], visibility: &Visibility) -> Resu
         ev: Evaluator::new(doc, visibility),
         copy: doc.clone(),
         prune: touched,
+        layered: has_oc,
+        surrounding: Vec::new(),
         strip_oc: HashSet::new(),
         done: HashMap::new(),
         active: Vec::new(),
@@ -295,6 +297,9 @@ struct Tally {
     annotations: Vec<AnnotationEntry>,
     /// Annotations that can't be drawn faithfully: (rule, the annotation, its label, detail).
     annotation_items: Vec<(Rule, Option<ObjRef>, String, Option<String>)>,
+    /// Marker names the streams' own resources don't define (OV4.8, OV4.9), from the stream and
+    /// everything it draws.
+    undefined: Vec<Vec<u8>>,
 }
 
 impl Tally {
@@ -308,6 +313,15 @@ impl Tally {
         self.markers_removed = self.markers_removed.saturating_add(plan.markers_removed);
         self.kept_state = self.kept_state.saturating_add(plan.kept_state);
         self.kept_clips = self.kept_clips.saturating_add(plan.kept_clips);
+        self.add_undefined(&plan.undefined);
+    }
+
+    fn add_undefined(&mut self, names: &[Vec<u8>]) {
+        for n in names {
+            if !self.undefined.contains(n) {
+                self.undefined.push(n.clone());
+            }
+        }
     }
 
     /// Add the findings of a stream drawn on this page. `again`: the stream was resolved and
@@ -322,6 +336,7 @@ impl Tally {
         self.markers_removed = self.markers_removed.saturating_add(other.markers_removed);
         self.kept_state = self.kept_state.saturating_add(other.kept_state);
         self.kept_clips = self.kept_clips.saturating_add(other.kept_clips);
+        self.add_undefined(&other.undefined);
         if !again {
             self.streams_rewritten = self.streams_rewritten.saturating_add(other.streams_rewritten);
             self.resources_removed = self.resources_removed.saturating_add(other.resources_removed);
@@ -382,6 +397,10 @@ impl Tally {
 struct Done {
     /// The resources it was resolved with, when it has none of its own.
     inherited: Option<Dict>,
+    /// The surrounding resource dictionaries it was resolved under (`Names::surrounding`), when it
+    /// or a stream it draws has a marker name its own resources don't define, in a document with
+    /// `/OCProperties` (OV4.9); otherwise empty.
+    context: Vec<Dict>,
     /// Its rewritten data (`None`: unchanged).
     data: Option<Vec<u8>>,
     /// The names its kept content uses from those resources.
@@ -405,6 +424,13 @@ struct Walker<'a> {
     copy: Document,
     /// Whether resources are pruned (the document uses optional content).
     prune: bool,
+    /// Whether the document has `/OCProperties`: only then are surrounding resource dictionaries
+    /// read for undefined marker names (OV4.9).
+    layered: bool,
+    /// The resource dictionaries around the stream being resolved that the standard doesn't apply
+    /// to it, innermost last (`Names::surrounding`): the page's ancestors' in the page tree, then
+    /// the page's and those of the streams drawing it. Empty unless `layered`.
+    surrounding: Vec<Dict>,
     /// XObjects drawn visibly whose `/OC` is removed from the copy.
     strip_oc: HashSet<ObjRef>,
     done: HashMap<ObjRef, Done>,
@@ -435,6 +461,7 @@ impl Walker<'_> {
     fn page(&mut self, obj: ObjRef, dict: &Dict, t: &mut Tally) {
         let src = self.src;
         let resources = dict.get(b"Resources").and_then(|r| src.dict(r)).unwrap_or_default();
+        self.surrounding = if self.layered { ancestor_resources(src, dict) } else { Vec::new() };
         let list: Vec<Object> = match dict.get(b"Contents").map(|c| src.resolve(c)).as_deref() {
             Some(Object::Array(a)) => a.clone(),
             Some(_) => dict.get(b"Contents").cloned().into_iter().collect(),
@@ -827,8 +854,8 @@ impl Walker<'_> {
     fn content(&mut self, data: &[u8], resources: &Dict, inherits: bool, depth: usize, t: &mut Tally) -> (Option<Vec<u8>>, Uses) {
         let src = self.src;
         let parsed = parse(data);
-        let names = Names { doc: src, resources };
-        let plan = resolve::plan(&parsed.ops, parsed.skipped, &names, &mut self.ev, inherits);
+        let plan = resolve::plan(&parsed.ops, parsed.skipped, &Names { doc: src, resources, surrounding: &self.surrounding }, &mut self.ev, inherits);
+        let names = Names { doc: src, resources, surrounding: &[] };
         t.absorb(&plan);
         self.strip_oc.extend(plan.visible_oc_xobjects.iter().copied());
         let mut uses = plan.uses.clone();
@@ -911,17 +938,24 @@ impl Walker<'_> {
             Kind::Glyph(font) => (font, true),
         };
         if let Some(done) = self.done.get(&r) {
-            match (&done.inherited, own.is_some()) {
-                (_, true) => {
-                    t.merge(&done.findings, true);
-                    return;
-                }
-                (Some(before), false) if before == inherited => {
-                    t.merge(&done.findings, true);
+            let reuse = match (&done.inherited, own.is_some()) {
+                (_, true) => true,
+                (Some(before), false) => before == inherited,
+                (None, false) => false,
+            };
+            // OV4.9: whether content under an undefined marker name may be shown depends on the
+            // surrounding resources, so a stream with such a name (or drawing one) is reused only
+            // under the same surroundings and resolved again anywhere else: a result cached in one
+            // place never stands in for the check in another.
+            let same_surroundings = !self.layered
+                || done.findings.undefined.is_empty()
+                || done.context.split_last().is_some_and(|(last, around)| last == inherited && around == self.surrounding.as_slice());
+            if reuse && same_surroundings {
+                t.merge(&done.findings, true);
+                if own.is_none() {
                     parent.extend(&done.uses);
-                    return;
                 }
-                _ => {}
+                return;
             }
         }
         self.visits = self.visits.saturating_add(1);
@@ -939,7 +973,15 @@ impl Walker<'_> {
         let resources = own.clone().unwrap_or_else(|| inherited.clone());
         let mut sub = Tally::default();
         self.active.push(r);
+        // The drawing stream's resources surround this one (OV4.9).
+        if self.layered {
+            self.surrounding.push(inherited.clone());
+        }
         let (new, uses) = self.content(&data, &resources, true, depth, &mut sub);
+        let context = if self.layered && !sub.undefined.is_empty() { self.surrounding.clone() } else { Vec::new() };
+        if self.layered {
+            self.surrounding.pop();
+        }
         self.active.pop();
         if own.is_none() {
             parent.extend(&uses);
@@ -975,7 +1017,7 @@ impl Walker<'_> {
             }
         }
         t.merge(&sub, false);
-        self.done.insert(r, Done { inherited: own.is_none().then(|| inherited.clone()), data: new, uses, findings: sub });
+        self.done.insert(r, Done { inherited: own.is_none().then(|| inherited.clone()), context, data: new, uses, findings: sub });
     }
 
     /// Remove `/OC` from the XObjects drawn visibly.
@@ -988,6 +1030,27 @@ impl Walker<'_> {
             }
         }
     }
+}
+
+/// The `/Resources` of `page`'s ancestors in the page tree, innermost last, following `/Parent`
+/// at most `MAX_NESTING` levels and never through the same node twice.
+fn ancestor_resources(src: &Document, page: &Dict) -> Vec<Dict> {
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+    let mut next = page.get(b"Parent").and_then(Object::as_ref);
+    for _ in 0..MAX_NESTING {
+        let Some(r) = next else { break };
+        if !seen.insert(r) {
+            break;
+        }
+        let Some(node) = src.dict(&Object::Ref(r)) else { break };
+        if let Some(res) = node.get(b"Resources").and_then(|x| src.dict(x)) {
+            out.push(res);
+        }
+        next = node.get(b"Parent").and_then(Object::as_ref);
+    }
+    out.reverse();
+    out
 }
 
 /// Whether the page's resources are rewritten: pruned (a document with layers), or extended with

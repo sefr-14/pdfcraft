@@ -65,6 +65,14 @@ Step 3 adds `composite`, which writes the overlay page:
   visible content, unreadable streams, forms nested too deep or used with different resources) is
   reported per page as `Unresolved`, and `LayeredOutput::add_page` refuses the page with every
   item of both documents. A document without layers or decisions is copied unchanged.
+  A marker naming a property its stream's own resources don't define isn't optional content
+  under the standard and is shown, as PdfCraft's display shows it, with a note (OV4.8, found on
+  Bluebeam sets). In a document with `/OCProperties`, a name that a surrounding resource
+  dictionary (of a form or page drawing the stream, or of the page's ancestors) defines as a
+  layer that is off or can't be decided leaves the page unresolved instead (OV4.9): the standard
+  doesn't apply that dictionary to the stream, but some renderers look names up there (Poppler
+  24.02 does, PdfCraft's display doesn't), so viewers would disagree on whether it is hidden. A
+  form reused under other surroundings is decided again there.
 - `annotations` (step 4, OV4.4): preparation draws each page's annotations into its content as
   the source shows them, after the page's content (closing any graphics states it leaves open),
   and the page keeps none. The normal appearance (the `/AS` state of a state dictionary) is

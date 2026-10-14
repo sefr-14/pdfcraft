@@ -10,8 +10,12 @@
 //!   with `n`; every other operator goes with the block. Nested blocks are visible only if every
 //!   enclosing block is (PDF Reference 1.7, §4.10.2).
 //! - An XObject with `/OC` that is hidden loses every `Do` that draws it.
+//! - A marker naming a property the stream's own resources don't define isn't optional content
+//!   under the standard and is shown (OV4.8), unless a surrounding resource dictionary defines
+//!   the name as a layer that is off or can't be decided: some viewers look names up there, so
+//!   viewers would disagree, and the stream is unresolved (OV4.9).
 //! - Anything that can't be decided is unresolved: a marker or XObject whose visibility the
-//!   evaluator can't resolve, a marker whose property is missing or written inline, unbalanced
+//!   evaluator can't resolve, a marker whose property is written inline, unbalanced
 //!   marked content, a hidden block that a graphics-state save or restore, a text object or a path
 //!   crosses, hidden text that changes where visible text goes, hidden text that may clip later
 //!   content, or a stream the parser couldn't read completely.
@@ -32,7 +36,17 @@ use super::eval::{Evaluator, Note, Problem};
 /// A stream's named resources.
 pub(crate) struct Names<'a> {
     pub doc: &'a Document,
+    /// The stream's resources as the standard applies them: its own `/Resources`, else those it
+    /// inherits (a form, glyph or pattern without resources uses the drawing stream's; a page
+    /// without them, its nearest ancestor's, taken whole).
     pub resources: &'a Dict,
+    /// Resource dictionaries around the stream that the standard doesn't apply to it, innermost
+    /// last: those of the page's ancestors in the page tree, the page's, and those of the streams
+    /// drawing it. Some renderers still look marker names up in them (Poppler 24.02 follows the
+    /// drawing chain; PdfCraft's display doesn't), so they are read only to find where viewers
+    /// would disagree (OV4.9), never as the stream's resources. Empty in a file without
+    /// `/OCProperties`.
+    pub surrounding: &'a [Dict],
 }
 
 impl Names<'_> {
@@ -40,6 +54,27 @@ impl Names<'_> {
     pub fn entry(&self, cat: &[u8], name: &[u8]) -> Option<Object> {
         self.resources.get(cat).and_then(|c| self.doc.dict(c)).and_then(|d| d.get(name).cloned())
     }
+}
+
+/// OV4.9: an `/OC` marker `name` that the stream's own resources don't define. Under the standard
+/// it names no layer, so its content is shown (OV4.8). A renderer that looks the name up in the
+/// surrounding resource dictionaries finds whatever they define instead: where every such
+/// definition is a layer that is on, viewers agree and it is shown (`Ok` with how many there
+/// were; none is the Bluebeam case OV4.8 was made for). Where one is off or can't be decided,
+/// viewers would disagree on whether the content is hidden, so under the conservative
+/// source-visibility policy (O13) it is unresolved: `Rule::UnknownProperty`, naming the object,
+/// which no decision settles. The surrounding dictionary isn't taken as authoritative; the
+/// disagreement is the reason.
+pub(crate) fn undefined_marker(doc: &Document, surrounding: &[Dict], name: &[u8], ev: &mut Evaluator<'_>) -> Result<usize, Problem> {
+    let mut found = 0usize;
+    for res in surrounding.iter().rev() {
+        let Some(o) = res.get(b"Properties").and_then(|c| doc.dict(c)).and_then(|d| d.get(name).cloned()) else { continue };
+        found = found.saturating_add(1);
+        if ev.visibility(&o).visible != Some(true) {
+            return Err(Problem { objects: o.as_ref().into_iter().collect(), rule: Rule::UnknownProperty, settleable: false });
+        }
+    }
+    Ok(found)
 }
 
 /// One edit to a content stream, by operator index.
@@ -84,6 +119,10 @@ pub(crate) struct Plan {
     pub optional: bool,
     /// Optional-content objects the stream refers to, with their resolved visibility.
     pub seen: Vec<(ObjRef, Option<bool>)>,
+    /// Marker names its own resources don't define (OV4.8, OV4.9). Whether their content may be
+    /// shown depends on the surrounding resources, so a stream drawn again under others is
+    /// resolved again.
+    pub undefined: Vec<Vec<u8>>,
     pub hidden_blocks: usize,
     pub kept_state: usize,
     /// Clipping paths kept from hidden blocks.
@@ -337,10 +376,21 @@ pub(crate) fn plan(ops: &[Op], skipped: usize, names: &Names<'_>, ev: &mut Evalu
                         }
                         // A name the resources don't define names no group or membership
                         // dictionary, so the block isn't optional content (ISO 32000-1
-                        // §8.11.3.2) and every viewer shows it, PdfCraft's display included.
-                        // Its marker is removed like a visible layer's, with a note.
-                        (None, Some(Object::Name(_))) => {
-                            ev.note(Note::UndefinedMarker);
+                        // §8.11.3.2) and PdfCraft's display shows it: its marker is removed like
+                        // a visible layer's, with a note. Where a surrounding resource dictionary
+                        // defines the name as a layer that is off or can't be decided, viewers
+                        // would disagree, so the stream is unresolved as well (OV4.9,
+                        // `undefined_marker`). The edit is the same either way, so a stream drawn
+                        // in several places is rewritten once and only the finding differs.
+                        (None, Some(Object::Name(n))) => {
+                            match undefined_marker(names.doc, names.surrounding, n, ev) {
+                                Ok(0) => ev.note(Note::UndefinedMarker),
+                                Ok(_) => {}
+                                Err(problem) => plan.problems.push(problem),
+                            }
+                            if !plan.undefined.contains(n) {
+                                plan.undefined.push(n.clone());
+                            }
                             Vis::On
                         }
                         (None, _) => {

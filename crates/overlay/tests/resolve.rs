@@ -446,6 +446,325 @@ fn structural_conditions_are_unresolved() {
     );
 }
 
+// ── OV4.9: marker names a stream's own resources don't define ───────────────────────────────
+
+/// A fill that has to stay visible, and its colour operator as it is copied.
+const KEEP: &str = "0.2 0.4 0.6 rg 50 50 20 20 re f";
+const KEEP_COLOUR: &[u8] = b"0.2 0.4 0.6 rg";
+/// A catalog whose default configuration hides the group, object 4.
+const HIDES_4: &str = "<< /Type /Catalog /Pages 2 0 R /OCProperties << /OCGs [4 0 R] /D << /OFF [4 0 R] >> >> >>";
+/// A catalog whose default configuration shows it.
+const SHOWS_4: &str = "<< /Type /Catalog /Pages 2 0 R /OCProperties << /OCGs [4 0 R] /D << >> >> >>";
+const GROUP: &str = "<< /Type /OCG /Name (Layer) >>";
+const ONE_PAGE: &str = "<< /Type /Pages /Kids [3 0 R] /Count 1 >>";
+
+/// Fills a box in the canary colour.
+fn canary() -> String {
+    format!("{CANARY_OPERANDS} rg 10 10 30 30 re f")
+}
+
+/// Page object 3: a 100 × 100 page with `entries` (its resources, annotations) drawing object 5.
+fn page3(entries: &str) -> String {
+    format!("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] {entries} /Contents 5 0 R >>")
+}
+
+fn form(dict: &str, content: &str) -> String {
+    synth::raw_stream(&format!("/Type /XObject /Subtype /Form /BBox [0 0 100 100] {dict}"), content)
+}
+
+fn drawn(doc: &Document, needle: &[u8]) -> bool {
+    doc.scan_objects().any(|(_, o)| matches!(&*o, Object::Stream(s) if s.decoded().is_ok_and(|d| contains(&d, needle))))
+}
+
+fn prepare_raw(objects: &[String], pages: &[usize]) -> (Document, Prepared) {
+    let doc = synth::open(&synth::raw_pdf(objects));
+    let prepared = prepare(&doc, pages, &Visibility::default()).expect("prepares");
+    assert!(!doc.is_modified(), "the source is only read");
+    (doc, prepared)
+}
+
+fn layered_page(prepared: &Prepared, page: usize, p: &Placement) -> Result<Document, OverlayError> {
+    compose_layered(Some(prepared.source(page)?), None, p, &LayerStyle::default(), Roles::default(), RegistrationNote::PLACED)
+}
+
+/// Page `page` resolves, and its overlay keeps the visible fill and carries no canary: not in the
+/// overlay's streams, and not in the pixels of the prepared page.
+fn resolves(what: &str, prepared: &Prepared, doc: &Document, page: usize) {
+    let report = prepared.reports().iter().find(|r| r.page == page).expect("report");
+    assert!(report.unresolved.is_empty(), "{what}: {:?}", report.unresolved);
+    let out = layered_page(prepared, page, &placement(doc)).unwrap_or_else(|e| panic!("{what}: {e}"));
+    let bytes = synth::save(&out, true);
+    let back = synth::open(&bytes);
+    assert!(check_output(&back).is_ok(), "{what}");
+    no_canary(&back, what);
+    assert!(drawn(&back, KEEP_COLOUR), "{what}: the visible fill is missing");
+    if page == 0 {
+        no_canary_pixel(&render(&synth::save(prepared.doc(), true), 72.0), what);
+    }
+}
+
+/// Page `page` is unresolved with `UnknownProperty` alone, naming `object`, which no decision
+/// settles, and no overlay is made from it.
+fn refused(what: &str, prepared: &Prepared, doc: &Document, page: usize, object: ObjRef) {
+    let report = prepared.reports().iter().find(|r| r.page == page).expect("report");
+    let u = &report.unresolved;
+    assert_eq!(u.iter().map(|u| (u.rule, u.settleable)).collect::<Vec<_>>(), [(Rule::UnknownProperty, false)], "{what}: {u:?}");
+    assert_eq!(u[0].objects.iter().map(|o| o.0).collect::<Vec<_>>(), [object], "{what}");
+    assert!(layered_page(prepared, page, &placement(doc)).is_err(), "{what}: an overlay was made");
+}
+
+/// The targeted check for OV4.8's relaxation (content under an `/OC` name the stream's own
+/// resources don't define is shown, as PdfCraft's display shows it): no layer that is hidden
+/// through a valid, resolvable optional-content relationship becomes visible through it, and a
+/// name a surrounding page or drawing defines as a hidden or undecidable layer (OV4.9) is
+/// unresolved, because viewers disagree there.
+///
+/// Limits of this check:
+/// - It checks the resolver on small synthetic files, in the overlay's own output and in
+///   PdfCraft's rendering of the prepared page; it is not a cross-renderer proof.
+/// - The viewer disagreement behind OV4.9 rests on one black-box observation of Poppler 24.02
+///   (it looks marker names up through the forms and the page that draw a stream; PdfCraft's
+///   display doesn't). pdf.js, PDFium and Acrobat weren't observed for these files, and no viewer
+///   is taken as correct: the refusal follows from the disagreement and the conservative
+///   source-visibility policy, not from the surrounding dictionary being authoritative.
+/// - The surrounding dictionaries read are those of the streams and page drawing a stream and of
+///   the page's ancestors in the page tree; names reachable any other way aren't looked for.
+/// - Inline property lists after `/OC` stay unresolved (`Rule::Inline`), and markers whose
+///   resources define the name are decided by the evaluator as before (its own tests).
+/// - Judging by the vendored renderer's code (not rendered here), PdfCraft's display also shows
+///   content in a form without resources, or on a page without resources, whose inherited
+///   `/Properties` hide it; the overlay hides it, as the standard says, so there the output shows
+///   less than the source's tab.
+#[test]
+fn undefined_marker_names_never_show_a_hidden_layer() {
+    let c = canary();
+    let page_hides = "/Resources << /Properties << /MC0 4 0 R >> >>";
+    let simple = |entries: &str, content: String| -> Vec<String> {
+        vec![HIDES_4.into(), ONE_PAGE.into(), page3(entries), GROUP.into(), synth::raw_stream("", &content)]
+    };
+
+    // Hidden through valid relationships, beside or around undefined names.
+    let cases: Vec<(&str, Vec<String>)> = vec![
+        ("an undefined name beside a hidden layer", simple(page_hides, format!("/OC /MC0 BDC {c} EMC /OC /Nope BDC {KEEP} EMC"))),
+        ("an undefined marker around a hidden one", simple(page_hides, format!("/OC /Nope BDC /OC /MC0 BDC {c} EMC {KEEP} EMC"))),
+        ("a hidden marker around an undefined one", simple(page_hides, format!("/OC /MC0 BDC /OC /Nope BDC {c} EMC EMC {KEEP}"))),
+        (
+            "a page inheriting all its resources",
+            vec![
+                HIDES_4.into(),
+                "<< /Type /Pages /Kids [3 0 R] /Count 1 /Resources << /Properties << /MC0 4 0 R >> >> >>".into(),
+                page3(""),
+                GROUP.into(),
+                synth::raw_stream("", &format!("/OC /MC0 BDC {c} EMC {KEEP}")),
+            ],
+        ),
+        (
+            "a form without resources, inheriting the page's",
+            vec![
+                HIDES_4.into(),
+                ONE_PAGE.into(),
+                page3("/Resources << /Properties << /MC0 4 0 R >> /XObject << /F 6 0 R >> >>"),
+                GROUP.into(),
+                synth::raw_stream("", &format!("/F Do {KEEP}")),
+                form("", &format!("/OC /MC0 BDC {c} EMC")),
+            ],
+        ),
+        (
+            "a form's own layer, beside an undefined name",
+            vec![
+                HIDES_4.into(),
+                ONE_PAGE.into(),
+                page3("/Resources << /XObject << /F 6 0 R >> >>"),
+                GROUP.into(),
+                synth::raw_stream("", "/F Do"),
+                form("/Resources << /Properties << /MC0 4 0 R >> >>", &format!("/OC /MC0 BDC {c} EMC /OC /Nope BDC {KEEP} EMC")),
+            ],
+        ),
+        (
+            "a hidden form with an undefined marker inside",
+            vec![
+                HIDES_4.into(),
+                ONE_PAGE.into(),
+                page3("/Resources << /XObject << /F 6 0 R >> >>"),
+                GROUP.into(),
+                synth::raw_stream("", &format!("/F Do {KEEP}")),
+                form("/OC 4 0 R /Resources << >>", &format!("/OC /Nope BDC {c} EMC")),
+            ],
+        ),
+        (
+            "properties given by reference",
+            vec![
+                HIDES_4.into(),
+                ONE_PAGE.into(),
+                page3("/Resources << /Properties 6 0 R >>"),
+                GROUP.into(),
+                synth::raw_stream("", &format!("/OC /MC0 BDC {c} EMC /OC /Nope BDC {KEEP} EMC")),
+                "<< /MC0 4 0 R >>".into(),
+            ],
+        ),
+    ];
+    for (what, objects) in &cases {
+        let (doc, prepared) = prepare_raw(objects, &[0]);
+        resolves(what, &prepared, &doc, 0);
+    }
+
+    // A name the stream's own resources don't define, which a surrounding page or drawing defines
+    // as a hidden or undecidable layer: viewers disagree, so it is unresolved.
+    let cases: Vec<(&str, Vec<String>, u32)> = vec![
+        (
+            "a form with its own resources on a page that hides the name",
+            vec![
+                HIDES_4.into(),
+                ONE_PAGE.into(),
+                page3("/Resources << /Properties << /MC0 4 0 R >> /XObject << /F 6 0 R >> >>"),
+                GROUP.into(),
+                synth::raw_stream("", &format!("/F Do {KEEP}")),
+                form("/Resources << /ProcSet [/PDF] >>", &format!("/OC /MC0 BDC {c} EMC")),
+            ],
+            4,
+        ),
+        (
+            "a form in a form on a page that hides the name",
+            vec![
+                HIDES_4.into(),
+                ONE_PAGE.into(),
+                page3("/Resources << /Properties << /MC0 4 0 R >> /XObject << /F 6 0 R >> >>"),
+                GROUP.into(),
+                synth::raw_stream("", &format!("/F Do {KEEP}")),
+                form("/Resources << /XObject << /G 7 0 R >> >>", "/G Do"),
+                form("/Resources << >>", &format!("/OC /MC0 BDC {c} EMC")),
+            ],
+            4,
+        ),
+        (
+            "a page with its own resources whose ancestor hides the name",
+            vec![
+                HIDES_4.into(),
+                "<< /Type /Pages /Kids [3 0 R] /Count 1 /Resources << /Properties << /MC0 4 0 R >> >> >>".into(),
+                page3("/Resources << /ProcSet [/PDF] >>"),
+                GROUP.into(),
+                synth::raw_stream("", &format!("/OC /MC0 BDC {c} EMC {KEEP}")),
+            ],
+            4,
+        ),
+        (
+            "an annotation's appearance on a page that hides the name",
+            vec![
+                HIDES_4.into(),
+                ONE_PAGE.into(),
+                page3("/Resources << /Properties << /MC0 4 0 R >> >> /Annots [6 0 R]"),
+                GROUP.into(),
+                synth::raw_stream("", KEEP),
+                "<< /Type /Annot /Subtype /Square /Rect [10 10 60 60] /F 4 /AP << /N 7 0 R >> >>".into(),
+                synth::raw_stream("/Type /XObject /Subtype /Form /BBox [0 0 50 50] /Resources << >>", &format!("/OC /MC0 BDC {c} EMC")),
+            ],
+            4,
+        ),
+        (
+            "a page that defines the name as a membership no one can decide",
+            vec![
+                SHOWS_4.into(),
+                ONE_PAGE.into(),
+                page3("/Resources << /Properties << /MC0 6 0 R >> /XObject << /F 7 0 R >> >>"),
+                GROUP.into(),
+                synth::raw_stream("", &format!("/F Do {KEEP}")),
+                "<< /Type /OCMD /OCGs [4 0 R] /P /Bogus >>".into(),
+                form("/Resources << >>", &format!("/OC /MC0 BDC {c} EMC")),
+            ],
+            6,
+        ),
+    ];
+    for (what, objects, object) in &cases {
+        let (doc, prepared) = prepare_raw(objects, &[0]);
+        refused(what, &prepared, &doc, 0, r(*object));
+    }
+
+    // Shown, as viewers agree: a name defined nowhere (OV4.8, with its note), one a surrounding
+    // page defines as a layer that is on, and one in a file without layers.
+    let on_page = |catalog: &str| -> Vec<String> {
+        vec![
+            catalog.into(),
+            ONE_PAGE.into(),
+            page3("/Resources << /Properties << /MC0 4 0 R >> /XObject << /F 6 0 R >> >>"),
+            GROUP.into(),
+            synth::raw_stream("", "/F Do"),
+            form("/Resources << >>", &format!("/OC /MC0 BDC {KEEP} EMC")),
+        ]
+    };
+    let nowhere: Vec<String> = vec![
+        HIDES_4.into(),
+        ONE_PAGE.into(),
+        page3("/Resources << /XObject << /F 6 0 R >> >>"),
+        GROUP.into(),
+        synth::raw_stream("", "/F Do"),
+        form("/Resources << >>", &format!("/OC /MC0 BDC {KEEP} EMC")),
+    ];
+    for (what, objects, note) in
+        [("a name defined nowhere", nowhere, true), ("a name a surrounding page defines as a layer that is on", on_page(SHOWS_4), false)]
+    {
+        let (doc, prepared) = prepare_raw(&objects, &[0]);
+        resolves(what, &prepared, &doc, 0);
+        assert_eq!(prepared.notes().contains(&Note::UndefinedMarker), note, "{what}: {:?}", prepared.notes());
+    }
+    // Without `/OCProperties` the surroundings aren't read: the page resolves with the note. (No
+    // overlay is made of this file, but not because of the marker: nothing is pruned in a file
+    // without layers, so the page's resources still carry the group, and the defensive check
+    // refuses an output with any layer but Old and New.)
+    let (_, prepared) = prepare_raw(&on_page("<< /Type /Catalog /Pages 2 0 R >>"), &[0]);
+    assert!(prepared.reports()[0].unresolved.is_empty(), "{:?}", prepared.reports()[0].unresolved);
+    assert!(prepared.notes().contains(&Note::UndefinedMarker));
+    assert!(drawn(prepared.doc(), KEEP_COLOUR));
+}
+
+/// A form is resolved once and reused wherever it is drawn, but whether content under a name its
+/// own resources don't define may be shown depends on where it is drawn (OV4.9). The same form
+/// drawn under different surrounding resources is decided in each place, whichever comes first.
+#[test]
+fn a_reused_form_is_decided_where_it_is_drawn() {
+    let shared = form("/Resources << /ProcSet [/PDF] >>", &format!("/OC /MC0 BDC {KEEP} EMC"));
+    // Two pages draw the form: object 3 doesn't define the name, object 8 hides it.
+    for kids in ["[3 0 R 8 0 R]", "[8 0 R 3 0 R]"] {
+        let objects = vec![
+            HIDES_4.into(),
+            format!("<< /Type /Pages /Kids {kids} /Count 2 >>"),
+            page3("/Resources << /XObject << /F 6 0 R >> >>"),
+            GROUP.into(),
+            synth::raw_stream("", "/F Do"),
+            shared.clone(),
+            synth::raw_stream("", "/F Do"),
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] /Resources << /Properties << /MC0 4 0 R >> /XObject << /F 6 0 R >> >> /Contents 7 0 R >>"
+                .into(),
+        ];
+        let (plain, hiding) = if kids.starts_with("[3") { (0, 1) } else { (1, 0) };
+        let what = format!("pages {kids}");
+        for pages in [vec![0, 1], vec![plain], vec![hiding]] {
+            let (doc, prepared) = prepare_raw(&objects, &pages);
+            if pages.contains(&plain) {
+                resolves(&what, &prepared, &doc, plain);
+            }
+            if pages.contains(&hiding) {
+                refused(&what, &prepared, &doc, hiding, r(4));
+            }
+        }
+    }
+
+    // On one page, the form drawn directly and through a form whose resources hide the name, in
+    // both orders (forms are followed in name order).
+    for (direct, wrapper) in [("A", "B"), ("B", "A")] {
+        let objects = vec![
+            HIDES_4.into(),
+            ONE_PAGE.into(),
+            page3(&format!("/Resources << /XObject << /{direct} 6 0 R /{wrapper} 7 0 R >> >>")),
+            GROUP.into(),
+            synth::raw_stream("", &format!("/{direct} Do /{wrapper} Do")),
+            shared.clone(),
+            form("/Resources << /Properties << /MC0 4 0 R >> /XObject << /F 6 0 R >> >>", "/F Do"),
+        ];
+        let (doc, prepared) = prepare_raw(&objects, &[0]);
+        refused(&format!("direct /{direct}, wrapped /{wrapper}"), &prepared, &doc, 0, r(4));
+    }
+}
+
 #[test]
 fn forms_that_cant_be_resolved() {
     // A form that draws itself.
