@@ -17,6 +17,8 @@ pdfcraft-cos = { workspace = true }
 pdfcraft-render = { workspace = true }
 pdfcraft-model = { workspace = true }
 pdfcraft-platform = { workspace = true }
+# This fork's overlay compare (the wizard in src/overlay_ui.rs).
+pdfcraft-overlay = { path = "../overlay", version = "0.8.0" }
 egui = { workspace = true, features = ["bytemuck"] }
 egui_extras = { workspace = true }
 eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "persistence", "links"] }
@@ -48,6 +50,9 @@ skrifa = "0.44"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSEvent", "NSScreen"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSGeometry"] }
+# A plain fsync where a volume refuses the full flush `sync_all` asks for (SMB, FUSE); already in
+# the tree through pdfcraft-cli.
+rustix = { version = "1", features = ["fs"] }
 
 [target.'cfg(windows)'.dependencies]
 # Auto interface language: the Windows display language, without starting a process.

@@ -47,6 +47,8 @@ fn args() -> Result<Args, String> {
         match a.as_str() {
             "--out" => out = PathBuf::from(it.next().ok_or("--out needs a directory")?),
             "--only" => only = Some(it.next().ok_or("--only needs set names")?.split(',').map(String::from).collect()),
+            // Step 4 (L4): build every overlay with the two layers, both on.
+            "--layered" => families::LAYERED.store(true, std::sync::atomic::Ordering::Relaxed),
             "--renderers" => {
                 renderers = it
                     .next()
@@ -245,6 +247,7 @@ fn write_png(path: &Path, img: &Image) {
 /// Criterion 10 for one overlay file: every page's source forms hold their source page's content
 /// byte for byte, no image is added, and the page draws only q, Q, gs, rg, re and f.
 fn vector_check(set: &Set) -> (bool, String) {
+    let layered = families::LAYERED.load(std::sync::atomic::Ordering::Relaxed);
     let out = synth::open(&set.overlay);
     let (a, b) = (synth::open(&set.a), synth::open(&set.b));
     let images =
@@ -280,19 +283,26 @@ fn vector_check(set: &Set) -> (bool, String) {
             && let Object::Stream(s) = &*out.resolve(c)
         {
             let parsed = pdfcraft_content::parse(&s.decoded().unwrap_or_default());
-            ops_ok &= parsed.ops.iter().all(|o| [&b"q"[..], b"Q", b"gs", b"rg", b"re", b"f"].contains(&o.op.as_slice()));
+            // With layers (step 4, O7), each fill also sits in its layer's marker:
+            // `/OC /PCOld BDC … EMC` or `/OC /PCNew BDC … EMC`, nothing else.
+            let marker = |o: &pdfcraft_content::Op| {
+                layered && ((o.is("BDC") && o.name(0) == Some(&b"OC"[..]) && matches!(o.name(1), Some(b"PCOld" | b"PCNew"))) || o.is("EMC"))
+            };
+            ops_ok &= parsed.ops.iter().all(|o| marker(o) || [&b"q"[..], b"Q", b"gs", b"rg", b"re", b"f"].contains(&o.op.as_slice()));
+            ops_ok &= parsed.ops.iter().filter(|o| o.is("BDC")).count() == parsed.ops.iter().filter(|o| o.is("EMC")).count();
         }
     }
     ok &= ops_ok;
     let _ = writeln!(
         text,
-        "- {}: {} pages; source content found unchanged in forms: {}; images in sources {} + {}, in overlay {}; page operators only q Q gs rg re f: {}",
+        "- {}: {} pages; source content found unchanged in forms: {}; images in sources {} + {}, in overlay {}; page operators only q Q gs rg re f{}: {}",
         set.name,
         pages.len(),
         if text.is_empty() { "all" } else { "NOT all" },
         ia,
         ib,
         io,
+        if layered { " and the Old and New markers" } else { "" },
         ops_ok
     );
     (ok, text)

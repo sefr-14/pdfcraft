@@ -216,6 +216,11 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("edit.snapshot", "Take a snapshot", EDIT, None, Copying, "camera"),
     c("view.full_screen", "Full screen mode", VIEW, Some(Shortcut::cmd("L")), Document, "maximize"),
     c("view.read_mode", "Read mode", VIEW, Some(Shortcut { command: true, shift: false, mac_ctrl: true, key: "H" }), Document, "book-open"),
+    // Browsers' tab keys (#1542): Ctrl+Tab on every platform, ⌃Tab rather than ⌘Tab on macOS,
+    // where the system takes ⌘Tab. They follow the tabs' order on screen and wrap around, and
+    // also run from Combine files, which has no document open.
+    c("view.next_tab", "Next tab", VIEW, Some(Shortcut { command: false, shift: false, mac_ctrl: true, key: "Tab" }), Nothing, "chevron-right"),
+    c("view.previous_tab", "Previous tab", VIEW, Some(Shortcut { command: false, shift: true, mac_ctrl: true, key: "Tab" }), Nothing, "chevron-left"),
     c("view.focus_page_input", "Go to page…", VIEW, Some(Shortcut::cmd_shift("N")), Document, "text-cursor-input"),
     c("ui.dock.reset", "Reset panel layout", VIEW, None, Nothing, "settings"),
     c("view.theme", "Switch light / dark theme", None, None, Nothing, "moon"),
@@ -257,6 +262,8 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("actions.distribution", "Prepare for distribution…", None, None, Nothing, "send"),
     c("actions.optimize_scans", "Optimize scanned documents…", None, None, Nothing, "scan-text"),
     c("doc.compare", "Compare files…", None, None, Document, "git-compare"),
+    // This fork: overlay two revisions in two colours (crates/overlay, the wizard in ui-egui).
+    c("doc.overlay", "Overlay compare…", None, None, Document, "blend"),
     c("form.detect", "Detect form fields", None, None, Modification, "scan"),
     c("form.merge_data", "Merge data files into spreadsheet…", None, None, Nothing, "file-spreadsheet"),
     c("form.flatten", "Flatten form fields", None, None, HasFields, "layers"),
@@ -321,6 +328,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("ocr.enhance_camera", "Enhance camera image", None, None, Modification, "camera"),
     c("ocr.recognize_batch", "Recognize text in multiple files…", None, None, Nothing, "files"),
     c("a11y.check", "Check for accessibility…", None, None, Document, "accessibility"),
+    c("a11y.autotag", "Automatically tag PDF", None, None, Document, "tag"),
     c("a11y.report", "Open accessibility report", None, None, Document, "file-text"),
     c("a11y.reading_options", "Change reading options…", None, None, Document, "book-open"),
     c("a11y.alt_text", "Add alternate text…", None, None, Modification, "image"),

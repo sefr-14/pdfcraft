@@ -6,10 +6,14 @@ use std::sync::Arc;
 
 use pdfcraft_cos::Document;
 
+pub mod annots;
+pub mod catalogue;
+pub mod drawing;
 pub mod evaluate;
 pub mod families;
 pub mod measure;
 pub mod synth;
+pub mod twins;
 
 /// A PDF whose page tree node carries `tree` and whose pages carry one entry of `pages` each.
 pub fn doc(tree: &str, pages: &[&str]) -> Document {

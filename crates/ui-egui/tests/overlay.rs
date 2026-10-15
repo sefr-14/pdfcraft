@@ -1,0 +1,363 @@
+//! Overlay compare (this fork) in the real shell (egui_kittest): the toolbar button opens the
+//! seven-step wizard, Back and Next keep every setting, and Generate opens the overlay as a new,
+//! unsaved tab with exactly two layers, Old and New, leaving the sources unchanged.
+
+use egui_kittest::Harness;
+use egui_kittest::kittest::{NodeT, Queryable};
+use pdfcraft_ui_egui::PdfCraftApp;
+
+/// A two-page PDF whose pages draw a box at `x` (so the two revisions differ).
+fn drawing(x: u32) -> Vec<u8> {
+    let mut objs: Vec<String> =
+        vec!["<< /Type /Catalog /Pages 2 0 R >>".into(), "<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 /MediaBox [0 0 300 200] >>".into()];
+    for i in 0..2u32 {
+        objs.push(format!("<< /Type /Page /Parent 2 0 R /Contents {} 0 R >>", 4 + 2 * i));
+        let body = format!("0 g 2 w 20 20 m 280 180 l S {} 60 40 40 re f", x + 10 * i);
+        objs.push(format!("<< /Length {} >>\nstream\n{body}\nendstream", body.len()));
+    }
+    let mut out = b"%PDF-1.7\n".to_vec();
+    let mut offsets = Vec::new();
+    for (i, o) in objs.iter().enumerate() {
+        offsets.push(out.len());
+        out.extend_from_slice(format!("{} 0 obj\n{o}\nendobj\n", i + 1).as_bytes());
+    }
+    let xref = out.len();
+    out.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", objs.len() + 1).as_bytes());
+    for o in offsets {
+        out.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
+    }
+    out.extend_from_slice(format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", objs.len() + 1).as_bytes());
+    out
+}
+
+/// An `n`-page drawing set whose page `i` draws a box at a height that identifies the sheet.
+fn sheets(n: usize) -> Vec<u8> {
+    let kids: Vec<String> = (0..n).map(|i| format!("{} 0 R", 3 + 2 * i)).collect();
+    let mut objs: Vec<String> =
+        vec!["<< /Type /Catalog /Pages 2 0 R >>".into(), format!("<< /Type /Pages /Kids [{}] /Count {n} /MediaBox [0 0 300 200] >>", kids.join(" "))];
+    for i in 0..n {
+        objs.push(format!("<< /Type /Page /Parent 2 0 R /Contents {} 0 R >>", 4 + 2 * i));
+        let body = format!("0 g 20 {} 40 10 re f", 10 + 5 * i);
+        objs.push(format!("<< /Length {} >>\nstream\n{body}\nendstream", body.len()));
+    }
+    let mut out = b"%PDF-1.7\n".to_vec();
+    let mut offsets = Vec::new();
+    for (i, o) in objs.iter().enumerate() {
+        offsets.push(out.len());
+        out.extend_from_slice(format!("{} 0 obj\n{o}\nendobj\n", i + 1).as_bytes());
+    }
+    let xref = out.len();
+    out.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", objs.len() + 1).as_bytes());
+    for o in offsets {
+        out.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
+    }
+    out.extend_from_slice(format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", objs.len() + 1).as_bytes());
+    out
+}
+
+fn harness() -> Harness<'static, PdfCraftApp> {
+    let mut h = Harness::builder().with_size(egui::vec2(1500.0, 1000.0)).build_eframe(|_cc| {
+        let mut app = PdfCraftApp::new();
+        app.set_option("language", "en").unwrap();
+        // B first, so A (the active tab) is the second.
+        app.open_bytes("rev-b.pdf", None, drawing(120)).unwrap();
+        app.open_bytes("rev-a.pdf", None, drawing(100)).unwrap();
+        app
+    });
+    h.run_steps(4);
+    h
+}
+
+fn next(h: &mut Harness<'static, PdfCraftApp>) {
+    h.get_by_label("Next").click();
+    h.run_steps(3);
+}
+
+fn back(h: &mut Harness<'static, PdfCraftApp>) {
+    h.get_by_label("Back").click();
+    h.run_steps(3);
+}
+
+/// Run frames until `done` holds (background work finishes on its own threads).
+fn wait(h: &mut Harness<'static, PdfCraftApp>, done: impl Fn(&PdfCraftApp) -> bool) {
+    for _ in 0..2400 {
+        h.run_steps(1);
+        if done(h.state()) {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    panic!("timed out");
+}
+
+#[test]
+fn the_toolbar_button_opens_the_wizard() {
+    let mut h = harness();
+    h.get_by_label("Overlay").click();
+    h.run_steps(3);
+    h.get_by_label("1. Documents");
+    h.get_by_label("Document A:");
+    // B defaults to the other open document, so Next is open.
+    let (a, b) = {
+        let w = h.state();
+        (w.views[1].id, w.views[0].id)
+    };
+    assert_eq!(h.state().overlay_documents(), Some((a, Some(b))));
+}
+
+#[test]
+fn back_and_next_keep_settings_and_generate_opens_a_layered_tab() {
+    let mut h = harness();
+    let sources: Vec<_> = h.state().views.iter().map(|v| h.state().session.get(v.id).unwrap().bytes.clone()).collect();
+    assert!(h.state_mut().execute("doc.overlay"));
+    h.run_steps(3);
+    h.get_by_label("1. Documents");
+    next(&mut h);
+    h.get_by_label("2. Pages");
+    next(&mut h);
+    h.get_by_label("3. Colours");
+    // A setting changed here survives a trip back to the start and forward again.
+    assert_eq!(h.get_by_label("Keep the colours complementary").accesskit_node().toggled(), Some(egui::accesskit::Toggled::True));
+    h.get_by_label("Keep the colours complementary").click();
+    h.run_steps(2);
+    back(&mut h);
+    back(&mut h);
+    h.get_by_label("1. Documents");
+    next(&mut h);
+    next(&mut h);
+    h.get_by_label("3. Colours");
+    assert_eq!(h.get_by_label("Keep the colours complementary").accesskit_node().toggled(), Some(egui::accesskit::Toggled::False));
+    next(&mut h);
+    h.get_by_label("4. Sheet sizes");
+    next(&mut h);
+    h.get_by_label("5. Alignment");
+    next(&mut h);
+    h.get_by_label("6. Preview");
+    next(&mut h);
+    h.get_by_label("7. Generate");
+    h.get_by_label("Generate").click();
+    wait(&mut h, |app| app.views.len() == 3);
+    let app = h.state();
+    let (_, id) = app.active_ids().unwrap();
+    let doc = app.session.get(id).unwrap();
+    assert_eq!(doc.name, "Overlay rev-a vs rev-b.pdf");
+    assert!(doc.dirty, "the overlay is a new, unsaved document");
+    assert_eq!(doc.info.pages.len(), 2);
+    let layers: Vec<&str> = doc.info.layers.iter().map(|l| l.name.as_str()).collect();
+    assert_eq!(layers, ["Old", "New"]);
+    // The sources are unchanged.
+    for (v, before) in app.views.iter().take(2).zip(&sources) {
+        assert_eq!(app.session.get(v.id).unwrap().bytes, *before);
+    }
+    h.get_by_label_contains("Created Overlay rev-a vs rev-b.pdf");
+}
+
+/// A primary click at `pos` (the image views pick on a click, not a drag).
+fn click_at(h: &mut Harness<'static, PdfCraftApp>, pos: egui::Pos2) {
+    click_with(h, pos, egui::Modifiers::NONE);
+}
+
+/// A primary click at `pos` with `modifiers` held throughout.
+fn click_with(h: &mut Harness<'static, PdfCraftApp>, pos: egui::Pos2, modifiers: egui::Modifiers) {
+    h.event(egui::Event::ModifiersChanged(modifiers));
+    h.event(egui::Event::PointerMoved(pos));
+    h.run_steps(1);
+    for pressed in [true, false] {
+        h.event(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers });
+        h.run_steps(1);
+    }
+    h.run_steps(2);
+    h.event(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+    h.run_steps(1);
+}
+
+fn settle(h: &mut Harness<'static, PdfCraftApp>, frames: usize) {
+    for _ in 0..frames {
+        h.run_steps(1);
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+}
+
+/// Where PDF point (x, y) of a 300 × 200 pt page shows in an image view at `view` (the page is
+/// fitted and centred).
+fn on_page(view: egui::Rect, x: f32, y: f32) -> egui::Pos2 {
+    let fit = (view.width() / 300.0).min(view.height() / 200.0);
+    let img = egui::Rect::from_center_size(view.center(), egui::vec2(300.0, 200.0) * fit);
+    egui::pos2(img.left() + x / 300.0 * img.width(), img.top() + (1.0 - y / 200.0) * img.height())
+}
+
+/// Writes screenshots of the steps into the directory PDFCRAFT_SHOT names (for review), with two
+/// reference points picked on the Alignment step.
+#[test]
+fn wizard_screenshots() {
+    let Ok(dir) = std::env::var("PDFCRAFT_SHOT") else { return };
+    let dir = std::path::PathBuf::from(dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut h = harness();
+    h.get_by_label("Overlay").click();
+    h.run_steps(3);
+    for step in 1..=7 {
+        // Let renders finish on their threads.
+        settle(&mut h, if step >= 5 { 200 } else { 20 });
+        if step == 5 {
+            pick_the_box(&mut h);
+        }
+        h.render().unwrap().save(dir.join(format!("step-{step}.png"))).unwrap();
+        if step < 7 {
+            next(&mut h);
+        }
+    }
+    h.get_by_label("Generate").click();
+    wait(&mut h, |app| app.views.len() == 3);
+    settle(&mut h, 20);
+    h.render().unwrap().save(dir.join("step-7-done.png")).unwrap();
+}
+
+/// On the Alignment step: the box's top-left and bottom-right corners on A (100, 100 and
+/// 140, 60) and on B, where the box is 20 pt further right.
+fn pick_the_box(h: &mut Harness<'static, PdfCraftApp>) {
+    let (va, vb) = (h.get_by_label("Pick on document A").rect(), h.get_by_label("Pick on document B").rect());
+    for ((ax, ay), (bx, by)) in [((100.0, 100.0), (120.0, 100.0)), ((140.0, 60.0), (160.0, 60.0))] {
+        click_at(h, on_page(va, ax, ay));
+        click_at(h, on_page(vb, bx, by));
+    }
+}
+
+/// Picking reference points by clicking the two page views fits B onto A: the box moved 20 pt
+/// (7.056 mm) to the right in B, so the fit shifts B 7.056 mm left, at scale 1.
+#[test]
+fn picking_two_points_registers_b_on_a() {
+    let mut h = harness();
+    assert!(h.state_mut().execute("doc.overlay"));
+    h.run_steps(3);
+    for _ in 0..4 {
+        next(&mut h);
+    }
+    h.get_by_label("5. Alignment");
+    // Both pages render on their own threads.
+    for _ in 0..800 {
+        h.run_steps(1);
+        if h.query_by_label("Pick on document A").is_some() && h.query_by_label("Pick on document B").is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    pick_the_box(&mut h);
+    let node = h.get_by_label_contains(" mm · rotation ");
+    // A label's text is its accessibility value.
+    let readout = node.accesskit_node().label().or_else(|| node.value()).unwrap_or_default().to_string();
+    let numbers: Vec<f64> = readout.split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-')).filter_map(|t| t.parse::<f64>().ok()).collect();
+    let [x, y, rotation, scale] = numbers[..] else { panic!("{readout}") };
+    // One pixel of the view is about 0.5 pt here: allow for where a click lands.
+    assert!((x + 7.056).abs() < 0.4, "{readout}");
+    assert!(y.abs() < 0.4, "{readout}");
+    assert!(rotation.abs() < 0.5, "{readout}");
+    assert!((scale - 1.0).abs() < 0.01, "{readout}");
+    // Exactly two points: no residual check is possible yet.
+    h.get_by_label_contains("no residual check is possible");
+}
+
+/// The fit's shift, rotation and scale as the readout shows them.
+fn readout(h: &Harness<'static, PdfCraftApp>) -> [f64; 4] {
+    let node = h.get_by_label_contains(" mm · rotation ");
+    let text = node.accesskit_node().label().or_else(|| node.value()).unwrap_or_default().to_string();
+    let numbers: Vec<f64> = text.split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-')).filter_map(|t| t.parse::<f64>().ok()).collect();
+    let [x, y, rotation, scale] = numbers[..] else { panic!("{text}") };
+    [x, y, rotation, scale]
+}
+
+/// Clicks a few pixels off the box's corners snap onto them, so the fit is exact (B's box is
+/// 20 pt, 7.056 mm, right of A's); with Alt held the same clicks stay where they land.
+#[test]
+fn picks_snap_to_line_ends_and_alt_places_them_freely() {
+    let mut h = harness();
+    assert!(h.state_mut().execute("doc.overlay"));
+    h.run_steps(3);
+    for _ in 0..4 {
+        next(&mut h);
+    }
+    h.get_by_label("5. Alignment");
+    // The pages render and their lines are read on their own threads.
+    for _ in 0..800 {
+        h.run_steps(1);
+        if h.query_by_label("Pick on document A").is_some()
+            && h.query_by_label("Pick on document B").is_some()
+            && h.query_by_label_contains("Snapping to ").is_some()
+        {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    h.get_by_label_contains("Snapping to 5 lines on A and 5 lines on B");
+    let (va, vb) = (h.get_by_label("Pick on document A").rect(), h.get_by_label("Pick on document B").rect());
+    // Different misses on A and B, so a fit of the raw clicks isn't a pure shift.
+    let corners = [((100.0, 100.0), (120.0, 100.0)), ((140.0, 60.0), (160.0, 60.0))];
+    let pick = |h: &mut Harness<'static, PdfCraftApp>, modifiers: egui::Modifiers| {
+        for ((ax, ay), (bx, by)) in corners {
+            click_with(h, on_page(va, ax, ay) + egui::vec2(3.0, -2.0), modifiers);
+            click_with(h, on_page(vb, bx, by) + egui::vec2(-2.0, 3.0), modifiers);
+        }
+    };
+    pick(&mut h, egui::Modifiers::NONE);
+    let [x, y, rotation, scale] = readout(&h);
+    assert_eq!((x, y, rotation, scale), (-7.056, 0.0, 0.0, 1.0));
+    h.get_by_label("Clear the alignment").click();
+    h.run_steps(3);
+    pick(&mut h, egui::Modifiers::ALT);
+    let [x, y, _, _] = readout(&h);
+    assert!((x + 7.056).abs() > 0.5 && y.abs() > 0.5, "Alt clicks snapped: {x}, {y}");
+    // Snapping off: clicks stay where they land, without Alt.
+    h.get_by_label("Clear the alignment").click();
+    h.get_by_label("Snap to the drawing").click();
+    h.run_steps(3);
+    pick(&mut h, egui::Modifiers::NONE);
+    let [x, y, _, _] = readout(&h);
+    assert!((x + 7.056).abs() > 0.5 && y.abs() > 0.5, "clicks snapped with snapping off: {x}, {y}");
+}
+
+/// Step 2 with a sheet inserted in New (Old 6 pages, New 7, the new sheet at New p. 3): the row
+/// menu marks it, Next opens once every page has a partner, re-pairing in order asks first and
+/// Cancel keeps the pairing, and Undo brings back what re-pairing replaced.
+#[test]
+fn pages_step_marks_an_inserted_sheet_and_asks_before_re_pairing() {
+    let mut h = Harness::builder().with_size(egui::vec2(1500.0, 1000.0)).build_eframe(|_cc| {
+        let mut app = PdfCraftApp::new();
+        app.set_option("language", "en").unwrap();
+        app.open_bytes("new.pdf", None, sheets(7)).unwrap();
+        app.open_bytes("old.pdf", None, sheets(6)).unwrap();
+        app
+    });
+    h.run_steps(4);
+    assert!(h.state_mut().execute("doc.overlay"));
+    h.run_steps(3);
+    next(&mut h);
+    h.get_by_label("2. Pages");
+    h.get_by_label("7 output page(s): 6 matched, 0 Old only, 0 New only, 1 without a partner yet");
+    assert!(h.get_by_label("Next").accesskit_node().is_disabled(), "an unplaced page blocks Next");
+    // Row 3's menu: New p. 3 is the inserted sheet.
+    h.get_all_by_label("⋯").nth(2).unwrap().click();
+    h.run_steps(2);
+    h.get_by_label("Mark New p. 3 as inserted (blank on the Old side)").click();
+    h.run_steps(3);
+    h.get_by_label("7 output page(s): 6 matched, 0 Old only, 1 New only");
+    assert!(!h.get_by_label("Next").accesskit_node().is_disabled());
+    if let Ok(dir) = std::env::var("PDFCRAFT_SHOT") {
+        h.render().unwrap().save(std::path::Path::new(&dir).join("pages-inserted.png")).unwrap();
+    }
+    // Re-pairing would replace that: it asks, and Cancel keeps it.
+    h.get_by_label("Re-pair in order").click();
+    h.run_steps(2);
+    h.get_by_label_contains("Re-pairing in order replaces the pairings you made");
+    h.get_by_label("Cancel").click();
+    h.run_steps(2);
+    h.get_by_label("7 output page(s): 6 matched, 0 Old only, 1 New only");
+    // Confirmed, it re-pairs; Undo restores the marked insertion.
+    h.get_by_label("Re-pair in order").click();
+    h.run_steps(2);
+    h.get_all_by_label("Re-pair in order").last().unwrap().click();
+    h.run_steps(3);
+    h.get_by_label("7 output page(s): 6 matched, 0 Old only, 0 New only, 1 without a partner yet");
+    h.get_by_label("Undo").click();
+    h.run_steps(3);
+    h.get_by_label("7 output page(s): 6 matched, 0 Old only, 1 New only");
+}
