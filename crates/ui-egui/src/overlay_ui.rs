@@ -2047,7 +2047,7 @@ fn pages(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
 
     // The table: Old and New columns whatever document each is, each cell a physical page with
     // its label shown apart, or a blank; then what the row compares, and arrows that move it.
-    let widths = [56.0, 150.0, 120.0, 150.0, 120.0, 132.0, 60.0, 34.0];
+    let widths = [56.0, 150.0, 120.0, 150.0, 120.0, 132.0, 64.0, 34.0];
     let header = |ui: &mut egui::Ui, i: usize, text: String| {
         ui.add_sized([widths[i], 18.0], egui::Label::new(RichText::new(text).strong()).truncate());
     };
@@ -2145,10 +2145,19 @@ fn pages(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
                         {
                             let label = crate::i18n::fmt(text, &[("n", &(i + 1).to_string())]);
                             let can = w.pairing.row_move_target(i, down);
-                            let r = ui.add_enabled_ui(can.is_ok(), |ui| crate::icons::button(ui, icon, 22.0, false, &label)).inner;
-                            if let Err(e) = &can {
-                                r.clone().on_disabled_hover_text(e.to_string());
-                            }
+                            // An outlined button in the text colour: the toolbar's faint icon
+                            // buttons were too easy to miss in a long table.
+                            let colour = if can.is_ok() { t.text } else { t.text_faint };
+                            let button = egui::Button::image(crate::icons::image(icon, 16.0, colour))
+                                .min_size(vec2(26.0, 22.0))
+                                .fill(t.card)
+                                .stroke(Stroke::new(1.0, t.border));
+                            let r = ui.add_enabled(can.is_ok(), button);
+                            r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, can.is_ok(), &label));
+                            let r = match &can {
+                                Err(e) => r.on_disabled_hover_text(e.to_string()),
+                                Ok(_) => r.on_hover_text(&label),
+                            };
                             if r.clicked() && can.is_ok() {
                                 op = Some(PairOp::MoveRow(i, down));
                             }
