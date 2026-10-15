@@ -1,5 +1,5 @@
 //! Overlay compare (this fork) in the real shell (egui_kittest): the toolbar button opens the
-//! seven-step wizard, Back and Next keep every setting, and Generate opens the overlay as a new,
+//! six-step wizard, Back and Next keep every setting, and Generate opens the overlay as a new,
 //! unsaved tab with exactly two layers, Old and New, leaving the sources unchanged.
 
 use egui_kittest::Harness;
@@ -8,10 +8,14 @@ use pdfcraft_ui_egui::PdfCraftApp;
 
 /// A two-page PDF whose pages draw a box at `x` (so the two revisions differ).
 fn drawing(x: u32) -> Vec<u8> {
-    let mut objs: Vec<String> =
-        vec!["<< /Type /Catalog /Pages 2 0 R >>".into(), "<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 /MediaBox [0 0 300 200] >>".into()];
-    for i in 0..2u32 {
-        objs.push(format!("<< /Type /Page /Parent 2 0 R /Contents {} 0 R >>", 4 + 2 * i));
+    drawing_sized(x, [(300, 200), (300, 200)])
+}
+
+/// [`drawing`] with each page's sheet size in points.
+fn drawing_sized(x: u32, sizes: [(u32, u32); 2]) -> Vec<u8> {
+    let mut objs: Vec<String> = vec!["<< /Type /Catalog /Pages 2 0 R >>".into(), "<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>".into()];
+    for (i, (w, h)) in (0..2u32).zip(sizes) {
+        objs.push(format!("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {w} {h}] /Contents {} 0 R >>", 4 + 2 * i));
         let body = format!("0 g 2 w 20 20 m 280 180 l S {} 60 40 40 re f", x + 10 * i);
         objs.push(format!("<< /Length {} >>\nstream\n{body}\nendstream", body.len()));
     }
@@ -56,16 +60,35 @@ fn sheets(n: usize) -> Vec<u8> {
 }
 
 fn harness() -> Harness<'static, PdfCraftApp> {
-    let mut h = Harness::builder().with_size(egui::vec2(1500.0, 1000.0)).build_eframe(|_cc| {
+    harness_with(drawing(100), drawing(120))
+}
+
+/// The app with document A (the active tab) and document B open.
+fn harness_with(a: Vec<u8>, b: Vec<u8>) -> Harness<'static, PdfCraftApp> {
+    let mut h = Harness::builder().with_size(egui::vec2(1500.0, 1000.0)).build_eframe(move |_cc| {
         let mut app = PdfCraftApp::new();
         app.set_option("language", "en").unwrap();
         // B first, so A (the active tab) is the second.
-        app.open_bytes("rev-b.pdf", None, drawing(120)).unwrap();
-        app.open_bytes("rev-a.pdf", None, drawing(100)).unwrap();
+        app.open_bytes("rev-b.pdf", None, b).unwrap();
+        app.open_bytes("rev-a.pdf", None, a).unwrap();
         app
     });
     h.run_steps(4);
     h
+}
+
+/// The wizard opened on A and taken to step 4, Sheet size & Alignment.
+fn to_sheet_and_alignment(h: &mut Harness<'static, PdfCraftApp>) {
+    assert!(h.state_mut().execute("doc.overlay"));
+    h.run_steps(3);
+    for _ in 0..3 {
+        next(h);
+    }
+    h.get_by_label("4. Sheet size & Alignment");
+}
+
+fn next_disabled(h: &Harness<'static, PdfCraftApp>) -> bool {
+    h.get_by_label("Next").accesskit_node().is_disabled()
 }
 
 fn next(h: &mut Harness<'static, PdfCraftApp>) {
@@ -128,13 +151,23 @@ fn back_and_next_keep_settings_and_generate_opens_a_layered_tab() {
     h.get_by_label("3. Colours");
     assert_eq!(h.get_by_label("Keep the colours complementary").accesskit_node().toggled(), Some(egui::accesskit::Toggled::False));
     next(&mut h);
-    h.get_by_label("4. Sheet sizes");
+    h.get_by_label("4. Sheet size & Alignment");
+    // Six steps; sheet sizes and alignment share step 4.
+    for step in ["1 Documents", "2 Pages", "3 Colours", "4 Sheet size & Alignment", "5 Preview", "6 Generate"] {
+        h.get_by_label(step);
+    }
+    assert!(h.query_by_label_contains("Sheet sizes").is_none() && h.query_by_label_contains("7 ").is_none());
+    // Equal sheets: 1:1 on one line, nothing to confirm; no points picked is a 1:1 placement.
+    h.get_by_label("Old: 300 × 200 pt · New: 300 × 200 pt · Scale: 1:1");
+    assert!(!next_disabled(&h));
     next(&mut h);
-    h.get_by_label("5. Alignment");
+    h.get_by_label("5. Preview");
+    back(&mut h);
+    h.get_by_label("4. Sheet size & Alignment");
     next(&mut h);
-    h.get_by_label("6. Preview");
+    h.get_by_label("5. Preview");
     next(&mut h);
-    h.get_by_label("7. Generate");
+    h.get_by_label("6. Generate");
     h.get_by_label("Generate").click();
     wait(&mut h, |app| app.views.len() == 3);
     let app = h.state();
@@ -187,7 +220,7 @@ fn on_page(view: egui::Rect, x: f32, y: f32) -> egui::Pos2 {
 }
 
 /// Writes screenshots of the steps into the directory PDFCRAFT_SHOT names (for review), with two
-/// reference points picked on the Alignment step.
+/// reference points picked on the Sheet size & Alignment step.
 #[test]
 fn wizard_screenshots() {
     let Ok(dir) = std::env::var("PDFCRAFT_SHOT") else { return };
@@ -196,24 +229,24 @@ fn wizard_screenshots() {
     let mut h = harness();
     h.get_by_label("Overlay").click();
     h.run_steps(3);
-    for step in 1..=7 {
+    for step in 1..=6 {
         // Let renders finish on their threads.
-        settle(&mut h, if step >= 5 { 200 } else { 20 });
-        if step == 5 {
+        settle(&mut h, if step >= 4 { 200 } else { 20 });
+        if step == 4 {
             pick_the_box(&mut h);
         }
         h.render().unwrap().save(dir.join(format!("step-{step}.png"))).unwrap();
-        if step < 7 {
+        if step < 6 {
             next(&mut h);
         }
     }
     h.get_by_label("Generate").click();
     wait(&mut h, |app| app.views.len() == 3);
     settle(&mut h, 20);
-    h.render().unwrap().save(dir.join("step-7-done.png")).unwrap();
+    h.render().unwrap().save(dir.join("step-6-done.png")).unwrap();
 }
 
-/// On the Alignment step: the box's top-left and bottom-right corners on A (100, 100 and
+/// On the Sheet size & Alignment step: the box's top-left and bottom-right corners on A (100, 100 and
 /// 140, 60) and on B, where the box is 20 pt further right.
 fn pick_the_box(h: &mut Harness<'static, PdfCraftApp>) {
     let (va, vb) = (h.get_by_label("Pick on document A").rect(), h.get_by_label("Pick on document B").rect());
@@ -230,10 +263,10 @@ fn picking_two_points_registers_b_on_a() {
     let mut h = harness();
     assert!(h.state_mut().execute("doc.overlay"));
     h.run_steps(3);
-    for _ in 0..4 {
+    for _ in 0..3 {
         next(&mut h);
     }
-    h.get_by_label("5. Alignment");
+    h.get_by_label("4. Sheet size & Alignment");
     // Both pages render on their own threads.
     for _ in 0..800 {
         h.run_steps(1);
@@ -273,10 +306,10 @@ fn picks_snap_to_line_ends_and_alt_places_them_freely() {
     let mut h = harness();
     assert!(h.state_mut().execute("doc.overlay"));
     h.run_steps(3);
-    for _ in 0..4 {
+    for _ in 0..3 {
         next(&mut h);
     }
-    h.get_by_label("5. Alignment");
+    h.get_by_label("4. Sheet size & Alignment");
     // The pages render and their lines are read on their own threads.
     for _ in 0..800 {
         h.run_steps(1);
@@ -401,4 +434,66 @@ fn pages_step_compare_as_arrows_and_re_pairing() {
     h.get_by_label("Undo").click();
     h.run_steps(3);
     h.get_by_label(marked);
+}
+
+/// Different sheet sizes (Old 300 × 200 pt, New 600 × 400 pt): step 4 shows the proposed factor
+/// and its basis, and Next waits for the confirmation; 1:1 needs one too, while turning Match
+/// sheet sizes off needs none.
+#[test]
+fn different_sheet_sizes_need_a_confirmed_factor() {
+    let mut h = harness_with(drawing(100), drawing_sized(240, [(600, 400), (600, 400)]));
+    to_sheet_and_alignment(&mut h);
+    h.get_by_label("Old: 300 × 200 pt · New: 600 × 400 pt · Scale: New × 0.5000, to confirm");
+    h.get_by_label_contains("Same shape (A 300.0 × 200.0 pt, B 600.0 × 400.0 pt)");
+    h.get_by_label("Scale B by the proposed 0.5000");
+    assert!(next_disabled(&h));
+    h.get_by_label("Confirm the sheet-size choice for output page 1 (Old p. 1 · New p. 1), or turn Match sheet sizes off.");
+    h.get_by_label("I confirm this choice").click();
+    h.run_steps(3);
+    h.get_by_label("Old: 300 × 200 pt · New: 600 × 400 pt · Scale: New × 0.5000");
+    assert!(!next_disabled(&h));
+    if let Ok(dir) = std::env::var("PDFCRAFT_SHOT") {
+        settle(&mut h, 200);
+        h.render().unwrap().save(std::path::Path::new(&dir).join("sheet-size-different.png")).unwrap();
+    }
+    // Another choice is confirmed again.
+    h.get_by_label("1:1").click();
+    h.run_steps(3);
+    h.get_by_label("Old: 300 × 200 pt · New: 600 × 400 pt · Scale: 1:1, to confirm");
+    assert!(next_disabled(&h));
+    h.get_by_label("Match sheet sizes").click();
+    h.run_steps(3);
+    h.get_by_label("Old: 300 × 200 pt · New: 600 × 400 pt · Scale: 1:1 (Match sheet sizes is off)");
+    assert!(!next_disabled(&h));
+}
+
+/// Per pair: New's second sheet is twice the size. With the first pair's choice shared, the pair
+/// that differs is named; set apart, it needs its own confirmation, and turning sharing on and
+/// off again keeps what was confirmed for it.
+#[test]
+fn sheet_sizes_per_pair_are_kept() {
+    let mut h = harness_with(drawing(100), drawing_sized(120, [(300, 200), (600, 400)]));
+    to_sheet_and_alignment(&mut h);
+    h.get_by_label("Old: 300 × 200 pt · New: 300 × 200 pt · Scale: 1:1");
+    h.get_by_label_contains("Output page(s) 2 have other sheet sizes than the first pair");
+    assert!(!next_disabled(&h));
+    h.get_by_label("Use the first pair's sheet size for every pair").click();
+    h.run_steps(3);
+    assert!(next_disabled(&h));
+    h.get_by_label("Confirm the sheet-size choice for output page 2 (Old p. 2 · New p. 2), or turn Match sheet sizes off.");
+    h.get_by_label("Page pair").click();
+    h.run_steps(2);
+    h.get_by_label("Output page 2: Old p. 2 · New p. 2 · sheet size to confirm").click();
+    h.run_steps(3);
+    h.get_by_label("Old: 300 × 200 pt · New: 600 × 400 pt · Scale: New × 0.5000, to confirm");
+    h.get_by_label("I confirm this choice").click();
+    h.run_steps(3);
+    assert!(!next_disabled(&h));
+    // Shared again, pair 2 follows the first pair (1:1); set apart again, its own choice is back.
+    h.get_by_label("Use the first pair's sheet size for every pair").click();
+    h.run_steps(3);
+    h.get_by_label("Use the first pair's sheet size for every pair").click();
+    h.run_steps(3);
+    h.get_by_label("Old: 300 × 200 pt · New: 600 × 400 pt · Scale: New × 0.5000");
+    assert!(!next_disabled(&h));
 }

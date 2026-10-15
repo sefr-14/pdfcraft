@@ -1,6 +1,7 @@
-//! Sheet-size proposals (overlay PRD, Sheet-size matching). Match sheet sizes is off by default,
-//! and off means 1:1. When it is on, [`propose`] says which case a page pair is in and where any
-//! factor comes from; nothing is applied until it is confirmed as a [`SheetMatch`].
+//! Sheet-size proposals (overlay PRD, Sheet-size matching). Off means 1:1. When Match sheet sizes
+//! is on, [`propose`] says which case a page pair is in and where any factor comes from; nothing
+//! is applied until it is confirmed as a [`SheetMatch`]. (The PRD had it off by default; the
+//! wizard turns it on since OV6.6, where the same sheet is 1:1 with nothing to confirm.)
 
 use pdfcraft_content::Matrix;
 

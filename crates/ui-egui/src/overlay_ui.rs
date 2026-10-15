@@ -1,8 +1,10 @@
-//! Overlay compare (this fork's overlay feature, step 6): the seven-step wizard that draws two
-//! revisions on one page, each in its own colour, so shared content prints dark and every
-//! difference shows in colour.
+//! Overlay compare (this fork's overlay feature, step 6): the wizard that draws two revisions on
+//! one page, each in its own colour, so shared content prints dark and every difference shows in
+//! colour.
 //!
-//! Documents, Pages, Colours, Sheet sizes, Alignment, Preview, Generate. Back and Next keep every
+//! Six steps: Documents, Pages, Colours, Sheet size & Alignment, Preview, Generate (OV6.6: the
+//! PRD's seven areas, with sheet sizes and alignment on one screen, as the user decided on 15 Oct
+//! after testing real drawing sets; equal sheets need no step of their own). Back and Next keep every
 //! setting; a change in an earlier step keeps later work keyed to what it belongs to (a page
 //! pair's sheet choice and picks follow the pair, not its row). The engine is `pdfcraft-overlay`
 //! (registration, compositing, layers and annotations): this module collects the choices, shows
@@ -63,22 +65,21 @@ pub enum Step {
     Documents,
     Pages,
     Colours,
-    Sheets,
-    Alignment,
+    /// Sheet sizes and alignment, on one screen.
+    SheetAlignment,
     Preview,
     Generate,
 }
 
 impl Step {
-    pub const ALL: [Step; 7] = [Step::Documents, Step::Pages, Step::Colours, Step::Sheets, Step::Alignment, Step::Preview, Step::Generate];
+    pub const ALL: [Step; 6] = [Step::Documents, Step::Pages, Step::Colours, Step::SheetAlignment, Step::Preview, Step::Generate];
 
     fn title(self) -> &'static str {
         match self {
             Step::Documents => "Documents",
             Step::Pages => "Pages",
             Step::Colours => "Colours",
-            Step::Sheets => "Sheet sizes",
-            Step::Alignment => "Alignment",
+            Step::SheetAlignment => "Sheet size & Alignment",
             Step::Preview => "Preview",
             Step::Generate => "Generate",
         }
@@ -682,11 +683,12 @@ pub struct Wizard {
     pub new_colour: [u8; 3],
     pub complementary: bool,
     pub threshold: f64,
-    // 4. Sheet sizes
+    // 4. Sheet size & Alignment
+    /// On by default (OV6.6): equal sheets are 1:1 with nothing to confirm; a factor for unequal
+    /// ones is applied only once confirmed.
     pub match_sheets: bool,
     pub same_sheet_for_all: bool,
     sheets: HashMap<(usize, usize), SheetState>,
-    // 5. Alignment
     pub same_alignment_for_all: bool,
     aligns: HashMap<(usize, usize), Picks>,
     align_pair: usize,
@@ -701,9 +703,9 @@ pub struct Wizard {
     lines: HashMap<(Side, usize), Arc<Lines>>,
     lines_pending: HashSet<(Side, usize)>,
     lines_errors: HashMap<(Side, usize), String>,
-    // 6. Preview
+    // 5. Preview
     preview: Preview,
-    // 7. Generate
+    // 6. Generate
     pub expand: bool,
     decisions: [HashMap<ObjRef, bool>; 2],
     omit: [HashSet<ObjRef>; 2],
@@ -745,7 +747,7 @@ impl Wizard {
             new_colour: pdfcraft_overlay::CYAN,
             complementary: true,
             threshold: 1.0,
-            match_sheets: false,
+            match_sheets: true,
             same_sheet_for_all: true,
             sheets: HashMap::new(),
             same_alignment_for_all: true,
@@ -1084,13 +1086,70 @@ impl Wizard {
         if !self.match_sheets {
             return None;
         }
-        let pairs: Vec<(usize, usize)> = self.pairs.iter().filter_map(Pair::pages).collect();
-        for pair in pairs {
+        for (row, pair) in self.matched_rows() {
             if !self.sheet_state(pair).confirmed {
-                return Some(tx("Confirm the sheet-size choice for every pair (or turn Match sheet sizes off).").into());
+                // While the choice is shared, it is the first pair's to confirm.
+                let (row, pair) = if self.same_sheet_for_all { self.matched_rows().first().copied().unwrap_or((row, pair)) } else { (row, pair) };
+                return Some(crate::i18n::fmt(
+                    tx("Confirm the sheet-size choice for output page {n} ({pages}), or turn Match sheet sizes off."),
+                    &[("n", &(row + 1).to_string()), ("pages", &self.pair_name(pair))],
+                ));
             }
         }
         None
+    }
+
+    /// The rows with a page on both sides (0-based row, (A page, B page)).
+    fn matched_rows(&self) -> Vec<(usize, (usize, usize))> {
+        self.pairs.iter().enumerate().filter_map(|(i, p)| p.pages().map(|k| (i, k))).collect()
+    }
+
+    /// A page pair in Old and New terms: "Old p. 3 · New p. 4".
+    fn pair_name(&self, (pa, pb): (usize, usize)) -> String {
+        let (o, n) = if self.swapped { (pb, pa) } else { (pa, pb) };
+        crate::i18n::fmt(tx("Old {old} · New {new}"), &[("old", &Snapshot::page_text(o)), ("new", &Snapshot::page_text(n))])
+    }
+
+    /// Both displayed sheet sizes of a pair, in points.
+    fn sheet_sizes(&mut self, (pa, pb): (usize, usize)) -> Option<((f64, f64), (f64, f64))> {
+        Some((self.a.as_mut()?.size(pa)?, self.b.as_mut()?.size(pb)?))
+    }
+
+    /// The sheets of `pair` and the scale the overlay uses for it, on one line:
+    /// "Old: 3024 × 2160 pt · New: 3024 × 2160 pt · Scale: 1:1".
+    fn sheet_summary(&mut self, pair: (usize, usize)) -> String {
+        let number = |v: f64| if (v - v.round()).abs() < 0.05 { format!("{v:.0}") } else { format!("{v:.1}") };
+        let size = |s: Option<(f64, f64)>| s.map_or_else(|| tx("unreadable").to_string(), |(w, h)| format!("{} × {} pt", number(w), number(h)));
+        let sizes = self.sheet_sizes(pair);
+        let (sa, sb) = (sizes.map(|s| s.0), sizes.map(|s| s.1));
+        let (old, new) = if self.swapped { (sb, sa) } else { (sa, sb) };
+        let scale = if self.match_sheets {
+            let state = self.sheet_state(pair);
+            let scale = match state.choice {
+                SheetChoice::OneToOne => "1:1".to_string(),
+                SheetChoice::Factor(f) => format!("{} × {f:.4}", self.role_of(Side::B)),
+            };
+            if state.confirmed { scale } else { crate::i18n::fmt(tx("{scale}, to confirm"), &[("scale", &scale)]) }
+        } else {
+            tx("1:1 (Match sheet sizes is off)").to_string()
+        };
+        crate::i18n::fmt(tx("Old: {old} · New: {new} · Scale: {scale}"), &[("old", &size(old)), ("new", &size(new)), ("scale", &scale)])
+    }
+
+    /// Output pages (1-based) whose sheets differ from `key`'s: the shared sheet choice may not
+    /// suit them.
+    fn sheets_unlike(&mut self, key: (usize, usize)) -> Vec<usize> {
+        let tolerance = Settings::default().same_sheet_pt;
+        let Some((ka, kb)) = self.sheet_sizes(key) else { return Vec::new() };
+        let near = |a: (f64, f64), b: (f64, f64)| (a.0 - b.0).abs() <= tolerance && (a.1 - b.1).abs() <= tolerance;
+        let mut out = Vec::new();
+        for (row, pair) in self.matched_rows() {
+            let same = self.sheet_sizes(pair).is_some_and(|(a, b)| near(a, ka) && near(b, kb));
+            if !same {
+                out.push(row + 1);
+            }
+        }
+        out
     }
 
     // ── Alignment ──
@@ -1219,8 +1278,7 @@ impl Wizard {
             }
             Step::Pages => self.pairing_problem(),
             Step::Colours => None,
-            Step::Sheets => self.sheets_problem(),
-            Step::Alignment => self.alignment_problem(),
+            Step::SheetAlignment => self.sheets_problem().or_else(|| self.alignment_problem()),
             Step::Preview | Step::Generate => None,
         }
     }
@@ -1464,8 +1522,7 @@ fn window(app: &mut PdfCraftApp, w: &mut Wizard, ctx: &egui::Context) {
                     Step::Documents => documents(app, w, ui, &t),
                     Step::Pages => pages(w, ui, &t),
                     Step::Colours => colours(w, ui, &t),
-                    Step::Sheets => sheets(w, ui, &t),
-                    Step::Alignment => alignment(w, ui, &t),
+                    Step::SheetAlignment => sheet_alignment(w, ui, &t),
                     Step::Preview => preview_step(w, ui, &t),
                     Step::Generate => generate_step(w, ui, &t),
                 },
@@ -2087,58 +2144,106 @@ fn colours(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
     ui.add(egui::Slider::new(&mut w.threshold, 0.5..=1.0).step_by(0.01).fixed_decimals(2).text(tx("Paper threshold")));
 }
 
-// ── Step 4: Sheet sizes ─────────────────────────────────────────────────────────────────────
+// ── Step 4: Sheet size & Alignment ─────────────────────────────────────────────────────────
 
-fn sheets(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
-    heading(ui, tx("4. Sheet sizes"));
-    muted(
-        ui,
-        t,
-        tx(
-            "Off means 1:1: B is placed at its own size. When on, a factor proposed from the sheet sizes is applied only after you confirm it; it is a hint, not proof of the drawing's scale.",
-        ),
-    );
-    ui.add_space(8.0);
-    ui.add(widgets::checkbox(&mut w.match_sheets, tx("Match sheet sizes")));
-    if !w.match_sheets {
+/// Step 4: the sheet sizes of the pair on show, compactly, above the two drawings that reference
+/// points are picked on.
+fn sheet_alignment(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
+    heading(ui, tx("4. Sheet size & Alignment"));
+    let pairs = w.matched_rows();
+    let Some(&(first_row, first)) = pairs.first() else {
+        ui.label(tx("No row has a page on both sides, so there are no sheets to match and nothing to align."));
         return;
-    }
-    ui.add(widgets::checkbox(&mut w.same_sheet_for_all, tx("Use the first pair's choice for every pair")));
-    ui.add_space(6.0);
-    let keys: Vec<(usize, usize)> = {
-        let mut seen = HashSet::new();
-        let pairs: Vec<(usize, usize)> = w.pairs.iter().filter_map(Pair::pages).collect();
-        pairs.into_iter().map(|p| w.sheet_key(p)).filter(|k| seen.insert(*k)).take(50).collect()
     };
-    for key in keys {
-        let proposal = w.proposal(key);
-        let mut state = w.sheet_state(key);
-        egui::Frame::new().stroke(Stroke::new(1.0, t.border)).corner_radius(6.0).inner_margin(egui::Margin::same(8)).show(ui, |ui| {
-            ui.label(
-                RichText::new(crate::i18n::fmt(
-                    tx("A page {a} with B page {b}"),
-                    &[("a", &(key.0 + 1).to_string()), ("b", &(key.1 + 1).to_string())],
-                ))
-                .strong(),
-            );
-            let Some(p) = proposal else {
-                ui.label(tx("The sheet sizes can't be read."));
-                return;
-            };
+    if !pairs.iter().any(|(i, _)| *i == w.align_pair) {
+        w.align_pair = first_row;
+    }
+    ui.horizontal_wrapped(|ui| {
+        if w.match_sheets {
+            ui.add(widgets::checkbox(&mut w.same_sheet_for_all, tx("Use the first pair's sheet size for every pair")));
+        }
+        ui.add(widgets::checkbox(&mut w.same_alignment_for_all, tx("Use the first pair's alignment for every pair")));
+    });
+    // One pair at a time while either setting is per pair.
+    let per_pair = !w.same_alignment_for_all || (w.match_sheets && !w.same_sheet_for_all);
+    if per_pair {
+        let current = w.align_pair;
+        let mut chosen = None;
+        let name = |w: &mut Wizard, row: usize, pair: (usize, usize)| {
+            let mut text = crate::i18n::fmt(tx("Output page {n}: {pages}"), &[("n", &(row + 1).to_string()), ("pages", &w.pair_name(pair))]);
+            if w.match_sheets && !w.same_sheet_for_all {
+                let state = w.sheet_state(pair);
+                if !state.confirmed {
+                    text.push_str(tx(" · sheet size to confirm"));
+                } else if let SheetChoice::Factor(f) = state.choice {
+                    text.push_str(&format!(" · {} × {f:.4}", w.role_of(Side::B)));
+                }
+            }
+            text
+        };
+        let shown = pairs.iter().find(|(i, _)| *i == current).map_or_else(String::new, |(i, k)| name(w, *i, *k));
+        ui.horizontal(|ui| {
+            ui.label(tx("Pair"));
+            let value = shown.clone();
+            let combo = egui::ComboBox::from_id_salt("overlay-align-pair").selected_text(shown).width(340.0).show_ui(ui, |ui| {
+                // Only while the list is open.
+                for (i, k) in &pairs {
+                    if ui.selectable_label(*i == current, name(w, *i, *k)).clicked() {
+                        chosen = Some(*i);
+                    }
+                }
+            });
+            combo.response.widget_info(|| {
+                let mut info = egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, tx("Page pair"));
+                info.current_text_value = Some(value.clone());
+                info
+            });
+        });
+        if let Some(i) = chosen {
+            w.align_pair = i;
+        }
+    }
+    let pair = if per_pair { pairs.iter().find(|(i, _)| *i == w.align_pair).map_or(first, |(_, k)| *k) } else { first };
+    ui.add_space(4.0);
+    sheet_size_section(w, ui, t, pair);
+    ui.add_space(6.0);
+    alignment_section(w, ui, t, pair);
+}
+
+/// The sheet sizes of `pair`, compactly: one line when they are the same (1:1, nothing to
+/// confirm); the proposal, its basis and the confirmation when they differ (a factor is never
+/// applied unconfirmed). Pairs whose sheets differ from a shared choice's are named.
+fn sheet_size_section(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, pair: (usize, usize)) {
+    egui::Frame::new().stroke(Stroke::new(1.0, t.border)).corner_radius(6.0).inner_margin(egui::Margin::same(8)).show(ui, |ui| {
+        ui.horizontal_wrapped(|ui| {
+            ui.add(widgets::checkbox(&mut w.match_sheets, tx("Match sheet sizes")));
+            ui.add_space(8.0);
+            let summary = w.sheet_summary(pair);
+            ui.label(RichText::new(summary).strong());
+        });
+        if !w.match_sheets {
+            muted(ui, t, tx("Off: document B is placed at its own size (1:1), lower-left corners together."));
+            return;
+        }
+        let key = w.sheet_key(pair);
+        let Some(p) = w.proposal(key) else {
+            ui.label(tx("The sheet sizes can't be read."));
+            return;
+        };
+        if p.case != SheetCase::SameSheet {
+            let mut state = w.sheet_state(key);
             ui.label(RichText::new(&p.note).color(t.text_muted));
             let before = state;
             ui.horizontal(|ui| {
                 let proposed = if p.case == SheetCase::SameShape { p.factor } else { p.fit };
                 let mut scaled = matches!(state.choice, SheetChoice::Factor(_));
                 widgets::radio_value(ui, &mut scaled, false, tx("1:1"));
-                if p.case != SheetCase::SameSheet {
-                    let label = if p.case == SheetCase::SameShape {
-                        crate::i18n::fmt(tx("Scale B by the proposed {f}"), &[("f", &format!("{proposed:.4}"))])
-                    } else {
-                        crate::i18n::fmt(tx("Fit B uniformly ({f})"), &[("f", &format!("{proposed:.4}"))])
-                    };
-                    widgets::radio_value(ui, &mut scaled, true, label);
-                }
+                let label = if p.case == SheetCase::SameShape {
+                    crate::i18n::fmt(tx("Scale B by the proposed {f}"), &[("f", &format!("{proposed:.4}"))])
+                } else {
+                    crate::i18n::fmt(tx("Fit B uniformly ({f})"), &[("f", &format!("{proposed:.4}"))])
+                };
+                widgets::radio_value(ui, &mut scaled, true, label);
                 match (scaled, state.choice) {
                     (false, _) => state.choice = SheetChoice::OneToOne,
                     (true, SheetChoice::OneToOne) => state.choice = SheetChoice::Factor(proposed),
@@ -2155,16 +2260,28 @@ fn sheets(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
                 state.confirmed = false;
             }
             ui.add(widgets::checkbox(&mut state.confirmed, tx("I confirm this choice")));
-        });
-        w.sheets.insert(key, state);
-        ui.add_space(4.0);
-    }
+            w.sheets.insert(key, state);
+        }
+        if w.same_sheet_for_all {
+            let unlike = w.sheets_unlike(key);
+            if !unlike.is_empty() {
+                let shown: Vec<String> = unlike.iter().take(20).map(usize::to_string).collect();
+                let more = if unlike.len() > shown.len() { format!(" (+{})", unlike.len() - shown.len()) } else { String::new() };
+                ui.colored_label(
+                    Color32::from_rgb(200, 110, 20),
+                    crate::i18n::fmt(
+                        tx("Output page(s) {pages}{more} have other sheet sizes than the first pair, which sets the scale for every pair. Turn off \"Use the first pair's sheet size for every pair\" to set them apart."),
+                        &[("pages", &shown.join(", ")), ("more", &more)],
+                    ),
+                );
+            }
+        }
+    });
 }
 
-// ── Step 5: Alignment ───────────────────────────────────────────────────────────────────────
-
-fn alignment(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
-    heading(ui, tx("5. Alignment"));
+/// The reference points of `pair` (the first pair's while the alignment is shared), on both
+/// drawings side by side.
+fn alignment_section(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, pair: (usize, usize)) {
     muted(
         ui,
         t,
@@ -2173,35 +2290,6 @@ fn alignment(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
         ),
     );
     ui.add_space(6.0);
-    let pairs: Vec<(usize, (usize, usize))> = w.pairs.iter().enumerate().filter_map(|(i, p)| p.pages().map(|k| (i, k))).collect();
-    if pairs.is_empty() {
-        ui.label(tx("No row has a page on both sides, so there is nothing to align."));
-        return;
-    }
-    if !pairs.iter().any(|(i, _)| *i == w.align_pair) {
-        w.align_pair = pairs.first().map_or(0, |(i, _)| *i);
-    }
-    ui.horizontal(|ui| {
-        ui.add(widgets::checkbox(&mut w.same_alignment_for_all, tx("Use the first pair's alignment for every pair")));
-        if !w.same_alignment_for_all {
-            let current = pairs.iter().find(|(i, _)| *i == w.align_pair).map(|(_, k)| *k).unwrap_or((0, 0));
-            egui::ComboBox::from_id_salt("overlay-align-pair")
-                .selected_text(crate::i18n::fmt(
-                    tx("A page {a} with B page {b}"),
-                    &[("a", &(current.0 + 1).to_string()), ("b", &(current.1 + 1).to_string())],
-                ))
-                .show_ui(ui, |ui| {
-                    for (i, k) in &pairs {
-                        ui.selectable_value(
-                            &mut w.align_pair,
-                            *i,
-                            crate::i18n::fmt(tx("A page {a} with B page {b}"), &[("a", &(k.0 + 1).to_string()), ("b", &(k.1 + 1).to_string())]),
-                        );
-                    }
-                });
-        }
-    });
-    let pair = pairs.iter().find(|(i, _)| *i == w.align_pair).map(|(_, k)| *k).unwrap_or((0, 0));
     let key = w.align_key(pair);
     let ctx = ui.ctx().clone();
     w.request_page(&ctx, Side::A, key.0);
@@ -2469,10 +2557,10 @@ fn registration_readout(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, key: (usi
     }
 }
 
-// ── Step 6: Preview ─────────────────────────────────────────────────────────────────────────
+// ── Step 5: Preview ─────────────────────────────────────────────────────────────────────────
 
 fn preview_step(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
-    heading(ui, tx("6. Preview"));
+    heading(ui, tx("5. Preview"));
     muted(ui, t, tx("The page Generate would write, drawn by PdfCraft's own renderer. Scroll to zoom, drag to pan."));
     ui.add_space(6.0);
     let n = w.pairs.len();
@@ -2639,10 +2727,10 @@ fn unresolved_panel(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
     }
 }
 
-// ── Step 7: Generate ────────────────────────────────────────────────────────────────────────
+// ── Step 6: Generate ────────────────────────────────────────────────────────────────────────
 
 fn generate_step(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
-    heading(ui, tx("7. Generate"));
+    heading(ui, tx("6. Generate"));
     muted(ui, t, tx("The overlay opens as a new, unsaved tab with two layers, Old and New. The source documents aren't changed."));
     ui.add_space(8.0);
     // What will be written, before it is: one output page per row of step 2.
