@@ -246,36 +246,56 @@ fn wizard_screenshots() {
     h.render().unwrap().save(dir.join("step-6-done.png")).unwrap();
 }
 
-/// On the Sheet size & Alignment step: the box's top-left and bottom-right corners on A (100, 100 and
-/// 140, 60) and on B, where the box is 20 pt further right.
+/// On the Sheet size & Alignment step: the box's top-left and bottom-right corners on Old (A: 100,
+/// 100 and 140, 60), then the same corners on New (B), where the box is 20 pt further right.
 fn pick_the_box(h: &mut Harness<'static, PdfCraftApp>) {
-    let (va, vb) = (h.get_by_label("Pick on document A").rect(), h.get_by_label("Pick on document B").rect());
-    for ((ax, ay), (bx, by)) in [((100.0, 100.0), (120.0, 100.0)), ((140.0, 60.0), (160.0, 60.0))] {
+    let (va, vb) = (h.get_by_label("Old drawing").rect(), h.get_by_label("New drawing").rect());
+    for (ax, ay) in [(100.0, 100.0), (140.0, 60.0)] {
         click_at(h, on_page(va, ax, ay));
+    }
+    for (bx, by) in [(120.0, 100.0), (160.0, 60.0)] {
         click_at(h, on_page(vb, bx, by));
     }
 }
 
-/// Picking reference points by clicking the two page views fits B onto A: the box moved 20 pt
-/// (7.056 mm) to the right in B, so the fit shifts B 7.056 mm left, at scale 1.
-#[test]
-fn picking_two_points_registers_b_on_a() {
-    let mut h = harness();
-    assert!(h.state_mut().execute("doc.overlay"));
-    h.run_steps(3);
-    for _ in 0..3 {
-        next(&mut h);
-    }
-    h.get_by_label("4. Sheet size & Alignment");
-    // Both pages render on their own threads.
+/// Wait until both drawings have rendered (and, with `lines`, their lines are read for snapping).
+fn wait_for_drawings(h: &mut Harness<'static, PdfCraftApp>, lines: bool) {
     for _ in 0..800 {
         h.run_steps(1);
-        if h.query_by_label("Pick on document A").is_some() && h.query_by_label("Pick on document B").is_some() {
-            break;
+        if h.query_by_label("Old drawing").is_some()
+            && h.query_by_label("New drawing").is_some()
+            && (!lines || h.query_by_label_contains("Snapping to ").is_some())
+        {
+            return;
         }
         std::thread::sleep(std::time::Duration::from_millis(25));
     }
-    pick_the_box(&mut h);
+    panic!("the drawings didn't render");
+}
+
+/// Two reference points are enough: two on Old, then a click on New starts New's points. The box
+/// moved 20 pt (7.056 mm) to the right in B, so the fit shifts B 7.056 mm left, at scale 1.
+#[test]
+fn picking_two_points_registers_b_on_a() {
+    let mut h = harness();
+    to_sheet_and_alignment(&mut h);
+    wait_for_drawings(&mut h, false);
+    h.get_by_label("Old drawing: select point 1 of 3.");
+    let (va, vb) = (h.get_by_label("Old drawing").rect(), h.get_by_label("New drawing").rect());
+    // New takes no point before Old has two.
+    click_at(&mut h, on_page(vb, 120.0, 100.0));
+    h.get_by_label("That click placed no point: the Old drawing takes point 1 next.");
+    click_at(&mut h, on_page(va, 100.0, 100.0));
+    h.get_by_label("Old drawing: select point 2 of 3.");
+    click_at(&mut h, on_page(va, 140.0, 60.0));
+    h.get_by_label("Old drawing: select point 3 of 3.");
+    h.get_by_label("Or select point 1 on the New drawing to go on with 2 points.");
+    click_at(&mut h, on_page(vb, 120.0, 100.0));
+    h.get_by_label("New drawing: select point 2 of 2.");
+    assert!(next_disabled(&h), "an unfinished set of points blocks Next");
+    click_at(&mut h, on_page(vb, 160.0, 60.0));
+    h.get_by_label("Alignment calculated.");
+    assert!(!next_disabled(&h));
     let node = h.get_by_label_contains(" mm · rotation ");
     // A label's text is its accessibility value.
     let readout = node.accesskit_node().label().or_else(|| node.value()).unwrap_or_default().to_string();
@@ -304,43 +324,29 @@ fn readout(h: &Harness<'static, PdfCraftApp>) -> [f64; 4] {
 #[test]
 fn picks_snap_to_line_ends_and_alt_places_them_freely() {
     let mut h = harness();
-    assert!(h.state_mut().execute("doc.overlay"));
-    h.run_steps(3);
-    for _ in 0..3 {
-        next(&mut h);
-    }
-    h.get_by_label("4. Sheet size & Alignment");
-    // The pages render and their lines are read on their own threads.
-    for _ in 0..800 {
-        h.run_steps(1);
-        if h.query_by_label("Pick on document A").is_some()
-            && h.query_by_label("Pick on document B").is_some()
-            && h.query_by_label_contains("Snapping to ").is_some()
-        {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(25));
-    }
+    to_sheet_and_alignment(&mut h);
+    wait_for_drawings(&mut h, true);
     h.get_by_label_contains("Snapping to 5 lines on A and 5 lines on B");
-    let (va, vb) = (h.get_by_label("Pick on document A").rect(), h.get_by_label("Pick on document B").rect());
+    let (va, vb) = (h.get_by_label("Old drawing").rect(), h.get_by_label("New drawing").rect());
     // Different misses on A and B, so a fit of the raw clicks isn't a pure shift.
-    let corners = [((100.0, 100.0), (120.0, 100.0)), ((140.0, 60.0), (160.0, 60.0))];
     let pick = |h: &mut Harness<'static, PdfCraftApp>, modifiers: egui::Modifiers| {
-        for ((ax, ay), (bx, by)) in corners {
+        for (ax, ay) in [(100.0, 100.0), (140.0, 60.0)] {
             click_with(h, on_page(va, ax, ay) + egui::vec2(3.0, -2.0), modifiers);
+        }
+        for (bx, by) in [(120.0, 100.0), (160.0, 60.0)] {
             click_with(h, on_page(vb, bx, by) + egui::vec2(-2.0, 3.0), modifiers);
         }
     };
     pick(&mut h, egui::Modifiers::NONE);
     let [x, y, rotation, scale] = readout(&h);
     assert_eq!((x, y, rotation, scale), (-7.056, 0.0, 0.0, 1.0));
-    h.get_by_label("Clear the alignment").click();
+    h.get_by_label("Clear all points").click();
     h.run_steps(3);
     pick(&mut h, egui::Modifiers::ALT);
     let [x, y, _, _] = readout(&h);
     assert!((x + 7.056).abs() > 0.5 && y.abs() > 0.5, "Alt clicks snapped: {x}, {y}");
     // Snapping off: clicks stay where they land, without Alt.
-    h.get_by_label("Clear the alignment").click();
+    h.get_by_label("Clear all points").click();
     h.get_by_label("Snap to the drawing").click();
     h.run_steps(3);
     pick(&mut h, egui::Modifiers::NONE);
@@ -495,5 +501,55 @@ fn sheet_sizes_per_pair_are_kept() {
     h.get_by_label("Use the first pair's sheet size for every pair").click();
     h.run_steps(3);
     h.get_by_label("Old: 300 × 200 pt · New: 600 × 400 pt · Scale: New × 0.5000");
+    assert!(!next_disabled(&h));
+}
+
+/// The recommended way: three points on Old, then the same three on New in the same order. Clicks
+/// snap to the box's corners, so the fit is exact with zero residuals. Undo steps back one point
+/// at a time, through a partly picked set and a finished one, and the expected point follows.
+#[test]
+fn three_old_points_then_three_new_points() {
+    let mut h = harness();
+    to_sheet_and_alignment(&mut h);
+    wait_for_drawings(&mut h, true);
+    let (va, vb) = (h.get_by_label("Old drawing").rect(), h.get_by_label("New drawing").rect());
+    let old = [(100.0, 100.0), (140.0, 60.0), (100.0, 60.0)];
+    let near = |view: egui::Rect, (x, y): (f32, f32), dx: f32| on_page(view, x + dx, y) + egui::vec2(2.0, -2.0);
+    for (i, p) in old.into_iter().enumerate() {
+        h.get_by_label(&format!("Old drawing: select point {} of 3.", i + 1));
+        click_at(&mut h, near(va, p, 0.0));
+    }
+    // Old has three: New's turn, and Old takes no fourth.
+    h.get_by_label("New drawing: select point 1 of 3.");
+    click_at(&mut h, near(va, (140.0, 100.0), 0.0));
+    h.get_by_label("That click placed no point: the New drawing takes point 1 next.");
+    // Undo in the middle of the set: Old's third point goes, then comes back.
+    h.get_by_label("Undo last point").click();
+    h.run_steps(3);
+    h.get_by_label("Old drawing: select point 3 of 3.");
+    click_at(&mut h, near(va, old[2], 0.0));
+    for (i, p) in old.into_iter().enumerate() {
+        h.get_by_label(&format!("New drawing: select point {} of 3.", i + 1));
+        click_at(&mut h, near(vb, p, 20.0));
+    }
+    h.get_by_label("Alignment calculated.");
+    assert_eq!(readout(&h), [-7.056, 0.0, 0.0, 1.0]);
+    h.get_by_label("RMS residual 0.000 mm, largest 0.000 mm, on A's sheet.");
+    if let Ok(dir) = std::env::var("PDFCRAFT_SHOT") {
+        h.render().unwrap().save(std::path::Path::new(&dir).join("alignment-three-points.png")).unwrap();
+    }
+    // Undo New's third point: the set is open again, New 3 expected, and Next waits.
+    h.get_by_label("Undo last point").click();
+    h.run_steps(3);
+    h.get_by_label("New drawing: select point 3 of 3.");
+    assert!(next_disabled(&h));
+    click_at(&mut h, near(vb, old[2], 20.0));
+    h.get_by_label("Alignment calculated.");
+    assert!(!next_disabled(&h));
+    // Clear all points: no registration, which is fine too.
+    h.get_by_label("Clear all points").click();
+    h.run_steps(3);
+    h.get_by_label("Old drawing: select point 1 of 3.");
+    h.get_by_label("No registration: B is placed as the sheet match puts it.");
     assert!(!next_disabled(&h));
 }

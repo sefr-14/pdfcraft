@@ -122,6 +122,13 @@ impl Side {
         }
     }
 
+    fn other(self) -> Side {
+        match self {
+            Side::A => Side::B,
+            Side::B => Side::A,
+        }
+    }
+
     /// The pairing model's name for this side.
     fn column(self) -> pdfcraft_overlay::Side {
         match self {
@@ -302,17 +309,125 @@ struct SheetState {
 }
 
 /// Reference points of one page pair, and the final nudge.
+///
+/// Points are picked in rounds (OV6.7): Old's first, then the same features on New in the same
+/// order; point i of one document is point i of the other. The first round asks for three Old
+/// points, and New may start after two; later rounds add any number. Only finished rounds are
+/// fitted, so a half-picked round never changes the alignment.
 #[derive(Clone, Debug, Default, PartialEq)]
 struct Picks {
-    /// (on A, on B), each in its document's displayed frame, in points. B's are before any sheet
-    /// factor; the factor is applied when fitting.
-    picks: Vec<(Point, Point)>,
-    pending_a: Option<Point>,
-    pending_b: Option<Point>,
+    /// Each document's points, in its displayed frame, in points. B's are before any sheet
+    /// factor; the factor is applied when fitting. Kept per document, not per role, so swapping
+    /// Old and New can't mix them up.
+    a: Vec<Point>,
+    b: Vec<Point>,
+    /// Each finished round: how many point pairs there were at its end, and the document whose
+    /// click finished it.
+    rounds: Vec<(usize, Side)>,
     /// Advanced: a general affine fit (changes the drawing's proportions).
     affine: bool,
     /// Typed values that replace the fit (the final nudge).
     manual: Option<Similarity>,
+}
+
+/// Old points the first round asks for before New.
+const FIRST_ROUND: usize = 3;
+/// Old points after which a click on New may start New's points in the first round.
+const FIRST_ROUND_MIN: usize = 2;
+
+/// Which drawing takes the next point.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Expect {
+    side: Side,
+    /// Its number (1-based), as its marker will show.
+    number: usize,
+    /// How many points that drawing has to get in this round, when there is a number.
+    of: Option<usize>,
+    /// The other drawing may start its points instead (New, once Old has enough).
+    other_may_start: bool,
+}
+
+impl Picks {
+    fn points(&self, side: Side) -> &[Point] {
+        match side {
+            Side::A => &self.a,
+            Side::B => &self.b,
+        }
+    }
+
+    fn points_mut(&mut self, side: Side) -> &mut Vec<Point> {
+        match side {
+            Side::A => &mut self.a,
+            Side::B => &mut self.b,
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.a.is_empty() && self.b.is_empty()
+    }
+
+    /// Point pairs in finished rounds.
+    fn done(&self) -> usize {
+        self.rounds.last().map_or(0, |r| r.0)
+    }
+
+    /// A round is under way: one drawing has points the other doesn't have yet.
+    fn open(&self) -> bool {
+        self.a.len() != self.b.len()
+    }
+
+    /// The pairs the fit uses, (on A, on B): those of finished rounds.
+    fn pairs(&self) -> Vec<(Point, Point)> {
+        self.a.iter().zip(&self.b).take(self.done()).map(|(a, b)| (*a, *b)).collect()
+    }
+
+    /// What the next click should be, `old` being the document that is Old.
+    fn expect(&self, old: Side) -> Expect {
+        let done = self.done();
+        let first_round = done == 0;
+        if !self.open() {
+            // A new round starts on Old.
+            return Expect { side: old, number: self.points(old).len() + 1, of: first_round.then_some(FIRST_ROUND), other_may_start: false };
+        }
+        // The round's first drawing is the one with more points.
+        let (first, second) = if self.a.len() > self.b.len() { (Side::A, Side::B) } else { (Side::B, Side::A) };
+        let (n_first, n_second) = (self.points(first).len(), self.points(second).len());
+        if n_second > done || (first_round && n_first >= FIRST_ROUND) {
+            return Expect { side: second, number: n_second + 1, of: Some(n_first), other_may_start: false };
+        }
+        let min = if first_round { FIRST_ROUND_MIN } else { 1 };
+        Expect { side: first, number: n_first + 1, of: first_round.then_some(FIRST_ROUND), other_may_start: n_first.saturating_sub(done) >= min }
+    }
+
+    /// A click at `p` on `side`'s drawing. False, and nothing changes, when that drawing isn't
+    /// taking points now.
+    fn click(&mut self, side: Side, p: Point, old: Side) -> bool {
+        let e = self.expect(old);
+        if side != e.side && !(e.other_may_start && side == e.side.other()) {
+            return false;
+        }
+        self.points_mut(side).push(p);
+        if self.a.len() == self.b.len() {
+            self.rounds.push((self.a.len(), side));
+            self.manual = None;
+        }
+        true
+    }
+
+    /// Remove the last point picked, reopening its round if it finished one, so the point
+    /// expected next is the one removed.
+    fn undo(&mut self) {
+        if !self.open() {
+            if let Some((_, side)) = self.rounds.pop() {
+                self.points_mut(side).pop();
+                self.manual = None;
+            }
+            return;
+        }
+        let (first, second) = if self.a.len() > self.b.len() { (Side::A, Side::B) } else { (Side::B, Side::A) };
+        let side = if self.points(second).len() > self.done() { second } else { first };
+        self.points_mut(side).pop();
+    }
 }
 
 /// A pair's registration, as the engine fitted or the user typed it.
@@ -692,6 +807,8 @@ pub struct Wizard {
     pub same_alignment_for_all: bool,
     aligns: HashMap<(usize, usize), Picks>,
     align_pair: usize,
+    /// Why the last click on a drawing placed no point.
+    align_note: Option<String>,
     views: [View; 2],
     pages: HashMap<(Side, usize), PageImage>,
     pages_pending: HashSet<(Side, usize)>,
@@ -753,6 +870,7 @@ impl Wizard {
             same_alignment_for_all: true,
             aligns: HashMap::new(),
             align_pair: 0,
+            align_note: None,
             views: [View::default(); 2],
             pages: HashMap::new(),
             pages_pending: HashSet::new(),
@@ -1179,7 +1297,7 @@ impl Wizard {
         let align = self.aligns.get(&key).cloned().unwrap_or_default();
         let Some((limits, k)) = self.limits(key) else { return Err(tx("The pages can't be read for alignment.").into()) };
         let picks: Vec<PointPair> = align
-            .picks
+            .pairs()
             .iter()
             .map(|(a, b)| {
                 let (x, y) = k.apply(b.x, b.y);
@@ -1218,6 +1336,12 @@ impl Wizard {
             let key = self.align_key(pair);
             if !seen.insert(key) {
                 continue;
+            }
+            if self.aligns.get(&key).is_some_and(Picks::open) {
+                return Some(crate::i18n::fmt(
+                    tx("Pair A {a} / B {b}: the reference points aren't finished. Select the remaining points, or undo them."),
+                    &[("a", &(key.0 + 1).to_string()), ("b", &(key.1 + 1).to_string())],
+                ));
             }
             if let Err(e) = self.registration(pair) {
                 return Some(crate::i18n::fmt(
@@ -2280,17 +2404,56 @@ fn sheet_size_section(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, pair: (usiz
 }
 
 /// The reference points of `pair` (the first pair's while the alignment is shared), on both
-/// drawings side by side.
+/// drawings side by side, Old on the left: Old's points first, then the same on New (OV6.7).
 fn alignment_section(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, pair: (usize, usize)) {
+    ui.label(tx(
+        "Select three reference points on the Old drawing, then select the same points on New in the same order. You can start selecting on New after two Old points.",
+    ));
     muted(
         ui,
         t,
         tx(
-            "Optional. Click the same feature on A, then on B (or B, then A); each pair of clicks is one reference point. Two points fix shift, rotation and scale; three or more let the residuals check them. Clicks snap to the nearest line end or crossing, so the same point is picked on both. Scroll to zoom, drag to pan.",
+            "Points are optional: without any, New is placed as the sheet size puts it. Clicks snap to the drawing (hold Alt to place a point freely). Scroll to zoom, drag to pan.",
         ),
     );
-    ui.add_space(6.0);
     let key = w.align_key(pair);
+    let (old, new) = w.old_new();
+    let mut align = w.aligns.get(&key).cloned().unwrap_or_default();
+    let expect = align.expect(old);
+    let role = |side: Side| if side == old { tx("Old") } else { tx("New") };
+    // Where the user is: which drawing takes the next point, and which one. Two lines of fixed
+    // height, so the drawings never move under the pointer between clicks.
+    let status = if !align.open() && align.done() > 0 {
+        if w.registration(pair).is_ok() { tx("Alignment calculated.").to_string() } else { tx("Alignment not calculated: see below.").to_string() }
+    } else {
+        match expect.of {
+            Some(of) => crate::i18n::fmt(
+                tx("{role} drawing: select point {n} of {of}."),
+                &[("role", role(expect.side)), ("n", &expect.number.to_string()), ("of", &of.to_string())],
+            ),
+            None => crate::i18n::fmt(tx("{role} drawing: select point {n}."), &[("role", role(expect.side)), ("n", &expect.number.to_string())]),
+        }
+    };
+    let (second, warn) = if let Some(note) = &w.align_note {
+        (note.clone(), true)
+    } else if expect.other_may_start {
+        let text = crate::i18n::fmt(
+            tx("Or select point {n} on the {role} drawing to go on with {k} points."),
+            &[("n", &(align.done() + 1).to_string()), ("role", role(expect.side.other())), ("k", &align.points(expect.side).len().to_string())],
+        );
+        (text, false)
+    } else if !align.open() && align.done() > 0 {
+        (tx("To add points, select more on the Old drawing, then the same on the New drawing.").to_string(), false)
+    } else {
+        (String::new(), false)
+    };
+    ui.allocate_ui_with_layout(vec2(ui.available_width(), 40.0), Layout::top_down(Align::Min), |ui| {
+        ui.set_min_height(40.0);
+        ui.add(egui::Label::new(RichText::new(status).strong().color(t.accent)).truncate());
+        let colour = if warn { Color32::from_rgb(200, 110, 20) } else { t.text_muted };
+        ui.add(egui::Label::new(RichText::new(second).color(colour)).truncate());
+    });
+    let page_of = |side: Side| if side == Side::A { key.0 } else { key.1 };
     let ctx = ui.ctx().clone();
     w.request_page(&ctx, Side::A, key.0);
     w.request_page(&ctx, Side::B, key.1);
@@ -2302,88 +2465,111 @@ fn alignment_section(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, pair: (usize
     }
     let snapping = w.snap_enabled && !ui.input(|i| i.modifiers.alt);
     let options = w.snap;
-    let lines = [w.lines.get(&(Side::A, key.0)).cloned(), w.lines.get(&(Side::B, key.1)).cloned()];
-    let mut align = w.aligns.get(&key).cloned().unwrap_or_default();
     let width = ((ui.available_width() - 12.0) / 2.0).max(200.0);
     let height = (ui.available_height() - 200.0).clamp(260.0, 620.0);
-    let sizes = [w.a.as_mut().and_then(|s| s.size(key.0)), w.b.as_mut().and_then(|s| s.size(key.1))];
-    let mut clicks: [Option<Point>; 2] = [None, None];
+    let mut clicks: Vec<(Side, Point)> = Vec::new();
     ui.horizontal(|ui| {
-        for (i, side, page) in [(0usize, Side::A, key.0), (1, Side::B, key.1)] {
+        for (i, side) in [(0usize, old), (1, new)] {
+            let page = page_of(side);
+            let lines = w.lines.get(&(side, page)).cloned();
+            let size = w.snapshot_mut(side).and_then(|s| s.size(page));
+            // This drawing takes the next point, or may start its points instead.
+            let collecting = side == expect.side;
+            let may_start = expect.other_may_start && !collecting;
+            let next_number = if collecting { expect.number } else { align.done() + 1 };
             ui.vertical(|ui| {
-                ui.label(
-                    RichText::new(crate::i18n::fmt(tx("Document {side}, page {p}"), &[("side", side.letter()), ("p", &(page + 1).to_string())]))
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(crate::i18n::fmt(
+                            tx("{role} drawing · document {side}, page {p}"),
+                            &[("role", role(side)), ("side", side.letter()), ("p", &(page + 1).to_string())],
+                        ))
                         .strong(),
-                );
+                    );
+                    if collecting {
+                        ui.label(
+                            RichText::new(crate::i18n::fmt(tx("select point {n}"), &[("n", &next_number.to_string())])).strong().color(t.accent),
+                        );
+                    } else if may_start {
+                        ui.label(RichText::new(crate::i18n::fmt(tx("or point {n} here"), &[("n", &next_number.to_string())])).color(t.text_muted));
+                    }
+                });
                 let placeholder = w.page_errors.get(&(side, page)).cloned().unwrap_or_else(|| tx("Rendering…").to_string());
                 let mut view = w.views[i];
-                let label = crate::i18n::fmt(tx("Pick on document {side}"), &[("side", side.letter())]);
+                let label = crate::i18n::fmt(tx("{role} drawing"), &[("role", role(side))]);
                 let shown = image_view(ui, &label, &mut view, w.pages.get(&(side, page)), vec2(width, height), &placeholder);
                 w.views[i] = view;
-                // Markers: each pick, numbered, and the pending one.
-                let Some(size) = sizes[i] else { return };
-                let to_norm = |p: Point| vec2((p.x / size.0) as f32, (1.0 - p.y / size.1) as f32);
                 let painter = ui.painter_at(shown.rect);
-                let pts: Vec<Point> = align.picks.iter().map(|(a, b)| if i == 0 { *a } else { *b }).collect();
-                for (n, p) in pts.iter().enumerate() {
-                    let at = shown.to_screen(to_norm(*p));
-                    painter.circle_stroke(at, 7.0, Stroke::new(2.0, Color32::from_rgb(230, 80, 20)));
-                    painter.text(
-                        at + vec2(9.0, -9.0),
-                        egui::Align2::LEFT_BOTTOM,
-                        (n + 1).to_string(),
-                        theme::semibold(13.0),
-                        Color32::from_rgb(230, 80, 20),
-                    );
+                if collecting || may_start {
+                    let stroke = if collecting { Stroke::new(2.5, t.accent) } else { Stroke::new(1.0, t.accent) };
+                    painter.rect_stroke(shown.rect, 4.0, stroke, egui::StrokeKind::Inside);
                 }
-                let pending = if i == 0 { align.pending_a } else { align.pending_b };
-                if let Some(p) = pending {
-                    let at = shown.to_screen(to_norm(p));
-                    painter.circle_stroke(at, 7.0, Stroke::new(2.0, Color32::from_rgb(20, 120, 230)));
-                    painter.line_segment([at - vec2(10.0, 0.0), at + vec2(10.0, 0.0)], Stroke::new(1.0, Color32::from_rgb(20, 120, 230)));
-                    painter.line_segment([at - vec2(0.0, 10.0), at + vec2(0.0, 10.0)], Stroke::new(1.0, Color32::from_rgb(20, 120, 230)));
+                let Some(size) = size else { return };
+                let to_norm = |p: Point| vec2((p.x / size.0) as f32, (1.0 - p.y / size.1) as f32);
+                // Markers, numbered on both drawings: finished rounds in orange, the round under
+                // way in blue, and the Old point whose New partner is expected next ringed.
+                let done = align.done();
+                for (n, p) in align.points(side).iter().enumerate() {
+                    let at = shown.to_screen(to_norm(*p));
+                    let colour = if n < done { Color32::from_rgb(230, 80, 20) } else { Color32::from_rgb(20, 120, 230) };
+                    if !collecting && n + 1 == expect.number {
+                        painter.circle_filled(at, 11.0, t.accent.gamma_multiply(0.25));
+                        painter.circle_stroke(at, 11.0, Stroke::new(2.5, t.accent));
+                    }
+                    painter.circle_stroke(at, 7.0, Stroke::new(2.0, colour));
+                    painter.text(at + vec2(9.0, -9.0), egui::Align2::LEFT_BOTTOM, (n + 1).to_string(), theme::semibold(13.0), colour);
                 }
                 // A click lands on the nearest line end or crossing within reach (SNAP_PIXELS at
                 // the current zoom), or where it is when there is none or Alt is held.
                 let tolerance = SNAP_PIXELS * size.0 / f64::from(shown.image.width()).max(1e-6);
                 let snapped = |n: Vec2| -> (Point, Option<SnapKind>) {
                     let p = Point::new(f64::from(n.x) * size.0, (1.0 - f64::from(n.y)) * size.1);
-                    match lines.get(i).and_then(Option::as_ref).filter(|_| snapping).and_then(|l| l.snap(p, tolerance, options)) {
+                    match lines.as_ref().filter(|_| snapping).and_then(|l| l.snap(p, tolerance, options)) {
                         Some(s) => (s.point, Some(s.kind)),
                         None => (p, None),
                     }
                 };
-                if let Some(n) = shown.hover
-                    && let (p, Some(kind)) = snapped(n)
+                if (collecting || may_start)
+                    && let Some(n) = shown.hover
                 {
-                    snap_marker(&painter, shown.to_screen(to_norm(p)), kind);
+                    let (p, kind) = snapped(n);
+                    let at = shown.to_screen(to_norm(p));
+                    if let Some(kind) = kind {
+                        snap_marker(&painter, at, kind);
+                    }
+                    // The number the click would give.
+                    painter.text(at + vec2(-10.0, -10.0), egui::Align2::RIGHT_BOTTOM, next_number.to_string(), theme::semibold(13.0), t.accent);
                 }
                 if let Some(n) = shown.clicked {
-                    clicks[i] = Some(snapped(n).0);
+                    clicks.push((side, snapped(n).0));
                 }
             });
         }
     });
-    if let Some(p) = clicks[0] {
-        align.pending_a = Some(p);
-    }
-    if let Some(p) = clicks[1] {
-        align.pending_b = Some(p);
-    }
-    if let (Some(a), Some(b)) = (align.pending_a, align.pending_b) {
-        align.picks.push((a, b));
-        align.pending_a = None;
-        align.pending_b = None;
-        align.manual = None;
+    for (side, p) in clicks {
+        if align.click(side, p, old) {
+            w.align_note = None;
+        } else {
+            let e = align.expect(old);
+            w.align_note = Some(crate::i18n::fmt(
+                tx("That click placed no point: the {role} drawing takes point {n} next."),
+                &[("role", role(e.side)), ("n", &e.number.to_string())],
+            ));
+        }
+        // The status above the drawings follows on the next frame.
+        ui.ctx().request_repaint();
     }
     snapping_controls(w, ui, t, key);
     ui.horizontal(|ui| {
-        if ui.add_enabled(!align.picks.is_empty(), egui::Button::new(tx("Remove the last point"))).clicked() {
-            align.picks.pop();
-            align.manual = None;
+        if ui.add_enabled(!align.is_empty(), egui::Button::new(tx("Undo last point"))).clicked() {
+            align.undo();
+            w.align_note = None;
+            ui.ctx().request_repaint();
         }
-        if ui.add_enabled(!align.picks.is_empty() || align.manual.is_some(), egui::Button::new(tx("Clear the alignment"))).clicked() {
+        if ui.add_enabled(!align.is_empty() || align.manual.is_some(), egui::Button::new(tx("Clear all points"))).clicked() {
             align = Picks { affine: align.affine, ..Picks::default() };
+            w.align_note = None;
+            ui.ctx().request_repaint();
         }
         if ui.add(widgets::checkbox(&mut align.affine, tx("Advanced: affine (allows stretch and skew)"))).changed() {
             align.manual = None;
@@ -2521,8 +2707,6 @@ fn registration_readout(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, key: (usi
             };
             ui.label(RichText::new(text).color(t.text_muted));
         }
-    } else if align.picks.len() == 1 {
-        muted(ui, t, tx("One point picked: pick another pair to fit."));
     }
     if align.affine {
         return;
@@ -2798,5 +2982,116 @@ fn generate_step(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
         ui.label(RichText::new(tx("Generation report")).strong());
         let mut text = o.report.clone();
         ui.add(egui::TextEdit::multiline(&mut text).font(egui::TextStyle::Monospace).desired_width(f32::INFINITY).desired_rows(12).interactive(true));
+    }
+}
+
+#[cfg(test)]
+mod picks_tests {
+    use super::*;
+
+    fn pt(x: f64) -> Point {
+        Point::new(x, x)
+    }
+
+    /// Three Old points, then three New points in the same order; the fit uses all three pairs
+    /// once New's third point finishes the round.
+    #[test]
+    fn three_old_points_then_three_new() {
+        let mut p = Picks::default();
+        assert_eq!(p.expect(Side::A), Expect { side: Side::A, number: 1, of: Some(3), other_may_start: false });
+        // New takes nothing before Old has two points.
+        assert!(!p.click(Side::B, pt(9.0), Side::A));
+        for x in [1.0, 2.0, 3.0] {
+            assert!(p.click(Side::A, pt(x), Side::A));
+        }
+        // Three Old points: New's turn, and Old takes no fourth.
+        assert_eq!(p.expect(Side::A), Expect { side: Side::B, number: 1, of: Some(3), other_may_start: false });
+        assert!(!p.click(Side::A, pt(4.0), Side::A));
+        assert!(p.click(Side::B, pt(11.0), Side::A));
+        assert!(p.click(Side::B, pt(12.0), Side::A));
+        assert!(p.pairs().is_empty(), "a round under way isn't fitted");
+        assert_eq!(p.expect(Side::A).number, 3);
+        assert!(p.click(Side::B, pt(13.0), Side::A));
+        assert!(!p.open());
+        assert_eq!(p.pairs(), vec![(pt(1.0), pt(11.0)), (pt(2.0), pt(12.0)), (pt(3.0), pt(13.0))]);
+        // More points: a new round starts on Old, with no number to reach.
+        assert_eq!(p.expect(Side::A), Expect { side: Side::A, number: 4, of: None, other_may_start: false });
+        assert!(p.click(Side::A, pt(4.0), Side::A));
+        assert_eq!(p.expect(Side::A), Expect { side: Side::A, number: 5, of: None, other_may_start: true });
+        assert!(p.click(Side::B, pt(14.0), Side::A));
+        assert_eq!(p.pairs().len(), 4);
+    }
+
+    /// Two Old points are enough: the first click on New starts New's points.
+    #[test]
+    fn two_old_points_then_new() {
+        let mut p = Picks::default();
+        p.click(Side::A, pt(1.0), Side::A);
+        assert!(!p.expect(Side::A).other_may_start);
+        p.click(Side::A, pt(2.0), Side::A);
+        assert_eq!(p.expect(Side::A), Expect { side: Side::A, number: 3, of: Some(3), other_may_start: true });
+        assert!(p.click(Side::B, pt(11.0), Side::A));
+        assert_eq!(p.expect(Side::A), Expect { side: Side::B, number: 2, of: Some(2), other_may_start: false });
+        // Old's round is closed now.
+        assert!(!p.click(Side::A, pt(3.0), Side::A));
+        assert!(p.click(Side::B, pt(12.0), Side::A));
+        assert_eq!(p.pairs(), vec![(pt(1.0), pt(11.0)), (pt(2.0), pt(12.0))]);
+    }
+
+    /// Undo removes the last point, in any state, and the expected point follows it back.
+    #[test]
+    fn undo_steps_back_one_point_at_a_time() {
+        let mut p = Picks::default();
+        for x in [1.0, 2.0, 3.0] {
+            p.click(Side::A, pt(x), Side::A);
+        }
+        for x in [11.0, 12.0, 13.0] {
+            p.click(Side::B, pt(x), Side::A);
+        }
+        p.manual = Similarity::new(1.0, 0.0, 1.0, 1.0);
+        // Undoing New 3 reopens the round: no fit, New 3 expected again, the nudge is dropped.
+        p.undo();
+        assert!(p.pairs().is_empty() && p.manual.is_none());
+        assert_eq!(p.expect(Side::A), Expect { side: Side::B, number: 3, of: Some(3), other_may_start: false });
+        p.undo();
+        p.undo();
+        assert_eq!(p.expect(Side::A), Expect { side: Side::B, number: 1, of: Some(3), other_may_start: false });
+        // Then Old 3: Old's turn again.
+        p.undo();
+        assert_eq!(p.expect(Side::A), Expect { side: Side::A, number: 3, of: Some(3), other_may_start: true });
+        p.undo();
+        p.undo();
+        assert_eq!(p, Picks::default());
+        p.undo();
+        assert_eq!(p, Picks::default());
+        // A round after a finished one: undo stays within it, and the fit keeps the first.
+        for x in [1.0, 2.0] {
+            p.click(Side::A, pt(x), Side::A);
+        }
+        for x in [11.0, 12.0] {
+            p.click(Side::B, pt(x), Side::A);
+        }
+        p.click(Side::A, pt(3.0), Side::A);
+        p.undo();
+        assert_eq!(p.pairs().len(), 2);
+        assert_eq!(p.expect(Side::A), Expect { side: Side::A, number: 3, of: None, other_may_start: false });
+    }
+
+    /// With A as New, Old's points are B's; the pairs are still (on A, on B), and swapping roles
+    /// later doesn't mix them up.
+    #[test]
+    fn pairs_follow_the_documents_not_the_roles() {
+        let mut p = Picks::default();
+        assert!(!p.click(Side::A, pt(1.0), Side::B), "Old (B) first");
+        for x in [1.0, 2.0, 3.0] {
+            p.click(Side::B, pt(x), Side::B);
+        }
+        for x in [11.0, 12.0, 13.0] {
+            p.click(Side::A, pt(x), Side::B);
+        }
+        assert_eq!(p.pairs(), vec![(pt(11.0), pt(1.0)), (pt(12.0), pt(2.0)), (pt(13.0), pt(3.0))]);
+        // Roles swapped back: the same pairs, and new rounds start on the new Old.
+        assert_eq!(p.expect(Side::A).side, Side::A);
+        assert_eq!(p.pairs()[0], (pt(11.0), pt(1.0)));
     }
 }
