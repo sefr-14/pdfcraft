@@ -41,7 +41,9 @@ pub struct Plan {
     pub pairs: Vec<PairPlan>,
     pub style: LayerStyle,
     pub roles: Roles,
-    /// "Expand output to include both documents": off keeps A's sheet and clips B.
+    /// The wizard's "Expand page to prevent clipping" (until OV6.8 "Expand output to include both
+    /// documents"): on, each page is the union of both placed sheets; off keeps A's sheet and
+    /// clips B. It never changes the number of pages.
     pub expand: bool,
     pub settings: Settings,
 }

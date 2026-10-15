@@ -134,6 +134,27 @@ Step 3 adds `composite`, which writes the overlay page:
 The wizard itself is `crates/ui-egui/src/overlay_ui.rs` (Overlay compare… on the toolbar, in All
 tools ▸ Compare files, and the command `doc.overlay`).
 
+Wizard layout, decision of 15 Oct 2026 (OV6.5–OV6.8, after the user's tests with real drawing
+sets of up to 59 sheets). It revises the overlay PRD's seven-step wizard for the interface only;
+the PRD's requirements stay as written, and every functional area is still there:
+
+- Six visible steps: Documents, Pages, Colours, Sheet size & Alignment, Preview, Generate. Sheet
+  sizes and alignment share one screen: a compact sheet-size section ("Old: 3024 × 2160 pt ·
+  New: 3024 × 2160 pt · Scale: 1:1") above the two drawings.
+- Match sheet sizes is on by default in the wizard (the PRD had it off). The same sheet is 1:1 with
+  nothing to confirm; different sheets show the proposal and its basis, and a factor is applied
+  only once confirmed, as before. Each page pair keeps its own choice when the first pair's isn't
+  shared, and pairs whose sheets differ from a shared choice are named.
+- Pages: each row says what it compares, Matched, Old only or New only (a sheet one revision lacks
+  isn't necessarily inserted or deleted), in a "Compare as" dropdown, with arrows that move the
+  whole row; the row menu moves only one revision's sheet.
+- Reference points: Old's first (three recommended), then the same points on New in the same order,
+  matched by number, with both drawings side by side throughout. New may start after two Old
+  points; more points can be added in later rounds; zero points, two-point similarity, affine and
+  the final nudge are unchanged.
+- Generate: "Expand page to prevent clipping" (was "Expand output to include both documents"),
+  off by default; the output extent calculation is unchanged.
+
 Known limitation (R3, pre-existing; recorded at the upstream 0.8.0 sync, not fixed): a source
 page's resources are taken as one dictionary, its own `/Resources` or else its nearest page-tree
 ancestor's, both by `pdfcraft_organize::page_as_form`, which `composite` uses to copy the page,

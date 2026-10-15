@@ -553,3 +553,65 @@ fn three_old_points_then_three_new_points() {
     h.get_by_label("No registration: B is placed as the sheet match puts it.");
     assert!(!next_disabled(&h));
 }
+
+/// Generate's output size. "Expand page to prevent clipping" is off by default: each page keeps
+/// A's sheet (300 × 200 pt) and the part of B outside it is clipped, as Preview shows. On, the page
+/// grows to hold both aligned drawings: B is registered 20 pt left, so 320 × 200 pt. Either way
+/// one page per row, exactly two layers, Old and New, and the sources unchanged.
+#[test]
+fn expand_page_to_prevent_clipping() {
+    let mut h = harness();
+    let sources: Vec<_> = h.state().views.iter().map(|v| h.state().session.get(v.id).unwrap().bytes.clone()).collect();
+    to_sheet_and_alignment(&mut h);
+    wait_for_drawings(&mut h, true);
+    pick_the_box(&mut h);
+    h.get_by_label("Alignment calculated.");
+    assert_eq!(readout(&h), [-7.056, 0.0, 0.0, 1.0]);
+    next(&mut h);
+    h.get_by_label("5. Preview");
+    for _ in 0..2400 {
+        h.run_steps(1);
+        if h.query_by_label_contains("Part of B falls outside A's sheet").is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    h.get_by_label_contains("To keep it, turn on Expand page to prevent clipping in step 6.");
+    next(&mut h);
+    h.get_by_label("6. Generate");
+    assert_eq!(h.get_by_label("Expand page to prevent clipping").accesskit_node().toggled(), Some(egui::accesskit::Toggled::False));
+    h.get_by_label("When enabled, the output page expands to include both aligned drawings. This may create a nonstandard sheet size.");
+    let made = |h: &Harness<'static, PdfCraftApp>| {
+        let app = h.state();
+        let (_, id) = app.active_ids().unwrap();
+        let doc = app.session.get(id).unwrap();
+        let layers: Vec<String> = doc.info.layers.iter().map(|l| l.name.clone()).collect();
+        let sizes: Vec<(f32, f32)> = doc.info.pages.iter().map(|p| (p.width, p.height)).collect();
+        (layers, sizes)
+    };
+    h.get_by_label("Generate").click();
+    wait(&mut h, |app| app.views.len() == 3);
+    let (layers, sizes) = made(&h);
+    assert_eq!(layers, ["Old", "New"]);
+    assert_eq!(sizes.len(), 2);
+    for (w, ht) in sizes {
+        assert!((w - 300.0).abs() < 0.01 && (ht - 200.0).abs() < 0.01, "{w} × {ht}");
+    }
+    h.get_by_label_contains("Part of B is clipped on page(s) 1, 2");
+    // Expanded: the union of both placed sheets.
+    h.get_by_label("Expand page to prevent clipping").click();
+    h.run_steps(3);
+    h.get_by_label("Generate again").click();
+    wait(&mut h, |app| app.views.len() == 4);
+    let (layers, sizes) = made(&h);
+    assert_eq!(layers, ["Old", "New"]);
+    assert_eq!(sizes.len(), 2);
+    for (w, ht) in sizes {
+        assert!((w - 320.0).abs() < 0.01 && (ht - 200.0).abs() < 0.01, "{w} × {ht}");
+    }
+    assert!(h.query_by_label_contains("Part of B is clipped").is_none());
+    let app = h.state();
+    for (v, before) in app.views.iter().take(2).zip(&sources) {
+        assert_eq!(app.session.get(v.id).unwrap().bytes, *before);
+    }
+}

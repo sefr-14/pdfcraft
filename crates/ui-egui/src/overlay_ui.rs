@@ -2846,8 +2846,10 @@ fn preview_step(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
         }
         ui.painter_at(shown.rect).add(egui::Shape::dashed_line(&closed, Stroke::new(1.5, Color32::from_rgb(230, 120, 20)), 6.0, 4.0));
         ui.label(
-            RichText::new(tx("Part of B falls outside A's sheet and is clipped (dashed outline). Generate can expand the page instead."))
-                .color(t.text_muted),
+            RichText::new(tx(
+                "Part of B falls outside A's sheet and is clipped (dashed outline). To keep it, turn on Expand page to prevent clipping in step 6.",
+            ))
+            .color(t.text_muted),
         );
     }
 }
@@ -2944,10 +2946,13 @@ fn generate_step(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
         }
     }
     ui.add_space(8.0);
-    if ui.add(widgets::checkbox(&mut w.expand, tx("Expand output to include both documents"))).changed() {
+    // The size of each output page, not how many pages there are (OV6.8: renamed from "Expand
+    // output to include both documents", which read as combining documents).
+    if ui.add(widgets::checkbox(&mut w.expand, tx("Expand page to prevent clipping"))).changed() {
         w.preview.key.clear();
     }
-    muted(ui, t, tx("Off keeps document A's sheet size; any part of B outside it is clipped."));
+    muted(ui, t, tx("When enabled, the output page expands to include both aligned drawings. This may create a nonstandard sheet size."));
+    muted(ui, t, tx("When disabled, each output page keeps the reference sheet (document A's), and content outside it may be clipped."));
     ui.add_space(8.0);
     ui.horizontal(|ui| {
         let label = if w.outcome.is_some() { tx("Generate again") } else { tx("Generate") };
