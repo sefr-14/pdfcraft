@@ -13,6 +13,13 @@
 //! Every operation only moves cells within a column, or adds or removes a blank, so it can never
 //! lose or duplicate a page, and the sources are never touched. An operation that would leave a
 //! row with no page on either side is refused, and a refused operation changes nothing.
+//!
+//! The wizard's "Compare as" ([`Pairing::set_compare`]) names what a row holds, Matched, A only
+//! or B only, rather than why: a sheet one revision lacks may have been inserted, deleted or just
+//! left out. Turning a one-sided row back into a matched one only takes a partner the pairing
+//! itself points to (the neighbouring one-sided row, or the run an earlier gap pushed down);
+//! anything else is refused, and the partner is chosen by hand ([`Pairing::take`]), so pairings
+//! the user made are never re-paired behind their back.
 
 use std::fmt;
 
@@ -73,6 +80,42 @@ impl Pair {
     pub fn is_empty(&self) -> bool {
         self.a.page().is_none() && self.b.page().is_none()
     }
+
+    /// What the row compares; `None` while a side has no partner yet (or the row is empty).
+    pub fn compare(&self) -> Option<Compare> {
+        match (self.a, self.b) {
+            (Slot::Page(_), Slot::Page(_)) => Some(Compare::Matched),
+            (Slot::Page(_), Slot::Blank) => Some(Compare::Only(Side::A)),
+            (Slot::Blank, Slot::Page(_)) => Some(Compare::Only(Side::B)),
+            _ => None,
+        }
+    }
+}
+
+/// What an output page compares: the wizard's "Compare as".
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Compare {
+    /// A page from each document.
+    Matched,
+    /// A page from this document only; the other side is a deliberate blank.
+    Only(Side),
+}
+
+/// What a [`Pairing::set_compare`] changed besides its own row, so the wizard can say so.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Effect {
+    /// `side`'s cells from output page `from` (0-based) on moved one row down, or up.
+    Shifted { side: Side, from: usize, down: bool },
+    /// `side`'s page came from the neighbouring output page `from` (0-based, before the change),
+    /// which held nothing else and was removed.
+    Merged { side: Side, from: usize },
+}
+
+fn other(side: Side) -> Side {
+    match side {
+        Side::A => Side::B,
+        Side::B => Side::A,
+    }
 }
 
 /// Why an operation was refused. Nothing changed.
@@ -90,6 +133,11 @@ pub enum PairingError {
     AtEdge { row: usize },
     /// More than [`MAX_ROWS`] output pages.
     TooManyRows,
+    /// Output page `row` (0-based) has no partner yet on one side; that has to be settled first.
+    Unplaced { row: usize },
+    /// No partner for output page `row` (0-based) can be found without re-pairing pages paired
+    /// elsewhere: choose it in the row's cell.
+    NoCounterpart { row: usize },
 }
 
 impl fmt::Display for PairingError {
@@ -103,6 +151,12 @@ impl fmt::Display for PairingError {
             PairingError::NotInColumn { page } => write!(f, "page {} isn't in this document's range", page.saturating_add(1)),
             PairingError::AtEdge { row } => write!(f, "output page {}'s page can't move further that way", row.saturating_add(1)),
             PairingError::TooManyRows => write!(f, "more than {MAX_ROWS} output pages"),
+            PairingError::Unplaced { row } => write!(f, "output page {} has no partner yet; settle that row first", row.saturating_add(1)),
+            PairingError::NoCounterpart { row } => write!(
+                f,
+                "no page can be paired with output page {} without re-pairing other rows; choose it in the row's cell",
+                row.saturating_add(1)
+            ),
         }
     }
 }
@@ -264,15 +318,19 @@ impl Pairing {
             return Err(PairingError::NoSuchRow { row });
         }
         self.attempt(|p| {
-            let col = p.column_mut(side);
-            if row > col.len() {
-                // Past the end of this column: fill up to the row with blanks first.
-                col.resize(row, Cell::Blank);
-            }
-            // row <= col.len() here, so insert can't panic.
-            col.insert(row, Cell::Blank);
+            p.blank_at(side, row);
             Ok(())
         })
+    }
+
+    fn blank_at(&mut self, side: Side, row: usize) {
+        let col = self.column_mut(side);
+        if row > col.len() {
+            // Past the end of this column: fill up to the row with blanks first.
+            col.resize(row, Cell::Blank);
+        }
+        // row <= col.len() here, so insert can't panic.
+        col.insert(row, Cell::Blank);
     }
 
     /// Remove the blank at output page `row` in `side`'s column (undo a gap); that side's later
@@ -324,6 +382,212 @@ impl Pairing {
             col.swap(from, row);
             Ok(())
         })
+    }
+
+    /// Pair `page` of `side`'s document with output page `row` by hand, as [`Pairing::assign`]
+    /// does (the page and the cell at `row` change places), except that the output page the page
+    /// came from is removed when that leaves it with no page at all (it held only this page,
+    /// opposite a blank). The rows below it keep their pairs, one row up. Only the first row
+    /// past the end of `side`'s column can be reached: the rows after it have no partner yet,
+    /// and filling them with blanks would change them without a word.
+    pub fn take(&mut self, side: Side, row: usize, page: usize) -> Result<(), PairingError> {
+        if row >= self.len() {
+            return Err(PairingError::NoSuchRow { row });
+        }
+        let Some(from) = self.row_of(side, page) else { return Err(PairingError::NotInColumn { page }) };
+        if from == row {
+            return Ok(());
+        }
+        let end = self.column(side).len();
+        if row > end {
+            return Err(PairingError::Unplaced { row: end });
+        }
+        self.attempt(|p| {
+            let col = p.column_mut(side);
+            if row >= col.len() {
+                // row == len here: one blank, so nothing else changes.
+                col.push(Cell::Blank);
+            }
+            // Both are within the column now, so swap can't panic.
+            col.swap(from, row);
+            if p.row(from).is_empty() {
+                p.remove_row(from);
+            }
+            Ok(())
+        })
+    }
+
+    /// Remove output page `row` from both columns (where they reach it).
+    fn remove_row(&mut self, row: usize) {
+        for side in [Side::A, Side::B] {
+            let col = self.column_mut(side);
+            if row < col.len() {
+                col.remove(row);
+            }
+        }
+    }
+
+    /// The row output page `row` changes places with when moved down (or up), if it can: both
+    /// rows must be within each column, or both past its end.
+    pub fn row_move_target(&self, row: usize, down: bool) -> Result<usize, PairingError> {
+        let len = self.len();
+        if row >= len {
+            return Err(PairingError::NoSuchRow { row });
+        }
+        let other = if down { row.checked_add(1).filter(|r| *r < len) } else { row.checked_sub(1) };
+        let Some(other) = other else { return Err(PairingError::AtEdge { row }) };
+        let (lo, hi) = (row.min(other), row.max(other));
+        for side in [Side::A, Side::B] {
+            let end = self.column(side).len();
+            if lo < end && hi >= end {
+                return Err(PairingError::Unplaced { row: end });
+            }
+        }
+        Ok(other)
+    }
+
+    /// Move the whole output page `row`, both sides, one row down (or up): it and its neighbour
+    /// change places, so every pair stays a pair.
+    pub fn move_row(&mut self, row: usize, down: bool) -> Result<(), PairingError> {
+        let other = self.row_move_target(row, down)?;
+        let (lo, hi) = (row.min(other), row.max(other));
+        self.attempt(|p| {
+            for side in [Side::A, Side::B] {
+                let col = p.column_mut(side);
+                // Both within the column (row_move_target), so swap can't panic.
+                if hi < col.len() {
+                    col.swap(lo, hi);
+                }
+            }
+            Ok(())
+        })
+    }
+
+    /// Make output page `row` compare as `to`, keeping every page:
+    ///
+    /// - Matched → one document only: a blank goes into the other document's cell, and that
+    ///   document's later cells move one row down (the displaced page stays, one row lower).
+    /// - One document only → Matched: the partner comes only from where the pairing points to it.
+    ///   The row directly above or below holding only the other document's page (not both such
+    ///   rows: that would be a guess) merges into this one; or, when every row below is the
+    ///   untouched run an earlier gap pushed down (pages on both sides, each column's pages in
+    ///   sequence, no blank), the gap is removed and that run moves back up. Otherwise
+    ///   [`PairingError::NoCounterpart`]: choose the partner with [`Pairing::take`].
+    /// - One document only → the other only: Matched as above, then a blank for the first.
+    /// - A row without a partner yet → one document only: a blank in the other's cell, for the
+    ///   first such row of that column only.
+    ///
+    /// Returns what moved besides the row. A refused change changes nothing.
+    pub fn set_compare(&mut self, row: usize, to: Compare) -> Result<Vec<Effect>, PairingError> {
+        if row >= self.len() {
+            return Err(PairingError::NoSuchRow { row });
+        }
+        let mut effects = Vec::new();
+        self.attempt(|p| {
+            effects = p.compare_in_place(row, to)?;
+            Ok(())
+        })?;
+        Ok(effects)
+    }
+
+    fn compare_in_place(&mut self, row: usize, to: Compare) -> Result<Vec<Effect>, PairingError> {
+        let now = self.row(row);
+        match (now.compare(), to) {
+            (Some(Compare::Matched), Compare::Matched) => Ok(Vec::new()),
+            (Some(Compare::Matched), Compare::Only(keep)) => {
+                let side = other(keep);
+                self.blank_at(side, row);
+                Ok(vec![Effect::Shifted { side, from: row.saturating_add(1), down: true }])
+            }
+            (Some(Compare::Only(have)), Compare::Matched) => Ok(vec![self.match_one_sided(row, have)?]),
+            (Some(Compare::Only(have)), Compare::Only(keep)) if keep == have => Ok(Vec::new()),
+            (Some(Compare::Only(have)), Compare::Only(_)) => {
+                let first = self.match_one_sided(row, have)?;
+                // Merging with the row above moves this row up one.
+                let row = match first {
+                    Effect::Merged { from, .. } if from < row => row.saturating_sub(1),
+                    _ => row,
+                };
+                self.blank_at(have, row);
+                Ok(vec![first, Effect::Shifted { side: have, from: row.saturating_add(1), down: true }])
+            }
+            (None, Compare::Only(keep)) => {
+                let side = other(keep);
+                let end = self.column(side).len();
+                if self.slot(keep, row).page().is_none() || self.slot(side, row) != Slot::Unplaced {
+                    return Err(PairingError::Unplaced { row });
+                }
+                if row != end {
+                    // Filling the rows between with blanks would change them too.
+                    return Err(PairingError::Unplaced { row: end });
+                }
+                self.column_mut(side).push(Cell::Blank);
+                Ok(Vec::new())
+            }
+            (None, Compare::Matched) => Err(PairingError::NoCounterpart { row }),
+        }
+    }
+
+    /// Give the one-sided output page `row` (a page of `have`, a blank for the other document) a
+    /// partner, as [`Pairing::set_compare`] describes.
+    fn match_one_sided(&mut self, row: usize, have: Side) -> Result<Effect, PairingError> {
+        let side = other(have);
+        let only_other = |r: usize| self.row(r).compare() == Some(Compare::Only(side));
+        let above = row.checked_sub(1).filter(|r| only_other(*r));
+        let below = row.checked_add(1).filter(|r| *r < self.len() && only_other(*r));
+        match (above, below) {
+            (Some(_), Some(_)) => return Err(PairingError::NoCounterpart { row }),
+            (Some(n), None) | (None, Some(n)) => {
+                let Slot::Page(page) = self.slot(side, n) else { return Err(PairingError::NoCounterpart { row }) };
+                let col = self.column_mut(side);
+                if let Some(c) = col.get_mut(row) {
+                    *c = Cell::Page(page);
+                }
+                if let Some(c) = col.get_mut(n) {
+                    *c = Cell::Blank;
+                }
+                // Row n now holds a blank on both sides: remove it.
+                self.remove_row(n);
+                return Ok(Effect::Merged { side, from: n });
+            }
+            (None, None) => {}
+        }
+        if self.gap_pushed_run_below(row, have) {
+            // The cell is a blank (checked by the caller's match), so this removes the gap.
+            if row < self.column(side).len() {
+                self.column_mut(side).remove(row);
+            }
+            return Ok(Effect::Shifted { side, from: row.saturating_add(1), down: false });
+        }
+        Err(PairingError::NoCounterpart { row })
+    }
+
+    /// Below the one-sided output page `row`, is there only the run an earlier gap in the other
+    /// document's column pushed down, untouched since? Every row below has a page on both sides
+    /// (or is past the end of one column), each column's pages go on in sequence from the row
+    /// (from the row below, for the other document), and the page that would move up into the
+    /// row follows the other document's nearest page above it. Then removing the gap re-pairs
+    /// nothing the user paired by hand.
+    fn gap_pushed_run_below(&self, row: usize, have: Side) -> bool {
+        let side = other(have);
+        let (h, x) = (self.column(have), self.column(side));
+        let in_sequence = |cells: &[Cell]| {
+            cells.iter().try_fold(None::<usize>, |prev, c| match (prev, c) {
+                (_, Cell::Blank) => None,
+                (None, Cell::Page(p)) => Some(Some(*p)),
+                (Some(q), Cell::Page(p)) => (q.checked_add(1) == Some(*p)).then_some(Some(*p)),
+            })
+        };
+        let (Some(h_run), Some(x_run)) = (h.get(row..), x.get(row.saturating_add(1)..)) else { return false };
+        let Some(Cell::Page(first)) = x_run.first() else { return false };
+        if in_sequence(h_run).is_none() || in_sequence(x_run).is_none() {
+            return false;
+        }
+        let above = x.get(..row).and_then(|c| c.iter().rev().find_map(|c| if let Cell::Page(p) = c { Some(*p) } else { None }));
+        match above {
+            Some(p) => p.checked_add(1) == Some(*first),
+            None => x.iter().filter_map(|c| if let Cell::Page(p) = c { Some(*p) } else { None }).min() == Some(*first),
+        }
     }
 
     /// The pages left without a partner (past the end of the shorter column) each get a blank:

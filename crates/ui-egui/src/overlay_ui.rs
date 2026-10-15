@@ -23,7 +23,7 @@ use pdfcraft_overlay::{
     Affine, Fit, LayerStyle, Limits, Matrix, Model, OverlayError, PT_PER_MM, PairPlan, Plan, Point, PointPair, RegistrationKind, RegistrationNote,
     Revision, Roles, Rule, Settings, SheetCase, SheetMatch, Similarity, Unresolved, Visibility,
 };
-use pdfcraft_overlay::{Pair, Pairing, PairingError, Slot, Summary};
+use pdfcraft_overlay::{Compare, Effect, Pair, Pairing, PairingError, Slot, Summary};
 use pdfcraft_render::{PageRenderer, RenderConfig, RenderRequest};
 
 use crate::theme::{self, Tokens};
@@ -675,6 +675,8 @@ pub struct Wizard {
     confirm: Option<Confirm>,
     /// Why the last pairing operation was refused.
     pairing_note: Option<String>,
+    /// What the last Compare as change moved besides its own row.
+    pairing_info: Option<String>,
     // 3. Colours
     pub old_colour: [u8; 3],
     pub new_colour: [u8; 3],
@@ -738,6 +740,7 @@ impl Wizard {
             range_draft: [(1, n), (1, 1)],
             confirm: None,
             pairing_note: None,
+            pairing_info: None,
             old_colour: pdfcraft_overlay::RED,
             new_colour: pdfcraft_overlay::CYAN,
             complementary: true,
@@ -886,6 +889,7 @@ impl Wizard {
         self.future.clear();
         self.restore(next);
         self.pairing_note = None;
+        self.pairing_info = None;
     }
 
     /// Run a pairing operation; a refused one changes nothing and says why.
@@ -893,7 +897,49 @@ impl Wizard {
         let mut next = self.state();
         match op(&mut next.pairing) {
             Ok(()) => self.commit(next),
-            Err(e) => self.pairing_note = Some(e.to_string()),
+            Err(e) => {
+                self.pairing_note = Some(e.to_string());
+                self.pairing_info = None;
+            }
+        }
+    }
+
+    /// Compare as: make output page `row` Matched, Old only or New only (undoable; a refused
+    /// change changes nothing and says why). What else moved is said below the table.
+    fn compare_as(&mut self, row: usize, to: Compare) {
+        let mut next = self.state();
+        match next.pairing.set_compare(row, to) {
+            Ok(effects) => {
+                self.commit(next);
+                let text: Vec<String> = effects.iter().map(|e| self.effect_text(*e)).collect();
+                self.pairing_info = (!text.is_empty()).then(|| text.join(" "));
+            }
+            Err(e) => {
+                self.pairing_note = Some(e.to_string());
+                self.pairing_info = None;
+            }
+        }
+    }
+
+    /// The role (Old or New) of the pairing model's side.
+    fn role_of_column(&self, side: pdfcraft_overlay::Side) -> &'static str {
+        self.role_of(if side == pdfcraft_overlay::Side::A { Side::A } else { Side::B })
+    }
+
+    fn effect_text(&self, e: Effect) -> String {
+        match e {
+            Effect::Shifted { side, from, down } => crate::i18n::fmt(
+                if down {
+                    tx("{role} sheets from output page {n} on moved down one row.")
+                } else {
+                    tx("{role} sheets from output page {n} on moved up one row.")
+                },
+                &[("role", self.role_of_column(side)), ("n", &from.saturating_add(1).to_string())],
+            ),
+            Effect::Merged { side, from } => crate::i18n::fmt(
+                tx("Its {role} sheet came from output page {n}, which held nothing else and was removed."),
+                &[("role", self.role_of_column(side)), ("n", &from.saturating_add(1).to_string())],
+            ),
         }
     }
 
@@ -901,6 +947,7 @@ impl Wizard {
         if let Some(prev) = self.history.pop() {
             self.future.push(self.state());
             self.restore(prev);
+            self.pairing_info = None;
         }
     }
 
@@ -908,6 +955,7 @@ impl Wizard {
         if let Some(next) = self.future.pop() {
             self.history.push(self.state());
             self.restore(next);
+            self.pairing_info = None;
         }
     }
 
@@ -959,7 +1007,9 @@ impl Wizard {
         let (s, _, _) = self.summary();
         if s.unplaced > 0 {
             return Some(crate::i18n::fmt(
-                tx("{n} page(s) have no partner yet: mark sheets as inserted or deleted, choose pages, or place the remaining pages against blanks."),
+                tx(
+                    "{n} page(s) have no partner yet: set their rows to Old only or New only, choose pages, or place the remaining pages against blanks.",
+                ),
                 &[("n", &s.unplaced.to_string())],
             ));
         }
@@ -1659,10 +1709,15 @@ fn documents(app: &mut PdfCraftApp, w: &mut Wizard, ui: &mut egui::Ui, t: &Token
 /// A pairing operation chosen in the table, applied after it is drawn.
 #[derive(Clone, Copy)]
 enum PairOp {
-    InsertBlank(Side, usize),
+    /// Compare as: Matched, Old only or New only.
+    Compare(usize, Compare),
     RemoveBlank(Side, usize),
+    /// One revision's sheet alone.
     Move(Side, usize, bool),
-    Assign(Side, usize, usize),
+    /// The whole output page.
+    MoveRow(usize, bool),
+    /// A page chosen in a cell.
+    Take(Side, usize, usize),
 }
 
 fn summary_text(w: &Wizard) -> String {
@@ -1698,7 +1753,7 @@ fn pages(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
         ui,
         t,
         tx(
-            "One output page per row. Pair matching sheets; a sheet only one revision has goes opposite a blank. Use a row's ⋯ menu to mark a sheet as inserted or deleted, remove a gap or move a sheet, or choose a page in a cell to pair sheets that moved. \"p.\" is the page's position in the file; a label is the PDF's own page label. The source files are never changed.",
+            "One output page per row. Compare as says what a row holds: Matched (a sheet from each revision), Old only or New only (the other revision has a blank there). The arrows move a whole row; the ⋯ menu moves only its Old or New sheet. Choose a page in a cell to pair sheets that moved. \"p.\" is the page's position in the file; a label is the PDF's own page label. The source files are never changed.",
         ),
     );
     ui.add_space(8.0);
@@ -1763,7 +1818,7 @@ fn pages(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
             match confirm_box(
                 ui,
                 t,
-                tx("Re-pairing in order replaces the pairings you made (marked insertions and deletions, moved sheets). Undo brings them back."),
+                tx("Re-pairing in order replaces the pairings you made (Old-only and New-only rows, moved sheets). Undo brings them back."),
                 &[tx("Re-pair in order"), tx("Cancel")],
             ) {
                 Some(0) => {
@@ -1805,9 +1860,13 @@ fn pages(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
     ui.label(RichText::new(summary_text(w)).strong());
     ui.add_space(4.0);
 
+    if let Some(info) = &w.pairing_info {
+        ui.label(RichText::new(info).color(t.text_muted));
+    }
+
     // The table: Old and New columns whatever document each is, each cell a physical page with
-    // its label shown apart, or a blank.
-    let widths = [56.0, 150.0, 120.0, 150.0, 120.0, 120.0, 34.0];
+    // its label shown apart, or a blank; then what the row compares, and arrows that move it.
+    let widths = [56.0, 150.0, 120.0, 150.0, 120.0, 132.0, 60.0, 34.0];
     let header = |ui: &mut egui::Ui, i: usize, text: String| {
         ui.add_sized([widths[i], 18.0], egui::Label::new(RichText::new(text).strong()).truncate());
     };
@@ -1817,12 +1876,15 @@ fn pages(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
         header(ui, 2, tx("Old label").into());
         header(ui, 3, crate::i18n::fmt(tx("New · document {side}"), &[("side", new.letter())]));
         header(ui, 4, tx("New label").into());
-        header(ui, 5, tx("Kind").into());
+        header(ui, 5, tx("Compare as").into());
     });
     let mut op: Option<PairOp> = None;
     let range_pages = [Wizard::range_pages(w.range_a), Wizard::range_pages(w.range_b)];
     let row_height = 26.0;
     let table_height = (ui.available_height() - 8.0).clamp(160.0, 520.0);
+    let colour = |c: [u8; 3]| Color32::from_rgb(c[0], c[1], c[2]);
+    // The three choices, in Old and New terms.
+    let choices = [(Compare::Matched, tx("Matched")), (Compare::Only(old.column()), tx("Old only")), (Compare::Only(new.column()), tx("New only"))];
     egui::ScrollArea::vertical().id_salt("overlay-pair-rows").max_height(table_height).auto_shrink([false, true]).show_rows(
         ui,
         row_height,
@@ -1847,7 +1909,7 @@ fn pages(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
                                 for &q in &range_pages[side.index()] {
                                     let name = snap.map_or_else(|| Snapshot::page_text(q), |s| s.page_name(q));
                                     if ui.selectable_label(slot == Slot::Page(q), name).clicked() && slot != Slot::Page(q) {
-                                        op = Some(PairOp::Assign(side, i, q));
+                                        op = Some(PairOp::Take(side, i, q));
                                     }
                                 }
                             },
@@ -1861,72 +1923,95 @@ fn pages(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
                             None => ui.add_sized([widths[k + 1], row_height], egui::Label::new(RichText::new("—").color(t.text_faint))),
                         };
                     }
-                    let kind = match (so, sn) {
-                        (Slot::Page(_), Slot::Page(_)) => RichText::new(tx("Matched")),
-                        (Slot::Unplaced, _) | (_, Slot::Unplaced) => RichText::new(tx("No partner yet")).color(Color32::from_rgb(200, 110, 20)),
-                        (Slot::Page(_), _) => {
-                            RichText::new(tx("Old only")).color(Color32::from_rgb(w.old_colour[0], w.old_colour[1], w.old_colour[2]))
-                        }
-                        (_, Slot::Page(_)) => {
-                            RichText::new(tx("New only")).color(Color32::from_rgb(w.new_colour[0], w.new_colour[1], w.new_colour[2]))
-                        }
-                        _ => RichText::new(tx("Empty")).color(Color32::from_rgb(200, 60, 40)),
+                    // Compare as: what the row holds, not why (inserted, deleted, left out).
+                    let row = w.pairing.row(i);
+                    let now = row.compare();
+                    let shown = match now {
+                        Some(Compare::Matched) => RichText::new(tx("Matched")),
+                        Some(Compare::Only(s)) if s == old.column() => RichText::new(tx("Old only")).color(colour(w.old_colour)),
+                        Some(Compare::Only(_)) => RichText::new(tx("New only")).color(colour(w.new_colour)),
+                        None if row.is_empty() => RichText::new(tx("Empty")).color(Color32::from_rgb(200, 60, 40)),
+                        None => RichText::new(tx("No partner yet")).color(Color32::from_rgb(200, 110, 20)),
                     };
-                    ui.add_sized([widths[5], row_height], egui::Label::new(kind));
+                    let value = shown.text().to_string();
+                    let combo = egui::ComboBox::from_id_salt(("overlay-compare", i)).selected_text(shown).width(widths[5] - 12.0).show_ui(ui, |ui| {
+                        ui.set_min_width(widths[5]);
+                        // Worked out only while the list is open: each choice is tried on a copy.
+                        for (to, text) in choices {
+                            let selected = now == Some(to);
+                            let mut probe = w.pairing.clone();
+                            let tried = if selected { Ok(Vec::new()) } else { probe.set_compare(i, to) };
+                            let r = ui.add_enabled(tried.is_ok(), egui::Button::selectable(selected, text));
+                            let r = match &tried {
+                                Err(e) => r.on_disabled_hover_text(e.to_string()),
+                                Ok(_) => r,
+                            };
+                            if r.clicked() && !selected {
+                                op = Some(PairOp::Compare(i, to));
+                            }
+                        }
+                    });
+                    let name = crate::i18n::fmt(tx("Compare output page {n} as"), &[("n", &(i + 1).to_string())]);
+                    combo.response.widget_info(|| {
+                        let mut info = egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, &name);
+                        info.current_text_value = Some(value.clone());
+                        info
+                    });
+                    // Move the whole output page, both sides.
+                    ui.allocate_ui_with_layout(vec2(widths[6], row_height), Layout::left_to_right(Align::Center), |ui| {
+                        for (down, icon, text) in
+                            [(false, "chevron-up", tx("Move output page {n} up")), (true, "chevron-down", tx("Move output page {n} down"))]
+                        {
+                            let label = crate::i18n::fmt(text, &[("n", &(i + 1).to_string())]);
+                            let can = w.pairing.row_move_target(i, down);
+                            let r = ui.add_enabled_ui(can.is_ok(), |ui| crate::icons::button(ui, icon, 22.0, false, &label)).inner;
+                            if let Err(e) = &can {
+                                r.clone().on_disabled_hover_text(e.to_string());
+                            }
+                            if r.clicked() && can.is_ok() {
+                                op = Some(PairOp::MoveRow(i, down));
+                            }
+                        }
+                    });
+                    // Secondary: one revision's sheet alone, or a blank removed.
                     ui.menu_button("⋯", |ui| {
                         ui.set_min_width(300.0);
-                        if let Slot::Page(q) = sn
-                            && so != Slot::Blank
-                            && ui
-                                .button(crate::i18n::fmt(
-                                    tx("Mark New {page} as inserted (blank on the Old side)"),
-                                    &[("page", &Snapshot::page_text(q))],
-                                ))
-                                .clicked()
-                        {
-                            op = Some(PairOp::InsertBlank(old, i));
-                        }
-                        if let Slot::Page(p) = so
-                            && sn != Slot::Blank
-                            && ui
-                                .button(crate::i18n::fmt(
-                                    tx("Mark Old {page} as deleted (blank on the New side)"),
-                                    &[("page", &Snapshot::page_text(p))],
-                                ))
-                                .clicked()
-                        {
-                            op = Some(PairOp::InsertBlank(new, i));
-                        }
-                        if so == Slot::Blank && ui.button(tx("Remove the gap on the Old side (later Old pages move up)")).clicked() {
-                            op = Some(PairOp::RemoveBlank(old, i));
-                        }
-                        if sn == Slot::Blank && ui.button(tx("Remove the gap on the New side (later New pages move up)")).clicked() {
-                            op = Some(PairOp::RemoveBlank(new, i));
-                        }
-                        ui.separator();
                         for (side, slot, role) in [(old, so, "Old"), (new, sn, "New")] {
                             if slot == Slot::Unplaced {
                                 continue;
                             }
-                            if ui.button(crate::i18n::fmt(tx("Move this {role} cell up"), &[("role", role)])).clicked() {
+                            if ui.button(crate::i18n::fmt(tx("Move only the {role} sheet up"), &[("role", tx(role))])).clicked() {
                                 op = Some(PairOp::Move(side, i, false));
                             }
-                            if ui.button(crate::i18n::fmt(tx("Move this {role} cell down"), &[("role", role)])).clicked() {
+                            if ui.button(crate::i18n::fmt(tx("Move only the {role} sheet down"), &[("role", tx(role))])).clicked() {
                                 op = Some(PairOp::Move(side, i, true));
                             }
+                        }
+                        if so == Slot::Blank || sn == Slot::Blank {
+                            ui.separator();
+                        }
+                        if so == Slot::Blank && ui.button(tx("Remove the Old blank (later Old sheets move up one row)")).clicked() {
+                            op = Some(PairOp::RemoveBlank(old, i));
+                        }
+                        if sn == Slot::Blank && ui.button(tx("Remove the New blank (later New sheets move up one row)")).clicked() {
+                            op = Some(PairOp::RemoveBlank(new, i));
                         }
                     });
                 });
             }
         },
     );
-    if let Some(op) = op {
-        w.pairing_op(|p| match op {
-            PairOp::InsertBlank(side, row) => p.insert_blank(side.column(), row),
+    match op {
+        Some(PairOp::Compare(row, to)) => w.compare_as(row, to),
+        Some(op) => w.pairing_op(|p| match op {
             PairOp::RemoveBlank(side, row) => p.remove_blank(side.column(), row),
             PairOp::Move(side, row, down) => p.move_cell(side.column(), row, down),
-            PairOp::Assign(side, row, page) => p.assign(side.column(), row, page),
-        });
+            PairOp::MoveRow(row, down) => p.move_row(row, down),
+            PairOp::Take(side, row, page) => p.take(side.column(), row, page),
+            // Handled above.
+            PairOp::Compare(..) => Ok(()),
+        }),
+        None => {}
     }
 }
 

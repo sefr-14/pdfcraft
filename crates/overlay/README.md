@@ -103,6 +103,17 @@ Step 3 adds `composite`, which writes the overlay page:
   move a cell up or down, put a page at a row by swapping it with what is there, place unplaced
   pages against blanks, or apply a new page range keeping the existing pairing. None can lose or
   duplicate a page, and one that would leave a row with no page is refused and changes nothing.
+  OV6.5 adds what the wizard's table uses: `set_compare` (Compare as: Matched, A only, B only;
+  the row's kind, not a reason such as inserted or deleted), `move_row` (a whole output page
+  up or down, never across a column's end) and `take` (a page chosen by hand; the row it leaves
+  is removed when that leaves it empty, and only the first row without a partner can be
+  reached). Matched → one document only inserts a blank, and that column's later cells move down
+  one row. One document only → Matched takes a partner only where the pairing points to it: the
+  one neighbouring row that holds only the other document's page (merged, nothing else moves),
+  or, when everything below is still the run an earlier gap pushed down (both sides in page
+  sequence, no blank), the gap is removed. Otherwise it is refused (`NoCounterpart`) and the
+  partner is chosen by hand, so pairings made by hand are never re-paired. `Effect` says what
+  moved besides the row.
 - `job` (step 6, used by the wizard; later `doc_overlay`): a whole overlay from two documents.
   `generate` takes the page pairs (a blank side allowed, never both), each with its confirmed
   sheet match and registration, prepares both sources once for the pages used, and returns

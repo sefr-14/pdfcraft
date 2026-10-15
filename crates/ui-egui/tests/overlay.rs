@@ -315,11 +315,18 @@ fn picks_snap_to_line_ends_and_alt_places_them_freely() {
     assert!((x + 7.056).abs() > 0.5 && y.abs() > 0.5, "clicks snapped with snapping off: {x}, {y}");
 }
 
-/// Step 2 with a sheet inserted in New (Old 6 pages, New 7, the new sheet at New p. 3): the row
-/// menu marks it, Next opens once every page has a partner, re-pairing in order asks first and
-/// Cancel keeps the pairing, and Undo brings back what re-pairing replaced.
+/// A label's text, or a combo box's current value.
+fn text_of(h: &Harness<'static, PdfCraftApp>, label: &str) -> String {
+    let node = h.get_by_label(label);
+    node.value().unwrap_or_default().to_string()
+}
+
+/// Step 2 with a sheet inserted in New (Old 6 pages, New 7, the new sheet at New p. 3): Compare as
+/// on row 3 makes it New only and Next opens once every page has a partner; Undo and Redo; back to
+/// Matched reverses the gap; the arrows move a whole row; re-pairing in order asks first, Cancel
+/// keeps the pairing, and Undo brings back what re-pairing replaced.
 #[test]
-fn pages_step_marks_an_inserted_sheet_and_asks_before_re_pairing() {
+fn pages_step_compare_as_arrows_and_re_pairing() {
     let mut h = Harness::builder().with_size(egui::vec2(1500.0, 1000.0)).build_eframe(|_cc| {
         let mut app = PdfCraftApp::new();
         app.set_option("language", "en").unwrap();
@@ -332,32 +339,66 @@ fn pages_step_marks_an_inserted_sheet_and_asks_before_re_pairing() {
     h.run_steps(3);
     next(&mut h);
     h.get_by_label("2. Pages");
-    h.get_by_label("7 output page(s): 6 matched, 0 Old only, 0 New only, 1 without a partner yet");
+    h.get_by_label("Compare as");
+    let unplaced = "7 output page(s): 6 matched, 0 Old only, 0 New only, 1 without a partner yet";
+    let marked = "7 output page(s): 6 matched, 0 Old only, 1 New only";
+    h.get_by_label(unplaced);
+    assert_eq!(text_of(&h, "Compare output page 7 as"), "No partner yet");
     assert!(h.get_by_label("Next").accesskit_node().is_disabled(), "an unplaced page blocks Next");
-    // Row 3's menu: New p. 3 is the inserted sheet.
-    h.get_all_by_label("⋯").nth(2).unwrap().click();
-    h.run_steps(2);
-    h.get_by_label("Mark New p. 3 as inserted (blank on the Old side)").click();
-    h.run_steps(3);
-    h.get_by_label("7 output page(s): 6 matched, 0 Old only, 1 New only");
+    // Row 3: New p. 3 is the inserted sheet.
+    let compare = |h: &mut Harness<'static, PdfCraftApp>, row: usize, choice: &str| {
+        h.get_by_label(&format!("Compare output page {row} as")).click();
+        h.run_steps(2);
+        h.get_by_label(choice).click();
+        h.run_steps(3);
+    };
+    compare(&mut h, 3, "New only");
+    h.get_by_label(marked);
+    assert_eq!(text_of(&h, "Compare output page 3 as"), "New only");
+    h.get_by_label("Old sheets from output page 4 on moved down one row.");
     assert!(!h.get_by_label("Next").accesskit_node().is_disabled());
     if let Ok(dir) = std::env::var("PDFCRAFT_SHOT") {
-        h.render().unwrap().save(std::path::Path::new(&dir).join("pages-inserted.png")).unwrap();
+        h.render().unwrap().save(std::path::Path::new(&dir).join("pages-new-only.png")).unwrap();
     }
+    // Undo and Redo.
+    h.get_by_label("Undo").click();
+    h.run_steps(3);
+    h.get_by_label(unplaced);
+    h.get_by_label("Redo").click();
+    h.run_steps(3);
+    h.get_by_label(marked);
+    // Back to Matched reverses that gap exactly; Undo brings the New-only row back.
+    compare(&mut h, 3, "Matched");
+    h.get_by_label(unplaced);
+    h.get_by_label("Old sheets from output page 4 on moved up one row.");
+    h.get_by_label("Undo").click();
+    h.run_steps(3);
+    h.get_by_label(marked);
+    // The arrows move the whole row: the New-only row goes down one, and back up.
+    assert!(h.get_by_label("Move output page 1 up").accesskit_node().is_disabled());
+    assert!(h.get_by_label("Move output page 7 down").accesskit_node().is_disabled());
+    h.get_by_label("Move output page 3 down").click();
+    h.run_steps(3);
+    assert_eq!(text_of(&h, "Compare output page 3 as"), "Matched");
+    assert_eq!(text_of(&h, "Compare output page 4 as"), "New only");
+    h.get_by_label(marked);
+    h.get_by_label("Move output page 4 up").click();
+    h.run_steps(3);
+    assert_eq!(text_of(&h, "Compare output page 3 as"), "New only");
     // Re-pairing would replace that: it asks, and Cancel keeps it.
     h.get_by_label("Re-pair in order").click();
     h.run_steps(2);
     h.get_by_label_contains("Re-pairing in order replaces the pairings you made");
     h.get_by_label("Cancel").click();
     h.run_steps(2);
-    h.get_by_label("7 output page(s): 6 matched, 0 Old only, 1 New only");
-    // Confirmed, it re-pairs; Undo restores the marked insertion.
+    h.get_by_label(marked);
+    // Confirmed, it re-pairs; Undo restores the New-only row.
     h.get_by_label("Re-pair in order").click();
     h.run_steps(2);
     h.get_all_by_label("Re-pair in order").last().unwrap().click();
     h.run_steps(3);
-    h.get_by_label("7 output page(s): 6 matched, 0 Old only, 0 New only, 1 without a partner yet");
+    h.get_by_label(unplaced);
     h.get_by_label("Undo").click();
     h.run_steps(3);
-    h.get_by_label("7 output page(s): 6 matched, 0 Old only, 1 New only");
+    h.get_by_label(marked);
 }

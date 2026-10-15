@@ -27,7 +27,7 @@ pub use job::{Generated, PairPlan, Plan, generate, pair_frames, pair_placement, 
 pub use layers::{LayerGroups, LayerStyle, LayeredOutput, RegistrationKind, RegistrationNote, Revision, Roles, check_output, compose_layered};
 pub use oc::prepare::{PageReport, Prepared, PreparedSource, prepare};
 pub use oc::{Rule, Unresolved, Visibility};
-pub use pairing::{Cell, Pair, Pairing, PairingError, Slot, Summary};
+pub use pairing::{Cell, Compare, Effect, Pair, Pairing, PairingError, Slot, Summary};
 /// The matrix type of placements and registrations, for callers without `pdfcraft-content`.
 pub use pdfcraft_content::Matrix;
 pub use place::{Placement, place};
