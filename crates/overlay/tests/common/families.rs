@@ -148,8 +148,11 @@ impl Sheet {
         Sheet { media: [0.0, 0.0, w, h], crop: None, rotate: 0, user_unit: None, group: None, draw: Vec::new(), resources: Vec::new() }
     }
 
-    /// The displayed frame as pdfcraft-model reads these boxes (crop clipped to media, rotation
-    /// to a multiple of 90, units below 1 read as 1).
+    /// The displayed frame as pdfcraft-model reads these boxes (crop clipped to media, units
+    /// below 1 read as 1), i.e. what `frame_of_page` gives for the sheet. The rotation is
+    /// normalised here as `pdfcraft_model::Page::rotation` does on the production path: a
+    /// `/Rotate` that isn't a multiple of 90 counts as 0, as pdfcraft draws the page. Calling
+    /// `frame` directly with such a value would instead round it down to a quarter turn.
     pub fn frame(&self) -> DisplayFrame {
         let m = self.media;
         let visible = match self.crop {
@@ -159,7 +162,8 @@ impl Sheet {
             }
             None => m,
         };
-        let rot = self.rotate.rem_euclid(360) / 90 * 90;
+        let turn = self.rotate.rem_euclid(360);
+        let rot = if turn % 90 == 0 { turn } else { 0 };
         let unit = self.user_unit.filter(|u| *u >= 1.0).map_or(1.0, |u| u.min(75_000.0));
         frame(visible, rot, unit).expect("a valid synthetic sheet")
     }
@@ -871,12 +875,13 @@ pub fn rotation() -> Set {
             12.0,
         ));
     }
-    // A /Rotate that isn't a multiple of 90: pdfcraft reads 100 as 90.
-    let mut a = Sheet::plain(280.0, 380.0);
+    // A /Rotate that isn't a multiple of 90: pdfcraft reads 100 as 0, as it draws the page
+    // (upstream 4d358d4f; it used to read 90), so an upright sheet the size of B coincides.
+    let mut a = Sheet::plain(380.0, 280.0);
     a.rotate = 100;
     specs.push(coincide(
         "F13-rotate100",
-        "/Rotate 100 (not a multiple of 90), read as 90 by PdfCraft",
+        "/Rotate 100 (not a multiple of 90), read as 0 by PdfCraft, as it draws the page",
         a,
         Sheet::plain(380.0, 280.0),
         |p| p,

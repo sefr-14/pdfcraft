@@ -284,10 +284,12 @@ fn matrices_are_written_at_full_precision() {
 }
 
 /// Seam with OV2: where `page_as_form` handles a page correctly (crop box inside the media box,
-/// unit 1, `/Rotate` a multiple of 90), its own matrix equals OV2's displayed frame.
+/// unit 1), its own matrix equals OV2's displayed frame. That includes a `/Rotate` that isn't a
+/// multiple of 90 (100 here): both read it as 0, as pdfcraft draws the page, since upstream
+/// 4d358d4f changed `pdfcraft_model::Page::rotation` (it used to round down to 90).
 #[test]
 fn page_as_form_agrees_with_the_ov2_frame() {
-    for rotate in [0, 90, 180, 270] {
+    for rotate in [0, 90, 180, 270, 100] {
         for (ox, oy) in [(0.0, 0.0), (-100.0, 50.0), (37.5, -12.25), (500.0, 300.0)] {
             let mut page = Page::new(400.0, 300.0, "0 g 0 0 1 1 re f");
             page.media = [ox, oy, ox + 400.0, oy + 300.0];
@@ -307,15 +309,15 @@ fn page_as_form_agrees_with_the_ov2_frame() {
     }
 }
 
-/// Where `page_as_form` differs from OV2 (a crop box partly outside the media box, `/UserUnit`,
-/// a `/Rotate` that isn't a multiple of 90), the overlay's rewrite gives OV2's frame.
+/// Where `page_as_form` differs from OV2 (a crop box partly outside the media box, `/UserUnit`),
+/// the overlay's rewrite gives OV2's frame. A `/Rotate` that isn't a multiple of 90 used to be a
+/// third case; both now read it as 0 (see `page_as_form_agrees_with_the_ov2_frame`).
 #[test]
 fn the_rewrite_gives_the_ov2_frame_where_page_as_form_differs() {
     type Edit = Box<dyn Fn(&mut Page)>;
-    let cases: [(&str, Edit); 3] = [
+    let cases: [(&str, Edit); 2] = [
         ("crop partly outside media", Box::new(|p: &mut Page| p.crop = Some([-50.0, 20.0, 300.0, 280.0]))),
         ("user unit 2", Box::new(|p: &mut Page| p.user_unit = Some(2.0))),
-        ("rotate 100", Box::new(|p: &mut Page| p.rotate = 100)),
     ];
     for (what, edit) in cases {
         let mut page = Page::new(400.0, 300.0, "0 g 10 10 50 50 re f");

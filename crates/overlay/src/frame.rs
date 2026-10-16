@@ -43,8 +43,10 @@ impl DisplayFrame {
 }
 
 /// The displayed frame of a visible box `[x0 y0 x1 y1]` shown turned clockwise by `rotation`
-/// (any multiple of 90; other values round down to one, as pdfcraft reads `/Rotate`) at
-/// `user_unit` points per unit.
+/// at `user_unit` points per unit. `rotation` is a multiple of 90; other values given here
+/// round down to one. Pages don't reach this with such a value: [`frame_of`] passes
+/// `pdfcraft_model::Page::rotation`, which reads a `/Rotate` that isn't a multiple of 90 as 0,
+/// as pdfcraft draws the page.
 pub fn frame(visible: [f64; 4], rotation: i64, user_unit: f64) -> Result<DisplayFrame, OverlayError> {
     if !visible.iter().all(|v| v.is_finite()) {
         return Err(OverlayError::NotFinite { what: "the visible box" });
