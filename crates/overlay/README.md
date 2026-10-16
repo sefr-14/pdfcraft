@@ -163,7 +163,19 @@ fonts, XObjects or other named resources shows them in PdfCraft's display, whose
 names up the tree, yet can lose them in the overlay: lines, text or symbols the source tab shows
 may be missing. Upstream 0.8.0 (da9cefa) merges such ancestor-only names when pages are imported,
 not in `page_as_form`. Engineering drawing sets are where this matters most; compare an overlay
-with its sources, and report a page where something is missing.
+with its sources, and report a page where something is missing. Still open at the upstream
+f0c9901c sync (16 Oct): `page_as_form` still copies one dictionary, and the ancestor merge
+(`resources_with_ancestors` in `pdfcraft-organize`) still serves page import only.
+
+Since the f0c9901c sync, `page_as_form` copies through upstream's bounded copier (af62daea): a
+source page whose resources nest more than 256 references or containers deep is refused with an
+error rather than overflowing the stack, and the overlay reports it as a source failure naming
+the side and page (`OverlayError::Source`).
+
+A `/Rotate` that isn't a multiple of 90 (ISO 32000-2 §7.7.3.3 requires one) has read as 0 since
+the f0c9901c sync (upstream 4d358d4f), as PdfCraft draws the page, so OV2 frames such a page
+upright as the wizard shows it. Before, it rounded down (100 read as 90) while the page was shown
+upright. Conforming rotations are unaffected.
 
 Conventions: points (1/72 in), y up, origin at the displayed sheet's lower-left corner;
 matrices in PDF order `[a b c d e f]` (`pdfcraft_content::Matrix`); rotation counter-clockwise
