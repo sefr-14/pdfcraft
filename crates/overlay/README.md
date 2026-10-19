@@ -185,7 +185,14 @@ may be missing. Upstream 0.8.0 (da9cefa) merges such ancestor-only names when pa
 not in `page_as_form`. Engineering drawing sets are where this matters most; compare an overlay
 with its sources, and report a page where something is missing. Still open at the upstream
 f0c9901c sync (16 Oct): `page_as_form` still copies one dictionary, and the ancestor merge
-(`resources_with_ancestors` in `pdfcraft-organize`) still serves page import only.
+(`resources_with_ancestors` in `pdfcraft-organize`) still serves page import only. Still open at
+the ec0a9650 sync (19 Oct, after upstream 0.9.0): `crates/organize/src/import.rs` is unchanged.
+
+Optional content at the ec0a9650 sync: upstream's one layer change (4ff53a8d) writes the Layers
+panel's choices into the default configuration of the copy made for printing. It doesn't change
+how a layer that content uses but `/OCProperties` doesn't declare is evaluated, and the OV4 checks
+are unchanged: such content is still unresolved until the user decides, never shown or hidden by
+default.
 
 Since the f0c9901c sync, `page_as_form` copies through upstream's bounded copier (af62daea): a
 source page whose resources nest more than 256 references or containers deep is refused with an
