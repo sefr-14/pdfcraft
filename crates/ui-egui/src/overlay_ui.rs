@@ -804,6 +804,11 @@ pub struct Wizard {
     pub match_sheets: bool,
     pub same_sheet_for_all: bool,
     sheets: HashMap<(usize, usize), SheetState>,
+    /// OV6.9: the page pairs (A page, B page) whose different sheet sizes the user allowed to be
+    /// aligned with reference points. Keyed by the pair itself, never by the pair whose choice
+    /// is shared: an override is never carried to another pair. A page is in at most one row
+    /// (step 2 refuses duplicates), so the pages name the row.
+    allow_different: HashSet<(usize, usize)>,
     pub same_alignment_for_all: bool,
     aligns: HashMap<(usize, usize), Picks>,
     align_pair: usize,
@@ -867,6 +872,7 @@ impl Wizard {
             match_sheets: true,
             same_sheet_for_all: true,
             sheets: HashMap::new(),
+            allow_different: HashSet::new(),
             same_alignment_for_all: true,
             aligns: HashMap::new(),
             align_pair: 0,
@@ -1217,6 +1223,41 @@ impl Wizard {
         None
     }
 
+    /// Whether `pair`'s two displayed sheets differ, as the sheet-size proposal decides it (its
+    /// own tolerance). Unreadable sizes aren't "different": alignment refuses those pages anyway.
+    fn sheets_differ(&mut self, pair: (usize, usize)) -> bool {
+        self.proposal(pair).is_some_and(|p| p.case != SheetCase::SameSheet)
+    }
+
+    /// OV6.9: different sheet sizes are blocked unless this very pair's override is on and its
+    /// alignment has reference points (a typed nudge alone isn't enough). The override is the
+    /// pair's own: sharing the first pair's sheet size or alignment never carries it.
+    fn sheet_size_problem(&mut self) -> Option<String> {
+        for (row, pair) in self.matched_rows() {
+            if !self.sheets_differ(pair) {
+                continue;
+            }
+            let n = (row + 1).to_string();
+            let pages = self.pair_name(pair);
+            if !self.allow_different.contains(&pair) {
+                return Some(crate::i18n::fmt(
+                    tx(
+                        "Output page {n} ({pages}): the sheet sizes differ. Check \"Allow alignment of different sheet sizes\" to align them with reference points.",
+                    ),
+                    &[("n", &n), ("pages", &pages)],
+                ));
+            }
+            let key = self.align_key(pair);
+            if self.aligns.get(&key).is_none_or(|a| a.pairs().is_empty()) {
+                return Some(crate::i18n::fmt(
+                    tx("Output page {n} ({pages}): different sheet sizes need reference points."),
+                    &[("n", &n), ("pages", &pages)],
+                ));
+            }
+        }
+        None
+    }
+
     /// The rows with a page on both sides (0-based row, (A page, B page)).
     fn matched_rows(&self) -> Vec<(usize, (usize, usize))> {
         self.pairs.iter().enumerate().filter_map(|(i, p)| p.pages().map(|k| (i, k))).collect()
@@ -1402,7 +1443,7 @@ impl Wizard {
             }
             Step::Pages => self.pairing_problem(),
             Step::Colours => None,
-            Step::SheetAlignment => self.sheets_problem().or_else(|| self.alignment_problem()),
+            Step::SheetAlignment => self.sheets_problem().or_else(|| self.sheet_size_problem()).or_else(|| self.alignment_problem()),
             Step::Preview | Step::Generate => None,
         }
     }
@@ -1549,6 +1590,12 @@ impl Wizard {
     }
 
     fn start_generate(&mut self, ctx: &egui::Context) {
+        // Step 4's rules again (OV6.9): a source taken again from its tab after step 4 may have
+        // other sheet sizes, and nothing is generated that step 4 wouldn't let through.
+        if let Some(problem) = self.can_leave(Step::SheetAlignment) {
+            self.failure = Some(problem);
+            return;
+        }
         let pairs = self.pairs.clone();
         let plan = match self.plan(&pairs) {
             Ok(p) => p,
@@ -2297,8 +2344,10 @@ fn sheet_alignment(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
         }
         ui.add(widgets::checkbox(&mut w.same_alignment_for_all, tx("Use the first pair's alignment for every pair")));
     });
-    // One pair at a time while either setting is per pair.
-    let per_pair = !w.same_alignment_for_all || (w.match_sheets && !w.same_sheet_for_all);
+    // One pair at a time while either setting is per pair, or while a pair's sheets differ: its
+    // override is its own (OV6.9), so each such pair must be reachable.
+    let any_differ = pairs.iter().any(|(_, k)| w.sheets_differ(*k));
+    let per_pair = !w.same_alignment_for_all || (w.match_sheets && !w.same_sheet_for_all) || any_differ;
     if per_pair {
         let current = w.align_pair;
         let mut chosen = None;
@@ -2343,6 +2392,12 @@ fn sheet_alignment(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
     alignment_section(w, ui, t, pair);
 }
 
+/// A displayed sheet's physical size (after `/UserUnit`): "105.8 × 70.6 mm (300 × 200 pt)".
+fn physical((w, h): (f64, f64)) -> String {
+    let pt = |v: f64| if (v - v.round()).abs() < 0.05 { format!("{v:.0}") } else { format!("{v:.1}") };
+    format!("{:.1} × {:.1} mm ({} × {} pt)", w / PT_PER_MM, h / PT_PER_MM, pt(w), pt(h))
+}
+
 /// The sheet sizes of `pair`, compactly: one line when they are the same (1:1, nothing to
 /// confirm); the proposal, its basis and the confirmation when they differ (a factor is never
 /// applied unconfirmed). Pairs whose sheets differ from a shared choice's are named.
@@ -2354,6 +2409,35 @@ fn sheet_size_section(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, pair: (usiz
             let summary = w.sheet_summary(pair);
             ui.label(RichText::new(summary).strong());
         });
+        // OV6.9: different sheet sizes are blocked until this pair's own override is on, and then
+        // need reference points. The override changes no sheet choice: a factor still waits for
+        // its own confirmation below.
+        if w.sheets_differ(pair) {
+            if let Some((sa, sb)) = w.sheet_sizes(pair) {
+                let (old, new) = if w.swapped { (sb, sa) } else { (sa, sb) };
+                ui.colored_label(
+                    Color32::from_rgb(200, 110, 20),
+                    crate::i18n::fmt(tx("Different sheet sizes: Old {old}, New {new}."), &[("old", &physical(old)), ("new", &physical(new))]),
+                );
+            }
+            let mut allow = w.allow_different.contains(&pair);
+            if ui.add(widgets::checkbox(&mut allow, tx("Allow alignment of different sheet sizes"))).changed() {
+                if allow {
+                    w.allow_different.insert(pair);
+                } else {
+                    w.allow_different.remove(&pair);
+                }
+            }
+            muted(
+                ui,
+                t,
+                if allow {
+                    tx("Align the two sheets with reference points below (at least two pairs). Match sheet sizes stays a separate choice.")
+                } else {
+                    tx("Off: this pair can't go on. Turn it on to align the two sheets with reference points.")
+                },
+            );
+        }
         if !w.match_sheets {
             muted(ui, t, tx("Off: document B is placed at its own size (1:1), lower-left corners together."));
             return;
@@ -2422,7 +2506,7 @@ fn alignment_section(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, pair: (usize
         ui,
         t,
         tx(
-            "Points are optional: without any, New is placed as the sheet size puts it. Clicks snap to the drawing (hold Alt to place a point freely). Scroll to zoom, drag to pan.",
+            "Points are optional when the sheet sizes match: without any, Old and New are aligned at their lower-left corners, 1:1. Different sheet sizes need them. Clicks snap to the drawing (hold Alt to place a point freely). Scroll to zoom, drag to pan.",
         ),
     );
     let key = w.align_key(pair);
@@ -2595,11 +2679,12 @@ fn alignment_section(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, pair: (usize
     }
     w.aligns.insert(key, align.clone());
     ui.add_space(6.0);
+    let differ = w.sheets_differ(pair);
     match w.registration(pair) {
         Err(e) => {
             ui.colored_label(Color32::from_rgb(200, 60, 40), e);
         }
-        Ok(r) => registration_readout(w, ui, t, key, &r, &align),
+        Ok(r) => registration_readout(w, ui, t, key, &r, &align, differ),
     }
 }
 
@@ -2673,12 +2758,14 @@ fn snap_marker(painter: &egui::Painter, at: Pos2, kind: SnapKind) {
     painter.galley(corner, galley, colour);
 }
 
-fn registration_readout(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, key: (usize, usize), r: &Registration, align: &Picks) {
+fn registration_readout(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, key: (usize, usize), r: &Registration, align: &Picks, differ: bool) {
     let m = r.matrix.0;
     let scale = m[0].hypot(m[1]);
     let rotation = m[1].atan2(m[0]).to_degrees();
     ui.label(match r.note.kind {
-        RegistrationKind::Placed => tx("No registration: B is placed as the sheet match puts it.").to_string(),
+        // OV6.9: only equal sheets go on without points, aligned at their lower-left corners.
+        RegistrationKind::Placed if differ => tx("No reference points yet: different sheet sizes need them.").to_string(),
+        RegistrationKind::Placed => tx("No reference points: Old and New aligned at their lower-left corners, 1:1.").to_string(),
         _ => crate::i18n::fmt(
             tx("Shift {x} mm, {y} mm · rotation {r}° · scale {s}"),
             &[

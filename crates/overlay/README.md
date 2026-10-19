@@ -154,6 +154,14 @@ the PRD's requirements stay as written, and every functional area is still there
   the final nudge are unchanged.
 - Generate: "Expand page to prevent clipping" (was "Expand output to include both documents"),
   off by default; the output extent calculation is unchanged.
+- Different sheet sizes (OV6.9, 19 Oct 2026). Sheets the same within `same_sheet_pt` need no
+  reference points: without any, Old and New are aligned at their lower-left corners, 1:1, and
+  the wizard says so. A pair whose physical sizes differ shows both (mm and pt) and blocks Next
+  and Generate until its own "Allow alignment of different sheet sizes" is ticked, and then
+  until it has reference points; a manual nudge alone isn't enough. The tick belongs to that
+  page pair only (never shared through "use the first pair's" choices) and changes nothing
+  else: Match sheet sizes, a factor's separate confirmation and the OV2 solver are as before,
+  and the tick itself never scales.
 
 Known limitation (R3, pre-existing; recorded at the upstream 0.8.0 sync, not fixed): a source
 page's resources are taken as one dictionary, its own `/Resources` or else its nearest page-tree

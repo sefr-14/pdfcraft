@@ -13,10 +13,16 @@ fn drawing(x: u32) -> Vec<u8> {
 
 /// [`drawing`] with each page's sheet size in points.
 fn drawing_sized(x: u32, sizes: [(u32, u32); 2]) -> Vec<u8> {
+    drawing_moved(x, 0, sizes)
+}
+
+/// [`drawing_sized`] with the whole drawing moved `dx` pt to the right.
+fn drawing_moved(x: u32, dx: u32, sizes: [(u32, u32); 2]) -> Vec<u8> {
     let mut objs: Vec<String> = vec!["<< /Type /Catalog /Pages 2 0 R >>".into(), "<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>".into()];
     for (i, (w, h)) in (0..2u32).zip(sizes) {
         objs.push(format!("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {w} {h}] /Contents {} 0 R >>", 4 + 2 * i));
-        let body = format!("0 g 2 w 20 20 m 280 180 l S {} 60 40 40 re f", x + 10 * i);
+        let shift = if dx == 0 { String::new() } else { format!("1 0 0 1 {dx} 0 cm ") };
+        let body = format!("{shift}0 g 2 w 20 20 m 280 180 l S {} 60 40 40 re f", x + 10 * i);
         objs.push(format!("<< /Length {} >>\nstream\n{body}\nendstream", body.len()));
     }
     let mut out = b"%PDF-1.7\n".to_vec();
@@ -457,7 +463,9 @@ fn different_sheet_sizes_need_a_confirmed_factor() {
     h.get_by_label("I confirm this choice").click();
     h.run_steps(3);
     h.get_by_label("Old: 300 × 200 pt · New: 600 × 400 pt · Scale: New × 0.5000");
-    assert!(!next_disabled(&h));
+    // OV6.9: confirmed, the different sizes still need the pair's override and reference points.
+    assert!(next_disabled(&h));
+    h.get_by_label(DIFFER_PAGE_1);
     if let Ok(dir) = std::env::var("PDFCRAFT_SHOT") {
         settle(&mut h, 200);
         h.render().unwrap().save(std::path::Path::new(&dir).join("sheet-size-different.png")).unwrap();
@@ -470,7 +478,9 @@ fn different_sheet_sizes_need_a_confirmed_factor() {
     h.get_by_label("Match sheet sizes").click();
     h.run_steps(3);
     h.get_by_label("Old: 300 × 200 pt · New: 600 × 400 pt · Scale: 1:1 (Match sheet sizes is off)");
-    assert!(!next_disabled(&h));
+    // OV6.9: Match sheet sizes off doesn't make different sizes acceptable either.
+    assert!(next_disabled(&h));
+    h.get_by_label(DIFFER_PAGE_1);
 }
 
 /// Per pair: New's second sheet is twice the size. With the first pair's choice shared, the pair
@@ -482,7 +492,9 @@ fn sheet_sizes_per_pair_are_kept() {
     to_sheet_and_alignment(&mut h);
     h.get_by_label("Old: 300 × 200 pt · New: 300 × 200 pt · Scale: 1:1");
     h.get_by_label_contains("Output page(s) 2 have other sheet sizes than the first pair");
-    assert!(!next_disabled(&h));
+    // OV6.9: pair 2's sheets differ, so it waits for its own override and reference points.
+    assert!(next_disabled(&h));
+    h.get_by_label(DIFFER_PAGE_2);
     h.get_by_label("Use the first pair's sheet size for every pair").click();
     h.run_steps(3);
     assert!(next_disabled(&h));
@@ -494,14 +506,17 @@ fn sheet_sizes_per_pair_are_kept() {
     h.get_by_label("Old: 300 × 200 pt · New: 600 × 400 pt · Scale: New × 0.5000, to confirm");
     h.get_by_label("I confirm this choice").click();
     h.run_steps(3);
-    assert!(!next_disabled(&h));
+    // Confirmed; OV6.9's override and reference points are still to come.
+    assert!(next_disabled(&h));
+    h.get_by_label(DIFFER_PAGE_2);
     // Shared again, pair 2 follows the first pair (1:1); set apart again, its own choice is back.
     h.get_by_label("Use the first pair's sheet size for every pair").click();
     h.run_steps(3);
     h.get_by_label("Use the first pair's sheet size for every pair").click();
     h.run_steps(3);
     h.get_by_label("Old: 300 × 200 pt · New: 600 × 400 pt · Scale: New × 0.5000");
-    assert!(!next_disabled(&h));
+    assert!(next_disabled(&h));
+    h.get_by_label(DIFFER_PAGE_2);
 }
 
 /// The recommended way: three points on Old, then the same three on New in the same order. Clicks
@@ -550,7 +565,7 @@ fn three_old_points_then_three_new_points() {
     h.get_by_label("Clear all points").click();
     h.run_steps(3);
     h.get_by_label("Old drawing: select point 1 of 3.");
-    h.get_by_label("No registration: B is placed as the sheet match puts it.");
+    h.get_by_label(LOWER_LEFT);
     assert!(!next_disabled(&h));
 }
 
@@ -614,4 +629,242 @@ fn expand_page_to_prevent_clipping() {
     for (v, before) in app.views.iter().take(2).zip(&sources) {
         assert_eq!(app.session.get(v.id).unwrap().bytes, *before);
     }
+}
+
+// ── OV6.9: different sheet sizes ────────────────────────────────────────────────────────────
+
+const ALLOW: &str = "Allow alignment of different sheet sizes";
+const LOWER_LEFT: &str = "No reference points: Old and New aligned at their lower-left corners, 1:1.";
+const DIFFER_PAGE_1: &str = "Output page 1 (Old p. 1 · New p. 1): the sheet sizes differ. Check \"Allow alignment of different sheet sizes\" to align them with reference points.";
+const DIFFER_PAGE_2: &str = "Output page 2 (Old p. 2 · New p. 2): the sheet sizes differ. Check \"Allow alignment of different sheet sizes\" to align them with reference points.";
+const NEED_POINTS_PAGE_1: &str = "Output page 1 (Old p. 1 · New p. 1): different sheet sizes need reference points.";
+
+fn toggled(h: &Harness<'static, PdfCraftApp>, label: &str) -> bool {
+    h.get_by_label(label).accesskit_node().toggled() == Some(egui::accesskit::Toggled::True)
+}
+
+fn click_label(h: &mut Harness<'static, PdfCraftApp>, label: &str) {
+    h.get_by_label(label).click();
+    h.run_steps(3);
+}
+
+/// Show `item` in the Page pair list.
+fn choose_pair(h: &mut Harness<'static, PdfCraftApp>, item: &str) {
+    click_label(h, "Page pair");
+    click_label(h, item);
+}
+
+/// Old 300 × 200 pt and New 600 × 400 pt, two pages each, so every pair's sheets differ. New
+/// draws Old's drawing 140 pt further right.
+fn different_sizes() -> Harness<'static, PdfCraftApp> {
+    harness_with(drawing(100), drawing_moved(100, 140, [(600, 400), (600, 400)]))
+}
+
+/// The diagonal line's two ends on Old, then on New's twice-as-large sheet (the view shows a
+/// 3:2 page, so New's points go in at half their coordinates). Far apart enough for the solver's
+/// spread check on the larger sheet. Clicks snap.
+fn pick_the_line_on_large_new(h: &mut Harness<'static, PdfCraftApp>) {
+    let (va, vb) = (h.get_by_label("Old drawing").rect(), h.get_by_label("New drawing").rect());
+    let nudge = egui::vec2(2.0, -2.0);
+    for (x, y) in [(20.0, 20.0), (280.0, 180.0)] {
+        click_at(h, on_page(va, x, y) + nudge);
+    }
+    for (x, y) in [(160.0, 20.0), (420.0, 180.0)] {
+        click_at(h, on_page(vb, x / 2.0, y / 2.0) + nudge);
+    }
+}
+
+/// The matrix the generated overlay's page `page` draws side `state` ("GA" or "GB") with: the
+/// first `cm` in its soft-mask group.
+fn placed(h: &Harness<'static, PdfCraftApp>, page: usize, state: &str) -> [f64; 6] {
+    let app = h.state();
+    let (_, id) = app.active_ids().unwrap();
+    let doc = pdfcraft_cos::Document::open(app.session.get(id).unwrap().bytes.clone()).unwrap();
+    let p = &pdfcraft_model::pages(&doc)[page];
+    let dict = |o: &pdfcraft_cos::Object| doc.resolve(o).as_dict().cloned().unwrap();
+    let res = dict(p.dict.get(b"Resources").unwrap());
+    let gs = dict(dict(res.get(b"ExtGState").unwrap()).get(state.as_bytes()).unwrap());
+    let mask = dict(gs.get(b"SMask").unwrap());
+    let pdfcraft_cos::Object::Stream(s) = &*doc.resolve(mask.get(b"G").unwrap()) else { panic!("group") };
+    let text = String::from_utf8_lossy(&s.decoded().unwrap()).into_owned();
+    let tokens: Vec<&str> = text.split_whitespace().collect();
+    let at = tokens.iter().position(|t| *t == "cm").unwrap();
+    let n: Vec<f64> = tokens[at - 6..at].iter().map(|t| t.parse().unwrap()).collect();
+    [n[0], n[1], n[2], n[3], n[4], n[5]]
+}
+
+/// Different sizes are blocked by default; the override (unchecked at first) applies no scaling:
+/// the proposed factor still waits for its own confirmation. With it confirmed and the override
+/// on, zero points are still invalid.
+#[test]
+fn different_sheet_sizes_block_by_default() {
+    let mut h = different_sizes();
+    to_sheet_and_alignment(&mut h);
+    h.get_by_label("Different sheet sizes: Old 105.8 × 70.6 mm (300 × 200 pt), New 211.7 × 141.1 mm (600 × 400 pt).");
+    assert!(!toggled(&h, ALLOW));
+    // Match sheet sizes off: nothing to confirm, yet the different sizes block.
+    click_label(&mut h, "Match sheet sizes");
+    assert!(next_disabled(&h));
+    h.get_by_label(DIFFER_PAGE_1);
+    click_label(&mut h, "Match sheet sizes");
+    click_label(&mut h, ALLOW);
+    assert!(toggled(&h, ALLOW));
+    h.get_by_label("Old: 300 × 200 pt · New: 600 × 400 pt · Scale: New × 0.5000, to confirm");
+    assert!(next_disabled(&h));
+    h.get_by_label("Confirm the sheet-size choice for output page 1 (Old p. 1 · New p. 1), or turn Match sheet sizes off.");
+    click_label(&mut h, "I confirm this choice");
+    h.get_by_label("Old: 300 × 200 pt · New: 600 × 400 pt · Scale: New × 0.5000");
+    assert!(next_disabled(&h));
+    h.get_by_label(NEED_POINTS_PAGE_1);
+    h.get_by_label("No reference points yet: different sheet sizes need them.");
+}
+
+/// With the override on for both pairs and two point pairs, the existing solver aligns the
+/// different sheets (Match sheet sizes off: 140 pt left, 1:1) and the overlay is generated.
+/// Match sheet sizes on again proposes 0.5, which waits for its separate confirmation.
+#[test]
+fn the_override_allows_point_alignment() {
+    let mut h = different_sizes();
+    to_sheet_and_alignment(&mut h);
+    wait_for_drawings(&mut h, true);
+    click_label(&mut h, "Match sheet sizes");
+    click_label(&mut h, ALLOW);
+    pick_the_line_on_large_new(&mut h);
+    h.get_by_label("Alignment calculated.");
+    assert_eq!(readout(&h), [-49.389, 0.0, 0.0, 1.0]);
+    // Pair 2 has its own override, still off.
+    assert!(next_disabled(&h));
+    h.get_by_label(DIFFER_PAGE_2);
+    choose_pair(&mut h, "Output page 2: Old p. 2 · New p. 2");
+    click_label(&mut h, ALLOW);
+    assert!(!next_disabled(&h));
+    click_label(&mut h, "Match sheet sizes");
+    assert!(next_disabled(&h));
+    h.get_by_label("Confirm the sheet-size choice for output page 1 (Old p. 1 · New p. 1), or turn Match sheet sizes off.");
+    click_label(&mut h, "Match sheet sizes");
+    assert!(!next_disabled(&h));
+    next(&mut h);
+    h.get_by_label("5. Preview");
+    next(&mut h);
+    h.get_by_label("6. Generate");
+    h.get_by_label("Generate").click();
+    wait(&mut h, |app| app.views.len() == 3);
+    let app = h.state();
+    let (_, id) = app.active_ids().unwrap();
+    let doc = app.session.get(id).unwrap();
+    let layers: Vec<&str> = doc.info.layers.iter().map(|l| l.name.as_str()).collect();
+    assert_eq!(layers, ["Old", "New"]);
+    assert_eq!(doc.info.pages.len(), 2);
+    // B is moved 140 pt left at scale 1 on both pages (pair 2 shares pair 1's alignment).
+    for page in 0..2 {
+        assert_eq!(placed(&h, page, "GB"), [1.0, 0.0, 0.0, 1.0, -140.0, 0.0]);
+    }
+}
+
+/// The override belongs to the pair on show, even with the first pair's sheet size and alignment
+/// shared: ticking pair 1's leaves pair 2's off, and the other way round.
+#[test]
+fn the_override_is_per_pair() {
+    let mut h = different_sizes();
+    to_sheet_and_alignment(&mut h);
+    wait_for_drawings(&mut h, true);
+    assert!(toggled(&h, "Use the first pair's sheet size for every pair"));
+    assert!(toggled(&h, "Use the first pair's alignment for every pair"));
+    click_label(&mut h, "Match sheet sizes");
+    click_label(&mut h, ALLOW);
+    pick_the_line_on_large_new(&mut h);
+    h.get_by_label("Alignment calculated.");
+    assert!(next_disabled(&h));
+    h.get_by_label(DIFFER_PAGE_2);
+    choose_pair(&mut h, "Output page 2: Old p. 2 · New p. 2");
+    assert!(!toggled(&h, ALLOW));
+    click_label(&mut h, ALLOW);
+    choose_pair(&mut h, "Output page 1: Old p. 1 · New p. 1");
+    assert!(toggled(&h, ALLOW));
+    click_label(&mut h, ALLOW);
+    assert!(!toggled(&h, ALLOW));
+    assert!(next_disabled(&h));
+    h.get_by_label(DIFFER_PAGE_1);
+    choose_pair(&mut h, "Output page 2: Old p. 2 · New p. 2");
+    assert!(toggled(&h, ALLOW));
+}
+
+/// Equal sheets: no points needed. Old and New share their lower-left corners at 1:1 in the
+/// output (both drawn with the identity), and there is no override to set.
+#[test]
+fn equal_sheets_need_no_points() {
+    let mut h = harness();
+    to_sheet_and_alignment(&mut h);
+    h.get_by_label(LOWER_LEFT);
+    assert!(h.query_by_label(ALLOW).is_none());
+    assert!(!next_disabled(&h));
+    next(&mut h);
+    h.get_by_label("5. Preview");
+    next(&mut h);
+    h.get_by_label("6. Generate");
+    h.get_by_label("Generate").click();
+    wait(&mut h, |app| app.views.len() == 3);
+    for page in 0..2 {
+        assert_eq!(placed(&h, page, "GA"), [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+        assert_eq!(placed(&h, page, "GB"), [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+    }
+}
+
+/// An unfinished point set blocks Next until it is finished or undone; undone to zero points,
+/// equal sheets go on aligned at their lower-left corners.
+#[test]
+fn partial_points_block_until_completed_or_undone() {
+    let mut h = harness();
+    to_sheet_and_alignment(&mut h);
+    wait_for_drawings(&mut h, false);
+    let (va, vb) = (h.get_by_label("Old drawing").rect(), h.get_by_label("New drawing").rect());
+    click_at(&mut h, on_page(va, 100.0, 100.0));
+    click_at(&mut h, on_page(va, 140.0, 60.0));
+    click_at(&mut h, on_page(vb, 120.0, 100.0));
+    h.get_by_label("New drawing: select point 2 of 2.");
+    assert!(next_disabled(&h));
+    for _ in 0..3 {
+        click_label(&mut h, "Undo last point");
+    }
+    h.get_by_label("Old drawing: select point 1 of 3.");
+    h.get_by_label(LOWER_LEFT);
+    assert!(!next_disabled(&h));
+}
+
+/// A typed final nudge on a pair of different sheets survives turning the override off and on
+/// again, and so do its points.
+#[test]
+fn manual_nudge_survives_the_override() {
+    let mut h = different_sizes();
+    to_sheet_and_alignment(&mut h);
+    wait_for_drawings(&mut h, true);
+    click_label(&mut h, "Match sheet sizes");
+    click_label(&mut h, ALLOW);
+    pick_the_line_on_large_new(&mut h);
+    h.get_by_label("Alignment calculated.");
+    choose_pair(&mut h, "Output page 2: Old p. 2 · New p. 2");
+    click_label(&mut h, ALLOW);
+    choose_pair(&mut h, "Output page 1: Old p. 1 · New p. 1");
+    // Shift X of the final nudge (its first number field), set to 1 mm.
+    let (target_node, target_tree) = {
+        let field = h.query_all(egui_kittest::kittest::By::new().role(egui::accesskit::Role::SpinButton)).next().expect("Shift X field");
+        field.accesskit_node().locate()
+    };
+    h.event(egui::Event::AccessKitActionRequest(egui::accesskit::ActionRequest {
+        action: egui::accesskit::Action::SetValue,
+        target_node,
+        target_tree,
+        data: Some(egui::accesskit::ActionData::NumericValue(1.0)),
+    }));
+    h.run_steps(3);
+    assert_eq!(readout(&h), [1.0, 0.0, 0.0, 1.0]);
+    assert!(!h.get_by_label("Back to the fit").accesskit_node().is_disabled());
+    assert!(!next_disabled(&h));
+    click_label(&mut h, ALLOW);
+    assert!(next_disabled(&h));
+    h.get_by_label(DIFFER_PAGE_1);
+    click_label(&mut h, ALLOW);
+    assert_eq!(readout(&h), [1.0, 0.0, 0.0, 1.0]);
+    assert!(!h.get_by_label("Back to the fit").accesskit_node().is_disabled());
+    assert!(!next_disabled(&h));
 }
