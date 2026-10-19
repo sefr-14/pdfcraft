@@ -162,6 +162,18 @@ the PRD's requirements stay as written, and every functional area is still there
   page pair only (never shared through "use the first pair's" choices) and changes nothing
   else: Match sheet sizes, a factor's separate confirmation and the OV2 solver are as before,
   and the tick itself never scales.
+- Drawing navigation in step 4 (OV6.10, 19 Oct 2026), CAD-style:
+  - a left click selects a point (Alt: without snapping); a left drag does nothing;
+  - the wheel pans up and down, Shift+wheel left and right;
+  - Ctrl+wheel (⌘ on a Mac) zooms about the pointer, read through the app's `motion::zoom_delta`, so Animation effects off zooms at once;
+  - a middle drag pans;
+  - Fit to page restores both drawings.
+
+  At the full-page view there is nothing to pan, so the wheel scrolls the step.
+
+  The two views keep their own zoom and pan; points stay in page coordinates and the snap reach stays 10 screen pixels.
+
+  The Preview keeps its own controls: the wheel zooms, any drag pans.
 
 Known limitation (R3, pre-existing; recorded at the upstream 0.8.0 sync, not fixed): a source
 page's resources are taken as one dictionary, its own `/Resources` or else its nearest page-tree

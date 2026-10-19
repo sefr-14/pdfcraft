@@ -868,3 +868,147 @@ fn manual_nudge_survives_the_override() {
     assert!(!h.get_by_label("Back to the fit").accesskit_node().is_disabled());
     assert!(!next_disabled(&h));
 }
+
+// ── OV6.10: drawing navigation ──────────────────────────────────────────────────────────────
+
+fn disabled(h: &Harness<'static, PdfCraftApp>, label: &str) -> bool {
+    h.get_by_label(label).accesskit_node().is_disabled()
+}
+
+/// Ctrl (⌘ on a Mac) as egui reports it.
+fn ctrl() -> egui::Modifiers {
+    egui::Modifiers { ctrl: true, command: true, ..egui::Modifiers::NONE }
+}
+
+/// One wheel step of `delta` points over `pos` with `modifiers` held, and the frames it takes to
+/// apply in full.
+fn wheel(h: &mut Harness<'static, PdfCraftApp>, pos: egui::Pos2, delta: egui::Vec2, modifiers: egui::Modifiers) {
+    h.event(egui::Event::ModifiersChanged(modifiers));
+    h.event(egui::Event::PointerMoved(pos));
+    h.run_steps(1);
+    h.event(egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta, phase: egui::TouchPhase::Move, modifiers });
+    h.run_steps(8);
+    h.event(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+    h.run_steps(1);
+}
+
+/// A drag with `button` from `from` by `by`, in four moves.
+fn drag(h: &mut Harness<'static, PdfCraftApp>, button: egui::PointerButton, from: egui::Pos2, by: egui::Vec2) {
+    h.event(egui::Event::PointerMoved(from));
+    h.run_steps(1);
+    h.event(egui::Event::PointerButton { pos: from, button, pressed: true, modifiers: egui::Modifiers::NONE });
+    h.run_steps(1);
+    for k in 1..=4 {
+        h.event(egui::Event::PointerMoved(from + by * (k as f32 / 4.0)));
+        h.run_steps(1);
+    }
+    h.event(egui::Event::PointerButton { pos: from + by, button, pressed: false, modifiers: egui::Modifiers::NONE });
+    h.run_steps(2);
+}
+
+/// The two screen spots [`fit_of_spots`] picks, as offsets from each view's centre.
+const SPOTS: [egui::Vec2; 2] = [egui::vec2(-40.0, -20.0), egui::vec2(40.0, 20.0)];
+
+/// Where the same screen spots of the two views lie on their pages, as a fit: Alt-clicks (no
+/// snapping) on Old's spots, then New's, and the readout; then the points are cleared. With both
+/// views at the full page it is the identity.
+fn fit_of_spots(h: &mut Harness<'static, PdfCraftApp>) -> [f64; 4] {
+    let (va, vb) = (h.get_by_label("Old drawing").rect(), h.get_by_label("New drawing").rect());
+    for d in SPOTS {
+        click_with(h, va.center() + d, egui::Modifiers::ALT);
+    }
+    for d in SPOTS {
+        click_with(h, vb.center() + d, egui::Modifiers::ALT);
+    }
+    let fit = readout(h);
+    click_label(h, "Clear all points");
+    fit
+}
+
+/// OV6.10: on step 4's drawings the wheel pans and Ctrl+wheel zooms about the pointer, a middle
+/// drag pans and a left drag does nothing, and none of it selects a point. Each move shows in
+/// where the same screen spots land on Old's page (New stays at the full page): the zoom shrinks
+/// the fit's scale, the wheel moves only its y shift, Shift+wheel only its x shift. Animation
+/// effects are off, so a wheel step applies at once.
+#[test]
+fn wheel_pans_ctrl_wheel_zooms_and_nothing_selects() {
+    let mut h = harness();
+    h.state_mut().set_option("animation_effects", "off").unwrap();
+    to_sheet_and_alignment(&mut h);
+    wait_for_drawings(&mut h, false);
+    let no_point = |h: &Harness<'static, PdfCraftApp>| disabled(h, "Undo last point");
+    let near = |a: f64, b: f64| (a - b).abs() < 0.002;
+    let [x, y, _, scale] = fit_of_spots(&mut h);
+    assert!(near(x, 0.0) && near(y, 0.0) && near(scale, 1.0), "{x}, {y}, {scale}");
+    // At the full page there is nothing to pan: the view stays (the step may scroll instead).
+    let centre = h.get_by_label("Old drawing").rect().center();
+    wheel(&mut h, centre, egui::vec2(0.0, -40.0), egui::Modifiers::NONE);
+    assert!(disabled(&h, "Fit to page") && no_point(&h));
+    let old = h.get_by_label("Old drawing").rect();
+    wheel(&mut h, old.center(), egui::vec2(0.0, 200.0), ctrl());
+    assert!(!disabled(&h, "Fit to page") && no_point(&h));
+    let zoomed = fit_of_spots(&mut h);
+    assert!(zoomed[3] < 0.9, "Ctrl+wheel didn't zoom in: {zoomed:?}");
+    // Zoomed in, the wheel pans the drawing up and down, and the step stays where it is.
+    wheel(&mut h, old.center(), egui::vec2(0.0, -30.0), egui::Modifiers::NONE);
+    assert!(no_point(&h));
+    assert_eq!(h.get_by_label("Old drawing").rect(), old, "the wheel scrolled the step");
+    let down = fit_of_spots(&mut h);
+    assert!(near(down[0], zoomed[0]) && (down[1] - zoomed[1]).abs() > 0.5 && near(down[3], zoomed[3]), "{zoomed:?} → {down:?}");
+    // Shift+wheel: left and right.
+    wheel(&mut h, old.center(), egui::vec2(0.0, -30.0), egui::Modifiers::SHIFT);
+    assert!(no_point(&h));
+    assert_eq!(h.get_by_label("Old drawing").rect(), old, "Shift+wheel scrolled the step");
+    let side = fit_of_spots(&mut h);
+    assert!((side[0] - down[0]).abs() > 0.5 && near(side[1], down[1]) && near(side[3], down[3]), "{down:?} → {side:?}");
+    // A middle drag pans both ways.
+    drag(&mut h, egui::PointerButton::Middle, old.center(), egui::vec2(25.0, 15.0));
+    assert!(no_point(&h));
+    let dragged = fit_of_spots(&mut h);
+    assert!((dragged[0] - side[0]).abs() > 0.5 && (dragged[1] - side[1]).abs() > 0.5 && near(dragged[3], side[3]), "{side:?} → {dragged:?}");
+    // A left drag neither pans nor selects.
+    drag(&mut h, egui::PointerButton::Primary, old.center(), egui::vec2(25.0, 15.0));
+    assert!(no_point(&h));
+    assert_eq!(fit_of_spots(&mut h), dragged);
+}
+
+/// OV6.10: zoomed in, a click a few pixels off a corner still snaps onto it, on Old and on New,
+/// each zoomed about its own corner; Old's zoom leaves New at the full page, where its first
+/// corner is picked. Fit to page brings both views back, and the same picks give the same exact
+/// fit as before any navigation (B's box is 20 pt, 7.056 mm, right of A's).
+#[test]
+fn zoomed_picks_snap_and_fit_to_page_restores() {
+    let mut h = harness();
+    to_sheet_and_alignment(&mut h);
+    wait_for_drawings(&mut h, true);
+    let (va, vb) = (h.get_by_label("Old drawing").rect(), h.get_by_label("New drawing").rect());
+    let miss = egui::vec2(4.0, -3.0);
+    let pick_the_box_near = |h: &mut Harness<'static, PdfCraftApp>| {
+        for (x, y) in [(100.0, 100.0), (140.0, 60.0)] {
+            click_at(h, on_page(va, x, y) + miss);
+        }
+        for (x, y) in [(120.0, 100.0), (160.0, 60.0)] {
+            click_at(h, on_page(vb, x, y) + miss);
+        }
+    };
+    pick_the_box_near(&mut h);
+    assert_eq!(readout(&h), [-7.056, 0.0, 0.0, 1.0]);
+    click_label(&mut h, "Clear all points");
+    // Old: the first corner at the full page, the second zoomed in about it.
+    click_at(&mut h, on_page(va, 100.0, 100.0) + miss);
+    let corner = on_page(va, 140.0, 60.0);
+    wheel(&mut h, corner, egui::vec2(0.0, 300.0), ctrl());
+    assert!(!disabled(&h, "Fit to page"));
+    click_at(&mut h, corner + miss);
+    // New is still at the full page; then zoomed in about its own second corner.
+    click_at(&mut h, on_page(vb, 120.0, 100.0) + miss);
+    let corner = on_page(vb, 160.0, 60.0);
+    wheel(&mut h, corner, egui::vec2(0.0, 300.0), ctrl());
+    click_at(&mut h, corner + miss);
+    assert_eq!(readout(&h), [-7.056, 0.0, 0.0, 1.0]);
+    click_label(&mut h, "Fit to page");
+    assert!(disabled(&h, "Fit to page"));
+    click_label(&mut h, "Clear all points");
+    pick_the_box_near(&mut h);
+    assert_eq!(readout(&h), [-7.056, 0.0, 0.0, 1.0]);
+}

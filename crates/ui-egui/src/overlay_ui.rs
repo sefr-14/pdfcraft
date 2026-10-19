@@ -662,9 +662,19 @@ impl Shown {
     }
 }
 
-/// Draw `image` in `size`, with the wheel zooming about the pointer and a drag panning. A click
-/// (not a drag) is returned as a pick.
-fn image_view(ui: &mut egui::Ui, label: &str, view: &mut View, image: Option<&PageImage>, size: Vec2, placeholder: &str) -> Shown {
+/// How an image view takes the mouse.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Navigate {
+    /// The Preview: the wheel zooms about the pointer and a drag with any button pans.
+    WheelZooms,
+    /// Step 4's drawings, where a left click selects a point (OV6.10): the wheel pans (Shift with
+    /// it: sideways), Ctrl/⌘ with it zooms about the pointer, and only a middle drag pans.
+    WheelPans,
+}
+
+/// Draw `image` in `size`, zoomed and panned as `nav` says. A primary click (not a drag) is
+/// returned as a pick.
+fn image_view(ui: &mut egui::Ui, label: &str, view: &mut View, image: Option<&PageImage>, size: Vec2, placeholder: &str, nav: Navigate) -> Shown {
     let t = Tokens::get(ui.ctx());
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click_and_drag());
     // Until its image arrives the view is named by its placeholder ("Rendering…").
@@ -676,12 +686,20 @@ fn image_view(ui: &mut egui::Ui, label: &str, view: &mut View, image: Option<&Pa
         return Shown { rect, image: rect, clicked: None, hover: None };
     };
     let fit = (rect.width() / img.size.x).min(rect.height() / img.size.y).max(1e-6);
-    let shown_size = img.size * fit * view.zoom;
     if resp.hovered() {
-        let (scroll, pointer) = ui.input(|i| (i.smooth_scroll_delta.y + i.zoom_delta().ln() * 200.0, i.pointer.hover_pos()));
-        // The wheel zooms the image, so the step around it doesn't scroll too.
-        ui.input_mut(|i| i.smooth_scroll_delta = Vec2::ZERO);
-        if scroll.abs() > 0.0 {
+        let pointer = ui.input(|i| i.pointer.hover_pos());
+        let scroll = match nav {
+            Navigate::WheelZooms => {
+                let scroll = ui.input(|i| i.smooth_scroll_delta.y + i.zoom_delta().ln() * 200.0);
+                // The wheel zooms the image, so the step around it doesn't scroll too.
+                ui.input_mut(|i| i.smooth_scroll_delta = Vec2::ZERO);
+                scroll
+            }
+            // Ctrl/⌘ with the wheel (or a pinch), read as the canvas reads it, so Animation
+            // effects off zooms at once; the same step per notch as the Preview.
+            Navigate::WheelPans => crate::motion::zoom_delta(ui.ctx()).ln() * 200.0,
+        };
+        if scroll.is_finite() && scroll.abs() > 0.0 {
             let old = view.zoom;
             view.zoom = (view.zoom * (scroll / 400.0).exp()).clamp(1.0, 32.0);
             // Keep the point under the pointer where it is.
@@ -692,8 +710,27 @@ fn image_view(ui: &mut egui::Ui, label: &str, view: &mut View, image: Option<&Pa
             }
         }
     }
-    if resp.dragged() {
+    let shown_size = img.size * fit * view.zoom;
+    // Zoomed in, the wheel pans the drawing (egui makes Shift with it sideways) and the step
+    // stays put; at the full-page view there is nothing to pan, so it scrolls the step.
+    if nav == Navigate::WheelPans && resp.hovered() && view.zoom > 1.0 {
+        let scroll = ui.input(|i| i.smooth_scroll_delta);
+        if scroll != Vec2::ZERO {
+            view.centre -= scroll / shown_size;
+            ui.input_mut(|i| i.smooth_scroll_delta = Vec2::ZERO);
+        }
+    }
+    let panning = match nav {
+        Navigate::WheelZooms => resp.dragged(),
+        // A left drag neither pans nor selects: only a click selects.
+        Navigate::WheelPans => resp.dragged_by(egui::PointerButton::Middle),
+    };
+    if panning {
         view.centre -= resp.drag_delta() / shown_size;
+    }
+    // An image with no pixels on a side would make a pan divide by zero: never keep that view.
+    if !(view.zoom.is_finite() && view.centre.x.is_finite() && view.centre.y.is_finite()) {
+        *view = View::default();
     }
     let half = vec2(0.5, 0.5) / view.zoom;
     view.centre = vec2(view.centre.x.clamp(half.x.min(0.5), (1.0 - half.x).max(0.5)), view.centre.y.clamp(half.y.min(0.5), (1.0 - half.y).max(0.5)));
@@ -705,7 +742,7 @@ fn image_view(ui: &mut egui::Ui, label: &str, view: &mut View, image: Option<&Pa
     let clicked = clicked.filter(on_image);
     let hover = (!resp.dragged()).then(|| resp.hover_pos()).flatten().map(|p| (p - image_rect.min) / image_rect.size()).filter(on_image);
     if ui.input(|i| i.pointer.any_down()) || resp.hovered() {
-        ui.ctx().set_cursor_icon(if resp.dragged() { egui::CursorIcon::Grabbing } else { egui::CursorIcon::Crosshair });
+        ui.ctx().set_cursor_icon(if panning { egui::CursorIcon::Grabbing } else { egui::CursorIcon::Crosshair });
     }
     Shown { rect, image: image_rect, clicked, hover }
 }
@@ -2506,7 +2543,18 @@ fn alignment_section(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, pair: (usize
         ui,
         t,
         tx(
-            "Points are optional when the sheet sizes match: without any, Old and New are aligned at their lower-left corners, 1:1. Different sheet sizes need them. Clicks snap to the drawing (hold Alt to place a point freely). Scroll to zoom, drag to pan.",
+            "Points are optional when the sheet sizes match: without any, Old and New are aligned at their lower-left corners, 1:1. Different sheet sizes need them.",
+        ),
+    );
+    // OV6.10: the drawings' mouse controls; {key} is Ctrl, or ⌘ on a Mac.
+    muted(
+        ui,
+        t,
+        &crate::i18n::fmt(
+            tx(
+                "Click to select a point (Alt: without snapping). Wheel: scroll up/down · Shift+wheel: left/right · {key}+wheel: zoom · middle-drag: pan.",
+            ),
+            &[("key", crate::commands::command_modifier_label(ui.ctx()))],
         ),
     );
     let key = w.align_key(pair);
@@ -2590,7 +2638,7 @@ fn alignment_section(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, pair: (usize
                 let placeholder = w.page_errors.get(&(side, page)).cloned().unwrap_or_else(|| tx("Rendering…").to_string());
                 let mut view = w.views[i];
                 let label = crate::i18n::fmt(tx("{role} drawing"), &[("role", role(side))]);
-                let shown = image_view(ui, &label, &mut view, w.pages.get(&(side, page)), vec2(width, height), &placeholder);
+                let shown = image_view(ui, &label, &mut view, w.pages.get(&(side, page)), vec2(width, height), &placeholder, Navigate::WheelPans);
                 w.views[i] = view;
                 let painter = ui.painter_at(shown.rect);
                 if collecting || may_start {
@@ -2667,7 +2715,7 @@ fn alignment_section(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, pair: (usize
         if ui.add(widgets::checkbox(&mut align.affine, tx("Advanced: affine (allows stretch and skew)"))).changed() {
             align.manual = None;
         }
-        if ui.add_enabled(w.views.iter().any(|v| *v != View::default()), egui::Button::new(tx("Fit pages"))).clicked() {
+        if ui.add_enabled(w.views.iter().any(|v| *v != View::default()), egui::Button::new(tx("Fit to page"))).clicked() {
             w.views = [View::default(); 2];
         }
     });
@@ -2907,17 +2955,25 @@ fn preview_step(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
     let mut view = w.preview.view;
     let placeholder = tx("Rendering the preview…");
     let shown = match w.preview.mode {
-        PreviewMode::Both => image_view(ui, tx("Overlay preview"), &mut view, images.map(|i| &i[0]), size, placeholder),
-        PreviewMode::AOnly => image_view(ui, tx("Overlay preview"), &mut view, images.map(|i| &i[1]), size, placeholder),
-        PreviewMode::BOnly => image_view(ui, tx("Overlay preview"), &mut view, images.map(|i| &i[2]), size, placeholder),
+        PreviewMode::Both => image_view(ui, tx("Overlay preview"), &mut view, images.map(|i| &i[0]), size, placeholder, Navigate::WheelZooms),
+        PreviewMode::AOnly => image_view(ui, tx("Overlay preview"), &mut view, images.map(|i| &i[1]), size, placeholder, Navigate::WheelZooms),
+        PreviewMode::BOnly => image_view(ui, tx("Overlay preview"), &mut view, images.map(|i| &i[2]), size, placeholder, Navigate::WheelZooms),
         PreviewMode::Flicker => {
             let period = 1.0 / f64::from(w.preview.hz.clamp(0.25, MAX_FLICKER_HZ));
             let phase = (ui.input(|i| i.time) / period * 2.0) as u64 % 2;
             ui.ctx().request_repaint_after(std::time::Duration::from_millis(50));
-            image_view(ui, tx("Overlay preview"), &mut view, images.map(|i| if phase == 0 { &i[1] } else { &i[2] }), size, placeholder)
+            image_view(
+                ui,
+                tx("Overlay preview"),
+                &mut view,
+                images.map(|i| if phase == 0 { &i[1] } else { &i[2] }),
+                size,
+                placeholder,
+                Navigate::WheelZooms,
+            )
         }
         PreviewMode::Transparency => {
-            let shown = image_view(ui, tx("Overlay preview"), &mut view, images.map(|i| &i[1]), size, placeholder);
+            let shown = image_view(ui, tx("Overlay preview"), &mut view, images.map(|i| &i[1]), size, placeholder, Navigate::WheelZooms);
             if let Some(i) = images {
                 let alpha = (w.preview.alpha.clamp(0.0, 1.0) * 255.0) as u8;
                 ui.painter_at(shown.rect).image(
