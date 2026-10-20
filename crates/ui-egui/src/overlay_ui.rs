@@ -3006,7 +3006,8 @@ fn preview_step(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
     }
 }
 
-/// Unresolved optional content or annotations: each item, and the decision that settles it.
+/// Unresolved optional content or annotations: each question once per document, with the pages
+/// it is on (OV4.10; one decision settles every page), and the decision that settles it.
 fn unresolved_panel(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
     let Some((ua, ub)) = w.unresolved.clone() else { return };
     ui.colored_label(
@@ -3014,9 +3015,10 @@ fn unresolved_panel(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
         tx("Some layers or annotations can't be resolved with certainty, so nothing is written until you decide each item. Hidden content is never shown without your decision."),
     );
     ui.add_space(4.0);
+    // The same object can still come up for two different reasons; its control is shown once.
     let mut seen = HashSet::new();
     for (side, items) in [(Side::A, ua), (Side::B, ub)] {
-        for u in items {
+        for u in pdfcraft_overlay::oc::group_unresolved(&items) {
             let annotation =
                 matches!(u.rule, Rule::AnnotationUndrawnText | Rule::AnnotationUndrawableText | Rule::AnnotationNotDrawn | Rule::AnnotationPlacement);
             egui::Frame::new().stroke(Stroke::new(1.0, t.border)).corner_radius(6.0).inner_margin(egui::Margin::same(6)).show(ui, |ui| {

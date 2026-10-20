@@ -82,8 +82,29 @@ pub(crate) fn note_text(note: &Note, name: &dyn Fn(pdfcraft_cos::ObjRef) -> Stri
             "the default layer configuration's base state is OFF, which the standard doesn't allow; it is followed as viewers do: layers not listed as on are hidden"
                 .into()
         }
+        Note::UndeclaredShown { groups, configured } => {
+            let names: Vec<String> = groups.iter().take(UNDECLARED_NAMES).map(|g| name(*g)).collect();
+            let more = groups.len().saturating_sub(UNDECLARED_NAMES);
+            let more = if more > 0 { format!(" and {more} more") } else { String::new() };
+            if *configured {
+                format!(
+                    "{} layer(s) aren't declared in the document's layer list, which the standard requires; they are shown, as PdfCraft and other viewers show them (layers {}{more})",
+                    groups.len(),
+                    names.join(", ")
+                )
+            } else {
+                format!(
+                    "the document has no layer configuration, so its {} layer(s) have no effect on what shows (ISO 32000-1 §8.11.4.2); they are shown, as PdfCraft and other viewers show them (layers {}{more})",
+                    groups.len(),
+                    names.join(", ")
+                )
+            }
+        }
     }
 }
+
+/// Most layer names the `UndeclaredShown` note lists; it counts the rest.
+const UNDECLARED_NAMES: usize = 10;
 
 impl OverlayReport {
     /// Whether the overlay was made without any warning.

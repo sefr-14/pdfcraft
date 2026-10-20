@@ -1012,3 +1012,97 @@ fn zoomed_picks_snap_and_fit_to_page_restores() {
     pick_the_box_near(&mut h);
     assert_eq!(readout(&h), [-7.056, 0.0, 0.0, 1.0]);
 }
+
+// ── OV4.10: layers the source doesn't declare ───────────────────────────────────────────────
+
+/// An `n`-page drawing set like [`sheets`] whose pages also draw a red block in one layer, object
+/// 5, that `/OCProperties` doesn't declare. With `off`, the configuration's `/OFF` names it, so
+/// viewers disagree on whether it shows (OV4.10, U4); without, nothing turns it off (U2).
+fn sheets_with_undeclared_layer(n: usize, off: bool) -> Vec<u8> {
+    let kids: Vec<String> = (0..n).map(|i| format!("{} 0 R", 6 + 2 * i)).collect();
+    let configuration = if off { "/D << /OFF [5 0 R] >>" } else { "/D << >>" };
+    let mut objs: Vec<String> = vec![
+        format!("<< /Type /Catalog /Pages 2 0 R /OCProperties << /OCGs [3 0 R] {configuration} >> >>"),
+        format!("<< /Type /Pages /Kids [{}] /Count {n} /MediaBox [0 0 300 200] >>", kids.join(" ")),
+        "<< /Type /OCG /Name (Declared) >>".into(),
+        "<< /Type /OCG /Name (Unused) >>".into(),
+        "<< /Type /OCG /Name (Title block) >>".into(),
+    ];
+    for i in 0..n {
+        objs.push(format!("<< /Type /Page /Parent 2 0 R /Resources << /Properties << /L 5 0 R >> >> /Contents {} 0 R >>", 7 + 2 * i));
+        let body = format!("0 g 20 {} 40 10 re f /OC /L BDC 1 0 0 rg 200 120 30 30 re f EMC", 10 + 5 * i);
+        objs.push(format!("<< /Length {} >>\nstream\n{body}\nendstream", body.len()));
+    }
+    let mut out = b"%PDF-1.7\n".to_vec();
+    let mut offsets = Vec::new();
+    for (i, o) in objs.iter().enumerate() {
+        offsets.push(out.len());
+        out.extend_from_slice(format!("{} 0 obj\n{o}\nendobj\n", i + 1).as_bytes());
+    }
+    let xref = out.len();
+    out.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", objs.len() + 1).as_bytes());
+    for o in offsets {
+        out.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
+    }
+    out.extend_from_slice(format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", objs.len() + 1).as_bytes());
+    out
+}
+
+/// From step 1 to step 6 with the default pairing and no points.
+fn to_generate(h: &mut Harness<'static, PdfCraftApp>) {
+    assert!(h.state_mut().execute("doc.overlay"));
+    h.run_steps(3);
+    for _ in 0..5 {
+        next(h);
+    }
+    h.get_by_label("6. Generate");
+}
+
+/// Run frames until a label containing `text` shows.
+fn wait_for_label(h: &mut Harness<'static, PdfCraftApp>, text: &str) {
+    for _ in 0..2400 {
+        h.run_steps(1);
+        if h.query_by_label_contains(text).is_some() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    panic!("timed out waiting for {text:?}");
+}
+
+#[test]
+fn undeclared_layers_shown_by_the_source_need_no_decision() {
+    let mut h = harness_with(sheets_with_undeclared_layer(3, false), sheets(3));
+    to_generate(&mut h);
+    h.get_by_label("Generate").click();
+    wait(&mut h, |app| app.views.len() == 3);
+    let app = h.state();
+    let (_, id) = app.active_ids().unwrap();
+    let doc = app.session.get(id).unwrap();
+    let layers: Vec<&str> = doc.info.layers.iter().map(|l| l.name.as_str()).collect();
+    assert_eq!(layers, ["Old", "New"]);
+    assert_eq!(doc.info.pages.len(), 3);
+    assert!(h.query_by_label_contains("can't be resolved with certainty").is_none());
+    // The report says the layer was shown as the source shows it.
+    h.get_by_label_contains("aren't declared in the document's layer list");
+}
+
+#[test]
+fn an_undeclared_layer_on_three_pages_is_one_decision() {
+    let mut h = harness_with(sheets_with_undeclared_layer(3, true), sheets(3));
+    to_generate(&mut h);
+    h.get_by_label("Generate").click();
+    wait_for_label(&mut h, "Document A, pages 1–3: a layer isn't declared");
+    // One row and one control for the layer, not one per page.
+    assert_eq!(h.query_all_by_label_contains("Document A, page").count(), 1);
+    h.get_by_label_contains("\"Title block\" (5 0 R)");
+    h.get_by_label("Show").click();
+    h.run_steps(3);
+    h.get_by_label("Generate").click();
+    wait(&mut h, |app| app.views.len() == 3);
+    let app = h.state();
+    let (_, id) = app.active_ids().unwrap();
+    let layers: Vec<&str> = app.session.get(id).unwrap().info.layers.iter().map(|l| l.name.as_str()).collect();
+    assert_eq!(layers, ["Old", "New"]);
+    assert!(h.query_by_label_contains("Document A, page").is_none());
+}

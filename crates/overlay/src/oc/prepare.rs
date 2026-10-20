@@ -190,6 +190,36 @@ pub fn prepare(doc: &Document, pages: &[usize], visibility: &Visibility) -> Resu
     check_decisions(doc, visibility)?;
     let has_oc = doc.root().and_then(|r| doc.dict(&Object::Ref(r))).is_some_and(|c| c.contains(b"OCProperties"));
     let touched = has_oc || !visibility.decisions.is_empty();
+    let walked = walk(doc, &wanted, visibility, has_oc, touched);
+    // OV4.10: a document without `/OCProperties` whose pages use optional content anyway. Its
+    // groups are shown, and the copy has to drop them as a layered document's does, so it is
+    // walked again with its resources pruned and checked.
+    let (w, reports, names, mut warnings, touched) =
+        if !touched && walked.0.ev.consulted() { walk(doc, &wanted, visibility, has_oc, true) } else { walked };
+    // An untyped dictionary can be decided only where these pages use it as optional content.
+    for &(r, _) in &visibility.decisions {
+        let untyped = doc.dict(&Object::Ref(r)).is_some_and(|d| d.name(b"Type").is_none());
+        if untyped && !reports.iter().any(|p| p.layers.iter().any(|(l, _, _)| *l == r)) {
+            return Err(OverlayError::Decision {
+                reason: format!("object {} {} isn't a layer, and these pages don't use it as one", r.num, r.generation),
+            });
+        }
+    }
+    let signed = an::signed_fields(doc);
+    if signed > 0 {
+        warnings.insert(0, SourceWarning::Signed { fields: signed });
+    }
+    let notes = w.ev.notes().to_vec();
+    Ok(Prepared { id: NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed), doc: w.copy, reports, notes, warnings, names, touched })
+}
+
+/// What one walk of `wanted` gives: the walker (with the copy and the evaluator), the page
+/// reports, the layer names, the warnings, and whether the copy was pruned (`touched`).
+type Walked<'a> = (Walker<'a>, Vec<PageReport>, HashMap<ObjRef, String>, Vec<SourceWarning>, bool);
+
+/// Walk `wanted` (sorted, existing) once, pruning resources when `touched`.
+fn walk<'a>(doc: &'a Document, wanted: &[usize], visibility: &Visibility, has_oc: bool, touched: bool) -> Walked<'a> {
+    let all = pdfcraft_model::pages(doc);
     let mut w = Walker {
         src: doc,
         ev: Evaluator::new(doc, visibility),
@@ -209,7 +239,7 @@ pub fn prepare(doc: &Document, pages: &[usize], visibility: &Visibility) -> Resu
     let mut warnings = Vec::new();
     let mut reports = Vec::with_capacity(wanted.len());
     let mut names = HashMap::new();
-    for p in wanted {
+    for &p in wanted {
         let Some(page) = all.get(p) else { continue };
         let mut t = Tally::default();
         w.page(page.obj, &page.dict, &mut t);
@@ -239,21 +269,7 @@ pub fn prepare(doc: &Document, pages: &[usize], visibility: &Visibility) -> Resu
             names.entry(g).or_insert(n);
         }
     }
-    // An untyped dictionary can be decided only where these pages use it as optional content.
-    for &(r, _) in &visibility.decisions {
-        let untyped = doc.dict(&Object::Ref(r)).is_some_and(|d| d.name(b"Type").is_none());
-        if untyped && !reports.iter().any(|p| p.layers.iter().any(|(l, _, _)| *l == r)) {
-            return Err(OverlayError::Decision {
-                reason: format!("object {} {} isn't a layer, and these pages don't use it as one", r.num, r.generation),
-            });
-        }
-    }
-    let signed = an::signed_fields(doc);
-    if signed > 0 {
-        warnings.insert(0, SourceWarning::Signed { fields: signed });
-    }
-    let notes = w.ev.notes().to_vec();
-    Ok(Prepared { id: NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed), doc: w.copy, reports, notes, warnings, names, touched })
+    (w, reports, names, warnings, touched)
 }
 
 /// Decisions must name dictionaries that can be optional content (a group, a membership

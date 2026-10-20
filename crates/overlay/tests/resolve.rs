@@ -295,9 +295,9 @@ fn unresolved(case: &Case) -> Vec<(Rule, bool, Vec<String>)> {
 #[test]
 fn configuration_and_group_rules_are_unresolved() {
     let one = |rule, settleable: bool, names: &[&str]| vec![(rule, settleable, names.iter().map(|s| s.to_string()).collect::<Vec<_>>())];
-    // A group missing from /OCGs.
+    // A group missing from /OCGs that /OFF names (OV4.10, U4: PdfCraft hides it, Poppler shows it).
     assert_eq!(
-        unresolved(&simple("not-in-ocgs", groups3(), "<< /OCGs [{G1} {G2}] /D << >> >>", vec![BASE, Layer("L3", false, vec![Canary])])),
+        unresolved(&simple("not-in-ocgs", groups3(), "<< /OCGs [{G1} {G2}] /D << /OFF [{G3}] >> >>", vec![BASE, Layer("L3", false, vec![Canary])])),
         one(Rule::NotInOcgs, true, &["Hatch"])
     );
     // A Design group under the default configuration (View).
@@ -836,7 +836,7 @@ fn forms_that_cant_be_resolved() {
 /// Both sides' items come back in one error, each with its page, objects and rule.
 #[test]
 fn both_documents_items_are_listed_at_once() {
-    let a = twins::build(&simple("a", groups3(), "<< /OCGs [{G1} {G2}] /D << >> >>", vec![BASE, Layer("L3", false, vec![Canary])]));
+    let a = twins::build(&simple("a", groups3(), "<< /OCGs [{G1} {G2}] /D << /OFF [{G3}] >> >>", vec![BASE, Layer("L3", false, vec![Canary])]));
     let b = twins::build(&simple("b", with_ocmd("<< /Type /OCMD /OCGs [{G1}] /P /Most >>"), D, vec![BASE, Layer("M", false, vec![Canary])]));
     let (da, db) = (synth::open(&a.source), synth::open(&b.source));
     let (pa, pb) = (prepare(&da, &[0], &Visibility::default()).expect("A"), prepare(&db, &[0], &Visibility::default()).expect("B"));
@@ -908,6 +908,40 @@ fn decisions_that_cant_apply_are_errors() {
     }
     // The same decision twice is the same decision.
     assert!(prepare(&src, &[0], &Visibility { decisions: vec![(g1, true), (g1, true)], ..Visibility::default() }).is_ok());
+}
+
+/// OV4.10: a group `/OCGs` doesn't list, in a configuration that doesn't name it in `/OFF`, or
+/// in a file without `/OCProperties`, is shown as the source shows it. Its content is drawn, its
+/// marker removed, and nothing is asked, including under `/BaseState /OFF`; the report notes it.
+#[test]
+fn undeclared_groups_are_shown_as_the_source_shows_them() {
+    for (name, props) in [
+        ("undeclared", Some("<< /OCGs [{G1} {G2}] /D << /OFF [{G2}] >> >>")),
+        ("undeclared-base-off", Some("<< /OCGs [{G1} {G2}] /D << /BaseState /OFF /ON [{G1}] >> >>")),
+        ("undeclared-no-properties", None),
+    ] {
+        let mut case = simple(name, groups3(), "", vec![BASE, Layer("L1", true, vec![MORE]), Layer("L3", true, vec![MORE])]);
+        case.oc_properties = props.map(str::to_string);
+        if props.is_none() {
+            // Without a configuration every group shows.
+            case.contents = vec![vec![BASE, Layer("L1", true, vec![MORE]), Layer("L2", true, vec![MORE]), Layer("L3", true, vec![MORE])]];
+        }
+        let prepared = check_twin(&case);
+        assert!(prepared.notes().iter().any(|n| matches!(n, Note::UndeclaredShown { .. })), "{name}: {:?}", prepared.notes());
+    }
+}
+
+/// OV4.10 inside forms: a form whose `/OC` is an undeclared group, drawing a second form whose
+/// stream marks content with it; both are shown, their markers and `/OC` removed.
+#[test]
+fn undeclared_groups_inside_forms_are_shown() {
+    let mut case =
+        simple("undeclared-forms", groups3(), "<< /OCGs [{G1} {G2}] /D << /OFF [{G2}] >> >>", vec![BASE, Do("F5"), Layer("L2", false, vec![Canary])]);
+    case.xobjects = vec![
+        XObject::form("F5", vec![Ops("0 0.5 0 rg 10 100 30 30 re f"), Do("F6")]).with_oc("G3", true),
+        XObject::form("F6", vec![Layer("L3", true, vec![MORE])]),
+    ];
+    check_twin(&case);
 }
 
 #[test]

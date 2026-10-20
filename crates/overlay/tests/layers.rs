@@ -322,8 +322,9 @@ fn a_failed_page_leaves_the_output_unchanged() {
 }
 
 /// Sources are prepared before they are composed: a source's own layers are resolved (here a
-/// layer off by default disappears), an undeclared layer is unresolved and refused with the item
-/// named, and annotations are drawn into the page (OV4.4).
+/// layer off by default disappears), an undeclared layer is shown as the source shows it, one the
+/// source's `/OFF` names is unresolved and refused with the item named (OV4.10), and annotations
+/// are drawn into the page (OV4.4).
 #[test]
 fn sources_are_prepared_and_the_rest_refused() {
     let b = src(Page::new(300.0, 300.0, "0 g 10 10 50 50 re f"));
@@ -388,8 +389,41 @@ fn sources_are_prepared_and_the_rest_refused() {
     .expect("composes");
     assert!(check_output(&written(&out)).is_ok());
 
+    // A layer the source doesn't declare, in a file without /OCProperties, is shown as the source
+    // shows it (OV4.10): drawn as vectors, its marker and group gone, two layers in the output.
     let p = placement(&undeclared, &b);
     let pu = prep(&undeclared);
+    assert!(pu.reports()[0].unresolved.is_empty(), "{:?}", pu.reports()[0]);
+    let out = compose_layered(
+        Some(pb.source(0).expect("page")),
+        Some(pu.source(0).expect("page")),
+        &p,
+        &LayerStyle::default(),
+        Roles::default(),
+        RegistrationNote::PLACED,
+    )
+    .expect("composes");
+    assert!(check_output(&written(&out)).is_ok());
+    let forms: Vec<Vec<u8>> = out
+        .scan_objects()
+        .filter_map(|(_, o)| match &*o {
+            Object::Stream(s) if s.dict.name(b"Subtype") == Some(&b"Form"[..]) => s.decoded().ok(),
+            _ => None,
+        })
+        .collect();
+    assert!(forms.iter().any(|f| f.windows(23).any(|w| w == b"1 0 0 rg 0 0 300 300 re")), "the shown red square is drawn as a path");
+    assert!(forms.iter().all(|f| !f.windows(3).any(|w| w == b"BDC")), "no source marker is copied");
+
+    // One its /OFF names is unresolved (U4) and refused, with the item named.
+    let off = synth::open(&synth::raw_pdf(&[
+        "<< /Type /Catalog /Pages 2 0 R /OCProperties << /OCGs [] /D << /OFF [5 0 R] >> >> >>".into(),
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".into(),
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Resources << /Properties << /L 5 0 R >> >> /Contents 4 0 R >>".into(),
+        synth::raw_stream("", "/OC /L BDC 1 0 0 rg 0 0 300 300 re f EMC"),
+        "<< /Type /OCG /Name (Undeclared) >>".into(),
+    ]));
+    let p = placement(&off, &b);
+    let pu = prep(&off);
     match compose_layered(
         Some(pb.source(0).expect("page")),
         Some(pu.source(0).expect("page")),

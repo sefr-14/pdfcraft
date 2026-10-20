@@ -51,6 +51,32 @@ Step 3 adds `composite`, which writes the overlay page:
   three-valued logic, so a result that doesn't depend on an unresolved operand is still resolved.
   Checked against Adobe's PDF Reference 1.7 §4.10, the Arlington model of ISO 32000-2 and, for
   the membership rules, ISO 32000-1 §8.11.
+  - **Undeclared groups (OV4.10, 20 Oct 2026).** A group that content uses but `/OCProperties
+    /OCGs` doesn't list is shown as the source shows it, with one report note naming the groups.
+    It stays unresolved only where viewers disagree. This revises the step 4 PRD's row 6, which
+    held every such group unresolved.
+
+    | Case | Result |
+    |---|---|
+    | U1: the document has no `/OCProperties` | shown: readers ignore optional content (ISO 32000-1 §8.11.4.2) |
+    | U2: valid configuration, the group in neither `/D /ON` nor `/D /OFF` | shown |
+    | U3: in `/D /ON` only | shown |
+    | U4: in `/D /OFF` | unresolved: PdfCraft's display hides it, Poppler 24.02 shows it |
+    | U5: `/BaseState /OFF`, not in `/D /OFF` | shown: the base state applies to listed groups only (user decision, 20 Oct) |
+    | U6: named by an auto-state (`/AS`) | unresolved |
+    | U7: a malformed configuration | unresolved, as every group is |
+    | U8: no `/OCProperties`, and a membership dictionary PdfCraft's display would hide | unresolved: the standard shows its content |
+
+    - **Evidence:**
+      - PdfCraft's display (`vendor/hayro-interpret/src/ocg.rs`, `from_catalog` and
+        `begin_single_oc`) hides only groups in its off-set (`/D /OFF`, plus `/OCGs` under
+        `/BaseState /OFF`).
+      - Poppler 24.02 (`pdftoppm`, synthetic files) showed an undeclared group in every case,
+        `/D /OFF` included.
+      - The group's `/Intent` makes no difference: both renderers ignore it.
+      - Acrobat and pdf.js weren't tested.
+    - **Coverage:** annotations, forms, nested forms and membership dictionaries follow the same rule.
+    - **Decisions:** explicit decisions still come first.
 - `oc::resolve` and `oc::prepare` (step 4, OV4.3): an in-memory copy of a source whose pages show
   what the source shows, with no optional content left. Every stream a page draws (its content,
   forms, tiling patterns, Type 3 glyphs, soft-mask groups) is resolved once: a visible block loses
@@ -64,7 +90,9 @@ Step 3 adds `composite`, which writes the overlay page:
   markers, a hidden block crossing a save, text object or path, hidden text that moves or clips
   visible content, unreadable streams, forms nested too deep or used with different resources) is
   reported per page as `Unresolved`, and `LayeredOutput::add_page` refuses the page with every
-  item of both documents. A document without layers or decisions is copied unchanged.
+  item of both documents. A document without layers or decisions is copied unchanged, unless its
+  pages use optional content anyway (no `/OCProperties`, OV4.10). Such a document is walked
+  again with its resources pruned and checked, so its groups don't reach the output.
   A marker naming a property its stream's own resources don't define isn't optional content
   under the standard and is shown, as PdfCraft's display shows it, with a note (OV4.8, found on
   Bluebeam sets). In a document with `/OCProperties`, a name that a surrounding resource
@@ -174,6 +202,11 @@ the PRD's requirements stay as written, and every functional area is still there
   The two views keep their own zoom and pan; points stay in page coordinates and the snap reach stays 10 screen pixels.
 
   The Preview keeps its own controls: the wheel zooms, any drag pans.
+- Unresolved items (OV4.10, 20 Oct 2026): each question shows once per document, with the pages it
+  is on ("Document A, pages 1–59: …"), and one Show/Hide (or Leave out) decision settles every
+  page listed (`oc::group_unresolved`). The grouping is by object reference, never by name, so two
+  layers both named "0" are two questions, and documents A and B are decided apart. Decisions
+  were already stored per document and object; only the list repeated.
 
 Known limitation (R3, pre-existing; recorded at the upstream 0.8.0 sync, not fixed): a source
 page's resources are taken as one dictionary, its own `/Resources` or else its nearest page-tree
@@ -190,9 +223,9 @@ the ec0a9650 sync (19 Oct, after upstream 0.9.0): `crates/organize/src/import.rs
 
 Optional content at the ec0a9650 sync: upstream's one layer change (4ff53a8d) writes the Layers
 panel's choices into the default configuration of the copy made for printing. It doesn't change
-how a layer that content uses but `/OCProperties` doesn't declare is evaluated, and the OV4 checks
-are unchanged: such content is still unresolved until the user decides, never shown or hidden by
-default.
+how a layer that content uses but `/OCProperties` doesn't declare is evaluated. OV4.10 (20 Oct)
+then changed that evaluation in this fork: such content is shown as the source shows it, and it
+stays unresolved only where viewers disagree (see `oc::eval` above).
 
 Since the f0c9901c sync, `page_as_form` copies through upstream's bounded copier (af62daea): a
 source page whose resources nest more than 256 references or containers deep is refused with an

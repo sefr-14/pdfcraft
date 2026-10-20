@@ -3,14 +3,18 @@
 //! hidden content from an in-memory copy (OV4.3).
 //!
 //! Every rule is either decided by the standard, so the output is demonstrably correct, or the
-//! item is reported as unresolved. Nothing falls back to a guess, and an unresolved item that
-//! can't change the result (an AnyOn with another member visible, say) doesn't block it (step 4
-//! PRD, Resolving optional content).
+//! item is reported as unresolved. Where a file doesn't conform and the standard says nothing,
+//! the content is decided only when the source's renderers agree on it (PdfCraft's display and
+//! Poppler: undefined markers, OV4.8; groups `/OCGs` doesn't list, OV4.10), and is unresolved
+//! when they don't. Nothing falls back to a guess, and an unresolved item that can't change the
+//! result (an AnyOn with another member visible, say) doesn't block it (step 4 PRD, Resolving
+//! optional content).
 
 pub mod eval;
 pub mod prepare;
 pub(crate) mod resolve;
 
+use std::collections::HashMap;
 use std::fmt;
 
 use pdfcraft_cos::ObjRef;
@@ -46,7 +50,10 @@ pub enum Rule {
     /// A group's intents don't match the default configuration's: the standard leaves it out of
     /// visibility, but pdfcraft's display uses its state (O13).
     IntentMismatch,
-    /// A group isn't listed in the catalog's `/OCGs`.
+    /// A group the catalog's `/OCGs` doesn't list, where viewers disagree on whether it shows: the
+    /// default configuration's `/OFF` or an auto-state names it (OV4.10; other undeclared groups
+    /// are shown as the source shows them). Also a membership dictionary that pdfcraft's display
+    /// would hide in a document without `/OCProperties`, whose content the standard shows.
     NotInOcgs,
     /// A View auto-state would change a group's state; the clause can't be confirmed (O5).
     AutoStateView,
@@ -130,7 +137,7 @@ impl Rule {
             Rule::OnAndOff => "a layer is listed both as on and as off",
             Rule::MalformedIntent => "a layer's intent isn't valid",
             Rule::IntentMismatch => "a layer's intent doesn't match the configuration's (Design layers, for example)",
-            Rule::NotInOcgs => "a layer isn't declared in the document's layer list",
+            Rule::NotInOcgs => "a layer isn't declared in the document's layer list, and viewers disagree on whether it shows",
             Rule::AutoStateView => "an automatic View state would change a layer",
             Rule::AutoStateEnvironment => "a layer's visibility depends on the viewer (zoom, language or user)",
             Rule::MalformedAutoState => "an automatic layer state isn't valid",
@@ -184,31 +191,108 @@ pub struct Unresolved {
 impl fmt::Display for Unresolved {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "page {}: {}", self.page.saturating_add(1), self.rule)?;
-        let names: Vec<String> = self
-            .objects
-            .iter()
-            .map(|(r, n)| match n {
-                Some(n) => format!("\"{n}\" ({} {} R)", r.num, r.generation),
-                None => format!("{} {} R", r.num, r.generation),
-            })
-            .collect();
-        if !names.is_empty() {
-            write!(f, " [{}]", names.join(", "))?;
-        }
+        write_objects(f, &self.objects)?;
         if let Some(d) = &self.detail {
             write!(f, " ({d})")?;
         }
-        if self.settleable {
-            let annotation = matches!(
-                self.rule,
-                Rule::AnnotationUndrawnText | Rule::AnnotationUndrawableText | Rule::AnnotationNotDrawn | Rule::AnnotationPlacement
-            );
-            write!(
-                f,
-                "; {}",
-                if annotation { "an explicit decision to omit the annotation settles it" } else { "an explicit layer decision settles it" }
-            )?;
-        }
-        Ok(())
+        write_settles(f, self.rule, self.settleable)
     }
+}
+
+/// The objects as messages name them: `"name" (n g R)`, or `n g R` without a name.
+fn write_objects(f: &mut fmt::Formatter<'_>, objects: &[(ObjRef, Option<String>)]) -> fmt::Result {
+    let names: Vec<String> = objects
+        .iter()
+        .map(|(r, n)| match n {
+            Some(n) => format!("\"{n}\" ({} {} R)", r.num, r.generation),
+            None => format!("{} {} R", r.num, r.generation),
+        })
+        .collect();
+    if !names.is_empty() {
+        write!(f, " [{}]", names.join(", "))?;
+    }
+    Ok(())
+}
+
+/// What settles an item, when a decision can.
+fn write_settles(f: &mut fmt::Formatter<'_>, rule: Rule, settleable: bool) -> fmt::Result {
+    if settleable {
+        let annotation =
+            matches!(rule, Rule::AnnotationUndrawnText | Rule::AnnotationUndrawableText | Rule::AnnotationNotDrawn | Rule::AnnotationPlacement);
+        write!(
+            f,
+            "; {}",
+            if annotation { "an explicit decision to omit the annotation settles it" } else { "an explicit layer decision settles it" }
+        )?;
+    }
+    Ok(())
+}
+
+/// One question for the user: the unresolved items of one document that name the same objects
+/// for the same reason, on whichever pages (OV4.10). A decision is per document and object, so
+/// one answer settles every page listed. Objects are compared by reference, never by name: two
+/// groups both named "0" are two questions.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnresolvedGroup {
+    /// 0-based, ascending, each once.
+    pub pages: Vec<usize>,
+    pub objects: Vec<(ObjRef, Option<String>)>,
+    pub rule: Rule,
+    pub settleable: bool,
+    pub detail: Option<String>,
+}
+
+/// One document's unresolved items grouped across pages, in the order first found.
+pub fn group_unresolved(items: &[Unresolved]) -> Vec<UnresolvedGroup> {
+    type Key = (Vec<ObjRef>, Rule, bool, Option<String>);
+    let mut out: Vec<UnresolvedGroup> = Vec::new();
+    let mut index: HashMap<Key, usize> = HashMap::new();
+    for u in items {
+        let key = (u.objects.iter().map(|(r, _)| *r).collect(), u.rule, u.settleable, u.detail.clone());
+        match index.get(&key).and_then(|&i| out.get_mut(i)) {
+            Some(g) => g.pages.push(u.page),
+            None => {
+                index.insert(key, out.len());
+                out.push(UnresolvedGroup {
+                    pages: vec![u.page],
+                    objects: u.objects.clone(),
+                    rule: u.rule,
+                    settleable: u.settleable,
+                    detail: u.detail.clone(),
+                });
+            }
+        }
+    }
+    for g in &mut out {
+        g.pages.sort_unstable();
+        g.pages.dedup();
+    }
+    out
+}
+
+impl fmt::Display for UnresolvedGroup {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", page_list(&self.pages), self.rule)?;
+        write_objects(f, &self.objects)?;
+        if let Some(d) = &self.detail {
+            write!(f, " ({d})")?;
+        }
+        write_settles(f, self.rule, self.settleable)
+    }
+}
+
+/// 0-based ascending pages as text, 1-based with runs joined: "page 3", "pages 1–3, 7".
+fn page_list(pages: &[usize]) -> String {
+    let mut runs: Vec<(usize, usize)> = Vec::new();
+    for &p in pages {
+        match runs.last_mut() {
+            Some((_, end)) if end.checked_add(1) == Some(p) => *end = p,
+            _ => runs.push((p, p)),
+        }
+    }
+    let text: Vec<String> = runs
+        .iter()
+        .map(|&(a, b)| if a == b { a.saturating_add(1).to_string() } else { format!("{}–{}", a.saturating_add(1), b.saturating_add(1)) })
+        .collect();
+    format!("{} {}", if pages.len() == 1 { "page" } else { "pages" }, text.join(", "))
 }
