@@ -78,7 +78,8 @@ pub fn settles(decisions: Vec<(&'static str, bool)>) -> Case {
     Case {
         name: "settles",
         objects,
-        oc_properties: Some(D.into()),
+        // Undeclared and named by /OFF, so unresolved until decided (OV4.10, U4).
+        oc_properties: Some("<< /OCGs [{G1} {G2} {G3}] /D << /OFF [{G2} {U1} {U2}] >> >>".into()),
         properties: vec![("U1", "U1"), ("U2", "U2")],
         contents: vec![vec![BASE, Layer("U1", false, vec![Canary]), Layer("U2", false, vec![Canary])]],
         decisions,

@@ -169,14 +169,100 @@ fn malformed_configurations() {
     }
 }
 
-/// Row 6: a group missing from `/OCGs`, and a file with no optional content properties at all.
+/// Row 6, revised by OV4.10: a group missing from `/OCGs` is shown as the source shows it. A file
+/// with no optional content properties at all has readers ignore optional content (ISO 32000-1
+/// §8.11.4.2) (U1); a listed configuration that leaves the group out shows it in PdfCraft's display
+/// and Poppler 24.02 alike (U2, U3), whatever `/BaseState` says (U5). Where the default
+/// configuration's `/OFF` names it (U4: PdfCraft hides it, Poppler shows it) or an auto-state does
+/// (U6), it stays unresolved, and a decision settles it.
 #[test]
-fn a_group_not_listed_is_unresolved() {
-    let doc = file("/OCProperties << /OCGs [5 0 R] /D << >> >>", &[&group("listed"), &group("missing")]);
-    unresolved(&of(&doc, 6), &[(Rule::NotInOcgs, true)]);
-    visible(&verdict(&doc, &[(6, false)], Object::Ref(r(6))), false);
+fn a_group_not_listed_is_shown_as_the_source_shows_it() {
+    let missing = |d: &str| file(&format!("/OCProperties << /OCGs [5 0 R] /D << {d} >> >>"), &[&group("listed"), &group("missing")]);
+    // U1: no /OCProperties.
     let doc = file("", &[&group("orphan")]);
-    unresolved(&of(&doc, 5), &[(Rule::NotInOcgs, true)]);
+    visible(&of(&doc, 5), true);
+    // U2: listed configuration, the group in neither /ON nor /OFF.
+    visible(&of(&missing(""), 6), true);
+    // U3: in /ON only.
+    visible(&of(&missing("/ON [6 0 R]"), 6), true);
+    // U5: /BaseState /OFF applies to listed groups, not to this one (the listed one is hidden).
+    let doc = missing("/BaseState /OFF");
+    visible(&of(&doc, 6), true);
+    visible(&of(&doc, 5), false);
+    // U4: named by /OFF, alone, with /BaseState /OFF, and in both /ON and /OFF.
+    for d in ["/OFF [6 0 R]", "/BaseState /OFF /OFF [6 0 R]", "/ON [6 0 R] /OFF [6 0 R]"] {
+        let doc = missing(d);
+        unresolved(&of(&doc, 6), &[(Rule::NotInOcgs, true)]);
+        visible(&verdict(&doc, &[(6, false)], Object::Ref(r(6))), false);
+        visible(&verdict(&doc, &[(6, true)], Object::Ref(r(6))), true);
+    }
+    // U6: named by an auto-state (View or Print), even one that wouldn't change a listed group.
+    for event in ["/View /Category [/View]", "/Print /Category [/Print]"] {
+        let doc = missing(&format!("/AS [<< /Event {event} /OCGs [6 0 R] >>]"));
+        unresolved(&of(&doc, 6), &[(Rule::NotInOcgs, true)]);
+    }
+    // U7: a configuration problem holds every group, listed or not.
+    let doc = file("/OCProperties << /OCGs [5 0 R] /D << /BaseState /Unchanged >> >>", &[&group("listed"), &group("missing")]);
+    unresolved(&of(&doc, 6), &[(Rule::BaseState, false)]);
+    // An undeclared group's intent doesn't matter: both renderers ignore it, and the standard's
+    // intent rule would only leave the group out of visibility.
+    let doc = file("/OCProperties << /OCGs [5 0 R] /D << >> >>", &[&group("listed"), "<< /Type /OCG /Name (design) /Intent /Design >>"]);
+    visible(&of(&doc, 6), true);
+}
+
+/// The report names the undeclared groups shown, once each and in one note, saying whether the
+/// document has a layer configuration; groups decided, listed or unresolved aren't in it.
+#[test]
+fn undeclared_groups_shown_are_noted_once() {
+    let doc = file(
+        "/OCProperties << /OCGs [5 0 R] /D << /OFF [8 0 R] >> >>",
+        &[&group("listed"), &group("a"), &group("b"), &group("off"), &group("decided")],
+    );
+    let mut ev = Evaluator::new(&doc, &Visibility { decisions: vec![(r(9), true)], ..Visibility::default() });
+    for n in [5, 6, 7, 6, 8, 9, 7] {
+        ev.visibility(&Object::Ref(r(n)));
+    }
+    assert_eq!(ev.notes(), [Note::UndeclaredShown { groups: vec![r(6), r(7)], configured: true }]);
+    let doc = file("", &[&group("a")]);
+    let mut ev = Evaluator::new(&doc, &Visibility::default());
+    ev.visibility(&Object::Ref(r(5)));
+    assert_eq!(ev.notes(), [Note::UndeclaredShown { groups: vec![r(5)], configured: false }]);
+}
+
+/// Membership dictionaries over undeclared groups: the groups count as shown (U2), or as they
+/// are decided. Without `/OCProperties` the standard shows the content whatever the dictionary
+/// says, so the dictionary is shown when PdfCraft's display (`/OCGs` and `/P` with the groups on,
+/// `/VE` ignored) shows it too, and unresolved when the display would hide it (U8); a decision on
+/// the dictionary settles it.
+#[test]
+fn memberships_over_undeclared_groups() {
+    let listed = "/OCProperties << /OCGs [5 0 R] /D << /OFF [5 0 R] >> >>";
+    for (p, want) in [("/P /AnyOn", true), ("/P /AllOn", false), ("/P /AnyOff", true), ("/P /AllOff", false)] {
+        // 5 is listed and off, 6 is undeclared and shown.
+        let doc = file(listed, &[&group("off"), &group("loose"), &format!("<< /Type /OCMD /OCGs [5 0 R 6 0 R] {p} >>")]);
+        visible(&of(&doc, 7), want);
+    }
+    let doc = file(listed, &[&group("off"), &group("loose"), "<< /Type /OCMD /VE [/And 6 0 R [/Not 5 0 R]] >>"]);
+    visible(&of(&doc, 7), true);
+    // U8: no /OCProperties.
+    for (ocmd, want) in [
+        ("<< /Type /OCMD /OCGs [5 0 R 6 0 R] >>", Some(true)),
+        ("<< /Type /OCMD /OCGs [5 0 R 6 0 R] /P /AllOn >>", Some(true)),
+        ("<< /Type /OCMD /OCGs [5 0 R] /P /AllOff >>", None),
+        ("<< /Type /OCMD /OCGs [5 0 R 6 0 R] /P /AnyOff >>", None),
+        // /VE is ignored with the rest of optional content; the display ignores it too.
+        ("<< /Type /OCMD /VE [/Not 5 0 R] >>", Some(true)),
+        ("<< /Type /OCMD /OCGs [5 0 R] /VE [/Not 5 0 R] >>", Some(true)),
+    ] {
+        let doc = file("", &[&group("a"), &group("b"), ocmd]);
+        match want {
+            Some(w) => visible(&of(&doc, 7), w),
+            None => {
+                unresolved(&of(&doc, 7), &[(Rule::NotInOcgs, true)]);
+                visible(&verdict(&doc, &[(7, true)], Object::Ref(r(7))), true);
+            }
+        }
+    }
 }
 
 // ── Membership dictionaries ─────────────────────────────────────────────────────────────────

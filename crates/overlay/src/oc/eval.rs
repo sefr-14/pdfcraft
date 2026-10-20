@@ -25,6 +25,14 @@
 //!   event with category View is unresolved when it would change a group's state, and recorded
 //!   when it wouldn't; any other category is unresolved for groups whose usage dictionary has it.
 //! - An explicit decision on a group or a membership dictionary fixes its visibility.
+//! - A group `/OCGs` doesn't list (OV4.10) is shown as the source shows it. Without
+//!   `/OCProperties` readers ignore optional content (ISO 32000-1 §8.11.4.2). With it, such a
+//!   group is outside the configuration (Table 100 requires every group in `/OCGs`, so the file
+//!   doesn't conform), and pdfcraft's display and Poppler 24.02 both show it, whatever
+//!   `/BaseState` says (the base state applies to listed groups). It stays unresolved when the
+//!   default configuration's `/OFF` names it (pdfcraft's display hides it, Poppler shows it) or
+//!   an auto-state (`/AS`) names it. Without `/OCProperties`, a membership dictionary that
+//!   pdfcraft's display would hide is unresolved, since the standard shows its content.
 //!
 //! Values combine in three-valued logic: a result that doesn't depend on an unresolved operand
 //! (an AnyOn with one member visible, say) is resolved, and the operand's problem is dropped.
@@ -150,6 +158,10 @@ pub enum Note {
     /// (ISO 32000-1 §8.11.3.2; without `/OCProperties`, §8.11.4.2 has readers ignore optional
     /// content altogether), and viewers, PdfCraft's display included, show it. It is shown.
     UndefinedMarker,
+    /// Groups `/OCGs` doesn't list, shown as the source shows them (OV4.10), in the order found.
+    /// `configured`: the document has `/OCProperties`; otherwise it has no layer configuration at
+    /// all and readers ignore optional content.
+    UndeclaredShown { groups: Vec<ObjRef>, configured: bool },
 }
 
 /// A group listed in `/OCGs`: its default state and anything that makes it unresolved.
@@ -165,6 +177,16 @@ pub struct Evaluator<'a> {
     /// Problems with the configuration itself; they make every group unresolved.
     global: Vec<Problem>,
     decisions: HashMap<ObjRef, bool>,
+    /// Whether the catalog has `/OCProperties` (OV4.10).
+    configured: bool,
+    /// Groups the default configuration's `/OFF` names, listed in `/OCGs` or not.
+    default_off: HashSet<ObjRef>,
+    /// Groups an auto-state of the default configuration (`/AS`) names.
+    auto_state: HashSet<ObjRef>,
+    /// Undeclared groups already in the `UndeclaredShown` note.
+    undeclared_noted: HashSet<ObjRef>,
+    /// Whether anything was evaluated as optional content.
+    consulted: bool,
     notes: Vec<Note>,
     cache: HashMap<ObjRef, Verdict>,
 }
@@ -177,6 +199,11 @@ impl<'a> Evaluator<'a> {
             groups: HashMap::new(),
             global: Vec::new(),
             decisions: visibility.decisions.iter().copied().collect(),
+            configured: false,
+            default_off: HashSet::new(),
+            auto_state: HashSet::new(),
+            undeclared_noted: HashSet::new(),
+            consulted: false,
             notes: Vec::new(),
             cache: HashMap::new(),
         };
@@ -217,6 +244,7 @@ impl<'a> Evaluator<'a> {
         let doc = self.doc;
         let Some(catalog) = doc.root().and_then(|r| doc.dict(&Object::Ref(r))) else { return };
         let Some(props) = catalog.get(b"OCProperties").map(|p| doc.resolve(p)) else { return };
+        self.configured = true;
         let Some(props) = props.as_dict().cloned() else {
             self.global_problem(Rule::MalformedConfiguration);
             return;
@@ -264,6 +292,7 @@ impl<'a> Evaluator<'a> {
             self.note(Note::ConfigurationIntent { intents: config_intents.iter().map(|i| String::from_utf8_lossy(i).into_owned()).collect() });
         }
         let (on, off): (HashSet<ObjRef>, HashSet<ObjRef>) = (on.into_iter().collect(), off.into_iter().collect());
+        self.default_off = off.clone();
         let all = config_intents.iter().any(|i| i == b"All");
         for g in listed {
             let mut problems = Vec::new();
@@ -323,6 +352,7 @@ impl<'a> Evaluator<'a> {
                 self.global_problem(Rule::MalformedAutoState);
                 continue;
             };
+            self.auto_state.extend(groups.iter().copied());
             let event = d.get(b"Event").and_then(|v| doc.resolve(v).as_name().map(<[u8]>::to_vec));
             let categories = d.get(b"Category").and_then(|c| match &*doc.resolve(c) {
                 Object::Array(_) => names(doc, c),
@@ -402,8 +432,15 @@ impl<'a> Evaluator<'a> {
         }
     }
 
+    /// Whether [`Evaluator::visibility`] was asked about anything: the pages walked use optional
+    /// content, even in a document without `/OCProperties` (OV4.10).
+    pub fn consulted(&self) -> bool {
+        self.consulted
+    }
+
     /// What `o`, used as optional content (`/OC` entries and the property of `/OC … BDC`), shows.
     pub fn visibility(&mut self, o: &Object) -> Verdict {
+        self.consulted = true;
         match o {
             Object::Ref(r) => {
                 if let Some(v) = self.cache.get(r) {
@@ -424,7 +461,11 @@ impl<'a> Evaluator<'a> {
             return self.decided(r).unwrap_or_else(|| Verdict::problem(vec![r], Rule::NotOptionalContent, true));
         };
         match d.name(b"Type") {
-            Some(b"OCG") => self.group(r),
+            Some(b"OCG") => {
+                let v = self.group(r);
+                self.note_undeclared(r);
+                v
+            }
             Some(b"OCMD") => self.membership(Some(r), &d),
             _ => self.decided(r).unwrap_or_else(|| Verdict::problem(vec![r], Rule::NotOptionalContent, true)),
         }
@@ -435,7 +476,8 @@ impl<'a> Evaluator<'a> {
     }
 
     /// A group: the configuration's problems first (no decision can repair the configuration),
-    /// then an explicit decision, then its listed state.
+    /// then an explicit decision, then its listed state, or for a group `/OCGs` doesn't list,
+    /// what the source shows ([`Evaluator::undeclared`]).
     fn group(&self, r: ObjRef) -> Verdict {
         if !self.global.is_empty() {
             return Verdict { visible: None, problems: self.global.clone() };
@@ -444,10 +486,42 @@ impl<'a> Evaluator<'a> {
             return v;
         }
         match self.groups.get(&r) {
-            None => Verdict::problem(vec![r], Rule::NotInOcgs, true),
+            None => self.undeclared(r),
             Some(g) if g.problems.is_empty() => Verdict::known(g.state),
             Some(g) => Verdict { visible: None, problems: g.problems.clone() },
         }
+    }
+
+    /// A group `/OCGs` doesn't list (OV4.10): shown, as the standard (without `/OCProperties`)
+    /// and the source's renderers show it, unless the default configuration's `/OFF` or an
+    /// auto-state names it, where viewers disagree. `/BaseState` doesn't apply to it.
+    fn undeclared(&self, r: ObjRef) -> Verdict {
+        if self.default_off.contains(&r) || self.auto_state.contains(&r) {
+            Verdict::problem(vec![r], Rule::NotInOcgs, true)
+        } else {
+            Verdict::known(true)
+        }
+    }
+
+    /// Add `r` to the `UndeclaredShown` note when it is a group shown only because undeclared
+    /// groups are shown: not listed, not decided, and not held by a configuration problem.
+    fn note_undeclared(&mut self, r: ObjRef) {
+        if !self.global.is_empty()
+            || self.groups.contains_key(&r)
+            || self.decisions.contains_key(&r)
+            || self.undeclared(r).visible != Some(true)
+            || !self.undeclared_noted.insert(r)
+        {
+            return;
+        }
+        let configured = self.configured;
+        for n in &mut self.notes {
+            if let Note::UndeclaredShown { groups, .. } = n {
+                groups.push(r);
+                return;
+            }
+        }
+        self.notes.push(Note::UndeclaredShown { groups: vec![r], configured });
     }
 
     /// A membership dictionary (`r` when it is an indirect object).
@@ -539,6 +613,22 @@ impl<'a> Evaluator<'a> {
         let standard = by_policy(self, false);
         let deleted = members.as_ref().map(|(_, n)| *n).unwrap_or(0);
         let display = if deleted > 0 { by_policy(self, true) } else { standard.clone() };
+        if let Ok((live, _)) = &members {
+            for g in live.iter().filter(|g| is_group(g)) {
+                self.note_undeclared(*g);
+            }
+        }
+
+        // No `/OCProperties` (OV4.10): readers ignore optional content (ISO 32000-1 §8.11.4.2),
+        // so the content shows. pdfcraft's display still applies `/OCGs` and `/P` (not `/VE`) with
+        // the groups on: shown when it shows the content too, unresolved when it would hide it.
+        if !self.configured {
+            return match display {
+                None | Some((Tri::On, _)) => Verdict::known(true),
+                Some((Tri::Off, _)) => Verdict { visible: None, problems: vec![own(Rule::NotInOcgs)] },
+                Some((Tri::Unknown, problems)) => Verdict::from_tri(Tri::Unknown, problems),
+            };
+        }
 
         let expression = match d.get(b"VE") {
             Some(ve) => {
@@ -614,6 +704,7 @@ impl<'a> Evaluator<'a> {
             let (t, p) = match leaf {
                 Some(g) => {
                     let v = self.group(g);
+                    self.note_undeclared(g);
                     (v.tri(), v.problems)
                 }
                 None => match &*self.doc.resolve(x) {

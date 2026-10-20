@@ -113,6 +113,76 @@ fn contains(hay: &[u8], needle: &[u8]) -> bool {
     hay.windows(needle.len()).any(|w| w == needle)
 }
 
+/// Three pages that each draw a block in an undeclared layer named "0" (object 6) and, on page
+/// 3, one in another undeclared layer also named "0" (object 7). The configuration's `/OFF` names
+/// both, so viewers disagree (OV4.10, U4) and each needs a decision. `x` moves the blocks, so two
+/// documents with the same objects can be told apart in the output.
+fn repeated_layers(x: u32) -> Document {
+    let page = |contents: u32| {
+        format!(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 100] /Resources << /Properties << /L 6 0 R /M 7 0 R >> >> /Contents {contents} 0 R >>"
+        )
+    };
+    let first = format!("/OC /L BDC 1 0 0 rg {x} 11 21 21 re f EMC");
+    let third = format!("{first} /OC /M BDC 0 0 1 rg {} 11 23 23 re f EMC", x + 40);
+    synth::open(&synth::raw_pdf(&[
+        "<< /Type /Catalog /Pages 2 0 R /OCProperties << /OCGs [] /D << /OFF [6 0 R 7 0 R] >> >> >>".into(),
+        "<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R] /Count 3 >>".into(),
+        page(8),
+        page(9),
+        page(10),
+        "<< /Type /OCG /Name (0) >>".into(),
+        "<< /Type /OCG /Name (0) >>".into(),
+        synth::raw_stream("", &first),
+        synth::raw_stream("", &first),
+        synth::raw_stream("", &third),
+    ]))
+}
+
+/// OV4.10: a layer used on several pages is one question per document, whatever the pages, and
+/// one decision settles all of them. Two layers with the same name are two questions, decided
+/// apart, and the same object number in documents A and B is decided per document.
+#[test]
+fn one_layer_on_several_pages_is_one_question() {
+    let r = |n| pdfcraft_cos::ObjRef::new(n, 0);
+    let (a, b) = (repeated_layers(41), repeated_layers(141));
+    let pairs = || (0..3).map(|i| PairPlan::placed(Some(i), Some(i))).collect::<Vec<_>>();
+    let none = Visibility::default();
+    let Err(OverlayError::Unresolved { a: ua, b: ub, .. }) = generate(&a, &b, &none, &none, &plan(pairs())) else {
+        panic!("expected the undeclared layers to be unresolved")
+    };
+    // One item per page and layer: layer 6 on pages 1-3, layer 7 on page 3.
+    assert_eq!(ua.len(), 4);
+    for items in [&ua, &ub] {
+        let groups = pdfcraft_overlay::oc::group_unresolved(items);
+        let summary: Vec<_> = groups.iter().map(|g| (g.objects.clone(), g.rule, g.pages.clone())).collect();
+        assert_eq!(
+            summary,
+            [(vec![(r(6), Some("0".to_string()))], Rule::NotInOcgs, vec![0, 1, 2]), (vec![(r(7), Some("0".to_string()))], Rule::NotInOcgs, vec![2])]
+        );
+        assert_eq!(
+            groups[0].to_string(),
+            "pages 1–3: a layer isn't declared in the document's layer list, and viewers disagree on whether it shows [\"0\" (6 0 R)]; an explicit layer decision settles it"
+        );
+        assert!(groups[1].to_string().starts_with("page 3: "), "{}", groups[1]);
+    }
+    // A shows its layer 6 and hides 7; B the other way round. One decision per layer settles
+    // every page of that document, and neither document's decisions reach the other.
+    let va = Visibility { decisions: vec![(r(6), true), (r(7), false)], ..Visibility::default() };
+    let vb = Visibility { decisions: vec![(r(6), false), (r(7), true)], ..Visibility::default() };
+    let out = generate(&a, &b, &va, &vb, &plan(pairs())).expect("generates");
+    check_output(&out.doc).expect("only Old and New");
+    let mut found = [false; 4];
+    for (_, o) in out.doc.scan_objects() {
+        let pdfcraft_cos::Object::Stream(s) = &*o else { continue };
+        let Ok(d) = s.decoded() else { continue };
+        for (i, needle) in ["rg 41 11 21 21 re", "rg 81 11 23 23 re", "rg 141 11 21 21 re", "rg 181 11 23 23 re"].iter().enumerate() {
+            found[i] |= contains(&d, needle.as_bytes());
+        }
+    }
+    assert_eq!(found, [true, false, false, true], "A's layer 6 and B's layer 7 only");
+}
+
 /// Unmatched rows (a page from one document only) each make one output page that keeps that
 /// page's vector content, inside the layer of that document's role, with roles as given.
 #[test]

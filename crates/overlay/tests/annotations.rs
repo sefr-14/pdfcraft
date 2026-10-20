@@ -313,10 +313,13 @@ fn no_rotate_stays_upright_and_pivots_on_the_upper_left_corner() {
 #[test]
 fn screen_rules_and_annotation_layers() {
     let mut s = Src::new(0);
-    s.catalog = "/OCProperties << /OCGs [{on} {off}] /D << /OFF [{off}] >> >>".into();
+    // "loose" isn't declared and /OFF names it, so viewers disagree (OV4.10, U4); "undeclared"
+    // isn't declared either but nothing turns it off, so it shows (U2).
+    s.catalog = "/OCProperties << /OCGs [{on} {off}] /D << /OFF [{off} {loose}] >> >>".into();
     s.obj("on", "<< /Type /OCG /Name (Comments) >>");
     s.obj("off", "<< /Type /OCG /Name (Drafts) >>");
     s.obj("loose", "<< /Type /OCG /Name (Loose) >>");
+    s.obj("undeclared", "<< /Type /OCG /Name (Undeclared) >>");
     let sq = |name: &str| ap([0.0, 0.0, 20.0, 20.0], None, &format!("0 g 0 0 20 20 re f % {name}"));
     for (name, extra) in [
         ("nozoom", "/Subtype /Text /F 12"),
@@ -332,6 +335,7 @@ fn screen_rules_and_annotation_layers() {
         ("oc-off", "/Subtype /Square /F 4 /OC {off}"),
         ("ap-oc-off", "/Subtype /Square /F 4"),
         ("oc-loose", "/Subtype /Square /F 4 /OC {loose}"),
+        ("oc-undeclared", "/Subtype /Square /F 4 /OC {undeclared}"),
     ] {
         let apn = format!("{name}-ap");
         s.obj(&apn, sq(name));
@@ -368,6 +372,7 @@ fn screen_rules_and_annotation_layers() {
         Outcome::Excluded(Exclusion::LayerOff),
         Outcome::Unresolved(Rule::NotInOcgs),
         drawn.clone(),
+        drawn.clone(),
     ];
     for (i, want) in expect.iter().enumerate() {
         assert_eq!(got.get(&i), Some(want), "annotation {i}");
@@ -388,8 +393,9 @@ fn screen_rules_and_annotation_layers() {
             assert!(!d.windows(14).any(|w| w == b"0.91 0.13 0.57"), "the hidden block inside an appearance is gone");
         }
     }
-    // Drawn: two notes, the known Invisible, the unknown kind, the layer that's on, the inner one.
-    assert_eq!(drawings(&decided).len(), 6);
+    // Drawn: two notes, the known Invisible, the unknown kind, the layer that's on, the
+    // undeclared one, the inner one.
+    assert_eq!(drawings(&decided).len(), 7);
 }
 
 // ── L9: missing and unusable appearances ─────────────────────────────────────────────────────
