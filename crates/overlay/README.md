@@ -207,6 +207,9 @@ the PRD's requirements stay as written, and every functional area is still there
   page listed (`oc::group_unresolved`). The grouping is by object reference, never by name, so two
   layers both named "0" are two questions, and documents A and B are decided apart. Decisions
   were already stored per document and object; only the list repeated.
+- Preview and Generate keep their own unresolved lists (OV6.11, 20 Oct 2026). They used to share
+  one, so a preview finishing after Generate replaced Generate's list with its one page, or
+  cleared it, and step 6 showed the wrong questions or the raw error. Decisions stay shared.
 
 Known limitation (R3, pre-existing; recorded at the upstream 0.8.0 sync, not fixed): a source
 page's resources are taken as one dictionary, its own `/Resources` or else its nearest page-tree

@@ -1106,3 +1106,48 @@ fn an_undeclared_layer_on_three_pages_is_one_decision() {
     assert_eq!(layers, ["Old", "New"]);
     assert!(h.query_by_label_contains("Document A, page").is_none());
 }
+
+/// OV6.11: Preview and Generate keep their own lists of unresolved items. A preview that
+/// finishes after Generate (here: after a decision, so it succeeds) once replaced or cleared
+/// Generate's list, and step 6 then showed the raw per-page error instead of its questions.
+#[test]
+fn a_late_preview_leaves_the_generate_list_alone() {
+    let mut h = harness_with(sheets_with_undeclared_layer(3, true), sheets(3));
+    assert!(h.state_mut().execute("doc.overlay"));
+    h.run_steps(3);
+    for _ in 0..4 {
+        next(&mut h);
+    }
+    h.get_by_label("5. Preview");
+    // The preview's own question: its one output page.
+    wait_for_label(&mut h, "Document A, page 1: a layer isn't declared");
+    next(&mut h);
+    h.get_by_label("Generate").click();
+    wait_for_label(&mut h, "Document A, pages 1–3: a layer isn't declared");
+    // Decide, then go back: the decision changes the preview, which runs again and succeeds
+    // after Generate's result.
+    h.get_by_label("Show").click();
+    h.run_steps(3);
+    back(&mut h);
+    h.get_by_label("5. Preview");
+    for _ in 0..2400 {
+        h.run_steps(1);
+        if h.query_by_label_contains("can't be resolved with certainty").is_none() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    assert!(h.query_by_label_contains("can't be resolved with certainty").is_none(), "the decided preview succeeds");
+    next(&mut h);
+    h.get_by_label("6. Generate");
+    // Generate's list is still Generate's: every page, with the decision shown.
+    h.get_by_label_contains("Document A, pages 1–3: a layer isn't declared");
+    assert!(toggled(&h, "Show"));
+    assert!(h.query_by_label_contains("The overlay couldn't be made").is_none());
+    h.get_by_label("Generate").click();
+    wait(&mut h, |app| app.views.len() == 3);
+    let app = h.state();
+    let (_, id) = app.active_ids().unwrap();
+    let layers: Vec<&str> = app.session.get(id).unwrap().info.layers.iter().map(|l| l.name.as_str()).collect();
+    assert_eq!(layers, ["Old", "New"]);
+}
