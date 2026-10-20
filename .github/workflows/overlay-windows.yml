@@ -1,28 +1,24 @@
-# Fork-only workflow (sefr-14/pdfcraft, branch `overlay`): build the overlay-compare version of
-# PdfCraft for 64-bit Windows and publish it as a pre-release on this fork's Releases page.
+# Fork-only workflow (sefr-14/pdfcraft): build the overlay-compare version of PdfCraft for
+# 64-bit Windows as a downloadable Actions artifact.
 #
-# - Runs on every push to `overlay`, and on demand from the Actions tab.
+# - Runs only on demand (Actions tab > "overlay windows build" > Run workflow, normally on
+#   claude/beautiful-einstein-5zy5wn). A push builds nothing.
 # - Builds with the MSVC toolchain, as upstream's release.yml does, but unsigned, without the
 #   MSI installer and without the OCR models.
-# - Runs the tests of the crates this branch changes before publishing anything; a failure
-#   publishes nothing.
-# - Only a run on `overlay` publishes: a portable zip under the tag overlay-<version>-<short
-#   commit>. Re-running the same commit replaces that zip; nothing compiled is ever committed to
-#   git.
-# - A run on any other branch (a manual run, e.g. on `overlay-upstream-sync`) creates no tag and
-#   no release: it uploads the zip and its SHA-256 as an Actions artifact instead (SYNC.1).
+# - Runs the tests of the crates this fork changes before packaging; a failure uploads nothing.
+# - Uploads the portable zip and its SHA-256 as an artifact of the run. It creates no tag and no
+#   release (OV1.5); the overlay-* pre-releases came from earlier versions of this workflow.
+#   Nothing compiled is ever committed to git.
 # - The ArtCraft marks are left out of this build (crates/ui-egui/src/widgets.rs), as the
 #   ArtCraft brand licence (docs/brand/LICENSE-brand.txt) requires for published modified versions.
 
 name: overlay windows build
 
 on:
-  push:
-    branches: [overlay]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: overlay-windows-${{ github.ref }}
@@ -33,7 +29,7 @@ env:
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: 1
   TARGET: x86_64-pc-windows-msvc
-  # The crates this branch changes; their tests must pass before a build is published.
+  # The crates this fork changes; their tests must pass before a build is uploaded.
   # Later overlay steps add their crates here.
   TEST_PACKAGES: -p pdfcraft-ui-egui -p pdfcraft-overlay
 
@@ -67,12 +63,7 @@ jobs:
             exit 1
           fi
           short="${GITHUB_SHA::7}"
-          {
-            echo "version=$version"
-            echo "short=$short"
-            echo "tag=overlay-$version-$short"
-            echo "package=pdfcraft-overlay-$version-$short-windows-x64-portable"
-          } >>"$GITHUB_OUTPUT"
+          echo "package=pdfcraft-overlay-$version-$short-windows-x64-portable" >>"$GITHUB_OUTPUT"
 
       - name: Test the changed crates
         shell: bash
@@ -110,9 +101,8 @@ jobs:
           Compress-Archive -Path $dir -DestinationPath "dist\$env:PACKAGE.zip" -Force
           Get-Item "dist\$env:PACKAGE.zip" | Format-Table Name, Length
 
-      # Any branch but `overlay`: the zip goes to the run's artifacts, never to a release.
+      # The zip and its checksum go to the run's artifacts, never to a release.
       - name: Checksum for the artifact
-        if: github.ref != 'refs/heads/overlay'
         shell: pwsh
         env:
           PACKAGE: ${{ steps.name.outputs.package }}
@@ -123,7 +113,6 @@ jobs:
           "SHA-256 $hash  $env:PACKAGE.zip"
 
       - name: Upload the zip as an artifact
-        if: github.ref != 'refs/heads/overlay'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.name.outputs.package }}
@@ -131,42 +120,3 @@ jobs:
             dist/${{ steps.name.outputs.package }}.zip
             dist/${{ steps.name.outputs.package }}.zip.sha256
           if-no-files-found: error
-
-      - name: Publish pre-release
-        # Only `overlay` publishes. The script checks the branch again, so a run elsewhere can
-        # never create a tag or a release even if this condition were edited by mistake.
-        if: github.ref == 'refs/heads/overlay'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.name.outputs.tag }}
-          VERSION: ${{ steps.name.outputs.version }}
-          SHORT: ${{ steps.name.outputs.short }}
-          PACKAGE: ${{ steps.name.outputs.package }}
-        run: |
-          if [ "$GITHUB_REF" != "refs/heads/overlay" ]; then
-            echo "::error::only refs/heads/overlay publishes, not $GITHUB_REF; nothing was published"
-            exit 1
-          fi
-          zip="dist/$PACKAGE.zip"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            # A re-run of the same commit replaces its zip.
-            gh release upload "$TAG" "$zip" --clobber
-          else
-            cat >notes.md <<EOF
-          Overlay-compare build of PdfCraft $VERSION for 64-bit Windows.
-
-          Commit: $GITHUB_SHA on branch \`${GITHUB_REF_NAME}\`.
-
-          - Unofficial modified version, based on PdfCraft by the ArtCraft team. Not supported by them.
-          - Unsigned: Windows SmartScreen warns on first launch (More info, then Run anyway).
-          - Portable: unzip and run \`pdfcraft.exe\`. Settings stay in \`PdfCraftData\` next to it.
-          - Built by \`.github/workflows/overlay-windows.yml\`.
-          - OCR is not included in this build.
-          EOF
-            gh release create "$TAG" "$zip" \
-              --prerelease \
-              --target "$GITHUB_SHA" \
-              --title "PdfCraft overlay $VERSION ($SHORT)" \
-              --notes-file notes.md
-          fi
