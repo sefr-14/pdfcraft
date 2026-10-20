@@ -1,12 +1,8 @@
-<p align="center">
-  <a href="https://getartcraft.com/">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="docs/brand/artcraft-logo-white.svg">
-      <img alt="ArtCraft" src="docs/brand/artcraft-logo.svg" width="200">
-    </picture>
-  </a>
-</p>
-
+> [!IMPORTANT]
+> **This is PdfCraft Overlay, an unofficial fork of [storytold/pdfcraft](https://github.com/storytold/pdfcraft).**
+> It is based on PdfCraft 0.9.0 by the ArtCraft team and adds an overlay compare for revisions of
+> drawing sets. It is not made, endorsed or supported by the ArtCraft team. See
+> [About this fork](#about-this-fork); the rest of this README describes upstream PdfCraft.
 
 <h1 align="center">PdfCraft</h1>
 
@@ -63,6 +59,53 @@
 </p>
 
 ---
+
+## About this fork
+
+This repository, [sefr-14/pdfcraft](https://github.com/sefr-14/pdfcraft), is an unofficial fork of
+[storytold/pdfcraft](https://github.com/storytold/pdfcraft), based on PdfCraft by the ArtCraft team.
+It is not made, endorsed or supported by them, so report problems with the fork here, not upstream.
+
+**What it adds: Overlay compare.** The Overlay button in the mode bar (also All tools › Compare
+files › Overlay two revisions) compares two revisions of a drawing set. A six-step wizard pairs the
+sheets, including inserted, deleted and moved ones; matches sheet sizes; aligns the revisions from
+reference points clicked on the drawings; previews the result; and writes one new PDF. In it both
+revisions stay vector drawings, each in its own colour, in exactly two layers, **Old** and **New**,
+that can be switched on and off separately. The source files are never changed. Before anything is
+written, the sources' own layers and annotations are resolved: content a source hides stays hidden,
+and anything that can't be decided with certainty is asked about.
+
+- The engine is the `pdfcraft-overlay` crate, [`crates/overlay`](crates/overlay). Its
+  [README](crates/overlay/README.md) gives the rules, the checks and the known limitations.
+- The wizard is [`crates/ui-egui/src/overlay_ui.rs`](crates/ui-egui/src/overlay_ui.rs).
+
+**What else differs from upstream**
+
+- The ArtCraft marks are left out of this fork's builds and of this README, as the
+  [ArtCraft brand licence](docs/brand/LICENSE-brand.txt) requires for modified versions.
+- Windows builds are made on request by
+  [`.github/workflows/overlay-windows.yml`](.github/workflows/overlay-windows.yml). They are Actions
+  artifacts, not releases.
+- Upstream's Dependabot configuration is removed. Dependencies change only through upstream syncs.
+- `Main` is the only branch, and every change reaches it through a pull request.
+
+**Upstream base.** PdfCraft 0.9.0, upstream commit `ec0a9650` (19 Oct 2026). Upstream changes come
+in through reviewed merges.
+
+**Getting a Windows build**
+
+1. Open the Actions tab, choose "overlay windows build" and click "Run workflow" on `Main`.
+2. When the run finishes, download the artifact from its page. You need to be signed in to GitHub.
+3. Unzip it and run `pdfcraft.exe`. Nothing is installed; settings are kept in `PdfCraftData` next
+   to the exe.
+
+The build is unsigned, so Windows SmartScreen warns on first launch: click "More info", then "Run
+anyway". It doesn't include OCR. This fork makes no builds for other platforms, and upstream's
+downloads below don't include Overlay compare.
+
+**License.** The same as upstream: MIT OR Apache-2.0, at your option.
+
+Everything after this section describes upstream PdfCraft.
 
 ## Community
 
@@ -582,8 +625,7 @@ part of this repository and PdfCraft, under [`docs/brand/LICENSE-brand.txt`](doc
 Forks and modified versions must remove them.
 
 <p align="center">
-  <a href="https://getartcraft.com/"><img alt="ArtCraft" src="docs/brand/artcraft-mark.svg" width="28"></a><br>
-  <sub>Made by the <a href="https://getartcraft.com/">ArtCraft</a> team and community.</sub>
+  <sub>PdfCraft is made by the ArtCraft team and community. This fork is based on it and is not made or endorsed by them.</sub>
 </p>
 
 Tools and Inspector panels can be dragged into tab groups, split beside the PDF, or floated within the app window. Read and full-screen modes keep their existing focused document view. Drag a panel header to a target edge or another header. Its context menu offers Float panel, Move to group, and Close panel. Existing panel toggles reopen panels at their saved location; Reset Panel Layout restores the app layout. Floating panels remain inside the current app window.

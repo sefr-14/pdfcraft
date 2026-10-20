@@ -2,7 +2,7 @@
 # 64-bit Windows as a downloadable Actions artifact.
 #
 # - Runs only on demand (Actions tab > "overlay windows build" > Run workflow, normally on
-#   claude/beautiful-einstein-5zy5wn). A push builds nothing.
+#   Main, the fork's only permanent branch). A push builds nothing.
 # - Builds with the MSVC toolchain, as upstream's release.yml does, but unsigned, without the
 #   MSI installer and without the OCR models.
 # - Runs the tests of the crates this fork changes before packaging; a failure uploads nothing.
