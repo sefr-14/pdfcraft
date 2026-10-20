@@ -2714,3 +2714,6 @@ certificate	Version	الإصدار
 # This fork (sefr-14/pdfcraft): Overlay compare, the command and its All tools item.
 	Overlay compare…	مقارنة بالتراكب…
 	Overlay two revisions	تراكب مراجعتين
+# This fork (sefr-14/pdfcraft): Duplicate Tab (OV7), the tab menu item and its command.
+	Duplicate Tab	تكرار علامة التبويب
+	Duplicate tab	تكرار علامة التبويب

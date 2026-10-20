@@ -2688,3 +2688,6 @@ theme	Appearance	Išvaizda
 # This fork (sefr-14/pdfcraft): Overlay compare, the command and its All tools item.
 	Overlay compare…	Palyginti uždedant…
 	Overlay two revisions	Uždėti dvi redakcijas
+# This fork (sefr-14/pdfcraft): Duplicate Tab (OV7), the tab menu item and its command.
+	Duplicate Tab	Dublikuoti kortelę
+	Duplicate tab	Dublikuoti kortelę

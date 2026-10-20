@@ -2436,3 +2436,6 @@ animation effects	Off	Ki
 # This fork (sefr-14/pdfcraft): Overlay compare, the command and its All tools item.
 	Overlay compare…	Összehasonlítás egymásra helyezéssel…
 	Overlay two revisions	Két változat egymásra helyezése
+# This fork (sefr-14/pdfcraft): Duplicate Tab (OV7), the tab menu item and its command.
+	Duplicate Tab	Lap duplikálása
+	Duplicate tab	Lap duplikálása

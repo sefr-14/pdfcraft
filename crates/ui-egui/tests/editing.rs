@@ -828,7 +828,7 @@ fn save_prompt_stays_inside_the_screen_for_a_long_filename() {
         let mut app = PdfCraftApp::new();
         app.set_option("language", "en").unwrap();
         app.open_bytes(name, None, fixture(1)).expect("fixture opens");
-        app.close_request = Some(CloseRequest::Tab(app.views[0].id));
+        app.close_request = Some(CloseRequest::Tab(app.views[0].key));
         app
     });
     h.run_steps(4);
@@ -863,7 +863,7 @@ fn save_prompt_fits_the_smallest_window_whatever_the_name() {
             let mut app = PdfCraftApp::new();
             app.set_option("language", "en").unwrap();
             app.open_bytes(&name, None, fixture(1)).expect("fixture opens");
-            app.close_request = Some(CloseRequest::Tab(app.views[0].id));
+            app.close_request = Some(CloseRequest::Tab(app.views[0].key));
             app
         });
         h.run_steps(4);

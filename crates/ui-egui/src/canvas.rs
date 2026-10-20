@@ -279,6 +279,7 @@ fn click_unit(text: &PageText, clicks: u32, a: usize) -> Option<(usize, usize)> 
     }
 }
 
+#[derive(Clone)]
 struct PageTex {
     tag: u64,
     tex: TextureHandle,
@@ -348,10 +349,21 @@ pub(crate) fn signature_badges(signatures: &[pdfcraft_engine::SignatureInfo], pa
 /// the tabs apart. Without a title the file name (which already carries the suffix)
 /// is enough.
 pub(crate) fn tab_label(app: &PdfCraftApp, index: usize) -> Option<String> {
+    let name = document_label(app, index)?;
+    Some(instance_label(name, app.views.get(index)?.instance))
+}
+
+/// [`tab_label`] without the duplicate's number: what pickers of documents show.
+pub(crate) fn document_label(app: &PdfCraftApp, index: usize) -> Option<String> {
     let view = app.views.get(index)?;
     let doc = app.session.get(view.id)?;
     let Some(snap) = view.snapshot.as_ref() else { return Some(doc.display_name()) };
     Some(snapshot_tab_name(&doc.display_name(), &doc.name, snap))
+}
+
+/// A view's name with its number when it is a duplicate (Duplicate Tab): `plan.pdf (2)`.
+pub(crate) fn instance_label(name: String, instance: u16) -> String {
+    if instance > 1 { format!("{name} ({instance})") } else { name }
 }
 
 /// A snapshot's tab name from its source title, file name and marker. Pure so the
@@ -367,8 +379,34 @@ pub(crate) fn snapshot_tab_name(title: &str, file_name: &str, snapshot: &Snapsho
     }
 }
 
+/// One view of a document: a tab (OV7). Several views can show the same document
+/// (Duplicate Tab), each with its own page, zoom, scroll and view history, so egui state that
+/// belongs to a view is keyed by this and never by the document's [`DocId`]. The document itself
+/// (its edits, undo history and saving) stays keyed by [`DocId`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ViewKey(pub u64);
+
+impl ViewKey {
+    /// A key no other view of this session has. Keys start again at 1 every launch, like document
+    /// ids; `DocView::shown` keeps a scroll offset egui saved for an earlier session's view away.
+    fn next() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        // Wraps after 2^64 views instead of panicking; no session opens that many.
+        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    }
+}
+
 pub struct DocView {
     pub id: DocId,
+    /// This view's identity among the views of the same document.
+    pub key: ViewKey,
+    /// 1 for the first view of a document; a duplicate takes the lowest number from 2 up that no
+    /// other view of the document has, and its tab says so: `plan.pdf (2)`.
+    pub instance: u16,
+    /// The document version this view's caches show: its edit generation and working-file
+    /// buffer. A view of a document shown in other views too is refreshed when it falls behind
+    /// (`PdfCraftApp::sync_shared_views`).
+    pub(crate) content_seen: Option<(u64, usize)>,
     pub zoom: f32,
     pub fit: Fit,
     pub layout: PageLayout,
@@ -457,6 +495,9 @@ pub struct DocView {
     last_press_time: f64,
     last_press_pos: Option<Pos2>,
     last_queue: Vec<RenderRequest>,
+    /// Hand the pool this view's queue on the next frame even if it hasn't changed: another view
+    /// of the document left its own requests there (see `PdfCraftApp::finish_render_frame`).
+    pub(crate) requeue: bool,
     /// Finished renders wait in the pool instead of reaching the view (tests): what the view
     /// shows before a raster arrives can be looked at however fast the renderer is.
     pub hold_rasters: bool,
@@ -699,6 +740,9 @@ impl DocView {
     pub fn new(id: DocId, info: &DocInfo, defaults: ViewDefaults) -> Self {
         Self {
             id,
+            key: ViewKey::next(),
+            instance: 1,
+            content_seen: None,
             zoom: defaults.zoom,
             fit: defaults.fit,
             layout: defaults.layout,
@@ -747,6 +791,7 @@ impl DocView {
             last_press_time: 0.0,
             last_press_pos: None,
             last_queue: Vec::new(),
+            requeue: false,
             hold_rasters: false,
             viewport_w: 800.0,
             viewport_h: 600.0,
@@ -851,6 +896,9 @@ impl DocView {
     /// afresh, so no stale index reaches the new one.
     pub fn document_replaced(&mut self, info: &DocInfo) {
         let mut fresh = Self::new(self.id, info, ViewDefaults::default());
+        // Still the same view: its egui state (the scroll offset among it) stays its own.
+        fresh.key = self.key;
+        fresh.instance = self.instance;
         fresh.zoom = self.zoom;
         fresh.fit = self.fit;
         fresh.layout = self.layout;
@@ -859,7 +907,7 @@ impl DocView {
         fresh.current = self.current;
         fresh.organize = self.organize;
         fresh.grid_zoom = self.grid_zoom;
-        // Same document id, so the scroll offset egui keeps for it is still this document's.
+        // Same view key, so the scroll offset egui keeps for it is still this view's.
         fresh.shown = self.shown;
         fresh.highlight_fields = self.highlight_fields;
         fresh.notice_dismissed = self.notice_dismissed;
@@ -879,6 +927,71 @@ impl DocView {
         self.document_changed(info);
         self.page_input = self.current_page_label(info.pages.get(self.current).map(|page| page.label.as_str()));
         self.page_input_reselect = true;
+    }
+
+    /// A new view of the same document at this view's place (Duplicate Tab): the same page,
+    /// zoom, page display, rotation, scroll offset and view history. Nothing links the two
+    /// afterwards, so each goes on navigating on its own. What the reader was doing here (a
+    /// selection, the find bar, a field being typed in, a drag) stays with this view. The page
+    /// images on screen are shared, not copied (texture handles are reference counted), so the new
+    /// view shows sharp at once instead of rendering again.
+    pub(crate) fn duplicate(&self, info: &DocInfo, instance: u16) -> Self {
+        let mut v = Self::new(self.id, info, ViewDefaults::default());
+        v.instance = instance;
+        v.content_seen = self.content_seen;
+        v.zoom = self.zoom;
+        v.fit = self.fit;
+        v.layout = self.layout;
+        v.continuous = self.continuous;
+        v.rotation = self.rotation;
+        v.cover = self.cover;
+        v.current = self.current;
+        v.highlight_fields = self.highlight_fields;
+        v.notice_dismissed = self.notice_dismissed;
+        v.scripts_off_noted = self.scripts_off_noted;
+        v.disk_changed = self.disk_changed;
+        v.snapshot = self.snapshot.clone();
+        v.page_input = self.page_input.clone();
+        v.back = self.back.clone();
+        v.forward = self.forward.clone();
+        // A jump asked for but not drawn yet lands in both views.
+        v.goto = self.goto;
+        v.goto_point = self.goto_point;
+        v.zoom_anchor = self.zoom_anchor;
+        v.organize = self.organize;
+        v.grid_zoom = self.grid_zoom;
+        if v.organize {
+            v.grid_reveal = Some(self.current);
+        }
+        // The first frame scrolls to where this view is; egui keeps the offset per view from then on.
+        v.last_scroll = self.last_scroll;
+        v.sync_scroll = Some(self.last_scroll);
+        v.viewport_w = self.viewport_w;
+        v.viewport_h = self.viewport_h;
+        v.viewport_screen = self.viewport_screen;
+        v.current_scale_tag = self.current_scale_tag;
+        v.last_scale = self.last_scale;
+        v.pages = self.pages.clone();
+        v.thumbs = self.thumbs.clone();
+        v.tiles = self.tiles.clone();
+        v.stale_thumbs = self.stale_thumbs.clone();
+        v.stale_tiles = self.stale_tiles.clone();
+        v.texts = self.texts.clone();
+        v.text_failed = self.text_failed.clone();
+        v.errors = self.errors.clone();
+        v.slow_pages = self.slow_pages.clone();
+        v
+    }
+
+    /// Another view of the document changed it: drop what pointed into the earlier version (a
+    /// selected comment, picture or link, a box being dragged), as an undo does in the view it
+    /// runs in. Text being typed stays: it is committed against the document as it is then.
+    pub(crate) fn forget_content_selection(&mut self) {
+        self.comments.selected = None;
+        self.image_selection = None;
+        self.picked_image = None;
+        self.block_drag = None;
+        self.links.selected = None;
     }
 
     /// Open Organize Pages on the page being read (issue #1910). An empty selection means the
@@ -939,6 +1052,22 @@ impl DocView {
     pub fn clear_page_selection(&mut self, anchor: Option<usize>) {
         self.selected.clear();
         self.select_anchor = anchor.filter(|a| *a < self.page_count);
+    }
+
+    /// Whether the current page is drawn at the current zoom, as one image or in tiles, with
+    /// nothing left to render (tests).
+    #[cfg(test)]
+    pub(crate) fn current_page_sharp(&self) -> bool {
+        let tag = self.current_scale_tag;
+        let page = self.pages.get(&self.current).is_some_and(|p| p.tag == tag);
+        let tiles = self.tiles.keys().any(|k| k.0 == self.current && k.1 == tag);
+        tag != 0 && !self.render_pending() && (page || tiles)
+    }
+
+    /// The first page this frame's page grid or Pages panel shows on screen (tests).
+    #[cfg(test)]
+    pub(crate) fn first_visible_thumbnail(&self) -> Option<usize> {
+        self.thumb_demand.iter().filter(|(_, visible)| **visible).map(|(p, _)| *p).min()
     }
 
     pub fn render_pending(&self) -> bool {
@@ -1296,9 +1425,9 @@ impl DocView {
         self.go_to_page(target);
     }
 
-    /// Page-editor focus and drafts belong to a document, even while another tab is active.
+    /// Page-editor focus and drafts belong to a view, even while another tab is active.
     pub(crate) fn page_input_id(&self) -> egui::Id {
-        egui::Id::new(("page-input", self.id.0))
+        egui::Id::new(("page-input", self.key.0))
     }
 
     /// The idle page box and unchanged-input lookup share the same label fallback.
@@ -1586,6 +1715,23 @@ impl DocView {
     /// Only the displayed document owns raster textures. Tabs keep their document and view
     /// state, but do not each retain a separate full application texture allowance.
     pub(crate) fn suspend_rendering(&mut self, pool: &RenderPool) {
+        let queued = !self.last_queue.is_empty();
+        self.release_textures();
+        if queued {
+            pool.set_queue(Vec::new());
+        }
+        // Results already finished for this tab would otherwise sit in its pool, rasters and
+        // all, until the tab is shown again. (An inline pool renders inside try_recv: skip it.)
+        if !pool.is_inline() {
+            while pool.try_recv().is_some() {}
+        }
+    }
+
+    /// [`Self::suspend_rendering`] for a hidden view whose document another tab is showing
+    /// (Duplicate Tab): the textures go, but the document's render pool is left alone, since its
+    /// queue and finished results now belong to the tab on screen. Returns whether this view had
+    /// requests in the pool, which that tab then has to replace with its own.
+    pub(crate) fn release_textures(&mut self) -> bool {
         self.begin_render_frame();
         self.pages.clear();
         self.tiles.clear();
@@ -1599,15 +1745,9 @@ impl DocView {
         self.signature_drag = Default::default();
         self.text_background = Default::default();
         self.move_background = Default::default();
-        if !self.last_queue.is_empty() {
-            pool.set_queue(Vec::new());
-            self.last_queue.clear();
-        }
-        // Results already finished for this tab would otherwise sit in its pool, rasters and
-        // all, until the tab is shown again. (An inline pool renders inside try_recv: skip it.)
-        if !pool.is_inline() {
-            while pool.try_recv().is_some() {}
-        }
+        let queued = !self.last_queue.is_empty();
+        self.last_queue.clear();
+        queued
     }
 
     fn thumbnail_requests(&self, info: &DocInfo, ppp: f32) -> Vec<RenderRequest> {
@@ -1787,7 +1927,7 @@ impl DocView {
             return;
         }
         let queue = self.prepare_render_queue(info, ctx.pixels_per_point());
-        if queue != self.last_queue {
+        if std::mem::take(&mut self.requeue) || queue != self.last_queue {
             pool.set_queue(queue.clone());
             self.last_queue = queue;
         }
@@ -2355,7 +2495,7 @@ const SUPPRESS_SECS: f64 = 0.25;
 const SUPPRESS_TAIL_SECS: f64 = 0.05;
 
 // The viewer moves between docking and the central panel as modes change; keep its scroll
-// identity tied to the document instead of either parent UI.
+// identity tied to the view instead of either parent UI.
 fn page_scroll<R>(
     ui: &mut egui::Ui,
     scroll: egui::ScrollArea,
@@ -2378,16 +2518,12 @@ pub fn document_area(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui) {
         f.in_panel = false;
     }
     // The snapshot notice bar's Close was clicked: close here, where no document borrow is
-    // held. The tab is looked up by id: indices may have shifted since the click, and the
-    // flag rides its own view, so a stale flag can never close the wrong tab.
-    let pending = app.views.get(index).filter(|v| v.close_requested).map(|v| v.id).and_then(|id| app.views.iter().position(|v| v.id == id));
+    // held. The tab is looked up by its view key: indices may have shifted since the click, and
+    // the flag rides its own view, so a stale flag can never close the wrong tab.
+    let pending = app.views.get(index).filter(|v| v.close_requested).map(|v| v.key).and_then(|key| app.view_index(key));
     if let Some(i) = pending {
         app.views[i].close_requested = false;
-        if app.has_unsaved_work(i) {
-            app.close_request = Some(crate::CloseRequest::Tab(app.views[i].id));
-        } else {
-            app.close_tab(i);
-        }
+        app.request_close_tab(i);
         return;
     }
     let Some(doc) = app.session.get(app.views[index].id) else { return };
@@ -2659,8 +2795,9 @@ pub fn document_area(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui) {
         },
         ..Default::default()
     });
-    // Each document keeps its own scroll position when switching tabs (#189).
-    scroll = scroll.id_salt(("page-view", view.id));
+    // Each view keeps its own scroll position when switching tabs (#189), also when two views
+    // show the same document (Duplicate Tab).
+    scroll = scroll.id_salt(("page-view", view.key));
     // Every scroll here asks for no animation. An animated area would still queue a zero-length
     // offset target for the next frame, which overwrites the jump a page turn just set.
     scroll = scroll.animated(false);
@@ -2831,7 +2968,7 @@ pub fn document_area(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui) {
         }
     }
     let selection_wheel = view.selection_drag && navigation_enabled && unobstructed && !single_paging && ui.rect_contains_pointer(avail);
-    let out = page_scroll(ui, scroll, egui::Id::new(("page-view-scope", view.id)), |ui, viewport| {
+    let out = page_scroll(ui, scroll, egui::Id::new(("page-view-scope", view.key)), |ui, viewport| {
         // egui's drag responses accept every pointer button. Keep a wheel gesture from also
         // selecting text, drawing a mark, or panning with the Hand tool.
         if middle_gesture {
@@ -4122,7 +4259,8 @@ fn selection_actions(
     let x = rect.left().clamp(viewport.left() + 8.0, (viewport.right() - 520.0).max(viewport.left() + 8.0));
     let y = if rect.bottom() + 48.0 < viewport.bottom() { rect.bottom() + 6.0 } else { (rect.top() - 44.0).max(viewport.top() + 6.0) };
     let mut chosen = None;
-    egui::Area::new(egui::Id::new(("text-selection-actions", view.id.0))).order(egui::Order::Foreground).fixed_pos(pos2(x, y)).show(ui.ctx(), |ui| {
+    let id = egui::Id::new(("text-selection-actions", view.key.0));
+    egui::Area::new(id).order(egui::Order::Foreground).fixed_pos(pos2(x, y)).show(ui.ctx(), |ui| {
         egui::Frame::popup(ui.style()).show(ui, |ui| {
             ui.horizontal(|ui| {
                 for (label, action) in [
@@ -4985,7 +5123,8 @@ fn organize_grid(view: &mut DocView, info: &DocInfo, editable: bool, dirty: bool
     let (mut in_view, mut sharper): (Vec<(usize, f32)>, Vec<RenderRequest>) = (Vec::new(), Vec::new());
     // The source cell can scroll out of the virtualized rows during a drag.
     let mut drop = view.org_drag.is_some() && ui.input(|i| i.pointer.primary_released());
-    egui::ScrollArea::vertical().auto_shrink([false, false]).show_viewport(ui, |ui, clip| {
+    // Each view keeps its own place in the grid, also when two views show the same document.
+    egui::ScrollArea::vertical().id_salt(("organize-grid", view.key)).auto_shrink([false, false]).show_viewport(ui, |ui, clip| {
         if middle_gesture {
             let opacity = ui.opacity();
             ui.disable();

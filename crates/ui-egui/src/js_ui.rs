@@ -33,7 +33,9 @@ impl PdfCraftApp {
     /// the console, print and page requests are carried out, links wait for the user's permission
     /// (form submissions are reported, never sent).
     pub fn handle_js(&mut self, id: DocId, out: JsOutput) {
-        let view = self.views.iter().position(|v| v.id == id);
+        // The active tab when it shows the document (Duplicate Tab), so a script's page change
+        // moves the tab being used.
+        let view = self.view_of(id);
         // A script that ran away turned the form's scripts off: calculations and buttons stop
         // working, and the error is only in the console. Say so once, and bring the notice bar
         // (which keeps saying so) back if it was closed. A message of the form's own, below,
@@ -83,7 +85,7 @@ impl PdfCraftApp {
         }
         match self.session.run_javascript(id, script, Some(field)) {
             Ok(o) => {
-                if let Some(i) = self.views.iter().position(|v| v.id == id)
+                if let Some(i) = self.view_of(id)
                     && let Some(info) = self.session.get(id).map(|d| d.info.clone())
                 {
                     self.views[i].document_changed(&info);

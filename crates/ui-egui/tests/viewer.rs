@@ -340,7 +340,7 @@ fn page_input_focused(h: &Harness<'static, PdfCraftApp>) -> bool {
     let focused = h.ctx.memory(|m| m.focused());
     let view = &h.state().views[h.state().active.unwrap()];
     // Also identifies the original editor when running this test-only patch on the baseline.
-    focused == Some(egui::Id::new(("page-input", view.id.0))) || focused == Some(egui::Id::new("page-input"))
+    focused == Some(egui::Id::new(("page-input", view.key.0))) || focused == Some(egui::Id::new("page-input"))
 }
 
 /// Exercise the real navigation editor, including its focus and Enter handling.

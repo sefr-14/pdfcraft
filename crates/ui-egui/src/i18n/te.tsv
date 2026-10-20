@@ -2346,3 +2346,6 @@ animation effects	Off	ఆఫ్
 # This fork (sefr-14/pdfcraft): Overlay compare, the command and its All tools item.
 	Overlay compare…	అతివ్యాప్తి పోలిక…
 	Overlay two revisions	రెండు సవరణలను అతివ్యాప్తి చేయండి
+# This fork (sefr-14/pdfcraft): Duplicate Tab (OV7), the tab menu item and its command.
+	Duplicate Tab	ట్యాబ్‌ను నకిలీ చేయి
+	Duplicate tab	ట్యాబ్‌ను నకిలీ చేయి

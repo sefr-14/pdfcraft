@@ -1,18 +1,65 @@
 //! PDF-tab actions. Closed history contains paths only, never bytes or passwords.
 use pdfcraft_engine::DocId;
 
+use crate::canvas::ViewKey;
+
+/// At most this many tabs show one document (Duplicate Tab), so a held shortcut can't fill the
+/// strip with copies of one file.
+pub const MAX_VIEWS_PER_DOCUMENT: usize = 16;
+
+/// Tab actions name the tab by its view, not its document: Duplicate Tab can show one document
+/// in several tabs, and closing one of them must not close another.
 pub(crate) enum Action {
-    Close(DocId),
+    Close(ViewKey),
+    Duplicate(ViewKey),
     Reopen,
     Reveal(DocId),
 }
 
 impl crate::PdfCraftApp {
+    /// Whether tab `index` can be duplicated: it shows a document that isn't in
+    /// [`MAX_VIEWS_PER_DOCUMENT`] tabs already.
+    pub fn can_duplicate(&self, index: usize) -> bool {
+        self.views.get(index).is_some_and(|v| self.session.get(v.id).is_some() && self.views_of(v.id).len() < MAX_VIEWS_PER_DOCUMENT)
+    }
+
+    /// Duplicate Tab: another view of tab `index`'s document, right after it and made active. It
+    /// starts at the same page, zoom and scroll position and then navigates on its own. The
+    /// document is shared, not copied or read again: edits, undo, the unsaved-changes marker
+    /// and saving are the document's, whichever of its tabs they come from. Returns the new
+    /// tab's index.
+    pub fn duplicate_view(&mut self, index: usize) -> Option<usize> {
+        if !self.can_duplicate(index) {
+            return None;
+        }
+        let source = self.views.get(index)?;
+        let doc = self.session.get(source.id)?;
+        let taken: Vec<u16> = self.views.iter().filter(|v| v.id == source.id).map(|v| v.instance).collect();
+        let instance = (2..=u16::MAX).find(|n| !taken.contains(n))?;
+        let version = crate::content_version(doc);
+        let mut view = source.duplicate(&doc.info, instance);
+        // The source is up to date (it refreshes itself), and so is the copy of its caches.
+        view.content_seen = Some(version);
+        if let Some(source) = self.views.get_mut(index) {
+            source.content_seen = Some(version);
+        }
+        // `index` is a valid tab, so the slot after it is at most the end of the list.
+        let at = index.saturating_add(1).min(self.views.len());
+        self.views.insert(at, view);
+        self.active = Some(at);
+        Some(at)
+    }
+
     pub(crate) fn tab_action(&mut self, action: Action) {
         match action {
-            Action::Close(id) => {
-                if let Some(i) = self.views.iter().position(|v| v.id == id) {
+            Action::Close(key) => {
+                if let Some(i) = self.view_index(key) {
                     self.request_close_tab(i);
+                }
+            }
+            Action::Duplicate(key) => {
+                if let Some(i) = self.view_index(key) {
+                    self.duplicate_view(i);
                 }
             }
             Action::Reopen => {
@@ -162,15 +209,15 @@ mod tests {
     fn confirmed_close_uses_id_and_cancel_keeps_history_empty() {
         let mut app = crate::PdfCraftApp::new();
         app.open_bytes("first.pdf", Some("/tmp/first.pdf".into()), PDF.to_vec()).unwrap();
-        let first = app.views[0].id;
+        let (first, first_tab) = (app.views[0].id, app.views[0].key);
         app.open_bytes("second.pdf", None, PDF.to_vec()).unwrap();
         app.session.apply(first, pdfcraft_engine::Edit::InsertBlankPage { at: 0, width: 300.0, height: 400.0 }).unwrap();
-        app.tab_action(Action::Close(first));
+        app.tab_action(Action::Close(first_tab));
         assert_eq!(app.views.len(), 2);
         assert!(app.closed_tabs.is_empty());
         app.resolve_close(&egui::Context::default(), None);
         assert!(app.closed_tabs.is_empty());
-        app.tab_action(Action::Close(first));
+        app.tab_action(Action::Close(first_tab));
         app.resolve_close(&egui::Context::default(), Some(false));
         assert_eq!(app.views.len(), 1);
         assert_eq!(app.closed_tabs, ["/tmp/first.pdf"]);

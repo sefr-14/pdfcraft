@@ -1887,7 +1887,8 @@ fn documents(app: &mut PdfCraftApp, w: &mut Wizard, ui: &mut egui::Ui, t: &Token
     heading(ui, tx("1. Documents"));
     muted(ui, t, tx("Document A is the tab you started from. Choose document B from the other open documents; to use a file, open it first."));
     ui.add_space(8.0);
-    let others: Vec<(DocId, String)> = app.views.iter().filter_map(|v| app.session.get(v.id).map(|d| (d.id, d.name.clone()))).collect();
+    let others: Vec<(DocId, String)> =
+        app.open_documents().into_iter().filter_map(|id| app.session.get(id).map(|d| (d.id, d.name.clone()))).collect();
     egui::Grid::new("overlay-docs").num_columns(3).spacing([12.0, 10.0]).show(ui, |ui| {
         ui.label(tx("Document A:"));
         ui.label(RichText::new(w.a.as_ref().map(|a| a.name.clone()).unwrap_or_default()).strong());

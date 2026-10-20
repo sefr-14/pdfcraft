@@ -98,12 +98,12 @@ pub fn tab_strip(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                 if overflow && arrow(ui, "chevron-left", offset > 0.5, tl!("Scroll tabs left")) {
                     scroll_to = Some((offset - (TAB_MIN_WIDTH + gap)).max(0.0));
                 }
-                // Keyed by document, not index: a tab dragged past the active one moves it without
-                // the strip jumping to it.
-                let state = (app.active_ids().map(|(_, id)| id), app.views.len(), app.combine_showing());
+                // Keyed by view, not index: a tab dragged past the active one moves it without
+                // the strip jumping to it. Not by document either: two tabs can show the same one.
+                let state = (app.active_key(), app.views.len(), app.combine_showing());
                 let changed = ui.data_mut(|data| {
                     let id = ui.id().with("active_tab");
-                    let changed = data.get_temp::<(Option<pdfcraft_engine::DocId>, usize, bool)>(id) != Some(state);
+                    let changed = data.get_temp::<(Option<crate::canvas::ViewKey>, usize, bool)>(id) != Some(state);
                     data.insert_temp(id, state);
                     changed
                 });
@@ -127,11 +127,13 @@ pub fn tab_strip(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                                 let Some(doc) = app.session.get(app.views[i].id) else { continue };
                                 let Some(name) = crate::canvas::tab_label(app, i) else { continue };
                                 let dirty = doc.dirty;
-                                // A tab showing the document's title names its file on hover.
-                                let file = (name != doc.name).then_some(doc.name.as_str());
+                                // A tab showing the document's title names its file on hover (a
+                                // duplicate's number doesn't count as a title).
+                                let titled = crate::canvas::document_label(app, i).is_some_and(|title| title != doc.name);
+                                let file = titled.then_some(doc.name.as_str());
                                 let response = tab(
                                     ui,
-                                    ui.id().with(("document-tab", app.views[i].id)),
+                                    ui.id().with(("document-tab", app.views[i].key)),
                                     &t,
                                     "file-text",
                                     &name,
@@ -151,11 +153,18 @@ pub fn tab_strip(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                                 if changed && app.active == Some(i) && !app.combine_showing() {
                                     response.scroll_to_me(Some(Align::Center));
                                 }
-                                let id = app.views[i].id;
+                                let (id, key) = (app.views[i].id, app.views[i].key);
                                 let reveal = cfg!(not(target_arch = "wasm32")) && doc.path.is_some();
+                                let can_duplicate = app.can_duplicate(i);
                                 response.context_menu(|ui| {
+                                    // Another view of the same document, navigated on its own (OV7).
+                                    if ui.add_enabled(can_duplicate, egui::Button::new(tl!("Duplicate Tab"))).clicked() {
+                                        action = Some(crate::tab_context::Action::Duplicate(key));
+                                        ui.close();
+                                    }
+                                    ui.separator();
                                     if ui.button(tl!("Close Tab")).clicked() {
-                                        action = Some(crate::tab_context::Action::Close(id));
+                                        action = Some(crate::tab_context::Action::Close(key));
                                         ui.close();
                                     }
                                     if ui.add_enabled(!app.closed_tabs.is_empty(), egui::Button::new(tl!("Reopen Closed Tab"))).clicked() {
@@ -203,7 +212,7 @@ pub fn tab_strip(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                             if let Some(i) = close
                                 && let Some(view) = app.views.get(i)
                             {
-                                action.get_or_insert(crate::tab_context::Action::Close(view.id));
+                                action.get_or_insert(crate::tab_context::Action::Close(view.key));
                             }
                             if let Some(action) = action {
                                 app.tab_action(action);

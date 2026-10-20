@@ -151,9 +151,14 @@ pub mod window_state;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod open_worker_tests;
 
+// Two attributes, so clippy sees `cfg(test)` and allows `unwrap` in the helpers too.
+#[cfg(test)]
+#[cfg(not(target_arch = "wasm32"))]
+mod duplicate_tab_tests;
+
 use pdfcraft_engine::{DocId, Session};
 
-pub use canvas::{DocView, RasterMemory};
+pub use canvas::{DocView, RasterMemory, ViewKey};
 pub use editing::{CloseRequest, SaveTarget};
 pub use files::{ExtractDraft, FilePurpose, FileRequest, RotateDraft, SplitDraft, SplitMode, SplitPlan};
 pub use recovery::{AUTOSAVE_SECS, RecoveryMeta, RecoveryStore};
@@ -744,7 +749,7 @@ pub struct PdfCraftApp {
     allow_quit: bool,
     /// Shortcuts pressed while a text field had the keyboard, run on the next frame (see
     /// `registry_shortcuts`).
-    deferred_commands: Vec<(&'static str, Option<DocId>)>,
+    deferred_commands: Vec<(&'static str, Option<canvas::ViewKey>)>,
     /// The dialog seen at the last check, and a counter bumped whenever it changes (see
     /// [`Self::dialog_epoch`]).
     dialog_seen: Option<Dialog>,
@@ -1698,9 +1703,10 @@ impl PdfCraftApp {
     }
 
     /// The tab already showing the file at `path` (the same path, or one that names the same
-    /// file once made absolute).
+    /// file once made absolute). Of several tabs on it (Duplicate Tab), the active one.
     pub(crate) fn tab_showing(&self, path: &str) -> Option<usize> {
-        self.views.iter().position(|v| self.session.get(v.id).and_then(|d| d.path.as_deref()).is_some_and(|p| same_file(p, path)))
+        let i = self.views.iter().position(|v| self.session.get(v.id).and_then(|d| d.path.as_deref()).is_some_and(|p| same_file(p, path)))?;
+        self.views.get(i).and_then(|v| self.view_of(v.id))
     }
 
     /// Open a file from a recent list: focus the tab already showing it, else open it (File ▸
@@ -1897,26 +1903,69 @@ impl PdfCraftApp {
         }
     }
 
+    /// Close tab `index` without asking. The document closes with its last tab: while another
+    /// tab still shows it (Duplicate Tab), only this view goes, and the document, its unsaved
+    /// changes and their autosave stay with the other tab.
     pub fn close_tab(&mut self, index: usize) {
         if index >= self.views.len() {
             return;
         }
         let id = self.views.remove(index).id;
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Some(path) = self.session.get(id).and_then(|d| d.path.clone()) {
-            if self.closed_tabs.len() == 10 {
-                self.closed_tabs.remove(0);
+        if !self.views.iter().any(|v| v.id == id) {
+            #[cfg(not(target_arch = "wasm32"))]
+            if let Some(path) = self.session.get(id).and_then(|d| d.path.clone()) {
+                if self.closed_tabs.len() == 10 {
+                    self.closed_tabs.remove(0);
+                }
+                self.closed_tabs.push(path);
             }
-            self.closed_tabs.push(path);
+            self.forget_recovery(id);
+            self.session.close(id);
         }
-        self.forget_recovery(id);
-        self.session.close(id);
         self.active = match self.active {
             _ if self.views.is_empty() => None,
             Some(a) if a > index => Some(a - 1),
             Some(a) if a >= self.views.len() => Some(self.views.len() - 1),
             other => other,
         };
+    }
+
+    /// Close every tab of document `id`, and the document with them, without asking.
+    pub fn close_document(&mut self, id: DocId) {
+        while let Some(i) = self.views.iter().rposition(|v| v.id == id) {
+            self.close_tab(i);
+        }
+    }
+
+    /// Duplicate Tab: a document shown in several tabs changes through one of them (an edit,
+    /// undo, a script, a save), and that tab refreshes itself. Bring the others up to date
+    /// before they are drawn: their page images, text and page geometry are dropped and drawn
+    /// again, and whatever pointed into the earlier version is let go, while each keeps its own
+    /// page, zoom, scroll position and view history. A document with a single tab is left alone,
+    /// so that tab's own refresh (just one page, after a comment) stays as it was.
+    pub(crate) fn sync_shared_views(&mut self) {
+        for i in 0..self.views.len() {
+            let Some(id) = self.views.get(i).map(|v| v.id) else { continue };
+            if self.views.iter().filter(|v| v.id == id).nth(1).is_none() {
+                continue;
+            }
+            let Some(doc) = self.session.get(id) else { continue };
+            let now = content_version(doc);
+            let Some(view) = self.views.get_mut(i) else { continue };
+            match view.content_seen {
+                Some(seen) if seen == now => {}
+                // First seen shared (just duplicated, or never edited): its caches are its own.
+                None => view.content_seen = Some(now),
+                Some(_) => {
+                    view.document_changed(&doc.info);
+                    view.forget_content_selection();
+                    view.content_seen = Some(now);
+                    if let Some(ctx) = &self.ctx {
+                        ctx.request_repaint();
+                    }
+                }
+            }
+        }
     }
 
     /// Moves the tab at `from` so it sits at `to` (#1537). The same document stays active
@@ -1935,6 +1984,40 @@ impl PdfCraftApp {
 
     pub fn active_ids(&self) -> Option<(usize, DocId)> {
         self.active.and_then(|i| self.views.get(i).map(|v| (i, v.id)))
+    }
+
+    /// The active tab's view key (see [`canvas::ViewKey`]).
+    pub fn active_key(&self) -> Option<canvas::ViewKey> {
+        self.active.and_then(|i| self.views.get(i)).map(|v| v.key)
+    }
+
+    /// The tab index of the view with this key, wherever tabs have moved since.
+    pub fn view_index(&self, key: canvas::ViewKey) -> Option<usize> {
+        self.views.iter().position(|v| v.key == key)
+    }
+
+    /// The tab indexes of every view of document `id`, in tab order (Duplicate Tab can show one
+    /// document in several tabs).
+    pub fn views_of(&self, id: DocId) -> Vec<usize> {
+        self.views.iter().enumerate().filter(|(_, v)| v.id == id).map(|(i, _)| i).collect()
+    }
+
+    /// The open documents in tab order, each once however many tabs show it (Duplicate Tab):
+    /// what pickers of open documents list.
+    pub fn open_documents(&self) -> Vec<DocId> {
+        let mut ids: Vec<DocId> = Vec::with_capacity(self.views.len());
+        for v in &self.views {
+            if !ids.contains(&v.id) {
+                ids.push(v.id);
+            }
+        }
+        ids
+    }
+
+    /// The tab that stands for document `id`: the active tab when it shows the document,
+    /// otherwise its first tab. With one tab per document, simply that tab.
+    pub fn view_of(&self, id: DocId) -> Option<usize> {
+        self.active_ids().filter(|(_, active)| *active == id).map(|(i, _)| i).or_else(|| self.views.iter().position(|v| v.id == id))
     }
 
     /// A dialog or prompt is open over the window: the keyboard is its own, and nothing may act
@@ -2863,6 +2946,13 @@ impl PdfCraftApp {
     }
 }
 
+/// The version of a document's content that a view's caches can be compared with (see
+/// [`PdfCraftApp::sync_shared_views`]): its edit generation, and the working file's buffer, which a
+/// reload replaces.
+pub(crate) fn content_version(doc: &pdfcraft_engine::Document) -> (u64, usize) {
+    (doc.edit_generation(), std::sync::Arc::as_ptr(&doc.bytes).addr())
+}
+
 /// Why nothing can be copied out of the document: its security doesn't allow it (Table 22,
 /// bit 5; #568).
 pub(crate) fn copy_refused() -> &'static str {
@@ -3106,9 +3196,9 @@ impl eframe::App for PdfCraftApp {
         // A field that refused its value this frame keeps the shortcut from saving or printing
         // behind the user's back; so does a save prompt opened since.
         if self.process_pending_edits() && self.close_request.is_none() {
-            for (id, doc) in deferred {
-                // Only in the document the shortcut was pressed in.
-                if self.active_ids().map(|(_, active)| active) == doc {
+            for (id, view) in deferred {
+                // Only in the view the shortcut was pressed in.
+                if self.active_key() == view {
                     self.execute(id);
                 }
             }
@@ -3130,6 +3220,8 @@ impl eframe::App for PdfCraftApp {
             ctx.request_repaint();
             return;
         }
+        // Tabs that show a document changed through another of its tabs catch up first.
+        self.sync_shared_views();
         for view in &mut self.views {
             view.begin_render_frame();
         }
@@ -3217,18 +3309,28 @@ impl PdfCraftApp {
         // three cache limits apply to the application, regardless of how many tabs are open.
         // Side by side: the comparison's old file renders alongside the active one.
         let partner = self.active.and_then(|i| compare_ui::side_by_side(self, i)).map(|(old, _)| old);
+        let shown: Vec<DocId> = self.active.into_iter().chain(partner).filter_map(|i| self.views.get(i).map(|v| v.id)).collect();
+        // A hidden tab of a document another tab shows (Duplicate Tab) must leave the shared
+        // render pool alone: suspending would clear the shown tab's queue and drain its results.
+        let mut requeue: Vec<DocId> = Vec::new();
         for (i, view) in self.views.iter_mut().enumerate() {
             if Some(i) != self.active
                 && Some(i) != partner
                 && let Some(doc) = self.session.get(view.id)
             {
-                view.suspend_rendering(&doc.renderer);
+                if !shown.contains(&view.id) {
+                    view.suspend_rendering(&doc.renderer);
+                } else if view.release_textures() {
+                    // Its requests are still in the pool: the shown tab replaces them with its own.
+                    requeue.push(view.id);
+                }
             }
         }
         for i in self.active.into_iter().chain(partner) {
             if let Some(view) = self.views.get_mut(i)
                 && let Some(doc) = self.session.get(view.id)
             {
+                view.requeue |= requeue.contains(&view.id);
                 view.finish_render_frame(ctx, &doc.info, &doc.renderer);
             }
         }

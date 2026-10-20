@@ -2443,3 +2443,6 @@ animation effects	Off	Ανενεργά
 # This fork (sefr-14/pdfcraft): Overlay compare, the command and its All tools item.
 	Overlay compare…	Σύγκριση με επικάλυψη…
 	Overlay two revisions	Επικάλυψη δύο αναθεωρήσεων
+# This fork (sefr-14/pdfcraft): Duplicate Tab (OV7), the tab menu item and its command.
+	Duplicate Tab	Αναπαραγωγή καρτέλας
+	Duplicate tab	Αναπαραγωγή καρτέλας

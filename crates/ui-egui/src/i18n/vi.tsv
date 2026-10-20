@@ -2690,3 +2690,6 @@ key	Space	Space
 # This fork (sefr-14/pdfcraft): Overlay compare, the command and its All tools item.
 	Overlay compare…	So sánh chồng lớp…
 	Overlay two revisions	Chồng hai bản sửa đổi
+# This fork (sefr-14/pdfcraft): Duplicate Tab (OV7), the tab menu item and its command.
+	Duplicate Tab	Nhân bản thẻ
+	Duplicate tab	Nhân bản thẻ

@@ -273,7 +273,7 @@ fn calendar(ctx: &egui::Context, view: &mut DocView, field: egui::Rect, fmt: &st
         fx.calendar_text = Some(fx.text.clone());
     }
     let mut picked = None;
-    let area = egui::Area::new(egui::Id::new(("date-picker", view.id.0)))
+    let area = egui::Area::new(egui::Id::new(("date-picker", view.key.0)))
         .order(egui::Order::Foreground)
         .fixed_pos(field.left_bottom() + vec2(0.0, 2.0))
         .show(ctx, |ui| {
@@ -303,7 +303,7 @@ fn calendar(ctx: &egui::Context, view: &mut DocView, field: egui::Rect, fmt: &st
                 };
                 let first = (days_from_civil(y, m, 1) + 4).rem_euclid(7) as usize;
                 let len = (days_from_civil(if m == 12 { y + 1 } else { y }, if m == 12 { 1 } else { m + 1 }, 1) - days_from_civil(y, m, 1)) as usize;
-                egui::Grid::new(("date-grid", view.id.0)).spacing([4.0, 2.0]).show(ui, |ui| {
+                egui::Grid::new(("date-grid", view.key.0)).spacing([4.0, 2.0]).show(ui, |ui| {
                     for d in ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"] {
                         ui.label(egui::RichText::new(tl_ctx!("calendar weekday", d)).small());
                     }
@@ -497,7 +497,7 @@ pub(crate) fn overlay(ctx: &egui::Context, view: &mut DocView, info: &DocInfo, f
     match f.kind {
         FormFieldKind::Text => {
             let multiline = f.has(field_flags::MULTILINE);
-            egui::Area::new(egui::Id::new(("form-editor", view.id.0))).order(egui::Order::Foreground).fixed_pos(rect.min).show(ctx, |ui| {
+            egui::Area::new(egui::Id::new(("form-editor", view.key.0))).order(egui::Order::Foreground).fixed_pos(rect.min).show(ctx, |ui| {
                 ui.set_min_size(rect.size());
                 let Some(fx) = view.forms.focus.as_mut() else { return };
                 // Sized from the text being typed, so an auto-sized field shrinks to keep it in view.
@@ -514,7 +514,7 @@ pub(crate) fn overlay(ctx: &egui::Context, view: &mut DocView, info: &DocInfo, f
                     .text_color(Color32::BLACK)
                     .margin(egui::Margin::symmetric(3, 1))
                     .password(f.has(field_flags::PASSWORD))
-                    .id(egui::Id::new(("form-field", view.id.0, &f.name, focus.widget)));
+                    .id(egui::Id::new(("form-field", view.key.0, &f.name, focus.widget)));
                 if let Some(max) = f.max_len {
                     te = te.char_limit(max);
                 }
@@ -581,7 +581,7 @@ pub(crate) fn overlay(ctx: &egui::Context, view: &mut DocView, info: &DocInfo, f
             }
         }
         FormFieldKind::Combo => {
-            let resp = egui::Area::new(egui::Id::new(("form-choices", view.id.0)))
+            let resp = egui::Area::new(egui::Id::new(("form-choices", view.key.0)))
                 .order(egui::Order::Foreground)
                 .fixed_pos(rect.left_bottom() + vec2(0.0, 2.0))
                 .show(ctx, |ui| {

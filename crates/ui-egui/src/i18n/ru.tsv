@@ -2350,3 +2350,6 @@ animation effects	Off	Выкл
 # This fork (sefr-14/pdfcraft): Overlay compare, the command and its All tools item.
 	Overlay compare…	Сравнение наложением…
 	Overlay two revisions	Наложить две редакции
+# This fork (sefr-14/pdfcraft): Duplicate Tab (OV7), the tab menu item and its command.
+	Duplicate Tab	Дублировать вкладку
+	Duplicate tab	Дублировать вкладку
