@@ -2440,3 +2440,8 @@ animation effects	Off	オフ
 # This fork (sefr-14/pdfcraft): Duplicate Tab (OV7), the tab menu item and its command.
 	Duplicate Tab	タブを複製
 	Duplicate tab	タブを複製
+# This fork (sefr-14/pdfcraft): Tab View and Tile View (OV7.2), the tab menu items and their commands.
+	Tab View	タブ表示
+	Tab view	タブ表示
+	Tile View	タイル表示
+	Tile view	タイル表示

@@ -2514,3 +2514,8 @@ animation effects	Off	Vypnuto
 # This fork (sefr-14/pdfcraft): Duplicate Tab (OV7), the tab menu item and its command.
 	Duplicate Tab	Duplikovat kartu
 	Duplicate tab	Duplikovat kartu
+# This fork (sefr-14/pdfcraft): Tab View and Tile View (OV7.2), the tab menu items and their commands.
+	Tab View	Zobrazení karet
+	Tab view	Zobrazení karet
+	Tile View	Dlaždicové zobrazení
+	Tile view	Dlaždicové zobrazení

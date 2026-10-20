@@ -96,10 +96,35 @@ moves the other.
   tab goes into the document first. Closing the last tab asks as before. Quit and File › Close all
   ask once per document.
 - A file changed on disk reloads in every tab of it, each keeping its own page and zoom.
-- Not yet: showing several tabs side by side. Reopening the last session restores each file once,
-  not its duplicates.
+- Reopening the last session restores each file once, not its duplicates.
 - Duplicate Tab is part of the normal viewer, separate from Overlay compare. Overlay compares
   documents, not tabs, so a duplicated document is listed once in its document list.
+
+**Also: Tab View and Tile View.** Right-click any document tab and choose **Tile View** to see
+every open tab at once, side by side in columns, one column per tab: different PDFs, or duplicated
+tabs of the same PDF (Duplicate Tab above). Choose **Tab View** to go back to the usual one tab at a
+time. The entry for the arrangement already shown is greyed out. Both are also in the command
+palette ("Tile view", "Tab view"). PdfCraft starts in Tab View.
+
+- **Navigation follows the pointer.** In Tile View the mouse wheel, Ctrl+wheel zoom (⌘ on macOS),
+  Shift+wheel and the middle mouse button (pan, or auto-scroll on Linux) act on the tile under the
+  pointer straight away, without clicking it first, and never on the tile next to it.
+- **The active tile** has an accent outline and a highlighted caption. Tools, editing commands,
+  Save and the keyboard act on it, as in Tab View. Click in another tile (or its caption, or its
+  tab) to make it the active one: that click only picks the tile, so a pen or other tool doesn't
+  mark it. A double-click on another tile picks it and selects the word under the pointer. With the
+  Hand tool, the first drag already pans the tile it starts in.
+- **Each tab keeps its place.** Switching between Tab View and Tile View closes, reloads or copies
+  nothing, and every tab keeps its own page, zoom, scroll position and Previous view / Next view
+  history. A tab at a fit zoom (Fit width, Fit page) fits its column while tiled and its window
+  again in Tab View.
+- Each column is at least 360 points wide. With more tabs than fit, the row of tiles scrolls
+  sideways with the scrollbar under it (the wheel stays with the tile under the pointer).
+- Not in Tile View: full screen shows the active tab only, and Compare files' side-by-side view is
+  replaced by the tiles while they're shown. The columns can't be resized or stacked, and the
+  arrangement isn't remembered after quitting.
+- Tile View is part of the normal viewer, separate from Overlay compare: the Overlay wizard's own
+  alignment controls are unchanged, and the wheel over its window never moves a tile behind it.
 
 **What else differs from upstream**
 

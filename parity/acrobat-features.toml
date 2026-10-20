@@ -1212,10 +1212,10 @@ area = "B"
 tier = "P1"
 milestone = "M3"
 status = "shipped"
-commands = ["view.next_tab", "view.previous_tab", "view.duplicate_tab"]
+commands = ["view.next_tab", "view.previous_tab", "view.duplicate_tab", "view.tab_view", "view.tile_view"]
 tools = ["doc_list"]
 evidence = ["crates/ui-egui/src/duplicate_tab_tests.rs::a_duplicate_starts_at_the_source_place_then_keeps_its_own_page", "crates/ui-egui/src/duplicate_tab_tests.rs::c_scroll_and_zoom_are_kept_per_tab", "crates/ui-egui/src/duplicate_tab_tests.rs::closing_a_duplicate_keeps_the_document_and_asks_nothing", "crates/ui-egui/tests/editing.rs::combining_files_opens_a_new_unsaved_tab", "crates/ui-egui/tests/control.rs::state_and_view_options", "crates/ui-egui/tests/viewer.rs::each_document_keeps_its_own_scroll_position", "crates/ui-egui/tests/viewer.rs::a_new_document_opens_at_the_top_after_a_relaunch", "crates/ui-egui/tests/ui.rs::dragging_a_tab_moves_it_and_keeps_the_same_document_active", "crates/ui-egui/tests/ui.rs::a_tab_dropped_where_it_was_stays_and_a_click_still_selects_it", "crates/ui-egui/tests/ui.rs::the_combine_tab_does_not_move_and_documents_stay_in_order", "crates/ui-egui/tests/commands.rs::ctrl_tab_steps_through_the_tabs_in_order_and_wraps_around"]
-notes = "each tab keeps its own scroll position (#189), and a newly opened one starts at the top, not where an earlier session left the scroll. Document tabs are dragged to reorder them (#1537): a line marks where the tab will land, the strip scrolls at its edges when it overflows, and the same document stays active; the Combine files tab stays after the documents. Dragging a tab out into its own window is view.multiple-windows. Ctrl+Tab and Ctrl+Shift+Tab (⌃Tab and ⌃⇧Tab on macOS; View ▸ Next tab / Previous tab) step through the tabs in their order on screen, Combine files included, and wrap around at either end (#1542). This fork (OV7.1): Duplicate Tab (the tab's right-click menu, View ▸ Duplicate tab) opens another tab on the same document at the same place; each tab then keeps its own page, zoom, scroll position and view history, while the document (edits, undo, unsaved state, saving, reload) is shared, not copied. Closing a duplicate leaves the document open in its other tabs without asking. Not yet: tiling tabs side by side; the last session restores each file once, not its duplicates."
+notes = "each tab keeps its own scroll position (#189), and a newly opened one starts at the top, not where an earlier session left the scroll. Document tabs are dragged to reorder them (#1537): a line marks where the tab will land, the strip scrolls at its edges when it overflows, and the same document stays active; the Combine files tab stays after the documents. Dragging a tab out into its own window is view.multiple-windows. Ctrl+Tab and Ctrl+Shift+Tab (⌃Tab and ⌃⇧Tab on macOS; View ▸ Next tab / Previous tab) step through the tabs in their order on screen, Combine files included, and wrap around at either end (#1542). This fork (OV7.1): Duplicate Tab (the tab's right-click menu, View ▸ Duplicate tab) opens another tab on the same document at the same place; each tab then keeps its own page, zoom, scroll position and view history, while the document (edits, undo, unsaved state, saving, reload) is shared, not copied. Closing a duplicate leaves the document open in its other tabs without asking. Tab View / Tile View (the tab menu, View ▸ Tab view / Tile view, OV7.2) shows every tab side by side in columns; the wheel, zoom and middle button follow the pointer (OV7.3). Not yet: the last session restores each file once, not its duplicates; the arrangement is not remembered."
 
 [[feature]]
 id = "view.multiple-windows"
@@ -1235,11 +1235,11 @@ title = "Split window (two panes on one document)"
 area = "B"
 tier = "P2"
 milestone = "M14"
-status = "planned"
-commands = []
+status = "partial"
+commands = ["view.duplicate_tab", "view.tile_view"]
 tools = []
-evidence = []
-notes = "This fork's Duplicate Tab (view.document-tabs) shows one document in two independently navigated tabs, but one at a time: there is no split of a single window into panes yet."
+evidence = ["crates/ui-egui/src/tile_view_tests.rs::switching_between_tab_and_tile_view_keeps_each_views_place", "crates/ui-egui/src/tile_view_tests.rs::two_tiles_of_one_document_both_render", "crates/ui-egui/src/tile_view_tests.rs::the_wheel_scrolls_the_tile_under_the_pointer_without_a_click"]
+notes = "This fork (OV7): Duplicate Tab plus Tile View shows one document in two (or more) panes of one window, side by side, each scrolled, zoomed and paged on its own; the wheel, zoom and middle button act on the pane under the pointer, and a click makes a pane the one tools act on. Missing compared with Acrobat's Window ▸ Split: panes are columns only (no top/bottom split), the divider can't be dragged, there is no spreadsheet-style synchronised split, and every open tab is tiled (not a chosen pair)."
 
 [[feature]]
 id = "view.spreadsheet-split"

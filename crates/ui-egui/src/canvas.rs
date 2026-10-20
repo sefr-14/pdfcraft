@@ -498,6 +498,9 @@ pub struct DocView {
     /// Hand the pool this view's queue on the next frame even if it hasn't changed: another view
     /// of the document left its own requests there (see `PdfCraftApp::finish_render_frame`).
     pub(crate) requeue: bool,
+    /// How many views are on screen together (Tile View): prefetch beyond the screen gets this
+    /// share of the page and tile allowances, so tiling doesn't multiply them. 1 otherwise.
+    pub(crate) budget_share: usize,
     /// Finished renders wait in the pool instead of reaching the view (tests): what the view
     /// shows before a raster arrives can be looked at however fast the renderer is.
     pub hold_rasters: bool,
@@ -792,6 +795,7 @@ impl DocView {
             last_press_pos: None,
             last_queue: Vec::new(),
             requeue: false,
+            budget_share: 1,
             hold_rasters: false,
             viewport_w: 800.0,
             viewport_h: 600.0,
@@ -1068,6 +1072,14 @@ impl DocView {
     #[cfg(test)]
     pub(crate) fn first_visible_thumbnail(&self) -> Option<usize> {
         self.thumb_demand.iter().filter(|(_, visible)| **visible).map(|(p, _)| *p).min()
+    }
+
+    /// The page bytes, tile bytes and page count prefetch may use: the whole allowances, or this
+    /// view's share of them while several views are on screen (Tile View). On-screen pages are
+    /// always taken, whatever these say.
+    fn prefetch_limits(&self) -> (usize, usize, usize) {
+        let share = self.budget_share.max(1);
+        (PAGE_BYTES / share, TILE_BYTES / share, (MAX_CACHED_PAGES / share).max(1))
     }
 
     pub fn render_pending(&self) -> bool {
@@ -1786,6 +1798,7 @@ impl DocView {
         let mut tile_tags = HashSet::new();
         let mut grid = Vec::new();
         let (mut page_bytes, mut tile_bytes) = (0usize, 0usize);
+        let (page_limit, tile_limit, max_pages) = self.prefetch_limits();
         for req in requests.iter().filter(|r| r.kind == RequestKind::Pixels) {
             let Some(p) = info.pages.get(req.page) else { continue };
             // Organize-grid renders: only the cells in view that need one (organize_grid).
@@ -1808,7 +1821,7 @@ impl DocView {
                 // (`tile_side`), so grid indices would need the scale to decode.
                 let key = (req.page, req.tag, tile.x, tile.y);
                 let bytes = rgba_bytes(tile.w as usize, tile.h as usize);
-                if (!visible && tile_bytes.saturating_add(bytes) > TILE_BYTES) || !tiles.insert(key) {
+                if (!visible && tile_bytes.saturating_add(bytes) > tile_limit) || !tiles.insert(key) {
                     continue;
                 }
                 tile_bytes = tile_bytes.saturating_add(bytes);
@@ -1818,7 +1831,7 @@ impl DocView {
                 }
             } else {
                 let bytes = rgba_bytes(device_pixels(p.width, req.scale) as usize, device_pixels(p.height, req.scale) as usize);
-                if (!visible && (page_bytes.saturating_add(bytes) > PAGE_BYTES || pages.len() >= MAX_CACHED_PAGES)) || !pages.insert(req.page) {
+                if (!visible && (page_bytes.saturating_add(bytes) > page_limit || pages.len() >= max_pages)) || !pages.insert(req.page) {
                     continue;
                 }
                 page_bytes = page_bytes.saturating_add(bytes);
@@ -1834,7 +1847,7 @@ impl DocView {
         let mut kept = pages.len();
         for page in undemanded {
             let bytes = self.pages.get(&page).map_or(0, |p| texture_bytes(&p.tex));
-            if kept < MAX_CACHED_PAGES && page_bytes.saturating_add(bytes) <= PAGE_BYTES {
+            if kept < max_pages && page_bytes.saturating_add(bytes) <= page_limit {
                 page_bytes = page_bytes.saturating_add(bytes);
                 kept += 1;
                 pages.insert(page);
@@ -2062,10 +2075,11 @@ impl DocView {
             let key = (req.page, req.tag, t.x, t.y);
             self.tiles.remove(&key);
             let retained = self.tiles.values().fold(0usize, |n, tex| n.saturating_add(texture_bytes(tex)));
-            visible || bytes <= TILE_BYTES.saturating_sub(retained)
+            visible || bytes <= self.prefetch_limits().1.saturating_sub(retained)
         } else {
             let thumb = req.tag & THUMB_TAG != 0;
-            let (cache, limit) = if thumb { (&mut self.thumbs, THUMB_BYTES) } else { (&mut self.pages, PAGE_BYTES) };
+            let page_limit = self.prefetch_limits().0;
+            let (cache, limit) = if thumb { (&mut self.thumbs, THUMB_BYTES) } else { (&mut self.pages, page_limit) };
             cache.remove(&req.page);
             let mut retained = cache.values().fold(0usize, |n, p| n.saturating_add(texture_bytes(&p.tex)));
             // A zoom/DPI change can temporarily retain larger stale images than the new
@@ -2359,6 +2373,108 @@ impl PageXform {
     }
 }
 
+/// Tile View: a touchpad swipe over one tile leaves egui an eased tail of wheel motion for a
+/// few frames, which the tile under the pointer would otherwise take, even a tile the swipe never
+/// touched once the pointer has moved on. Every tile keeps the latest swipe's suppression window,
+/// so each one ignores that tail and applies only its own wheel events 1:1, whichever of them is
+/// drawn first.
+pub(crate) fn share_wheel_suppression(views: &mut [DocView], now: f64) {
+    let until = views.iter().map(|v| v.precise_scroll_until).fold(0.0f64, f64::max);
+    if until.is_finite() && until > now {
+        for v in views.iter_mut() {
+            v.precise_scroll_until = until;
+        }
+    }
+}
+
+/// Several views of one document on screen together (Tile View with Duplicate Tab). The
+/// document has one render pool with one queue, so the views can't each hand it their own: a
+/// view's queue would replace the other's and the other would never get its pages. Their
+/// requests go in one queue, interleaved with each view's on-screen pages first, and each finished
+/// render is handed to every view that asked for it.
+pub(crate) fn finish_shared_render_frame(views: &mut [&mut DocView], ctx: &egui::Context, info: &DocInfo, pool: &RenderPool) {
+    let ppp = ctx.pixels_per_point();
+    let mut changed = false;
+    let mut queues: Vec<Vec<RenderRequest>> = Vec::with_capacity(views.len());
+    for v in views.iter_mut() {
+        if v.frame_geometry_changed {
+            // Its scales and indexes belong to the old pages (#3149): nothing from it this frame.
+            v.begin_render_frame();
+            v.last_queue.clear();
+            queues.push(Vec::new());
+            changed = true;
+            ctx.request_repaint();
+            continue;
+        }
+        let queue = v.prepare_render_queue(info, ppp);
+        changed |= std::mem::take(&mut v.requeue) || queue != v.last_queue;
+        queues.push(queue);
+    }
+    if changed {
+        let longest = queues.iter().map(Vec::len).max().unwrap_or(0);
+        let mut merged: Vec<RenderRequest> = Vec::with_capacity(queues.iter().map(Vec::len).sum());
+        for k in 0..longest {
+            for q in &queues {
+                if let Some(r) = q.get(k)
+                    && !merged.contains(r)
+                {
+                    merged.push(*r);
+                }
+            }
+        }
+        pool.set_queue(merged);
+        for (v, q) in views.iter_mut().zip(queues) {
+            v.last_queue = q;
+        }
+    }
+    if views.iter().all(|v| v.hold_rasters) {
+        return;
+    }
+    let budget = if pool.is_inline() { 1 } else { RESULTS_PER_FRAME.saturating_mul(views.len()) };
+    let mut uploaded = 0usize;
+    #[cfg(not(target_arch = "wasm32"))]
+    let started = std::time::Instant::now();
+    for _ in 0..budget {
+        let Some(r) = pool.try_recv() else { break };
+        let wanting: Vec<usize> =
+            (0..views.len()).filter(|&k| views.get(k).is_some_and(|v| !v.hold_rasters && v.last_queue.contains(&r.request))).collect();
+        let Some((&last, rest)) = wanting.split_last() else { continue };
+        for &k in rest {
+            if let Some(v) = views.get_mut(k) {
+                uploaded = uploaded.saturating_add(v.receive_result(ctx, copy_rendered(&r)));
+            }
+        }
+        if let Some(v) = views.get_mut(last) {
+            uploaded = uploaded.saturating_add(v.receive_result(ctx, r));
+        }
+        if uploaded >= UPLOAD_BYTES_PER_FRAME.saturating_mul(views.len()) {
+            break;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        if started.elapsed() >= std::time::Duration::from_millis(4) {
+            break;
+        }
+    }
+    if views.iter().any(|v| !v.last_queue.is_empty()) {
+        ctx.request_repaint_after(std::time::Duration::from_millis(30));
+    }
+}
+
+/// A finished render for one more view that asked for the same page (the pixels are copied:
+/// each view uploads its own texture).
+fn copy_rendered(r: &pdfcraft_render::RenderedPage) -> pdfcraft_render::RenderedPage {
+    pdfcraft_render::RenderedPage {
+        request: r.request,
+        width: r.width,
+        height: r.height,
+        rgba: r.rgba.clone(),
+        error: r.error.clone(),
+        text: r.text.clone(),
+        warnings: r.warnings.clone(),
+        millis: r.millis,
+    }
+}
+
 pub fn shortcuts(view: &mut DocView, ctx: &egui::Context, speed: crate::scroll_speed::ScrollSpeed) {
     use egui::{Key, KeyboardShortcut, Modifiers};
     if ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::F))) {
@@ -2505,8 +2621,25 @@ fn page_scroll<R>(
     ui.scope_builder(egui::UiBuilder::new().id(id), |ui| scroll.show_viewport(ui, draw)).inner
 }
 
+/// How a view drawn by [`document_area_with`] takes pointer input (OV7.3).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Interaction {
+    /// The active view: tools, editing, overlays and their keys, as always.
+    Full,
+    /// Another tile in Tile View: it scrolls, zooms and pans under the pointer, but nothing on
+    /// its pages can be selected, drawn on or edited until a click makes it the active view.
+    NavigateOnly,
+}
+
 pub fn document_area(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui) {
+    document_area_with(app, index, ui, Interaction::Full);
+}
+
+/// [`document_area`] for a view that may not be the active one (Tile View).
+pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui, interaction: Interaction) {
     let t = Tokens::get(ui.ctx());
+    // Only the active view's tools act on its pages.
+    let tools = interaction == Interaction::Full;
     // Keyboard scrolling applies to this frame's page view only, never later.
     let key_scroll = std::mem::take(&mut app.views[index].key_scroll);
     // The Search panel closed: its search moves to the find bar.
@@ -2538,10 +2671,10 @@ pub fn document_area(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui) {
         app.views[index].print_pages.clear();
     }
     // The Prepare a form panel is open (or a field tool is picked): fields are edited, not filled.
-    let preparing = app.is_preparing();
+    let preparing = tools && app.is_preparing();
     // Edit a PDF: added text and images can be selected, moved and edited.
-    let editing_content =
-        (app.left_open && app.left == crate::LeftPanel::Tool("edit")) || matches!(app.quick_tool, QuickTool::AddText | QuickTool::EditText);
+    let editing_content = tools
+        && ((app.left_open && app.left == crate::LeftPanel::Tool("edit")) || matches!(app.quick_tool, QuickTool::AddText | QuickTool::EditText));
     let text_style = app.text_style.clone();
     let view = &mut app.views[index];
     // Opened without the owner password and something is restricted.
@@ -2571,7 +2704,7 @@ pub fn document_area(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui) {
     let unobstructed = !app.modal_open() && !app.palette_open;
     let view = &mut app.views[index];
     if view.organize {
-        organize_grid(view, info, doc.allows_assembly(), doc.dirty, unobstructed, ui, &t);
+        organize_grid(view, info, doc.allows_assembly(), doc.dirty, unobstructed, tools, ui, &t);
         return;
     }
 
@@ -2871,7 +3004,8 @@ pub fn document_area(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui) {
     let sharp_held = now_scale < view.sharp_hold_until;
     view.current_scale_tag = tag;
     let hand = app.quick_tool == QuickTool::Hand;
-    let tool = app.quick_tool;
+    // A navigation-only view treats the pointer as the Hand tool's: nothing on its pages changes.
+    let tool = if tools { app.quick_tool } else { QuickTool::Hand };
     // Text selection runs for the Select tool and for the markup tools (highlight…).
     let selects_text = match tool {
         QuickTool::Comment(t) => t.markup().is_some() || t == comments::CommentTool::ReplaceText,
@@ -2970,8 +3104,10 @@ pub fn document_area(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui) {
     let selection_wheel = view.selection_drag && navigation_enabled && unobstructed && !single_paging && ui.rect_contains_pointer(avail);
     let out = page_scroll(ui, scroll, egui::Id::new(("page-view-scope", view.key)), |ui, viewport| {
         // egui's drag responses accept every pointer button. Keep a wheel gesture from also
-        // selecting text, drawing a mark, or panning with the Hand tool.
-        if middle_gesture {
+        // selecting text, drawing a mark, or panning with the Hand tool. A navigation-only view
+        // (another tile) takes no clicks either: only the scroll area itself, outside this
+        // content, scrolls and zooms it.
+        if middle_gesture || !tools {
             let opacity = ui.opacity();
             ui.disable();
             // Only interactions pause; the document must keep its original colours.
@@ -3941,7 +4077,7 @@ pub fn document_area(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui) {
     let mut drop: Vec<(usize, u64, u32, u32)> = Vec::new();
     for (_dist, key) in older {
         let bytes = view.tiles.get(&key).map_or(0, texture_bytes);
-        if kept >= OLD_TILES || kept_bytes.saturating_add(bytes) > TILE_BYTES {
+        if kept >= OLD_TILES || kept_bytes.saturating_add(bytes) > view.prefetch_limits().1 {
             drop.push(key);
         } else {
             kept = kept.saturating_add(1);
@@ -4022,6 +4158,11 @@ pub fn document_area(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui) {
                 ui.label(text);
             });
         });
+    }
+    // Everything below is the active view's: the find bar, editors, composers, the floating
+    // tools, their keys, and what its tools asked for.
+    if !tools {
+        return;
     }
     find_bar(view, info.pages.len(), avail, ui, &t);
     page_size_hint(view, info, units, avail, unobstructed, ui, &t);
@@ -5100,14 +5241,21 @@ fn gap_button(ui: &mut egui::Ui, gap: usize, at: Pos2, height: f32, label: Strin
     resp.on_hover_text(label).clicked()
 }
 
-fn organize_grid(view: &mut DocView, info: &DocInfo, editable: bool, dirty: bool, unobstructed: bool, ui: &mut egui::Ui, t: &Tokens) {
+/// `tools` is false for a navigation-only view (another tile): its grid scrolls, but its pages
+/// can't be picked, moved or deleted from it.
+#[allow(clippy::too_many_arguments)]
+fn organize_grid(view: &mut DocView, info: &DocInfo, editable: bool, dirty: bool, unobstructed: bool, tools: bool, ui: &mut egui::Ui, t: &Tokens) {
     let ppp = ui.ctx().pixels_per_point();
     // The page image scales with the zoom; the padding and the page number don't.
     let cell = vec2(146.0 * view.grid_zoom + 44.0, 194.0 * view.grid_zoom + 88.0);
     let anchor = view.grid_anchor.take();
     let reveal = view.grid_reveal.take();
     let mut open_page = None;
-    organize_toolbar(view, info, editable, dirty, unobstructed, ui, t);
+    if tools {
+        organize_toolbar(view, info, editable, dirty, unobstructed, ui, t);
+    } else {
+        ui.add_enabled_ui(false, |ui| organize_toolbar(view, info, editable, dirty, false, ui, t));
+    }
     let viewport = ui.available_rect_before_wrap();
     view.viewport_screen = viewport;
     let auto_delta = if unobstructed {
@@ -5125,7 +5273,7 @@ fn organize_grid(view: &mut DocView, info: &DocInfo, editable: bool, dirty: bool
     let mut drop = view.org_drag.is_some() && ui.input(|i| i.pointer.primary_released());
     // Each view keeps its own place in the grid, also when two views show the same document.
     egui::ScrollArea::vertical().id_salt(("organize-grid", view.key)).auto_shrink([false, false]).show_viewport(ui, |ui, clip| {
-        if middle_gesture {
+        if middle_gesture || !tools {
             let opacity = ui.opacity();
             ui.disable();
             ui.set_opacity(opacity);

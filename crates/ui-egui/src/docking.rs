@@ -409,6 +409,8 @@ pub fn show(app: &mut crate::PdfCraftApp, ui: &mut egui::Ui) {
                 match app.active {
                     None if app.combine_showing() => crate::combine_ui::page(app, ui),
                     None => crate::home::show(app, ui),
+                    // Tile View: every open view side by side (OV7.2).
+                    Some(_) if app.tiled() => crate::tile_view::area(app, ui),
                     Some(index) => match crate::compare_ui::side_by_side(app, index) {
                         Some((old, new)) => crate::compare_ui::compare_area(app, old, new, ui),
                         None => crate::canvas::document_area(app, index, ui),

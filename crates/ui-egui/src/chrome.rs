@@ -156,11 +156,20 @@ pub fn tab_strip(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                                 let (id, key) = (app.views[i].id, app.views[i].key);
                                 let reveal = cfg!(not(target_arch = "wasm32")) && doc.path.is_some();
                                 let can_duplicate = app.can_duplicate(i);
+                                let layout = app.layout_mode;
                                 response.context_menu(|ui| {
                                     // Another view of the same document, navigated on its own (OV7).
                                     if ui.add_enabled(can_duplicate, egui::Button::new(tl!("Duplicate Tab"))).clicked() {
                                         action = Some(crate::tab_context::Action::Duplicate(key));
                                         ui.close();
+                                    }
+                                    ui.separator();
+                                    // How the views are arranged (OV7.2); the one shown is greyed out.
+                                    for (mode, label) in [(crate::ViewLayout::Tabs, tl!("Tab View")), (crate::ViewLayout::Tiles, tl!("Tile View"))] {
+                                        if ui.add_enabled(layout != mode, egui::Button::new(label)).clicked() {
+                                            action = Some(crate::tab_context::Action::Layout(mode));
+                                            ui.close();
+                                        }
                                     }
                                     ui.separator();
                                     if ui.button(tl!("Close Tab")).clicked() {
