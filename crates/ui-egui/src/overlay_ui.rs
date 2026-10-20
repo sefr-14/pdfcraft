@@ -771,6 +771,9 @@ struct Preview {
     outline: Option<[Pos2; 4]>,
     report: String,
     error: Option<Failure>,
+    /// The preview's own unresolved items (its one output page), apart from Generate's: a
+    /// preview finishing after Generate mustn't replace or clear Generate's list (OV6.11).
+    unresolved: Option<(Vec<Unresolved>, Vec<Unresolved>)>,
 }
 
 impl Default for Preview {
@@ -787,6 +790,7 @@ impl Default for Preview {
             outline: None,
             report: String::new(),
             error: None,
+            unresolved: None,
         }
     }
 }
@@ -868,6 +872,8 @@ pub struct Wizard {
     pub expand: bool,
     decisions: [HashMap<ObjRef, bool>; 2],
     omit: [HashSet<ObjRef>; 2],
+    /// Generate's unresolved items, every page of both documents; only Generate writes them
+    /// (the preview keeps its own, OV6.11).
     unresolved: Option<(Vec<Unresolved>, Vec<Unresolved>)>,
     generating: bool,
     generate_requested: bool,
@@ -980,6 +986,7 @@ impl Wizard {
         self.decisions[side.index()].clear();
         self.omit[side.index()].clear();
         self.unresolved = None;
+        self.preview.unresolved = None;
         self.preview.key.clear();
         self.preview.images = None;
     }
@@ -1527,13 +1534,14 @@ impl Wizard {
                             self.preview.outline = out.outline;
                             self.preview.report = out.report;
                             self.preview.error = None;
-                            self.unresolved = None;
+                            self.preview.unresolved = None;
                         }
                         Err(e) => {
                             self.preview.images = None;
-                            if let Failure::Overlay(OverlayError::Unresolved { a, b, .. }) = &e {
-                                self.unresolved = Some((a.clone(), b.clone()));
-                            }
+                            self.preview.unresolved = match &e {
+                                Failure::Overlay(OverlayError::Unresolved { a, b, .. }) => Some((a.clone(), b.clone())),
+                                _ => None,
+                            };
                             self.preview.error = Some(e);
                         }
                     }
@@ -2943,8 +2951,8 @@ fn preview_step(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
         );
     }
     if let Some(e) = &w.preview.error {
-        if w.unresolved.is_some() {
-            unresolved_panel(w, ui, t);
+        if let Some(items) = w.preview.unresolved.clone() {
+            unresolved_panel(w, ui, t, items);
         } else {
             ui.colored_label(Color32::from_rgb(200, 60, 40), e.to_string());
         }
@@ -3006,10 +3014,11 @@ fn preview_step(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
     }
 }
 
-/// Unresolved optional content or annotations: each question once per document, with the pages
-/// it is on (OV4.10; one decision settles every page), and the decision that settles it.
-fn unresolved_panel(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
-    let Some((ua, ub)) = w.unresolved.clone() else { return };
+/// Unresolved optional content or annotations, Preview's or Generate's `items` (OV6.11): each
+/// question once per document, with the pages it is on (OV4.10; one decision settles every
+/// page), and the decision that settles it.
+fn unresolved_panel(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, items: (Vec<Unresolved>, Vec<Unresolved>)) {
+    let (ua, ub) = items;
     ui.colored_label(
         Color32::from_rgb(200, 60, 40),
         tx("Some layers or annotations can't be resolved with certainty, so nothing is written until you decide each item. Hidden content is never shown without your decision."),
@@ -3120,8 +3129,8 @@ fn generate_step(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
     });
     ui.add_space(8.0);
     if let Some(f) = w.failure.clone() {
-        if w.unresolved.is_some() {
-            unresolved_panel(w, ui, t);
+        if let Some(items) = w.unresolved.clone() {
+            unresolved_panel(w, ui, t, items);
             ui.add_space(4.0);
             muted(ui, t, tx("Decide the items above, then Generate again."));
         } else {
