@@ -732,8 +732,13 @@ pub(crate) fn page(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
             // Where the line ends (an overflowing line would move it).
             let edge = ui.max_rect().right();
             add_menu(app, ui);
-            let open_docs: Vec<(usize, String)> =
-                app.views.iter().enumerate().filter_map(|(i, _)| crate::canvas::tab_label(app, i).map(|name| (i, name))).collect();
+            // Each document once, however many tabs show it (Duplicate Tab).
+            let open_docs: Vec<(usize, String)> = app
+                .open_documents()
+                .into_iter()
+                .filter_map(|id| app.views.iter().position(|v| v.id == id))
+                .filter_map(|i| crate::canvas::document_label(app, i).map(|name| (i, name)))
+                .collect();
             let response = ui.add_enabled_ui(!open_docs.is_empty(), |ui| widgets::icon_pill(ui, "file-plus", tl!("Add open documents"), false)).inner;
             response.clone().on_disabled_hover_text(tl!("No documents are open"));
             egui::Popup::menu(&response).show(|ui| {

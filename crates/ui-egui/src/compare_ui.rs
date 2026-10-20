@@ -49,7 +49,7 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens) -> (boo
     ui.add_space(8.0);
     let Some((_, new)) = app.active_ids() else { return (false, true) };
     let others: Vec<(DocId, String)> =
-        app.views.iter().filter(|v| v.id != new).filter_map(|v| app.session.get(v.id).map(|d| (d.id, d.name.clone()))).collect();
+        app.open_documents().into_iter().filter(|id| *id != new).filter_map(|id| app.session.get(id).map(|d| (d.id, d.name.clone()))).collect();
     if app.compare_old.is_none_or(|o| !others.iter().any(|(id, _)| *id == o)) {
         app.compare_old = others.first().map(|(id, _)| *id);
     }

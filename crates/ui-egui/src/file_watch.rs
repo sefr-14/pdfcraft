@@ -297,9 +297,11 @@ impl FileWatch {
 }
 
 impl PdfCraftApp {
-    /// The documents to watch: every open one with a file, while the preference is on.
+    /// The documents to watch: every open one with a file, while the preference is on. A
+    /// document shown in several tabs (Duplicate Tab) is watched once.
     fn watched(&self) -> impl Iterator<Item = (DocId, &str, Option<Stamp>, u64)> {
-        self.views.iter().filter(|_| self.reload_changed_files).filter_map(|v| {
+        let first_tab = |i: usize, v: &crate::DocView| self.views.iter().position(|w| w.id == v.id) == Some(i);
+        self.views.iter().enumerate().filter(move |(i, v)| self.reload_changed_files && first_tab(*i, v)).filter_map(|(_, v)| {
             let path = self.session.get(v.id)?.path.as_deref()?;
             Some((v.id, path, self.watch.known.get(&v.id).copied(), self.watch.epoch(v.id)))
         })
@@ -366,7 +368,7 @@ impl PdfCraftApp {
     /// A watched file has a new version: reload its document, or ask first when it has unsaved
     /// changes.
     fn file_changed(&mut self, c: Changed) {
-        let Some(i) = self.views.iter().position(|v| v.id == c.doc) else { return };
+        let Some(i) = self.view_of(c.doc) else { return };
         // Found for an earlier reading or writing of the file, or for another file than the
         // document's now (a save, Save As or a reopen came between): older than the document in
         // memory, so it is not applied over it (#1802). The watcher was told the newer version.
@@ -379,8 +381,10 @@ impl PdfCraftApp {
             return;
         }
         self.watch.known.insert(c.doc, c.stamp);
-        if self.has_unsaved_work(i) {
-            if let Some(view) = self.views.get_mut(i) {
+        // Unsaved work in any tab of the document holds the reload back, and every tab of it
+        // shows the Reload notice.
+        if self.document_has_unsaved_work(c.doc) {
+            for view in self.views.iter_mut().filter(|v| v.id == c.doc) {
                 view.disk_changed = true;
             }
             return;
@@ -391,7 +395,7 @@ impl PdfCraftApp {
     /// The notice bar's Reload: read the file now and replace the document, unsaved changes and
     /// all.
     fn reload_from_disk(&mut self, doc: DocId) {
-        let Some(i) = self.views.iter().position(|v| v.id == doc) else { return };
+        let Some(i) = self.view_of(doc) else { return };
         let Some(path) = self.session.get(doc).and_then(|d| d.path.clone()) else { return };
         let stamp = Stamp::at(&path);
         match std::fs::read(&path) {
@@ -407,15 +411,20 @@ impl PdfCraftApp {
     }
 
     /// Open `bytes` in place of tab `i`'s document, keeping the tab and the reader's place. A
-    /// version that can't be opened leaves the document as it was, and says so.
+    /// version that can't be opened leaves the document as it was, and says so. Every tab of the
+    /// document (Duplicate Tab) shows the new version, each keeping its own place.
     fn reload_view(&mut self, i: usize, bytes: Arc<Vec<u8>>) {
         let Some(id) = self.views.get(i).map(|v| v.id) else { return };
         match self.session.reload(id, bytes) {
             Ok(()) => {
                 // Whatever was unsaved is gone, so there is nothing left to recover.
                 self.forget_recovery(id);
-                if let (Some(view), Some(doc)) = (self.views.get_mut(i), self.session.get(id)) {
-                    view.document_replaced(&doc.info);
+                if let Some(doc) = self.session.get(id) {
+                    let version = crate::content_version(doc);
+                    for view in self.views.iter_mut().filter(|v| v.id == id) {
+                        view.document_replaced(&doc.info);
+                        view.content_seen = Some(version);
+                    }
                 }
                 // What the form's scripts said while it opened, as on opening.
                 let out = self.session.take_js_output(id);

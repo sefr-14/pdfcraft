@@ -2433,3 +2433,6 @@ animation effects	Off	Kapalı
 # This fork (sefr-14/pdfcraft): Overlay compare, the command and its All tools item.
 	Overlay compare…	Üst üste bindirerek karşılaştır…
 	Overlay two revisions	İki revizyonu üst üste bindir
+# This fork (sefr-14/pdfcraft): Duplicate Tab (OV7), the tab menu item and its command.
+	Duplicate Tab	Sekmeyi çoğalt
+	Duplicate tab	Sekmeyi çoğalt

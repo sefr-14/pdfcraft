@@ -2511,3 +2511,6 @@ animation effects	Off	Vypnuto
 # This fork (sefr-14/pdfcraft): Overlay compare, the command and its All tools item.
 	Overlay compare…	Porovnání překrytím…
 	Overlay two revisions	Překrýt dvě revize
+# This fork (sefr-14/pdfcraft): Duplicate Tab (OV7), the tab menu item and its command.
+	Duplicate Tab	Duplikovat kartu
+	Duplicate tab	Duplikovat kartu

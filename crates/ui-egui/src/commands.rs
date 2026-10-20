@@ -91,6 +91,7 @@ impl PdfCraftApp {
             && match spec.id {
                 "view.previous_view" => self.active.and_then(|i| self.views.get(i)).is_some_and(|v| !v.back.is_empty()),
                 "view.next_view" => self.active.and_then(|i| self.views.get(i)).is_some_and(|v| !v.forward.is_empty()),
+                "view.duplicate_tab" => self.active.is_some_and(|i| self.can_duplicate(i)),
                 _ => true,
             }
     }
@@ -281,6 +282,11 @@ impl PdfCraftApp {
             }
             "view.next_tab" => self.step_tab(true),
             "view.previous_tab" => self.step_tab(false),
+            "view.duplicate_tab" => {
+                if let Some(i) = active {
+                    return self.duplicate_view(i).is_some();
+                }
+            }
             "view.theme" => {
                 let next = if self.theme == ThemeKind::Light { ThemePreference::Dark } else { ThemePreference::Light };
                 self.set_theme_preference(next);
@@ -729,9 +735,9 @@ impl PdfCraftApp {
             if ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(m, key))) {
                 if form_typing {
                     // A form field has the keyboard: let it take this frame's typing (and
-                    // Escape) first, so ⌘S saves what's on screen (#166). Runs next frame, for
-                    // this document only.
-                    self.deferred_commands.push((spec.id, active.map(|(_, id)| id)));
+                    // Escape) first, so ⌘S saves what's on screen (#166). Runs next frame, in
+                    // this view only (another tab of the same document has its own page and zoom).
+                    self.deferred_commands.push((spec.id, self.active_key()));
                     ctx.request_repaint();
                 } else if spec.id == "file.close" && active.is_none() && crate::commands::mac_shortcuts(ctx) && !cfg!(target_arch = "wasm32") {
                     // macOS ⌘W closes the last window when no document tabs remain (#869).

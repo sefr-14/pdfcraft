@@ -79,6 +79,28 @@ and anything that can't be decided with certainty is asked about.
   [README](crates/overlay/README.md) gives the rules, the checks and the known limitations.
 - The wizard is [`crates/ui-egui/src/overlay_ui.rs`](crates/ui-egui/src/overlay_ui.rs).
 
+**Also: Duplicate Tab.** Right-click a document tab and choose **Duplicate Tab** (or run
+"Duplicate tab" from the command palette, Ctrl+K / ⌘K) to open a second tab on the same PDF, for
+example to read the legend on one sheet while looking at a detail on another. The new tab, named
+`Structural Plan.pdf (2)` (then `(3)` and so on), opens at the same page, zoom and scroll position
+as the tab it came from. From then on **each tab is navigated independently**: different pages, or
+different areas of the same page, can be viewed and navigated in each tab, each with its own page,
+scroll position, zoom, panning and Previous view / Next view history. Navigating one tab never
+moves the other.
+
+- Both tabs show **one document**: the PDF is not copied or read again. An edit or comment made in
+  either tab appears in both, Undo and Redo work on the document's single history from either tab,
+  both tabs show the unsaved-changes dot, and Save writes the document once.
+- Closing one of the tabs doesn't ask to save while another tab still shows the document: the
+  document and its unsaved changes stay open there, and anything still being typed in the closed
+  tab goes into the document first. Closing the last tab asks as before. Quit and File › Close all
+  ask once per document.
+- A file changed on disk reloads in every tab of it, each keeping its own page and zoom.
+- Not yet: showing several tabs side by side. Reopening the last session restores each file once,
+  not its duplicates.
+- Duplicate Tab is part of the normal viewer, separate from Overlay compare. Overlay compares
+  documents, not tabs, so a duplicated document is listed once in its document list.
+
 **What else differs from upstream**
 
 - The ArtCraft marks are left out of this fork's builds and of this README, as the
