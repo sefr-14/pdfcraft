@@ -86,26 +86,6 @@ and anything that can't be decided with certainty is asked about.
 - Windows builds are made on request by
   [`.github/workflows/overlay-windows.yml`](.github/workflows/overlay-windows.yml). They are Actions
   artifacts, not releases.
-- Upstream's Dependabot configuration is removed. Dependencies change only through upstream syncs.
-- `Main` is the only branch, and every change reaches it through a pull request.
-
-**Upstream base.** PdfCraft 0.9.0, upstream commit `ec0a9650` (19 Oct 2026). Upstream changes come
-in through reviewed merges.
-
-**Getting a Windows build**
-
-1. Open the Actions tab, choose "overlay windows build" and click "Run workflow" on `Main`.
-2. When the run finishes, download the artifact from its page. You need to be signed in to GitHub.
-3. Unzip it and run `pdfcraft.exe`. Nothing is installed; settings are kept in `PdfCraftData` next
-   to the exe.
-
-The build is unsigned, so Windows SmartScreen warns on first launch: click "More info", then "Run
-anyway". It doesn't include OCR. This fork makes no builds for other platforms, and upstream's
-downloads below don't include Overlay compare.
-
-**License.** The same as upstream: MIT OR Apache-2.0, at your option.
-
-Everything after this section describes upstream PdfCraft.
 
 ## Community
 
