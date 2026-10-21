@@ -2739,3 +2739,5 @@ certificate	Version	الإصدار
 	Windows builds are listed at {page}.	إصدارات Windows المبنية مدرجة في {page}.
 	Try again	إعادة المحاولة
 	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	يسأل GitHub عن أحدث بناء لنظام Windows من هذا الفرع. لا يُنزَّل أو يُثبَّت شيء تلقائيًا.
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	خطوط رفيعة

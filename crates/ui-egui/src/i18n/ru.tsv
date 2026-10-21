@@ -2375,3 +2375,5 @@ animation effects	Off	Выкл
 	Windows builds are listed at {page}.	Сборки для Windows перечислены на странице {page}.
 	Try again	Повторить
 	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Запрашивает у GitHub последнюю сборку этого форка для Windows. Ничего не скачивается и не устанавливается автоматически.
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	Тонкие линии

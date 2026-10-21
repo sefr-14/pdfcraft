@@ -616,7 +616,7 @@ fn main_menu(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                             v.view_history(true);
                         }
                         ui.separator();
-                        if let Some(id) = page_display_menu(ui, &app.views[i]) {
+                        if let Some(id) = page_display_menu(ui, &app.views[i], app.thin_lines) {
                             app.execute(id);
                         }
                         ui.separator();
@@ -696,6 +696,7 @@ pub fn right_rail(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
             rail_button(ui, RightPanel::Tags, "tag", "Tags", false);
 
             // Page navigation cluster at the bottom (as in Acrobat's rail).
+            let thin_lines = app.thin_lines;
             let view = &mut app.views[index];
             let mut page_display = None;
             ui.with_layout(Layout::bottom_up(Align::Center), |ui| {
@@ -714,7 +715,7 @@ pub fn right_rail(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                 page_display = egui::Popup::menu(&resp)
                     .show(|ui| {
                         ui.set_min_width(220.0);
-                        rail_view_menu(ui, view)
+                        rail_view_menu(ui, view, thin_lines)
                     })
                     .and_then(|r| r.inner);
                 let tip = crate::commands::key_tip(ui.ctx(), tl!("Rotate view clockwise ({key})"), crate::commands::ROTATE_CW);
@@ -818,7 +819,7 @@ pub fn right_rail(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
 
 /// View ▸ Page display and the rail's Page display menu: the layouts and the cover page.
 /// Returns the command a click asks for, for the caller to run.
-fn page_display_menu(ui: &mut egui::Ui, view: &DocView) -> Option<&'static str> {
+fn page_display_menu(ui: &mut egui::Ui, view: &DocView, thin_lines: bool) -> Option<&'static str> {
     let t = Tokens::get(ui.ctx());
     ui.label(egui::RichText::new(tl!("Page display")).color(t.text_faint).small());
     let mut picked = None;
@@ -837,6 +838,11 @@ fn page_display_menu(ui: &mut egui::Ui, view: &DocView) -> Option<&'static str> 
     if ui.add_enabled(view.cover_applies(), widgets::checkbox(&mut cover, tl!("Show cover page in two-page view"))).changed() {
         picked = Some("view.layout.cover");
     }
+    // This fork (OV9): every open document, not just this view.
+    let mut thin = thin_lines;
+    if ui.add(widgets::checkbox(&mut thin, tl!("Thin lines"))).changed() {
+        picked = Some("view.thin_lines");
+    }
     if picked.is_some() {
         ui.close();
     }
@@ -845,7 +851,7 @@ fn page_display_menu(ui: &mut egui::Ui, view: &DocView) -> Option<&'static str> 
 
 /// The rail's Page display menu: Acrobat's view choices around the page display. Zoom changes
 /// apply at once; the command a click asks for is returned for the caller to run.
-fn rail_view_menu(ui: &mut egui::Ui, view: &mut DocView) -> Option<&'static str> {
+fn rail_view_menu(ui: &mut egui::Ui, view: &mut DocView, thin_lines: bool) -> Option<&'static str> {
     let mut picked = None;
     for (id, label) in [("view.fit_width_scrolling", "Fit to width scrolling"), ("view.fit_one_page", "Fit one full page")] {
         if ui.button(tl!(label)).clicked() {
@@ -865,7 +871,7 @@ fn rail_view_menu(ui: &mut egui::Ui, view: &mut DocView) -> Option<&'static str>
         picked = Some("view.fit_visible");
     }
     ui.separator();
-    picked = page_display_menu(ui, view).or(picked);
+    picked = page_display_menu(ui, view, thin_lines).or(picked);
     ui.separator();
     for (id, label) in [("view.read_mode", "Read mode"), ("view.full_screen", "Full screen mode")] {
         if ui.button(tl!(label)).clicked() {

@@ -2467,3 +2467,5 @@ animation effects	Off	Izklopljeni
 	Windows builds are listed at {page}.	Gradnje za Windows so navedene na {page}.
 	Try again	Poskusi znova
 	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Vpraša GitHub za najnovejšo gradnjo tega forka za Windows. Ničesar se ne prenese ali namesti samodejno.
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	Tanke črte

@@ -2715,3 +2715,5 @@ key	Space	Space
 	Windows builds are listed at {page}.	Các bản dựng Windows được liệt kê tại {page}.
 	Try again	Thử lại
 	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Hỏi GitHub về bản dựng Windows mới nhất của bản fork này. Không có gì được tải xuống hoặc cài đặt tự động.
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	Đường mảnh

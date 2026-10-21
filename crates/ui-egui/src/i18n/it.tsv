@@ -2674,3 +2674,5 @@ certificate	SHA-256 digest	Impronta SHA-256
 	Windows builds are listed at {page}.	Le build per Windows sono elencate su {page}.
 	Try again	Riprova
 	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Chiede a GitHub l'ultima build per Windows di questo fork. Nulla viene scaricato o installato automaticamente.
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	Linee sottili

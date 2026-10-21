@@ -2371,3 +2371,5 @@ animation effects	Off	ఆఫ్
 	Windows builds are listed at {page}.	Windows బిల్డ్‌లు {page}లో జాబితా చేయబడ్డాయి.
 	Try again	మళ్లీ ప్రయత్నించండి
 	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	ఈ ఫోర్క్ యొక్క తాజా Windows బిల్డ్ గురించి GitHubను అడుగుతుంది. ఏదీ ఆటోమేటిక్‌గా డౌన్‌లోడ్ లేదా ఇన్‌స్టాల్ చేయబడదు.
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	సన్నని గీతలు

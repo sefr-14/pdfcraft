@@ -2458,3 +2458,5 @@ animation effects	Off	Kapalı
 	Windows builds are listed at {page}.	Windows derlemeleri {page} adresinde listelenir.
 	Try again	Yeniden dene
 	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Bu fork'un en son Windows derlemesi için GitHub'ı sorgular. Hiçbir şey otomatik olarak indirilmez veya kurulmaz.
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	İnce çizgiler

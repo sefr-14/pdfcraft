@@ -2468,3 +2468,5 @@ animation effects	Off	Ανενεργά
 	Windows builds are listed at {page}.	Οι κατασκευές για Windows παρατίθενται στο {page}.
 	Try again	Δοκιμάστε ξανά
 	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Αναζητά στο GitHub την τελευταία κατασκευή αυτού του fork για Windows. Δεν γίνεται αυτόματα λήψη ή εγκατάσταση.
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	Λεπτές γραμμές

@@ -2412,3 +2412,5 @@ animation effects	Off	關
 	Windows builds are listed at {page}.	Windows 組建列於 {page}。
 	Try again	重試
 	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	向 GitHub 搜尋此分支的最新 Windows 組建。不會自動下載或安裝任何內容。
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	細線

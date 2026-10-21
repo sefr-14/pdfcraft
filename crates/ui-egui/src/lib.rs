@@ -161,6 +161,10 @@ mod duplicate_tab_tests;
 #[cfg(not(target_arch = "wasm32"))]
 mod tile_view_tests;
 
+#[cfg(test)]
+#[cfg(not(target_arch = "wasm32"))]
+mod thin_lines_tests;
+
 use pdfcraft_engine::{DocId, Session};
 
 pub use canvas::{DocView, RasterMemory, ViewKey};
@@ -546,6 +550,9 @@ pub struct PdfCraftApp {
     /// The reading-colours preference (Preferences ▸ Reading colours): applied to every open
     /// document, and documents open with it (Acrobat's Replace Document Colors).
     pub reading_colors: pdfcraft_render::ReadingColors,
+    /// View ▸ Thin lines (this fork, OV9): every open document draws its strokes one device
+    /// pixel wide, comments keeping theirs. Off on first start; remembered with the settings.
+    pub thin_lines: bool,
     /// The Linux portal is enabled only by the native host, and starts on the first System choice.
     #[cfg(target_os = "linux")]
     desktop_theme: Option<pdfcraft_platform::desktop_theme::DesktopTheme>,
@@ -935,6 +942,7 @@ impl PdfCraftApp {
             theme: ThemeKind::Light,
             theme_preference: ThemePreference::Light,
             reading_colors: Default::default(),
+            thin_lines: false,
             #[cfg(target_os = "linux")]
             desktop_theme: None,
             #[cfg(target_os = "linux")]
@@ -1344,6 +1352,8 @@ impl PdfCraftApp {
         // The reading-colours preference is app-wide: a newly opened document starts with it.
         // Idempotent: the engine returns `false` when the document has the setting already.
         self.session.set_reading_colors(id, self.reading_colors);
+        // So is View ▸ Thin lines.
+        self.session.set_thin_lines(id, self.thin_lines);
         let doc = self.session.get(id).ok_or("the document could not be opened")?;
         let pages = doc.info.pages.len();
         // Acrobat opens straight to the Comments panel when a document has comments.
@@ -2136,6 +2146,27 @@ impl PdfCraftApp {
         }
     }
 
+    /// View ▸ Thin lines (this fork, OV9): app-wide, as in Revit, so every view of every open
+    /// document follows it — duplicate tabs and tiles included — and documents opened later
+    /// start with it. A display setting: no document changes.
+    pub fn set_thin_lines(&mut self, on: bool) {
+        self.thin_lines = on;
+        // Once per document (the engine says whether it changed), then every view of each
+        // changed document drops its rasters, not just the first view of it.
+        let mut changed = Vec::new();
+        for i in 0..self.views.len() {
+            let id = self.views[i].id;
+            if !changed.contains(&id) && self.session.set_thin_lines(id, on) {
+                changed.push(id);
+            }
+        }
+        for view in &mut self.views {
+            if changed.contains(&view.id) {
+                view.invalidate_content();
+            }
+        }
+    }
+
     /// Enable the Linux desktop portal in a native window. Headless contexts keep
     /// their supplied input and never connect to the user's session bus.
     #[cfg(target_os = "linux")]
@@ -2409,6 +2440,8 @@ impl PdfCraftApp {
         v["redact_prefs"] = self.redact_defaults.to_json();
         // Set outside json! above, which is at serde_json's macro recursion limit.
         v["hide_empty_highlight_hover"] = serde_json::Value::Bool(self.comment_prefs.hide_empty_highlight_hover);
+        // This fork (OV9): View ▸ Thin lines.
+        v["thin_lines"] = serde_json::Value::Bool(self.thin_lines);
         v.to_string()
     }
 
@@ -2495,6 +2528,10 @@ impl PdfCraftApp {
         // fails to deserialize and keeps Off.
         if let Ok(colors) = serde_json::from_value::<pdfcraft_render::ReadingColors>(v["reading_colors"].clone()) {
             self.reading_colors = colors;
+        }
+        // Settings are untrusted: anything but a boolean keeps Off.
+        if let Some(on) = v["thin_lines"].as_bool() {
+            self.set_thin_lines(on);
         }
         // Settings are untrusted: a size out of range follows the system instead.
         self.ui_scale = v["ui_scale"].as_f64().and_then(ui_scale::valid);
