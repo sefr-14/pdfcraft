@@ -1,6 +1,6 @@
 > [!IMPORTANT]
 > **This is PdfCraft Overlay, an unofficial fork of [storytold/pdfcraft](https://github.com/storytold/pdfcraft).**
-> It is based on PdfCraft 0.9.0 by the ArtCraft team and adds an overlay compare for revisions of
+> It is based on PdfCraft 0.10.1 by the ArtCraft team and adds an overlay compare for revisions of
 > drawing sets. It is not made, endorsed or supported by the ArtCraft team. See
 > [About this fork](#about-this-fork); the rest of this README describes upstream PdfCraft.
 
@@ -13,10 +13,10 @@
 </p>
 
 <p align="center">
-  <img alt="License: MIT OR Apache-2.0" src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-12a58a">
-  <img alt="Written in Rust" src="https://img.shields.io/badge/written%20in-Rust-0a7563">
-  <img alt="Platforms: macOS, Windows, Linux, FreeBSD, web" src="https://img.shields.io/badge/runs%20on-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux%20%C2%B7%20FreeBSD%20%C2%B7%20web-12a58a">
-  <img alt="No account, no telemetry" src="https://img.shields.io/badge/no%20account-no%20telemetry-0a7563">
+  <img alt="License: MIT OR Apache-2.0" src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-12a58a?style=flat-square">
+  <img alt="Written in Rust" src="https://img.shields.io/badge/written%20in-Rust-0a7563?style=flat-square">
+  <img alt="Platforms: macOS, Windows, Linux, FreeBSD, web" src="https://img.shields.io/badge/runs%20on-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux%20%C2%B7%20FreeBSD%20%C2%B7%20web-12a58a?style=flat-square">
+  <img alt="No account, no telemetry" src="https://img.shields.io/badge/no%20account-no%20telemetry-0a7563?style=flat-square">
 </p>
 
 <p align="center">

@@ -223,12 +223,19 @@ with its sources, and report a page where something is missing. Still open at th
 f0c9901c sync (16 Oct): `page_as_form` still copies one dictionary, and the ancestor merge
 (`resources_with_ancestors` in `pdfcraft-organize`) still serves page import only. Still open at
 the ec0a9650 sync (19 Oct, after upstream 0.9.0): `crates/organize/src/import.rs` is unchanged.
+Still open at the 41649514 sync (21 Oct, after upstream 0.10.1): `crates/organize` is unchanged.
 
 Optional content at the ec0a9650 sync: upstream's one layer change (4ff53a8d) writes the Layers
 panel's choices into the default configuration of the copy made for printing. It doesn't change
 how a layer that content uses but `/OCProperties` doesn't declare is evaluated. OV4.10 (20 Oct)
 then changed that evaluation in this fork: such content is shown as the source shows it, and it
 stays unresolved only where viewers disagree (see `oc::eval` above).
+
+Optional content at the 41649514 sync: upstream's one layer change (d695bc56) is in
+`pdfcraft-redact`. Remove hidden information now evaluates a membership dictionary's `/P` and
+`/VE` against the default configuration before it removes hidden content. The overlay doesn't call
+it (`pdfcraft-redact` is only a dev-dependency here, for `marks`), and `oc::eval` is unchanged, so
+what the overlay shows or asks about is the same as before the sync.
 
 Since the f0c9901c sync, `page_as_form` copies through upstream's bounded copier (af62daea): a
 source page whose resources nest more than 256 references or containers deep is refused with an
