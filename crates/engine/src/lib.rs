@@ -4818,6 +4818,25 @@ impl Session {
         Some(self.get(id)?.config.reading_colors)
     }
 
+    /// View ▸ Thin lines (this fork, OV9): draw the document's strokes one device pixel wide
+    /// (comments keep their widths). A view setting like reading colours: the file never
+    /// changes. Returns whether it changed; a change drops the document's cached renders.
+    pub fn set_thin_lines(&mut self, id: DocId, on: bool) -> bool {
+        let Some(doc) = self.docs.iter_mut().find(|d| d.id == id) else { return false };
+        if doc.config.thin_lines == on {
+            return false;
+        }
+        doc.config.thin_lines = on;
+        doc.renderer = RenderPool::new(doc.display.clone(), render_threads(), doc.config.clone());
+        doc.generation += 1;
+        true
+    }
+
+    /// The document's thin-lines setting; `None` when no such document is open.
+    pub fn thin_lines(&self, id: DocId) -> Option<bool> {
+        Some(self.get(id)?.config.thin_lines)
+    }
+
     /// Acrobat's Summarize Comments ("Comments only" layout): a new PDF listing every comment
     /// with its number, author, type, date, text and replies, grouped by page.
     pub fn summarize_comments(&self, id: DocId, sort: SummarySort) -> Result<Arc<Vec<u8>>, EditError> {

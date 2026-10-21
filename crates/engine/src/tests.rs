@@ -2897,6 +2897,27 @@ fn reading_colors_set_and_invalidated() {
     assert!(!s.set_reading_colors(DocId(u64::MAX), ReadingColors::WHITE_ON_BLACK));
 }
 
+/// View ▸ Thin lines (this fork, OV9) is a view setting: it re-renders (a new generation) but
+/// never edits the file, marks it modified or adds an undo step, and saving writes the same bytes.
+#[test]
+fn thin_lines_set_rerender_and_never_touch_the_file() {
+    let (mut s, id) = session_with(1);
+    let before = s.save_bytes(id).unwrap();
+    let generation = s.get(id).unwrap().generation;
+    assert_eq!(s.thin_lines(id), Some(false), "off unless set");
+    assert!(s.set_thin_lines(id, true));
+    assert_eq!(s.thin_lines(id), Some(true));
+    assert!(!s.set_thin_lines(id, true), "unchanged");
+    let doc = s.get(id).unwrap();
+    assert!(doc.generation > generation, "cached renders are dropped");
+    assert!(!doc.dirty);
+    assert_eq!(doc.can_undo(), None);
+    assert_eq!(*s.save_bytes(id).unwrap(), *before);
+    assert!(s.set_thin_lines(id, false), "back to off");
+    assert_eq!(s.thin_lines(DocId(u64::MAX)), None);
+    assert!(!s.set_thin_lines(DocId(u64::MAX), true));
+}
+
 #[test]
 fn signing_saving_trusting_and_commenting_afterwards() {
     let p12 = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../sign/tests/data/ec-p256.p12")).unwrap();
