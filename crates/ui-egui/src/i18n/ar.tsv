@@ -2751,3 +2751,14 @@ certificate	Version	الإصدار
 	This PDF doesn't allow comments, so measurements and scales can't be saved.	لا يسمح ملف PDF هذا بالتعليقات، لذا لا يمكن حفظ القياسات والمقاييس.
 	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	يحتوي هذا الجزء من الصفحة على مقياس رسم لا يستطيع PdfCraft قراءته: {reason}. عايِر لتعيين مقياس.
 	That is the point already placed. Click a different point.	هذه هي النقطة الموضوعة بالفعل. انقر نقطة مختلفة.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	بوصات (in)
+	Feet (ft)	أقدام (ft)
+	Feet and inches (ft-in)	أقدام وبوصات (ft-in)
+	Centimeters (cm)	سنتيمترات (cm)
+	Millimeters (mm)	مليمترات (mm)
+	Meters (m)	أمتار (m)
+	Known distance	المسافة المعروفة
+	Nearest 1/8 inch	لأقرب 1/8 بوصة
+	Type a length such as 12'-5 3/8" or 12.5'.	اكتب طولًا مثل 12'-5 3/8" أو 12.5'.
+	Type the real distance between the two points.	اكتب المسافة الحقيقية بين النقطتين.

@@ -2727,3 +2727,14 @@ key	Space	Space
 	This PDF doesn't allow comments, so measurements and scales can't be saved.	PDF này không cho phép nhận xét, nên không thể lưu số đo và tỷ lệ.
 	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Phần này của trang có tỷ lệ bản vẽ mà PdfCraft không đọc được: {reason}. Hãy hiệu chuẩn để đặt tỷ lệ.
 	That is the point already placed. Click a different point.	Đó là điểm đã đặt. Hãy nhấp vào một điểm khác.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	Inch (in)
+	Feet (ft)	Foot (ft)
+	Feet and inches (ft-in)	Foot và inch (ft-in)
+	Centimeters (cm)	Xentimét (cm)
+	Millimeters (mm)	Milimét (mm)
+	Meters (m)	Mét (m)
+	Known distance	Khoảng cách đã biết
+	Nearest 1/8 inch	Làm tròn đến 1/8 inch
+	Type a length such as 12'-5 3/8" or 12.5'.	Nhập độ dài, ví dụ 12'-5 3/8" hoặc 12.5'.
+	Type the real distance between the two points.	Nhập khoảng cách thực giữa hai điểm.

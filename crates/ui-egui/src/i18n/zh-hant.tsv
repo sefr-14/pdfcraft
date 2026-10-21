@@ -2424,3 +2424,14 @@ animation effects	Off	關
 	This PDF doesn't allow comments, so measurements and scales can't be saved.	此 PDF 不允許加入註解，因此無法儲存測量與比例。
 	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	頁面的這一部分有 PdfCraft 無法讀取的圖面比例：{reason}。請校準以設定比例。
 	That is the point already placed. Click a different point.	這是已放置的點。請點選其他點。
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	英寸 (in)
+	Feet (ft)	英尺 (ft)
+	Feet and inches (ft-in)	英尺和英寸 (ft-in)
+	Centimeters (cm)	公分 (cm)
+	Millimeters (mm)	公釐 (mm)
+	Meters (m)	公尺 (m)
+	Known distance	已知距離
+	Nearest 1/8 inch	精確到 1/8 英寸
+	Type a length such as 12'-5 3/8" or 12.5'.	請輸入長度，例如 12'-5 3/8" 或 12.5'。
+	Type the real distance between the two points.	請輸入兩點之間的實際距離。

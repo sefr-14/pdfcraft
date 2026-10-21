@@ -2496,3 +2496,14 @@ animation effects	Off	Вимкнено
 	This PDF doesn't allow comments, so measurements and scales can't be saved.	Цей PDF не дозволяє коментарі, тому виміри й масштаби не можна зберегти.
 	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	У цій частині сторінки задано масштаб креслення, який PdfCraft не може прочитати: {reason}. Виконайте калібрування, щоб задати масштаб.
 	That is the point already placed. Click a different point.	Це вже поставлена точка. Клацніть іншу точку.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	Дюйми (in)
+	Feet (ft)	Фути (ft)
+	Feet and inches (ft-in)	Фути й дюйми (ft-in)
+	Centimeters (cm)	Сантиметри (cm)
+	Millimeters (mm)	Міліметри (mm)
+	Meters (m)	Метри (m)
+	Known distance	Відома відстань
+	Nearest 1/8 inch	З точністю до 1/8 дюйма
+	Type a length such as 12'-5 3/8" or 12.5'.	Введіть довжину, наприклад 12'-5 3/8" або 12.5'.
+	Type the real distance between the two points.	Введіть реальну відстань між двома точками.

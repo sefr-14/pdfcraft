@@ -2480,3 +2480,14 @@ animation effects	Off	Ανενεργά
 	This PDF doesn't allow comments, so measurements and scales can't be saved.	Αυτό το PDF δεν επιτρέπει σχόλια, επομένως οι μετρήσεις και οι κλίμακες δεν μπορούν να αποθηκευτούν.
 	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Αυτό το τμήμα της σελίδας έχει κλίμακα σχεδίου που το PdfCraft δεν μπορεί να διαβάσει: {reason}. Κάντε βαθμονόμηση για να ορίσετε μία.
 	That is the point already placed. Click a different point.	Αυτό είναι το σημείο που έχει ήδη τοποθετηθεί. Κάντε κλικ σε διαφορετικό σημείο.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	Ίντσες (in)
+	Feet (ft)	Πόδια (ft)
+	Feet and inches (ft-in)	Πόδια και ίντσες (ft-in)
+	Centimeters (cm)	Εκατοστά (cm)
+	Millimeters (mm)	Χιλιοστά (mm)
+	Meters (m)	Μέτρα (m)
+	Known distance	Γνωστή απόσταση
+	Nearest 1/8 inch	Στο πλησιέστερο 1/8 της ίντσας
+	Type a length such as 12'-5 3/8" or 12.5'.	Πληκτρολογήστε ένα μήκος, π.χ. 12'-5 3/8" ή 12.5'.
+	Type the real distance between the two points.	Πληκτρολογήστε την πραγματική απόσταση μεταξύ των δύο σημείων.

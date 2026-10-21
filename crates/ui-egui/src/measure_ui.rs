@@ -7,7 +7,11 @@ use egui::{Color32, Pos2, Stroke};
 use pdfcraft_cos::ObjRef;
 use pdfcraft_engine::{
     Document, Edit, Style,
-    measure::{self, Kind, NewMeasurement, Point, Reading, Scale, snap::SnapKind},
+    measure::{
+        self, Kind, NewMeasurement, Point, Reading, Scale,
+        snap::SnapKind,
+        units::{self, EIGHTHS, LengthUnit},
+    },
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -56,6 +60,15 @@ pub struct MeasureView {
     pub drawing_points: f64,
     pub real_distance: f64,
     pub unit: String,
+    /// The scale shows feet and inches (`unit` is then `ft`) (this fork, OV10).
+    pub feet_inches: bool,
+    /// The unit is typed in (Custom) rather than picked from the list.
+    pub custom_unit: bool,
+    /// The known distance as typed in feet and inches.
+    pub known_text: String,
+    /// Two points were just clicked to calibrate: the known distance is asked for next.
+    pub calibrated: bool,
+    focus_known: bool,
     pub precision: u8,
     pub name: String,
     pub whole_page: bool,
@@ -90,6 +103,11 @@ impl Default for MeasureView {
             drawing_points: 72.0,
             real_distance: 1.0,
             unit: "in".into(),
+            feet_inches: false,
+            custom_unit: false,
+            known_text: String::new(),
+            calibrated: false,
+            focus_known: false,
             precision: 2,
             name: "Drawing scale".into(),
             whole_page: true,
@@ -492,6 +510,8 @@ fn finish(state: &mut MeasureView, pending: &mut Option<Edit>, doc: &Document, p
             let b = doc.measurement_to_view(page, *b);
             if let (Ok(a), Ok(b)) = (a, b) {
                 state.drawing_points = measure::distance(a, b);
+                state.calibrated = true;
+                state.focus_known = true;
             }
         }
         state.cancel();
@@ -558,6 +578,10 @@ fn panel_body(app: &mut PdfCraftApp, ui: &mut egui::Ui, _t: &Tokens) {
             state.real_distance = reading.value;
             state.unit = scale.unit;
             state.precision = scale.precision;
+            state.feet_inches = scale.feet_inches.is_some();
+            state.custom_unit = !state.feet_inches && LengthUnit::from_label(&state.unit).is_none();
+            state.known_text = units::feet_inches(state.real_distance, EIGHTHS);
+            state.calibrated = false;
         }
     }
     ui.label(tl!("Click vertices. Enter or double-click finishes a perimeter or area. Click the first point to close an area."));
@@ -608,16 +632,7 @@ fn panel_body(app: &mut PdfCraftApp, ui: &mut egui::Ui, _t: &Tokens) {
     }
     ui.separator();
     ui.label(tl!("Drawing scale"));
-    ui.horizontal(|ui| {
-        ui.add(egui::DragValue::new(&mut state.drawing_points).range(0.000001..=1e9).prefix("pt "));
-        ui.label("=");
-        ui.add(egui::DragValue::new(&mut state.real_distance).range(0.000001..=1e12));
-    });
-    ui.horizontal(|ui| {
-        ui.label(tl!("Unit"));
-        ui.add(crate::widgets::line(&mut state.unit).desired_width(64.0).char_limit(12));
-        ui.add(egui::DragValue::new(&mut state.precision).range(0..=6).prefix(format!("{} ", tl!("Decimals"))));
-    });
+    scale_rows(ui, state);
     if ui.button(tl!("Calibrate from two points")).clicked() {
         tool = Some(Tool::Calibrate);
     }
@@ -666,10 +681,16 @@ fn panel_body(app: &mut PdfCraftApp, ui: &mut egui::Ui, _t: &Tokens) {
     if apply && let Some(info) = info {
         let result =
             doc.measurement_to_user(page, [0.0, 0.0]).and_then(|a| doc.measurement_to_user(page, [1.0, 0.0]).map(|b| (a, b))).and_then(|(a, b)| {
-                Scale::calibrate(a, b, state.real_distance / state.drawing_points, &state.unit, state.precision).map_err(|e| e.to_string())
+                if state.feet_inches && known_feet(&state.known_text).is_none() {
+                    return Err(tl!("Type a length such as 12'-5 3/8\" or 12.5'.").to_string());
+                }
+                let scale = Scale::calibrate(a, b, state.real_distance / state.drawing_points, &state.unit, state.precision);
+                // Feet and inches to 1/8 inch (this fork, OV10).
+                scale.and_then(|s| if state.feet_inches { s.in_feet_inches(EIGHTHS) } else { Ok(s) }).map_err(|e| e.to_string())
             });
         match result {
             Ok(scale) => {
+                state.calibrated = false;
                 let [x, y, w, h] = if state.whole_page { [0.0, 0.0, f64::from(info.width), f64::from(info.height)] } else { state.rect };
                 let a = info.view_to_user(x as f32, y as f32);
                 let b = info.view_to_user((x + w) as f32, (y + h) as f32);
@@ -698,6 +719,105 @@ fn panel_body(app: &mut PdfCraftApp, ui: &mut egui::Ui, _t: &Tokens) {
         export_csv(app);
     }
 }
+/// The unit picked in the list, `None` for a typed (Custom) one.
+fn unit_choice(state: &MeasureView) -> Option<LengthUnit> {
+    if state.feet_inches {
+        Some(LengthUnit::FeetInches)
+    } else if state.custom_unit {
+        None
+    } else {
+        LengthUnit::from_label(&state.unit)
+    }
+}
+
+fn unit_name(unit: Option<LengthUnit>) -> &'static str {
+    match unit {
+        Some(LengthUnit::Inches) => tl!("Inches (in)"),
+        Some(LengthUnit::Feet) => tl!("Feet (ft)"),
+        Some(LengthUnit::FeetInches) => tl!("Feet and inches (ft-in)"),
+        Some(LengthUnit::Centimeters) => tl!("Centimeters (cm)"),
+        Some(LengthUnit::Millimeters) => tl!("Millimeters (mm)"),
+        Some(LengthUnit::Meters) => tl!("Meters (m)"),
+        None => tl!("Custom"),
+    }
+}
+
+/// A positive length typed in feet and inches, in feet.
+fn known_feet(text: &str) -> Option<f64> {
+    units::parse_feet_inches(text).filter(|v| *v > 0.0)
+}
+
+/// Drawing scale: the drawing distance, the known distance and its unit (this fork, OV10: a
+/// list of units, feet and inches typed as `12'-5 3/8"`, Custom for any other label). Picking
+/// another unit converts the known distance, so the scale stays the same.
+fn scale_rows(ui: &mut egui::Ui, state: &mut MeasureView) {
+    ui.horizontal(|ui| {
+        ui.add(egui::DragValue::new(&mut state.drawing_points).range(0.000001..=1e9).prefix("pt "));
+        ui.label("=");
+    });
+    if state.calibrated {
+        ui.label(egui::RichText::new(tl!("Type the real distance between the two points.")).strong());
+    }
+    let focus = std::mem::take(&mut state.focus_known);
+    ui.horizontal(|ui| {
+        ui.label(tl!("Known distance"));
+        let known = if state.feet_inches {
+            let resp = ui.add(crate::widgets::line(&mut state.known_text).desired_width(110.0).char_limit(32).hint_text("12'-5 3/8\""));
+            if resp.changed()
+                && let Some(feet) = known_feet(&state.known_text)
+            {
+                state.real_distance = feet;
+            }
+            resp
+        } else {
+            ui.add(egui::DragValue::new(&mut state.real_distance).range(0.000001..=1e12))
+        };
+        if focus {
+            known.request_focus();
+        }
+    });
+    if state.feet_inches && known_feet(&state.known_text).is_none() {
+        ui.colored_label(Color32::from_rgb(190, 50, 50), tl!("Type a length such as 12'-5 3/8\" or 12.5'."));
+    }
+    let choice = unit_choice(state);
+    let mut picked = None;
+    ui.horizontal(|ui| {
+        ui.label(tl!("Unit"));
+        // Tall enough for all seven entries without scrolling.
+        egui::ComboBox::from_id_salt("measure-unit").selected_text(unit_name(choice)).height(400.0).show_ui(ui, |ui| {
+            for unit in LengthUnit::ALL.into_iter().map(Some).chain([None]) {
+                if ui.selectable_label(choice == unit, unit_name(unit)).clicked() && choice != unit {
+                    picked = Some(unit);
+                }
+            }
+        });
+        if state.custom_unit {
+            ui.add(crate::widgets::line(&mut state.unit).desired_width(64.0).char_limit(12));
+        }
+    });
+    match picked {
+        Some(Some(unit)) => {
+            if let Some(from) = choice {
+                state.real_distance = unit.convert(state.real_distance, from);
+            }
+            state.unit = unit.label().into();
+            state.feet_inches = unit == LengthUnit::FeetInches;
+            state.custom_unit = false;
+            state.known_text = units::feet_inches(state.real_distance, EIGHTHS);
+        }
+        Some(None) => {
+            state.custom_unit = true;
+            state.feet_inches = false;
+        }
+        None => {}
+    }
+    if state.feet_inches {
+        ui.label(tl!("Nearest 1/8 inch"));
+    } else {
+        ui.add(egui::DragValue::new(&mut state.precision).range(0..=6).prefix(format!("{} ", tl!("Decimals"))));
+    }
+}
+
 pub(crate) fn command(app: &mut PdfCraftApp, id: &str) {
     app.left = LeftPanel::Tool("measure");
     app.left_open = true;

@@ -2479,3 +2479,14 @@ animation effects	Off	Izklopljeni
 	This PDF doesn't allow comments, so measurements and scales can't be saved.	Ta PDF ne dovoli komentarjev, zato meritev in meril ni mogoče shraniti.
 	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Ta del strani ima merilo risbe, ki ga PdfCraft ne zna prebrati: {reason}. Z umerjanjem nastavite merilo.
 	That is the point already placed. Click a different point.	To je že postavljena točka. Kliknite drugo točko.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	Palci (in)
+	Feet (ft)	Čevlji (ft)
+	Feet and inches (ft-in)	Čevlji in palci (ft-in)
+	Centimeters (cm)	Centimetri (cm)
+	Millimeters (mm)	Milimetri (mm)
+	Meters (m)	Metri (m)
+	Known distance	Znana razdalja
+	Nearest 1/8 inch	Na najbližjo 1/8 palca
+	Type a length such as 12'-5 3/8" or 12.5'.	Vnesite dolžino, na primer 12'-5 3/8" ali 12.5'.
+	Type the real distance between the two points.	Vnesite dejansko razdaljo med točkama.

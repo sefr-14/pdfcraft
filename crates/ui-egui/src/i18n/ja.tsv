@@ -2474,3 +2474,14 @@ animation effects	Off	オフ
 	This PDF doesn't allow comments, so measurements and scales can't be saved.	この PDF ではコメントが許可されていないため、計測と縮尺を保存できません。
 	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	ページのこの部分には PdfCraft が読み取れない図面の縮尺があります: {reason}。校正して縮尺を設定してください。
 	That is the point already placed. Click a different point.	そこは既に配置した点です。別の点をクリックしてください。
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	インチ (in)
+	Feet (ft)	フィート (ft)
+	Feet and inches (ft-in)	フィートとインチ (ft-in)
+	Centimeters (cm)	センチメートル (cm)
+	Millimeters (mm)	ミリメートル (mm)
+	Meters (m)	メートル (m)
+	Known distance	既知の距離
+	Nearest 1/8 inch	1/8 インチ単位
+	Type a length such as 12'-5 3/8" or 12.5'.	12'-5 3/8" や 12.5' のように長さを入力してください。
+	Type the real distance between the two points.	2 点間の実際の距離を入力してください。

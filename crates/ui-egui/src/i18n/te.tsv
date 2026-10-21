@@ -2383,3 +2383,14 @@ animation effects	Off	ఆఫ్
 	This PDF doesn't allow comments, so measurements and scales can't be saved.	ఈ PDF వ్యాఖ్యలను అనుమతించదు, కాబట్టి కొలతలు, స్కేల్‌లను సేవ్ చేయలేము.
 	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	పేజీలోని ఈ భాగంలో PdfCraft చదవలేని డ్రాయింగ్ స్కేల్ ఉంది: {reason}. స్కేల్‌ను సెట్ చేయడానికి క్యాలిబ్రేట్ చేయండి.
 	That is the point already placed. Click a different point.	ఇది ఇప్పటికే ఉంచిన బిందువు. వేరే బిందువును క్లిక్ చేయండి.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	అంగుళాలు (in)
+	Feet (ft)	అడుగులు (ft)
+	Feet and inches (ft-in)	అడుగులు, అంగుళాలు (ft-in)
+	Centimeters (cm)	సెంటీమీటర్లు (cm)
+	Millimeters (mm)	మిల్లీమీటర్లు (mm)
+	Meters (m)	మీటర్లు (m)
+	Known distance	తెలిసిన దూరం
+	Nearest 1/8 inch	సమీప 1/8 అంగుళానికి
+	Type a length such as 12'-5 3/8" or 12.5'.	12'-5 3/8" లేదా 12.5' వంటి పొడవును టైప్ చేయండి.
+	Type the real distance between the two points.	రెండు బిందువుల మధ్య వాస్తవ దూరాన్ని టైప్ చేయండి.

@@ -394,3 +394,90 @@ fn a_duplicate_tab_and_a_tile_keep_their_measurements() {
     h.run_steps(3);
     assert_eq!((kept(&h, first), kept(&h, second)), (0, 1), "a tile keeps its own measurement");
 }
+
+/// The known-distance field for feet and inches (showing what was typed or converted).
+fn feet_field<'a>(h: &'a Harness<'static, PdfCraftApp>, shown: &'a str) -> egui_kittest::Node<'a> {
+    h.query_all_by(|n| n.value().as_deref() == Some(shown) && n.role() == egui::accesskit::Role::TextInput)
+        .next()
+        .unwrap_or_else(|| panic!("no feet-and-inches field showing {shown:?}"))
+}
+
+fn type_feet(h: &mut Harness<'static, PdfCraftApp>, text: &str) {
+    let shown = h.state().views[0].measure.known_text.clone();
+    feet_field(h, &shown).click();
+    h.run_steps(1);
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    h.run_steps(1);
+    feet_field(h, &shown).type_text(text);
+    h.run_steps(2);
+    assert_eq!(h.state().views[0].measure.known_text, text);
+}
+
+fn pick_unit(h: &mut Harness<'static, PdfCraftApp>, from: &str, to: &str) {
+    h.get_by_value(from).click();
+    h.run_steps(2);
+    h.get_by_label(to).click();
+    h.run_steps(2);
+}
+
+#[test]
+fn calibrating_in_feet_and_inches_from_the_panel() {
+    let (mut h, id) = harness(plain());
+    tool(&mut h, Tool::Calibrate);
+    // Both ends of the bottom line, snapped: 300 pt apart.
+    click_at(&mut h, 0, 50.5, 50.5);
+    click_at(&mut h, 0, 349.5, 50.5);
+    assert!((h.state().views[0].measure.drawing_points - 300.0).abs() < 1e-9);
+    assert!(says(&h, "Type the real distance between the two points"));
+    assert!(
+        h.query_all_by(|n| n.is_focused() && n.role() == egui::accesskit::Role::SpinButton).next().is_some(),
+        "the known distance takes the keyboard"
+    );
+    assert!(!says(&h, "All pages"), "a scale is set per page or region");
+
+    // Inches to feet and inches: the 1 in the page started with is converted, not reset.
+    pick_unit(&mut h, "Inches (in)", "Feet and inches (ft-in)");
+    let m = &h.state().views[0].measure;
+    assert!(m.feet_inches && m.unit == "ft" && m.known_text == "0'-1\"", "{} {}", m.unit, m.known_text);
+    assert!(says(&h, "Nearest 1/8 inch"));
+    type_feet(&mut h, "100'-0\"");
+    assert!((h.state().views[0].measure.real_distance - 100.0).abs() < 1e-12);
+    h.get_by_label("Apply scale").click();
+    h.run_steps(3);
+    let scale = h.state().session.get(id).unwrap().measurement_scale(0, [100.0, 100.0]).unwrap();
+    assert_eq!((scale.unit.as_str(), scale.feet_inches), ("ft", Some(8)));
+    assert!(!says(&h, "Type the real distance between the two points"));
+
+    // 200 pt at 300 pt = 100 ft is 66'-8".
+    tool(&mut h, Tool::Distance);
+    click_at(&mut h, 0, 50.5, 50.5);
+    click_at(&mut h, 0, 50.5, 249.5);
+    let listed = listing(&h, id);
+    assert_eq!(listed.measurements[0].reading.label, "66'-8\"");
+    let bytes = h.state_mut().session.save_bytes(id).unwrap();
+    let mut session = Session::new();
+    let reopened = session.open("plan.pdf", None, Arc::new(bytes.as_ref().clone()), None).unwrap();
+    let again = session.get(reopened).unwrap().measurements().unwrap();
+    assert_eq!((again.measurements[0].reading.label.as_str(), again.unsupported.len()), ("66'-8\"", 0));
+
+    // What isn't a length is said and not applied.
+    type_feet(&mut h, "twelve feet");
+    assert!(says(&h, "Type a length such as"));
+    let edits = h.state().session.get(id).unwrap().edit_generation();
+    h.get_by_label("Apply scale").click();
+    h.run_steps(3);
+    assert_eq!(h.state().session.get(id).unwrap().edit_generation(), edits, "no scale from the last length that could be read");
+    type_feet(&mut h, "12' 6\"");
+    assert!((h.state().views[0].measure.real_distance - 12.5).abs() < 1e-12);
+
+    // Feet and inches to metres keeps the scale: 12.5 ft is 3.81 m.
+    pick_unit(&mut h, "Feet and inches (ft-in)", "Meters (m)");
+    let m = &h.state().views[0].measure;
+    assert!(!m.feet_inches && m.unit == "m" && (m.real_distance - 3.81).abs() < 1e-9, "{} {}", m.unit, m.real_distance);
+    assert!(!says(&h, "Nearest 1/8 inch"), "decimals again");
+    // Custom keeps the label as it is, to type another.
+    pick_unit(&mut h, "Meters (m)", "Custom");
+    let m = &h.state().views[0].measure;
+    assert!(m.custom_unit && m.unit == "m");
+    assert!(h.query_all_by_value("m").next().is_some(), "the unit is typed in");
+}

@@ -2437,3 +2437,14 @@ animation effects	Off	Изключени
 	This PDF doesn't allow comments, so measurements and scales can't be saved.	Този PDF не разрешава коментари, затова измерванията и мащабите не могат да бъдат запазени.
 	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Тази част от страницата има мащаб на чертежа, който PdfCraft не може да прочете: {reason}. Калибрирайте, за да зададете мащаб.
 	That is the point already placed. Click a different point.	Това е вече поставената точка. Щракнете върху друга точка.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	Инчове (in)
+	Feet (ft)	Футове (ft)
+	Feet and inches (ft-in)	Футове и инчове (ft-in)
+	Centimeters (cm)	Сантиметри (cm)
+	Millimeters (mm)	Милиметри (mm)
+	Meters (m)	Метри (m)
+	Known distance	Известно разстояние
+	Nearest 1/8 inch	До най-близката 1/8 инча
+	Type a length such as 12'-5 3/8" or 12.5'.	Въведете дължина, например 12'-5 3/8" или 12.5'.
+	Type the real distance between the two points.	Въведете действителното разстояние между двете точки.

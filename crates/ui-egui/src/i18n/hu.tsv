@@ -2473,3 +2473,14 @@ animation effects	Off	Ki
 	This PDF doesn't allow comments, so measurements and scales can't be saved.	Ez a PDF nem engedélyezi a megjegyzéseket, ezért a mérések és a méretarányok nem menthetők.
 	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Az oldal ezen részének olyan méretaránya van, amelyet a PdfCraft nem tud beolvasni: {reason}. Kalibrálással megadhat egyet.
 	That is the point already placed. Click a different point.	Ez a már elhelyezett pont. Kattintson egy másik pontra.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	Hüvelyk (in)
+	Feet (ft)	Láb (ft)
+	Feet and inches (ft-in)	Láb és hüvelyk (ft-in)
+	Centimeters (cm)	Centiméter (cm)
+	Millimeters (mm)	Milliméter (mm)
+	Meters (m)	Méter (m)
+	Known distance	Ismert távolság
+	Nearest 1/8 inch	1/8 hüvelykre kerekítve
+	Type a length such as 12'-5 3/8" or 12.5'.	Írjon be egy hosszt, például 12'-5 3/8" vagy 12.5'.
+	Type the real distance between the two points.	Írja be a két pont közötti valódi távolságot.

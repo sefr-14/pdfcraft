@@ -2548,3 +2548,14 @@ animation effects	Off	Vypnuto
 	This PDF doesn't allow comments, so measurements and scales can't be saved.	Tento PDF nepovoluje komentáře, proto nelze měření a měřítka uložit.
 	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Tato část stránky má měřítko výkresu, které PdfCraft neumí přečíst: {reason}. Měřítko nastavíte kalibrací.
 	That is the point already placed. Click a different point.	To je již umístěný bod. Klikněte na jiný bod.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	Palce (in)
+	Feet (ft)	Stopy (ft)
+	Feet and inches (ft-in)	Stopy a palce (ft-in)
+	Centimeters (cm)	Centimetry (cm)
+	Millimeters (mm)	Milimetry (mm)
+	Meters (m)	Metry (m)
+	Known distance	Známá vzdálenost
+	Nearest 1/8 inch	Na nejbližší 1/8 palce
+	Type a length such as 12'-5 3/8" or 12.5'.	Zadejte délku, například 12'-5 3/8" nebo 12.5'.
+	Type the real distance between the two points.	Zadejte skutečnou vzdálenost mezi oběma body.

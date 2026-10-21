@@ -2725,3 +2725,14 @@ theme	Appearance	Išvaizda
 	This PDF doesn't allow comments, so measurements and scales can't be saved.	Šis PDF neleidžia komentarų, todėl matavimų ir mastelių išsaugoti negalima.
 	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Šioje puslapio dalyje yra brėžinio mastelis, kurio PdfCraft negali nuskaityti: {reason}. Kalibruokite, kad nustatytumėte mastelį.
 	That is the point already placed. Click a different point.	Tai jau padėtas taškas. Spustelėkite kitą tašką.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	Coliai (in)
+	Feet (ft)	Pėdos (ft)
+	Feet and inches (ft-in)	Pėdos ir coliai (ft-in)
+	Centimeters (cm)	Centimetrai (cm)
+	Millimeters (mm)	Milimetrai (mm)
+	Meters (m)	Metrai (m)
+	Known distance	Žinomas atstumas
+	Nearest 1/8 inch	Iki artimiausios 1/8 colio
+	Type a length such as 12'-5 3/8" or 12.5'.	Įveskite ilgį, pavyzdžiui, 12'-5 3/8" arba 12.5'.
+	Type the real distance between the two points.	Įveskite tikrąjį atstumą tarp dviejų taškų.

@@ -2686,3 +2686,14 @@ certificate	SHA-256 digest	Impronta SHA-256
 	This PDF doesn't allow comments, so measurements and scales can't be saved.	Questo PDF non consente commenti, quindi misure e scale non possono essere salvate.
 	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Questa parte della pagina ha una scala del disegno che PdfCraft non sa leggere: {reason}. Calibra per impostarne una.
 	That is the point already placed. Click a different point.	Questo è il punto già inserito. Fai clic su un altro punto.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	Pollici (in)
+	Feet (ft)	Piedi (ft)
+	Feet and inches (ft-in)	Piedi e pollici (ft-in)
+	Centimeters (cm)	Centimetri (cm)
+	Millimeters (mm)	Millimetri (mm)
+	Meters (m)	Metri (m)
+	Known distance	Distanza nota
+	Nearest 1/8 inch	Al 1/8 di pollice più vicino
+	Type a length such as 12'-5 3/8" or 12.5'.	Digita una lunghezza come 12'-5 3/8" o 12.5'.
+	Type the real distance between the two points.	Digita la distanza reale tra i due punti.

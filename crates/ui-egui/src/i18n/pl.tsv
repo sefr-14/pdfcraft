@@ -2450,3 +2450,14 @@ animation effects	Off	Wyłączone
 	This PDF doesn't allow comments, so measurements and scales can't be saved.	Ten plik PDF nie zezwala na komentarze, więc nie można zapisać pomiarów ani skal.
 	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Ta część strony ma skalę rysunku, której PdfCraft nie potrafi odczytać: {reason}. Skalibruj, aby ustawić skalę.
 	That is the point already placed. Click a different point.	To jest już umieszczony punkt. Kliknij inny punkt.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	Cale (in)
+	Feet (ft)	Stopy (ft)
+	Feet and inches (ft-in)	Stopy i cale (ft-in)
+	Centimeters (cm)	Centymetry (cm)
+	Millimeters (mm)	Milimetry (mm)
+	Meters (m)	Metry (m)
+	Known distance	Znana odległość
+	Nearest 1/8 inch	Z dokładnością do 1/8 cala
+	Type a length such as 12'-5 3/8" or 12.5'.	Wpisz długość, na przykład 12'-5 3/8" lub 12.5'.
+	Type the real distance between the two points.	Wpisz rzeczywistą odległość między dwoma punktami.
