@@ -2715,3 +2715,13 @@ theme	Appearance	Išvaizda
 	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	„GitHub“ tikrinama naujausia šios atšakos „Windows“ versija. Nieko automatiškai neatsisiunčiama ir neįdiegiama.
 # This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
 	Thin lines	Plonos linijos
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	foninis procesas sustojo
+	the page can't be mapped	puslapio koordinačių nepavyksta perskaičiuoti
+	an internal error stopped it ({reason})	jį sustabdė vidinė klaida ({reason})
+	This document can't be read for measuring.	Šio dokumento negalima nuskaityti matavimui.
+	Snapping isn't available on this page: {reason}	Šiame puslapyje pritraukimas negalimas: {reason}
+	Reading the drawing for snapping…	Brėžinys nuskaitomas pritraukimui…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	Šis PDF neleidžia komentarų, todėl matavimų ir mastelių išsaugoti negalima.
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Šioje puslapio dalyje yra brėžinio mastelis, kurio PdfCraft negali nuskaityti: {reason}. Kalibruokite, kad nustatytumėte mastelį.
+	That is the point already placed. Click a different point.	Tai jau padėtas taškas. Spustelėkite kitą tašką.

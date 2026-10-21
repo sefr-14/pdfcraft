@@ -2428,3 +2428,13 @@ animation effects	Off	关
 	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	向 GitHub 查询此分支的最新 Windows 构建。不会自动下载或安装任何内容。
 # This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
 	Thin lines	细线
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	后台进程已停止
+	the page can't be mapped	无法换算页面坐标
+	an internal error stopped it ({reason})	内部错误导致其停止（{reason}）
+	This document can't be read for measuring.	无法读取此文档进行测量。
+	Snapping isn't available on this page: {reason}	此页面无法使用吸附：{reason}
+	Reading the drawing for snapping…	正在读取图面以进行吸附…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	此 PDF 不允许添加注释，因此无法保存测量和比例。
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	页面的这一部分有 PdfCraft 无法读取的图面比例：{reason}。请校准以设置比例。
+	That is the point already placed. Click a different point.	这是已放置的点。请点击其他点。

@@ -165,6 +165,10 @@ mod tile_view_tests;
 #[cfg(not(target_arch = "wasm32"))]
 mod thin_lines_tests;
 
+#[cfg(test)]
+#[cfg(not(target_arch = "wasm32"))]
+mod measure_tests;
+
 use pdfcraft_engine::{DocId, Session};
 
 pub use canvas::{DocView, RasterMemory, ViewKey};

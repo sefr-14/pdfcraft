@@ -2373,3 +2373,13 @@ animation effects	Off	ఆఫ్
 	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	ఈ ఫోర్క్ యొక్క తాజా Windows బిల్డ్ గురించి GitHubను అడుగుతుంది. ఏదీ ఆటోమేటిక్‌గా డౌన్‌లోడ్ లేదా ఇన్‌స్టాల్ చేయబడదు.
 # This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
 	Thin lines	సన్నని గీతలు
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	నేపథ్య ప్రక్రియ ఆగిపోయింది
+	the page can't be mapped	పేజీ నిరూపకాలను మార్చలేము
+	an internal error stopped it ({reason})	అంతర్గత లోపం దీన్ని ఆపివేసింది ({reason})
+	This document can't be read for measuring.	కొలవడానికి ఈ పత్రాన్ని చదవలేము.
+	Snapping isn't available on this page: {reason}	ఈ పేజీలో స్నాపింగ్ అందుబాటులో లేదు: {reason}
+	Reading the drawing for snapping…	స్నాపింగ్ కోసం డ్రాయింగ్‌ను చదువుతోంది…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	ఈ PDF వ్యాఖ్యలను అనుమతించదు, కాబట్టి కొలతలు, స్కేల్‌లను సేవ్ చేయలేము.
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	పేజీలోని ఈ భాగంలో PdfCraft చదవలేని డ్రాయింగ్ స్కేల్ ఉంది: {reason}. స్కేల్‌ను సెట్ చేయడానికి క్యాలిబ్రేట్ చేయండి.
+	That is the point already placed. Click a different point.	ఇది ఇప్పటికే ఉంచిన బిందువు. వేరే బిందువును క్లిక్ చేయండి.

@@ -2470,3 +2470,13 @@ animation effects	Off	Ανενεργά
 	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Αναζητά στο GitHub την τελευταία κατασκευή αυτού του fork για Windows. Δεν γίνεται αυτόματα λήψη ή εγκατάσταση.
 # This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
 	Thin lines	Λεπτές γραμμές
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	η διεργασία παρασκηνίου σταμάτησε
+	the page can't be mapped	οι συντεταγμένες της σελίδας δεν μπορούν να μετατραπούν
+	an internal error stopped it ({reason})	το σταμάτησε ένα εσωτερικό σφάλμα ({reason})
+	This document can't be read for measuring.	Αυτό το έγγραφο δεν μπορεί να διαβαστεί για μέτρηση.
+	Snapping isn't available on this page: {reason}	Η προσκόλληση δεν είναι διαθέσιμη σε αυτή τη σελίδα: {reason}
+	Reading the drawing for snapping…	Ανάγνωση του σχεδίου για προσκόλληση…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	Αυτό το PDF δεν επιτρέπει σχόλια, επομένως οι μετρήσεις και οι κλίμακες δεν μπορούν να αποθηκευτούν.
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Αυτό το τμήμα της σελίδας έχει κλίμακα σχεδίου που το PdfCraft δεν μπορεί να διαβάσει: {reason}. Κάντε βαθμονόμηση για να ορίσετε μία.
+	That is the point already placed. Click a different point.	Αυτό είναι το σημείο που έχει ήδη τοποθετηθεί. Κάντε κλικ σε διαφορετικό σημείο.

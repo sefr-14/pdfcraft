@@ -2717,3 +2717,13 @@ key	Space	Space
 	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Hỏi GitHub về bản dựng Windows mới nhất của bản fork này. Không có gì được tải xuống hoặc cài đặt tự động.
 # This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
 	Thin lines	Đường mảnh
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	tiến trình nền đã dừng
+	the page can't be mapped	không thể chuyển đổi tọa độ của trang
+	an internal error stopped it ({reason})	một lỗi nội bộ đã làm nó dừng lại ({reason})
+	This document can't be read for measuring.	Không thể đọc tài liệu này để đo.
+	Snapping isn't available on this page: {reason}	Không thể bắt dính trên trang này: {reason}
+	Reading the drawing for snapping…	Đang đọc bản vẽ để bắt dính…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	PDF này không cho phép nhận xét, nên không thể lưu số đo và tỷ lệ.
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Phần này của trang có tỷ lệ bản vẽ mà PdfCraft không đọc được: {reason}. Hãy hiệu chuẩn để đặt tỷ lệ.
+	That is the point already placed. Click a different point.	Đó là điểm đã đặt. Hãy nhấp vào một điểm khác.

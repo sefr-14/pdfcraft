@@ -2741,3 +2741,13 @@ certificate	Version	الإصدار
 	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	يسأل GitHub عن أحدث بناء لنظام Windows من هذا الفرع. لا يُنزَّل أو يُثبَّت شيء تلقائيًا.
 # This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
 	Thin lines	خطوط رفيعة
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	توقفت عملية الخلفية
+	the page can't be mapped	تعذّر تحويل إحداثيات الصفحة
+	an internal error stopped it ({reason})	أوقفه خطأ داخلي ({reason})
+	This document can't be read for measuring.	تعذّرت قراءة هذا المستند لإجراء القياس.
+	Snapping isn't available on this page: {reason}	الانجذاب غير متاح في هذه الصفحة: {reason}
+	Reading the drawing for snapping…	جارٍ قراءة الرسم للانجذاب…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	لا يسمح ملف PDF هذا بالتعليقات، لذا لا يمكن حفظ القياسات والمقاييس.
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	يحتوي هذا الجزء من الصفحة على مقياس رسم لا يستطيع PdfCraft قراءته: {reason}. عايِر لتعيين مقياس.
+	That is the point already placed. Click a different point.	هذه هي النقطة الموضوعة بالفعل. انقر نقطة مختلفة.

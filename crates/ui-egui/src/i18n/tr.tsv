@@ -2460,3 +2460,13 @@ animation effects	Off	Kapalı
 	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Bu fork'un en son Windows derlemesi için GitHub'ı sorgular. Hiçbir şey otomatik olarak indirilmez veya kurulmaz.
 # This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
 	Thin lines	İnce çizgiler
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	arka plan işlemi durdu
+	the page can't be mapped	sayfa koordinatları dönüştürülemiyor
+	an internal error stopped it ({reason})	bir iç hata nedeniyle durdu ({reason})
+	This document can't be read for measuring.	Bu belge ölçüm için okunamıyor.
+	Snapping isn't available on this page: {reason}	Bu sayfada yakalama kullanılamıyor: {reason}
+	Reading the drawing for snapping…	Yakalama için çizim okunuyor…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	Bu PDF yorumlara izin vermiyor, bu yüzden ölçümler ve ölçekler kaydedilemez.
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Sayfanın bu bölümünde PdfCraft'ın okuyamadığı bir çizim ölçeği var: {reason}. Ölçek belirlemek için kalibre edin.
+	That is the point already placed. Click a different point.	Bu zaten yerleştirilmiş nokta. Farklı bir noktaya tıklayın.

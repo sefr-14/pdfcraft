@@ -2464,3 +2464,13 @@ animation effects	Off	オフ
 	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	このフォークの最新の Windows ビルドを GitHub で確認します。自動でダウンロードやインストールは行いません。
 # This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
 	Thin lines	細線
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	バックグラウンド処理が停止しました
+	the page can't be mapped	ページの座標を変換できません
+	an internal error stopped it ({reason})	内部エラーで停止しました ({reason})
+	This document can't be read for measuring.	この文書は計測のために読み取れません。
+	Snapping isn't available on this page: {reason}	このページではスナップを使用できません: {reason}
+	Reading the drawing for snapping…	スナップ用に図面を読み込んでいます…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	この PDF ではコメントが許可されていないため、計測と縮尺を保存できません。
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	ページのこの部分には PdfCraft が読み取れない図面の縮尺があります: {reason}。校正して縮尺を設定してください。
+	That is the point already placed. Click a different point.	そこは既に配置した点です。別の点をクリックしてください。

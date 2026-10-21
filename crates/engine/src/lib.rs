@@ -236,6 +236,11 @@ enum Scope {
     Content,
 }
 
+/// The edit can change what page content draws (see [`Document::content_generation`]).
+fn touches_content(scope: Scope) -> bool {
+    !matches!(scope, Scope::Metadata | Scope::Comments | Scope::Form | Scope::Links)
+}
+
 /// Edits during which field scripts run.
 fn uses_scripts(edit: &Edit) -> bool {
     match edit {
@@ -372,6 +377,9 @@ pub struct Document {
     pub dirty: bool,
     /// Bumped on every change to the working file (edit, undo, redo, save); autosave compares it.
     generation: u64,
+    /// Bumped with `generation` except for comment, link, form-value and metadata edits (and
+    /// their undo and redo), which leave what page content draws as it was (this fork, OV10).
+    content_generation: u64,
     /// The generation last handed out by `autosave_snapshots`.
     snapshot_generation: u64,
     /// Why the document cannot be edited (e.g. encryption), if so.
@@ -577,6 +585,13 @@ impl Document {
     /// A counter that changes with every edit (for caches of derived data).
     pub fn edit_generation(&self) -> u64 {
         self.generation
+    }
+
+    /// A counter that changes with every change that can change what page content draws: not
+    /// with comment, link, form-value or metadata edits, nor their undo and redo (this fork,
+    /// OV10: the measuring tools keep the lines they snap to across the measurements they add).
+    pub fn content_generation(&self) -> u64 {
+        self.content_generation
     }
 
     /// Edit a PDF ▸ Edit text: the lines of existing text on `page` (0-based).
@@ -3611,6 +3626,7 @@ impl Session {
             password: render_password,
             dirty: false,
             generation: 0,
+            content_generation: 0,
             snapshot_generation: 0,
             read_only_reason,
             form: Arc::new(form),
@@ -3806,6 +3822,9 @@ impl Session {
         }
         doc.dirty = true;
         doc.generation += 1;
+        if touches_content(scope) {
+            doc.content_generation += 1;
+        }
         doc.edit_notices = notices;
         if !cx.xfa_removed.is_empty() {
             let removed: Vec<String> = cx.xfa_removed.iter().map(|n| format!("{XFA_REMOVED_PREFIX}{n}")).collect();
@@ -3840,6 +3859,9 @@ impl Session {
         Self::refresh_scoped(doc, scope).inspect_err(|_| Self::show_released(doc))?;
         Self::sync_dirty(doc);
         doc.generation += 1;
+        if touches_content(scope) {
+            doc.content_generation += 1;
+        }
         Ok(label)
     }
 
@@ -3855,6 +3877,9 @@ impl Session {
         Self::refresh_scoped(doc, scope).inspect_err(|_| Self::show_released(doc))?;
         Self::sync_dirty(doc);
         doc.generation += 1;
+        if touches_content(scope) {
+            doc.content_generation += 1;
+        }
         Ok(label)
     }
 
@@ -4161,6 +4186,7 @@ impl Session {
         }
         doc.dirty = false;
         doc.generation += 1;
+        doc.content_generation += 1;
         Self::refresh(doc).inspect_err(|_| Self::show_released(doc))
     }
 
@@ -4219,6 +4245,7 @@ impl Session {
         Self::adopt_keys(doc);
         Self::sync_dirty(doc);
         doc.generation += 1;
+        doc.content_generation += 1;
         Self::refresh(doc).inspect_err(|_| Self::show_released(doc))
     }
 
@@ -4230,7 +4257,7 @@ impl Session {
     pub fn reload(&mut self, id: DocId, bytes: Arc<Vec<u8>>) -> Result<(), OpenError> {
         let old = self.docs.iter().position(|d| d.id == id).ok_or_else(|| OpenError::Invalid("the document is not open".into()))?;
         let doc = &self.docs[old];
-        let (name, path, generation) = (doc.name.clone(), doc.path.clone(), doc.generation);
+        let (name, path, generation, content_generation) = (doc.name.clone(), doc.path.clone(), doc.generation, doc.content_generation);
         let password = doc.editor.as_ref().and_then(|e| e.keys.reopen.clone()).or_else(|| doc.password.clone());
         let new_id = self.open(name, path, bytes, password.as_deref())?;
         let at = self.docs.iter().position(|d| d.id == new_id).ok_or_else(|| OpenError::Invalid("the new version was not kept".into()))?;
@@ -4239,6 +4266,7 @@ impl Session {
         // Caches keyed by the edit generation (edit lines, images, measurements) must see a new
         // one; there is nothing new to autosave.
         doc.generation = generation + 1;
+        doc.content_generation = content_generation + 1;
         doc.snapshot_generation = doc.generation;
         // `open` pushed the new version last, so the old one is still at `old`.
         *self.docs.get_mut(old).ok_or_else(|| OpenError::Invalid("the document is not open".into()))? = doc;

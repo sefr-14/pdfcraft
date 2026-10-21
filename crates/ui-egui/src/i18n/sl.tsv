@@ -2469,3 +2469,13 @@ animation effects	Off	Izklopljeni
 	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Vpraša GitHub za najnovejšo gradnjo tega forka za Windows. Ničesar se ne prenese ali namesti samodejno.
 # This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
 	Thin lines	Tanke črte
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	proces v ozadju se je ustavil
+	the page can't be mapped	koordinat strani ni mogoče pretvoriti
+	an internal error stopped it ({reason})	ustavila ga je notranja napaka ({reason})
+	This document can't be read for measuring.	Tega dokumenta ni mogoče prebrati za merjenje.
+	Snapping isn't available on this page: {reason}	Pripenjanje na tej strani ni na voljo: {reason}
+	Reading the drawing for snapping…	Branje risbe za pripenjanje …
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	Ta PDF ne dovoli komentarjev, zato meritev in meril ni mogoče shraniti.
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Ta del strani ima merilo risbe, ki ga PdfCraft ne zna prebrati: {reason}. Z umerjanjem nastavite merilo.
+	That is the point already placed. Click a different point.	To je že postavljena točka. Kliknite drugo točko.

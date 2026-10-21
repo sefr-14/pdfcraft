@@ -2462,3 +2462,13 @@ animation effects	Off	Өшірулі
 	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	GitHub-тан осы форктың Windows үшін ең соңғы құрастыруын сұрайды. Ештеңе автоматты түрде жүктелмейді немесе орнатылмайды.
 # This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
 	Thin lines	Жіңішке сызықтар
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	фондық процесс тоқтады
+	the page can't be mapped	беттің координаталарын түрлендіру мүмкін емес
+	an internal error stopped it ({reason})	ішкі қате оны тоқтатты ({reason})
+	This document can't be read for measuring.	Бұл құжатты өлшеу үшін оқу мүмкін емес.
+	Snapping isn't available on this page: {reason}	Бұл бетте түйістіру қолжетімсіз: {reason}
+	Reading the drawing for snapping…	Түйістіру үшін сызба оқылуда…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	Бұл PDF түсініктемелерге рұқсат бермейді, сондықтан өлшемдер мен масштабтарды сақтау мүмкін емес.
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Беттің бұл бөлігінде PdfCraft оқи алмайтын сызба масштабы бар: {reason}. Масштаб орнату үшін калибрлеңіз.
+	That is the point already placed. Click a different point.	Бұл — бұрын қойылған нүкте. Басқа нүктені басыңыз.

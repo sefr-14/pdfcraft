@@ -2463,3 +2463,13 @@ animation effects	Off	Ki
 	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	A GitHubtól kéri le ennek a forknak a legújabb Windows-buildjét. Semmi sem töltődik le vagy települ automatikusan.
 # This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
 	Thin lines	Vékony vonalak
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	a háttérfolyamat leállt
+	the page can't be mapped	az oldal koordinátái nem alakíthatók át
+	an internal error stopped it ({reason})	belső hiba miatt leállt ({reason})
+	This document can't be read for measuring.	Ez a dokumentum méréshez nem olvasható be.
+	Snapping isn't available on this page: {reason}	Az illesztés ezen az oldalon nem érhető el: {reason}
+	Reading the drawing for snapping…	A rajz beolvasása az illesztéshez…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	Ez a PDF nem engedélyezi a megjegyzéseket, ezért a mérések és a méretarányok nem menthetők.
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Az oldal ezen részének olyan méretaránya van, amelyet a PdfCraft nem tud beolvasni: {reason}. Kalibrálással megadhat egyet.
+	That is the point already placed. Click a different point.	Ez a már elhelyezett pont. Kattintson egy másik pontra.

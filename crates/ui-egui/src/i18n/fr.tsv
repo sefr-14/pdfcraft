@@ -2464,3 +2464,13 @@ animation effects	Off	Désactivés
 	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Demande à GitHub le dernier build Windows de ce fork. Rien n'est téléchargé ni installé automatiquement.
 # This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
 	Thin lines	Lignes fines
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	le processus en arrière-plan s’est arrêté
+	the page can't be mapped	les coordonnées de la page ne peuvent pas être converties
+	an internal error stopped it ({reason})	une erreur interne l’a arrêté ({reason})
+	This document can't be read for measuring.	Ce document ne peut pas être lu pour mesurer.
+	Snapping isn't available on this page: {reason}	L’accrochage n’est pas disponible sur cette page : {reason}
+	Reading the drawing for snapping…	Lecture du dessin pour l’accrochage…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	Ce PDF n’autorise pas les commentaires : les mesures et les échelles ne peuvent pas être enregistrées.
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Cette partie de la page a une échelle de dessin que PdfCraft ne sait pas lire : {reason}. Étalonnez pour en définir une.
+	That is the point already placed. Click a different point.	C’est le point déjà placé. Cliquez sur un autre point.
