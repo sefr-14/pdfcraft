@@ -1,24 +1,35 @@
-//! Help ▸ Check for updates (issue #28), with stand-in release sources (no network).
+//! Help ▸ Check for updates (OV8): the latest available Windows build of this fork, with
+//! stand-in sources (no network).
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use pdfcraft_ui_egui::PdfCraftApp;
-use pdfcraft_ui_egui::updates::{Release, UpdateSource, is_newer};
+use pdfcraft_ui_egui::updates::{Build, Builds, RUN_PAGE, UpdateSource, Utc, WORKFLOW_PAGE};
 
-fn source(answer: Result<&str, &str>) -> UpdateSource {
-    let answer = answer.map(str::to_string).map_err(str::to_string);
-    Arc::new(move || answer.clone().map(|v| Release { url: format!("https://github.com/storytold/pdfcraft/releases/tag/{v}"), version: v }))
+fn build(version: Option<&str>) -> Build {
+    Build {
+        version: version.map(Into::into),
+        artifact: "pdfcraft-overlay-0.10.1-6740201-windows-x64-portable".into(),
+        built: Utc::parse("2026-10-21T12:17:14Z").unwrap(),
+        run_id: 39595600341,
+    }
 }
 
-fn harness(answer: Result<&str, &str>) -> Harness<'static, PdfCraftApp> {
+fn harness_with(source: UpdateSource) -> Harness<'static, PdfCraftApp> {
     Harness::builder().with_size(egui::vec2(1200.0, 800.0)).build_eframe(move |_cc| {
         let mut app = PdfCraftApp::new();
         app.set_option("language", "en").unwrap();
-        app.update_source = Some(source(answer));
+        app.update_source = Some(source.clone());
         app
     })
+}
+
+fn harness(answer: Result<Builds, &str>) -> Harness<'static, PdfCraftApp> {
+    let answer = answer.map_err(str::to_string);
+    harness_with(Arc::new(move || answer.clone()))
 }
 
 /// Run frames until the background check has reported. By what the dialog shows, with the
@@ -28,7 +39,7 @@ fn settle(h: &mut Harness<'static, PdfCraftApp>) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     loop {
         h.run_steps(2);
-        if h.query_by_label_contains("Checking for a newer version").is_none() {
+        if h.query_by_label_contains("Looking for the latest Windows build").is_none() {
             break;
         }
         assert!(std::time::Instant::now() < deadline, "timed out waiting for the update check");
@@ -37,49 +48,91 @@ fn settle(h: &mut Harness<'static, PdfCraftApp>) {
     h.run_steps(2);
 }
 
-#[test]
-fn versions_compare_by_number() {
-    assert!(is_newer("v0.2.0", "0.1.1"));
-    assert!(is_newer("v0.1.10", "0.1.9"));
-    assert!(is_newer("1", "0.9.9"));
-    assert!(!is_newer("v0.1.1", "0.1.1"));
-    assert!(!is_newer("v0.1.0", "0.1.1"));
-    assert!(!is_newer("v0.1.1-beta.2", "0.1.1"), "suffixes are ignored");
-    assert!(!is_newer("nightly", "0.1.1"), "a tag that isn't a version is never newer");
-    assert!(!is_newer("v1.2.3.4", "0.1.1"));
-    assert!(!is_newer("v99999999999999999999.0.0", "0.1.1"), "out of range");
+fn checked(answer: Result<Builds, &str>) -> Harness<'static, PdfCraftApp> {
+    let mut h = harness(answer);
+    h.state_mut().execute("help.check_updates");
+    settle(&mut h);
+    no_comparison(&h);
+    h
+}
+
+/// The dialog never claims more than it knows: several builds share a version number.
+fn no_comparison(h: &Harness<'static, PdfCraftApp>) {
+    for claim in ["up to date", "is available", "newer", "out of date", "Download"] {
+        assert!(h.query_by_label_contains(claim).is_none(), "the dialog says {claim:?}");
+    }
 }
 
 #[test]
-fn a_newer_release_is_offered_for_download() {
-    let mut h = harness(Ok("v99.0.0"));
-    h.state_mut().execute("help.check_updates");
-    settle(&mut h);
-    h.get_by_label_contains("PdfCraft 99.0.0 is available");
-    h.get_by_label("Download");
-    h.get_by_label("Later").click();
+fn the_latest_available_build_is_shown_with_its_run_page() {
+    let mut h = checked(Ok(Builds::Found(build(Some("0.10.1")))));
+    h.get_by_label("Latest available Windows build");
+    h.get_by_label("Version: 0.10.1");
+    // Preferences ▸ Date format's default (m/d/yyyy), and the time in UTC.
+    h.get_by_label("Built: 10/21/2026 12:17 UTC");
+    h.get_by_label("Artifact: pdfcraft-overlay-0.10.1-6740201-windows-x64-portable");
+    h.get_by_label(concat!("This copy is version ", env!("CARGO_PKG_VERSION"), "."));
+    h.get_by_label_contains("GitHub may ask you to sign in");
+    h.get_by_label("View build on GitHub").click();
     h.run_steps(3);
-    assert!(h.query_by_label_contains("is available").is_none(), "Later closes the dialog");
+    assert_eq!(h.state().last_opened_url.as_deref(), Some("https://github.com/sefr-14/pdfcraft/actions/runs/39595600341"));
+    assert!(h.state().last_opened_url.as_deref().is_some_and(|u| u.starts_with(RUN_PAGE)));
+    assert!(h.query_by_label("Latest available Windows build").is_none(), "the dialog closes");
 }
 
 #[test]
-fn an_up_to_date_or_failed_check_says_so() {
-    let mut h = harness(Ok(concat!("v", env!("CARGO_PKG_VERSION"))));
-    h.state_mut().execute("help.check_updates");
-    settle(&mut h);
-    h.get_by_label_contains("is up to date");
-    assert!(h.query_by_label("Download").is_none());
+fn a_build_without_a_readable_version_is_shown_by_name_and_date() {
+    let h = checked(Ok(Builds::Found(build(None))));
+    h.get_by_label("Latest available Windows build");
+    assert!(h.query_by_label_contains("Version:").is_none(), "no version is made up");
+    h.get_by_label("Built: 10/21/2026 12:17 UTC");
+    h.get_by_label("Artifact: pdfcraft-overlay-0.10.1-6740201-windows-x64-portable");
+}
 
-    let mut h = harness(Err("couldn't reach GitHub"));
+#[test]
+fn no_build_or_expired_builds_say_so_and_link_the_workflow() {
+    let mut h = checked(Ok(Builds::NoneFound { checked: 5, total: 12 }));
+    h.get_by_label("No downloadable Windows build was found in the most recent successful builds (5 checked).");
+    h.get_by_label("Older builds weren't checked.");
+    h.get_by_label("View builds on GitHub").click();
+    h.run_steps(3);
+    assert_eq!(h.state().last_opened_url.as_deref(), Some(WORKFLOW_PAGE));
+
+    let h = checked(Ok(Builds::NoneFound { checked: 0, total: 0 }));
+    h.get_by_label("No successful Windows build was found.");
+    assert!(h.query_by_label("Older builds weren't checked.").is_none());
+
+    let h = checked(Ok(Builds::Expired { checked: 2, total: 2 }));
+    h.get_by_label("The Windows builds checked have expired and can't be downloaded anymore (2 checked).");
+    assert!(h.query_by_label("Older builds weren't checked.").is_none());
+    h.get_by_label("View builds on GitHub");
+    assert!(h.query_by_label("View build on GitHub").is_none(), "an expired build is never offered");
+}
+
+#[test]
+fn a_failed_check_says_why_and_can_be_tried_again() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counted = calls.clone();
+    let mut h = harness_with(Arc::new(move || match counted.fetch_add(1, Ordering::SeqCst) {
+        0 => Err("GitHub took too long to answer".into()),
+        _ => Ok(Builds::Found(build(Some("0.10.1")))),
+    }));
     h.state_mut().execute("help.check_updates");
     settle(&mut h);
-    h.get_by_label_contains("Couldn't check for updates: couldn't reach GitHub");
+    no_comparison(&h);
+    h.get_by_label("Couldn't check for updates: GitHub took too long to answer");
+    h.get_by_label(&format!("Windows builds are listed at {WORKFLOW_PAGE}."));
+    assert!(h.query_by_label_contains("No downloadable").is_none(), "a failure isn't reported as no build");
+    h.get_by_label("Try again").click();
+    settle(&mut h);
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    h.get_by_label("Latest available Windows build");
 }
 
 #[test]
 fn nothing_is_asked_until_the_user_checks() {
     // No check at start (the owner's decision): the source is only called from the command.
-    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let calls = Arc::new(AtomicUsize::new(0));
     let counted = calls.clone();
     let mut h = Harness::builder().with_size(egui::vec2(1200.0, 800.0)).build_eframe(move |_cc| {
         let mut app = PdfCraftApp::new();
@@ -88,16 +141,28 @@ fn nothing_is_asked_until_the_user_checks() {
         app.restore(r#"{"check_updates_at_start": true}"#);
         let counted = counted.clone();
         app.update_source = Some(Arc::new(move || {
-            counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            Ok(Release { version: "v99.0.0".into(), url: "https://github.com/storytold/pdfcraft/releases/tag/v99.0.0".into() })
+            counted.fetch_add(1, Ordering::SeqCst);
+            Ok(Builds::Found(build(Some("0.10.1"))))
         }));
         app
     });
     settle(&mut h);
-    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
-    assert!(h.query_by_label_contains("is available").is_none());
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert!(h.query_by_label("Latest available Windows build").is_none());
     h.state_mut().execute("help.check_updates");
     settle(&mut h);
-    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
-    h.get_by_label_contains("PdfCraft 99.0.0 is available");
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    h.get_by_label("Latest available Windows build");
+}
+
+#[test]
+fn without_a_source_the_command_opens_the_workflow_page() {
+    let mut h = Harness::builder().with_size(egui::vec2(1200.0, 800.0)).build_eframe(|_cc| {
+        let mut app = PdfCraftApp::new();
+        app.set_option("language", "en").unwrap();
+        app
+    });
+    h.state_mut().execute("help.check_updates");
+    h.run_steps(2);
+    assert_eq!(h.state().last_opened_url.as_deref(), Some(WORKFLOW_PAGE));
 }

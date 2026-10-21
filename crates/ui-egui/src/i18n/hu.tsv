@@ -2444,3 +2444,20 @@ animation effects	Off	Ki
 	Tab view	Lapnézet
 	Tile View	Csempés nézet
 	Tile view	Csempés nézet
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	A legújabb Windows-build keresése…
+	Latest available Windows build	Legújabb elérhető Windows-build
+	Version: {v}	Verzió: {v}
+	Built: {date}	Készült: {date}
+	Artifact: {name}	Artefaktum: {name}
+	This copy is version {c}.	Ez a példány a(z) {c} verzió.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	A letöltéshez a GitHub bejelentkezést kérhet. A buildeket korlátozott ideig őrzik meg.
+	View build on GitHub	Build megtekintése a GitHubon
+	View builds on GitHub	Buildek megtekintése a GitHubon
+	No successful Windows build was found.	Nem található sikeres Windows-build.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	A legutóbbi sikeres buildek között nem található letölthető Windows-build ({n} ellenőrizve).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	Az ellenőrzött Windows-buildek lejártak, és már nem tölthetők le ({n} ellenőrizve).
+	Older builds weren't checked.	A régebbi buildeket nem ellenőriztük.
+	Windows builds are listed at {page}.	A Windows-buildek listája: {page}.
+	Try again	Újrapróbálás
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	A GitHubtól kéri le ennek a forknak a legújabb Windows-buildjét. Semmi sem töltődik le vagy települ automatikusan.

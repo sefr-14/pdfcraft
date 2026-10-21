@@ -2722,3 +2722,20 @@ certificate	Version	الإصدار
 	Tab view	عرض علامات التبويب
 	Tile View	العرض المتجاور
 	Tile view	العرض المتجاور
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	جارٍ البحث عن أحدث بناء لنظام Windows…
+	Latest available Windows build	أحدث بناء متاح لنظام Windows
+	Version: {v}	الإصدار: {v}
+	Built: {date}	تاريخ البناء: {date}
+	Artifact: {name}	الحزمة: {name}
+	This copy is version {c}.	هذه النسخة من الإصدار {c}.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	قد يطلب منك GitHub تسجيل الدخول لتنزيله. تُحفَظ الإصدارات المبنية لمدة محدودة.
+	View build on GitHub	عرض البناء على GitHub
+	View builds on GitHub	عرض الإصدارات المبنية على GitHub
+	No successful Windows build was found.	لم يُعثَر على بناء ناجح لنظام Windows.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	لم يُعثَر على بناء قابل للتنزيل لنظام Windows في أحدث الإصدارات المبنية بنجاح (تم فحص {n}).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	انتهت صلاحية إصدارات Windows المبنية التي فُحصت ولم يعد بالإمكان تنزيلها (تم فحص {n}).
+	Older builds weren't checked.	لم تُفحَص الإصدارات المبنية الأقدم.
+	Windows builds are listed at {page}.	إصدارات Windows المبنية مدرجة في {page}.
+	Try again	إعادة المحاولة
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	يسأل GitHub عن أحدث بناء لنظام Windows من هذا الفرع. لا يُنزَّل أو يُثبَّت شيء تلقائيًا.

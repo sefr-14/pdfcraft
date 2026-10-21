@@ -2450,3 +2450,20 @@ animation effects	Off	Izklopljeni
 	Tab view	Pogled z zavihki
 	Tile View	Pogled ploščic
 	Tile view	Pogled ploščic
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	Iskanje najnovejše gradnje za Windows…
+	Latest available Windows build	Najnovejša razpoložljiva gradnja za Windows
+	Version: {v}	Različica: {v}
+	Built: {date}	Zgrajeno: {date}
+	Artifact: {name}	Artefakt: {name}
+	This copy is version {c}.	Ta kopija je različica {c}.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	GitHub vas lahko za prenos prosi za prijavo. Gradnje se hranijo omejen čas.
+	View build on GitHub	Ogled gradnje na GitHubu
+	View builds on GitHub	Ogled gradenj na GitHubu
+	No successful Windows build was found.	Nobena uspešna gradnja za Windows ni bila najdena.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	Med najnovejšimi uspešnimi gradnjami ni bilo najdene gradnje za Windows za prenos (preverjenih: {n}).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	Preverjene gradnje za Windows so potekle in jih ni več mogoče prenesti (preverjenih: {n}).
+	Older builds weren't checked.	Starejše gradnje niso bile preverjene.
+	Windows builds are listed at {page}.	Gradnje za Windows so navedene na {page}.
+	Try again	Poskusi znova
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Vpraša GitHub za najnovejšo gradnjo tega forka za Windows. Ničesar se ne prenese ali namesti samodejno.

@@ -2409,3 +2409,20 @@ animation effects	Off	关
 	Tab view	标签页视图
 	Tile View	平铺视图
 	Tile view	平铺视图
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	正在查找最新的 Windows 构建…
+	Latest available Windows build	最新可用的 Windows 构建
+	Version: {v}	版本：{v}
+	Built: {date}	构建时间：{date}
+	Artifact: {name}	构件：{name}
+	This copy is version {c}.	此副本的版本为 {c}。
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	GitHub 可能会要求你登录后才能下载。构建只保留有限的时间。
+	View build on GitHub	在 GitHub 上查看构建
+	View builds on GitHub	在 GitHub 上查看所有构建
+	No successful Windows build was found.	未找到成功的 Windows 构建。
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	在最近的成功构建中未找到可下载的 Windows 构建（已检查 {n} 个）。
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	已检查的 Windows 构建均已过期，无法再下载（已检查 {n} 个）。
+	Older builds weren't checked.	未检查更早的构建。
+	Windows builds are listed at {page}.	Windows 构建列于 {page}。
+	Try again	重试
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	向 GitHub 查询此分支的最新 Windows 构建。不会自动下载或安装任何内容。

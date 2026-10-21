@@ -2585,3 +2585,20 @@ animation effects	Off	Desactivados
 	Tab view	Vista de pestañas
 	Tile View	Vista en mosaico
 	Tile view	Vista en mosaico
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	Buscando la última compilación de Windows…
+	Latest available Windows build	Última compilación de Windows disponible
+	Version: {v}	Versión: {v}
+	Built: {date}	Compilada: {date}
+	Artifact: {name}	Artefacto: {name}
+	This copy is version {c}.	Esta copia es la versión {c}.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	Es posible que GitHub te pida iniciar sesión para descargarla. Las compilaciones se conservan durante un tiempo limitado.
+	View build on GitHub	Ver compilación en GitHub
+	View builds on GitHub	Ver compilaciones en GitHub
+	No successful Windows build was found.	No se encontró ninguna compilación de Windows correcta.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	No se encontró ninguna compilación de Windows descargable entre las compilaciones correctas más recientes ({n} revisadas).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	Las compilaciones de Windows revisadas han caducado y ya no se pueden descargar ({n} revisadas).
+	Older builds weren't checked.	No se revisaron las compilaciones más antiguas.
+	Windows builds are listed at {page}.	Las compilaciones de Windows se enumeran en {page}.
+	Try again	Reintentar
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Consulta a GitHub cuál es la última compilación de Windows de este fork. No se descarga ni se instala nada automáticamente.

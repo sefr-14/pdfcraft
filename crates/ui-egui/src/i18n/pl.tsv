@@ -2421,3 +2421,20 @@ animation effects	Off	Wyłączone
 	Tab view	Widok kart
 	Tile View	Widok kafelków
 	Tile view	Widok kafelków
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	Wyszukiwanie najnowszej kompilacji dla Windows…
+	Latest available Windows build	Najnowsza dostępna kompilacja dla Windows
+	Version: {v}	Wersja: {v}
+	Built: {date}	Utworzono: {date}
+	Artifact: {name}	Artefakt: {name}
+	This copy is version {c}.	Ta kopia ma wersję {c}.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	GitHub może poprosić o zalogowanie się, aby ją pobrać. Kompilacje są przechowywane przez ograniczony czas.
+	View build on GitHub	Zobacz kompilację na GitHubie
+	View builds on GitHub	Zobacz kompilacje na GitHubie
+	No successful Windows build was found.	Nie znaleziono żadnej udanej kompilacji dla Windows.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	Wśród najnowszych udanych kompilacji nie znaleziono kompilacji dla Windows do pobrania (sprawdzono: {n}).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	Sprawdzone kompilacje dla Windows wygasły i nie można ich już pobrać (sprawdzono: {n}).
+	Older builds weren't checked.	Starsze kompilacje nie zostały sprawdzone.
+	Windows builds are listed at {page}.	Kompilacje dla Windows są wymienione na stronie {page}.
+	Try again	Spróbuj ponownie
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Sprawdza na GitHubie najnowszą kompilację dla Windows tego forka. Nic nie jest pobierane ani instalowane automatycznie.

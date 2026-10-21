@@ -2657,3 +2657,20 @@ certificate	SHA-256 digest	Impronta SHA-256
 	Tab view	Vista a schede
 	Tile View	Vista affiancata
 	Tile view	Vista affiancata
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	Ricerca dell'ultima build per Windows…
+	Latest available Windows build	Ultima build per Windows disponibile
+	Version: {v}	Versione: {v}
+	Built: {date}	Compilata: {date}
+	Artifact: {name}	Artefatto: {name}
+	This copy is version {c}.	Questa copia è la versione {c}.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	GitHub potrebbe chiederti di accedere per scaricarla. Le build vengono conservate per un periodo limitato.
+	View build on GitHub	Vedi la build su GitHub
+	View builds on GitHub	Vedi le build su GitHub
+	No successful Windows build was found.	Non è stata trovata nessuna build per Windows riuscita.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	Nessuna build per Windows scaricabile tra le build riuscite più recenti ({n} controllate).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	Le build per Windows controllate sono scadute e non si possono più scaricare ({n} controllate).
+	Older builds weren't checked.	Le build più vecchie non sono state controllate.
+	Windows builds are listed at {page}.	Le build per Windows sono elencate su {page}.
+	Try again	Riprova
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Chiede a GitHub l'ultima build per Windows di questo fork. Nulla viene scaricato o installato automaticamente.

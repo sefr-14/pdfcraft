@@ -2451,3 +2451,20 @@ animation effects	Off	Ανενεργά
 	Tab view	Προβολή καρτελών
 	Tile View	Προβολή πλακιδίων
 	Tile view	Προβολή πλακιδίων
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	Αναζήτηση της τελευταίας κατασκευής για Windows…
+	Latest available Windows build	Τελευταία διαθέσιμη κατασκευή για Windows
+	Version: {v}	Έκδοση: {v}
+	Built: {date}	Δημιουργήθηκε: {date}
+	Artifact: {name}	Πακέτο: {name}
+	This copy is version {c}.	Αυτό το αντίγραφο είναι η έκδοση {c}.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	Το GitHub μπορεί να ζητήσει σύνδεση για τη λήψη. Οι κατασκευές διατηρούνται για περιορισμένο χρόνο.
+	View build on GitHub	Προβολή κατασκευής στο GitHub
+	View builds on GitHub	Προβολή κατασκευών στο GitHub
+	No successful Windows build was found.	Δεν βρέθηκε επιτυχημένη κατασκευή για Windows.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	Δεν βρέθηκε κατασκευή για Windows διαθέσιμη για λήψη στις πιο πρόσφατες επιτυχημένες κατασκευές ({n} ελέγχθηκαν).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	Οι κατασκευές για Windows που ελέγχθηκαν έχουν λήξει και δεν μπορούν πλέον να ληφθούν ({n} ελέγχθηκαν).
+	Older builds weren't checked.	Παλαιότερες κατασκευές δεν ελέγχθηκαν.
+	Windows builds are listed at {page}.	Οι κατασκευές για Windows παρατίθενται στο {page}.
+	Try again	Δοκιμάστε ξανά
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Αναζητά στο GitHub την τελευταία κατασκευή αυτού του fork για Windows. Δεν γίνεται αυτόματα λήψη ή εγκατάσταση.

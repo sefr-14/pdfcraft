@@ -2354,3 +2354,20 @@ animation effects	Off	ఆఫ్
 	Tab view	ట్యాబ్ వీక్షణ
 	Tile View	టైల్ వీక్షణ
 	Tile view	టైల్ వీక్షణ
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	తాజా Windows బిల్డ్ కోసం వెతుకుతోంది…
+	Latest available Windows build	అందుబాటులో ఉన్న తాజా Windows బిల్డ్
+	Version: {v}	వెర్షన్: {v}
+	Built: {date}	బిల్డ్ చేసిన సమయం: {date}
+	Artifact: {name}	ఆర్టిఫాక్ట్: {name}
+	This copy is version {c}.	ఈ కాపీ వెర్షన్ {c}.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	డౌన్‌లోడ్ చేయడానికి GitHub మిమ్మల్ని సైన్ ఇన్ చేయమని అడగవచ్చు. బిల్డ్‌లు పరిమిత కాలం మాత్రమే ఉంచబడతాయి.
+	View build on GitHub	GitHubలో బిల్డ్‌ను చూడండి
+	View builds on GitHub	GitHubలో బిల్డ్‌లను చూడండి
+	No successful Windows build was found.	విజయవంతమైన Windows బిల్డ్ ఏదీ కనుగొనబడలేదు.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	ఇటీవలి విజయవంతమైన బిల్డ్‌లలో డౌన్‌లోడ్ చేయదగిన Windows బిల్డ్ కనుగొనబడలేదు ({n} తనిఖీ చేయబడ్డాయి).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	తనిఖీ చేసిన Windows బిల్డ్‌ల గడువు ముగిసింది, వాటిని ఇకపై డౌన్‌లోడ్ చేయలేరు ({n} తనిఖీ చేయబడ్డాయి).
+	Older builds weren't checked.	పాత బిల్డ్‌లు తనిఖీ చేయబడలేదు.
+	Windows builds are listed at {page}.	Windows బిల్డ్‌లు {page}లో జాబితా చేయబడ్డాయి.
+	Try again	మళ్లీ ప్రయత్నించండి
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	ఈ ఫోర్క్ యొక్క తాజా Windows బిల్డ్ గురించి GitHubను అడుగుతుంది. ఏదీ ఆటోమేటిక్‌గా డౌన్‌లోడ్ లేదా ఇన్‌స్టాల్ చేయబడదు.

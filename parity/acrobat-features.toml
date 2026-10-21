@@ -1766,8 +1766,8 @@ milestone = "M3"
 status = "partial"
 commands = ["help.check_updates"]
 tools = []
-evidence = ["crates/ui-egui/tests/ui_group/updates.rs::a_newer_release_is_offered_for_download", "crates/ui-egui/tests/ui_group/updates.rs::nothing_is_asked_until_the_user_checks", "apps/pdfcraft/src/updates.rs::answers_are_read_and_only_our_release_pages_are_offered"]
-notes = "asks GitHub Releases on request and offers the release page. By the owner's decision there is no check at start and no in-place install (Acrobat has both)"
+evidence = ["crates/ui-egui/tests/ui_group/updates.rs::the_latest_available_build_is_shown_with_its_run_page", "crates/ui-egui/tests/ui_group/updates.rs::nothing_is_asked_until_the_user_checks", "apps/pdfcraft/src/updates.rs::the_newest_usable_artifact_of_main_wins", "apps/pdfcraft/src/updates.rs::expired_artifacts_are_never_offered"]
+notes = "this fork (OV8): on request, finds the latest available Windows x64 portable artifact of the fork's manually run overlay-windows.yml workflow on Main (five most recent successful runs; expired artifacts never offered) and opens its run page, where GitHub may ask the user to sign in to download. It doesn't compare the installed build with it (builds can share a version) and never falls back to upstream releases. By the owner's decision there is no check at start and no in-place install (Acrobat has both)"
 
 [[feature]]
 id = "view.single-key-accelerators"

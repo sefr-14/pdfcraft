@@ -2696,3 +2696,20 @@ theme	Appearance	Išvaizda
 	Tab view	Kortelių rodinys
 	Tile View	Išklotinės rodinys
 	Tile view	Išklotinės rodinys
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	Ieškoma naujausios „Windows“ versijos…
+	Latest available Windows build	Naujausia pasiekiama „Windows“ versija
+	Version: {v}	Versija: {v}
+	Built: {date}	Sukurta: {date}
+	Artifact: {name}	Artefaktas: {name}
+	This copy is version {c}.	Ši kopija yra {c} versijos.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	Norint ją atsisiųsti, „GitHub“ gali paprašyti prisijungti. Versijos saugomos ribotą laiką.
+	View build on GitHub	Peržiūrėti versiją „GitHub“
+	View builds on GitHub	Peržiūrėti versijas „GitHub“
+	No successful Windows build was found.	Sėkmingai sukurtos „Windows“ versijos nerasta.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	Tarp naujausių sėkmingai sukurtų versijų nerasta atsisiunčiamos „Windows“ versijos (patikrinta: {n}).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	Patikrintų „Windows“ versijų galiojimas baigėsi ir jų nebegalima atsisiųsti (patikrinta: {n}).
+	Older builds weren't checked.	Senesnės versijos nebuvo tikrinamos.
+	Windows builds are listed at {page}.	„Windows“ versijos išvardytos adresu {page}.
+	Try again	Bandyti dar kartą
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	„GitHub“ tikrinama naujausia šios atšakos „Windows“ versija. Nieko automatiškai neatsisiunčiama ir neįdiegiama.

@@ -2408,3 +2408,20 @@ animation effects	Off	Изключени
 	Tab view	Изглед с раздели
 	Tile View	Изглед с плочки
 	Tile view	Изглед с плочки
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	Търсене на най-новата компилация за Windows…
+	Latest available Windows build	Най-новата налична компилация за Windows
+	Version: {v}	Версия: {v}
+	Built: {date}	Компилирано: {date}
+	Artifact: {name}	Артефакт: {name}
+	This copy is version {c}.	Това копие е версия {c}.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	GitHub може да поиска да влезете, за да я изтеглите. Компилациите се пазят за ограничено време.
+	View build on GitHub	Преглед на компилацията в GitHub
+	View builds on GitHub	Преглед на компилациите в GitHub
+	No successful Windows build was found.	Не е намерена успешна компилация за Windows.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	Сред последните успешни компилации не е намерена компилация за Windows за изтегляне (проверени: {n}).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	Проверените компилации за Windows са изтекли и вече не могат да се изтеглят (проверени: {n}).
+	Older builds weren't checked.	По-старите компилации не са проверени.
+	Windows builds are listed at {page}.	Компилациите за Windows са изброени на {page}.
+	Try again	Опитай отново
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Запитва GitHub за най-новата компилация за Windows на този форк. Нищо не се изтегля и не се инсталира автоматично.

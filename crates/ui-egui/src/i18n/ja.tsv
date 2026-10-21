@@ -2445,3 +2445,20 @@ animation effects	Off	オフ
 	Tab view	タブ表示
 	Tile View	タイル表示
 	Tile view	タイル表示
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	最新の Windows ビルドを探しています…
+	Latest available Windows build	入手可能な最新の Windows ビルド
+	Version: {v}	バージョン: {v}
+	Built: {date}	ビルド日時: {date}
+	Artifact: {name}	アーティファクト: {name}
+	This copy is version {c}.	このコピーのバージョンは {c} です。
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	ダウンロードには GitHub へのサインインが必要な場合があります。ビルドの保存期間には限りがあります。
+	View build on GitHub	GitHub でビルドを表示
+	View builds on GitHub	GitHub でビルド一覧を表示
+	No successful Windows build was found.	成功した Windows ビルドは見つかりませんでした。
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	最近の成功したビルドに、ダウンロードできる Windows ビルドは見つかりませんでした ({n} 件を確認)。
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	確認した Windows ビルドは期限切れのため、ダウンロードできません ({n} 件を確認)。
+	Older builds weren't checked.	それより古いビルドは確認していません。
+	Windows builds are listed at {page}.	Windows ビルドの一覧: {page}
+	Try again	再試行
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	このフォークの最新の Windows ビルドを GitHub で確認します。自動でダウンロードやインストールは行いません。

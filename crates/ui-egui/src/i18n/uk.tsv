@@ -2467,3 +2467,20 @@ animation effects	Off	Вимкнено
 	Tab view	Режим вкладок
 	Tile View	Режим плиток
 	Tile view	Режим плиток
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	Пошук останньої збірки для Windows…
+	Latest available Windows build	Остання доступна збірка для Windows
+	Version: {v}	Версія: {v}
+	Built: {date}	Зібрано: {date}
+	Artifact: {name}	Артефакт: {name}
+	This copy is version {c}.	Це копія версії {c}.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	Для завантаження GitHub може попросити увійти. Збірки зберігаються обмежений час.
+	View build on GitHub	Відкрити збірку на GitHub
+	View builds on GitHub	Відкрити збірки на GitHub
+	No successful Windows build was found.	Успішної збірки для Windows не знайдено.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	Серед останніх успішних збірок не знайдено збірки для Windows, доступної для завантаження (перевірено: {n}).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	Термін зберігання перевірених збірок для Windows минув, їх більше не можна завантажити (перевірено: {n}).
+	Older builds weren't checked.	Старіші збірки не перевірялися.
+	Windows builds are listed at {page}.	Збірки для Windows перелічено на сторінці {page}.
+	Try again	Спробувати ще раз
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Запитує в GitHub останню збірку цього форка для Windows. Нічого не завантажується й не встановлюється автоматично.

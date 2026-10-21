@@ -2698,3 +2698,20 @@ key	Space	Space
 	Tab view	Dạng thẻ
 	Tile View	Dạng lát xếp
 	Tile view	Dạng lát xếp
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	Đang tìm bản dựng Windows mới nhất…
+	Latest available Windows build	Bản dựng Windows mới nhất hiện có
+	Version: {v}	Phiên bản: {v}
+	Built: {date}	Dựng lúc: {date}
+	Artifact: {name}	Gói: {name}
+	This copy is version {c}.	Bản này là phiên bản {c}.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	GitHub có thể yêu cầu bạn đăng nhập để tải xuống. Các bản dựng chỉ được lưu trong thời gian có hạn.
+	View build on GitHub	Xem bản dựng trên GitHub
+	View builds on GitHub	Xem các bản dựng trên GitHub
+	No successful Windows build was found.	Không tìm thấy bản dựng Windows thành công nào.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	Không tìm thấy bản dựng Windows có thể tải xuống trong các bản dựng thành công gần đây nhất (đã kiểm tra {n}).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	Các bản dựng Windows đã kiểm tra đã hết hạn và không thể tải xuống nữa (đã kiểm tra {n}).
+	Older builds weren't checked.	Các bản dựng cũ hơn chưa được kiểm tra.
+	Windows builds are listed at {page}.	Các bản dựng Windows được liệt kê tại {page}.
+	Try again	Thử lại
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Hỏi GitHub về bản dựng Windows mới nhất của bản fork này. Không có gì được tải xuống hoặc cài đặt tự động.
