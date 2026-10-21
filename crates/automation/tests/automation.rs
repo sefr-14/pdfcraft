@@ -5625,6 +5625,17 @@ fn measurements_calibrate_draw_save_reopen_and_export() {
     let last = all["measurements"].as_array().unwrap().last().unwrap();
     assert!((last["reading"]["value"].as_f64().unwrap() - 10.0).abs() < 1e-6);
     assert_eq!(last["points"], json!([[100.0, 100.0], [180.0, 160.0]]));
+    // This fork (OV10): feet and inches. 60 pt = 10 ft, so a 3-4-5 triangle's 100 pt is 16'-8".
+    let ft_in = ok(&mut a, "measure_scale", json!({"doc":doc,"page":1,"points":[[10,10],[70,10]],"distance":10,"unit":"ft-in"}));
+    assert_eq!((&ft_in["scale"]["unit"], &ft_in["scale"]["feet_inches"]), (&json!("ft"), &json!(8)));
+    let m = ok(&mut a, "measure_info", json!({"doc":doc,"page":1,"type":"distance","points":[[110,110],[170,190]]}));
+    assert_eq!(m["reading"]["label"], "16'-8\"");
+    ok(&mut a, "measure_distance", json!({"doc":doc,"page":1,"points":[[110,110],[170,190]]}));
+    ok(&mut a, "doc_save", json!({"doc":doc,"path":"feet.pdf"}));
+    let feet = ok(&mut a, "doc_open", json!({"path":"feet.pdf"}))["doc"].as_u64().unwrap();
+    let listed = ok(&mut a, "measure_list", json!({"doc":feet}));
+    let last = listed["measurements"].as_array().unwrap().last().unwrap();
+    assert_eq!((&last["reading"]["label"], &listed["unsupported"]), (&json!("16'-8\""), &json!([])), "{listed}");
     let _ = std::fs::remove_dir_all(dir);
 }
 

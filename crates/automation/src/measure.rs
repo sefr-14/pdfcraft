@@ -78,6 +78,9 @@ impl Automation {
         let info = self.doc(a)?.info.pages.get(page).ok_or_else(|| failed("no such page"))?.clone();
         let precision = u8::try_from(a.opt_int("precision")?.unwrap_or(2)).map_err(|_| failed("precision must be between 0 and 6"))?;
         let unit = a.opt_str("unit")?.unwrap_or("in");
+        // This fork (OV10): `ft-in` is a scale in feet shown as feet and inches to 1/8 inch.
+        let feet_inches = unit == "ft-in";
+        let unit = if feet_inches { "ft" } else { unit };
         let scale = if a.get("points").is_some() {
             if a.get("units_per_point").is_some() {
                 return Err(failed("pass calibration points or units_per_point, not both"));
@@ -99,6 +102,8 @@ impl Automation {
             let [x, y] = self.doc(a)?.measurement_to_user(page, at).map_err(failed)?;
             return Ok(json!({"scale":self.doc(a)?.measurement_scale(page,[x,y]).map_err(failed)?}));
         };
+        let scale =
+            if feet_inches { Scale { area_unit: "ft^2".into(), ..scale }.in_feet_inches(measure::units::EIGHTHS).map_err(failed)? } else { scale };
         let rect = a.nums::<4>("rect")?.unwrap_or([0.0, 0.0, f64::from(info.width), f64::from(info.height)]);
         if rect.iter().any(|v| v.abs() > 1e9) {
             return Err(failed("viewport coordinates must be within 1e9 points"));
