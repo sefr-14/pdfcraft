@@ -2440,3 +2440,8 @@ animation effects	Off	Désactivés
 # This fork (sefr-14/pdfcraft): Duplicate Tab (OV7), the tab menu item and its command.
 	Duplicate Tab	Dupliquer l’onglet
 	Duplicate tab	Dupliquer l’onglet
+# This fork (sefr-14/pdfcraft): Tab View and Tile View (OV7.2), the tab menu items and their commands.
+	Tab View	Vue en onglets
+	Tab view	Vue en onglets
+	Tile View	Vue en mosaïque
+	Tile view	Vue en mosaïque

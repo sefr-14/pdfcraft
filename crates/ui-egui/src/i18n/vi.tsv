@@ -2693,3 +2693,8 @@ key	Space	Space
 # This fork (sefr-14/pdfcraft): Duplicate Tab (OV7), the tab menu item and its command.
 	Duplicate Tab	Nhân bản thẻ
 	Duplicate tab	Nhân bản thẻ
+# This fork (sefr-14/pdfcraft): Tab View and Tile View (OV7.2), the tab menu items and their commands.
+	Tab View	Dạng thẻ
+	Tab view	Dạng thẻ
+	Tile View	Dạng lát xếp
+	Tile view	Dạng lát xếp

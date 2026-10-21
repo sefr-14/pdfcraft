@@ -2439,3 +2439,8 @@ animation effects	Off	Ki
 # This fork (sefr-14/pdfcraft): Duplicate Tab (OV7), the tab menu item and its command.
 	Duplicate Tab	Lap duplikálása
 	Duplicate tab	Lap duplikálása
+# This fork (sefr-14/pdfcraft): Tab View and Tile View (OV7.2), the tab menu items and their commands.
+	Tab View	Lapnézet
+	Tab view	Lapnézet
+	Tile View	Csempés nézet
+	Tile view	Csempés nézet

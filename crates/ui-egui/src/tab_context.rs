@@ -12,6 +12,8 @@ pub const MAX_VIEWS_PER_DOCUMENT: usize = 16;
 pub(crate) enum Action {
     Close(ViewKey),
     Duplicate(ViewKey),
+    /// Tab View or Tile View: how the document area arranges the views, not a change to any file.
+    Layout(crate::ViewLayout),
     Reopen,
     Reveal(DocId),
 }
@@ -62,6 +64,7 @@ impl crate::PdfCraftApp {
                     self.duplicate_view(i);
                 }
             }
+            Action::Layout(layout) => self.set_view_layout(layout),
             Action::Reopen => {
                 #[cfg(not(target_arch = "wasm32"))]
                 if let Some(path) = self.closed_tabs.last().cloned() {

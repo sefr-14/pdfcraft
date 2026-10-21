@@ -2462,3 +2462,8 @@ animation effects	Off	Вимкнено
 # This fork (sefr-14/pdfcraft): Duplicate Tab (OV7), the tab menu item and its command.
 	Duplicate Tab	Дублювати вкладку
 	Duplicate tab	Дублювати вкладку
+# This fork (sefr-14/pdfcraft): Tab View and Tile View (OV7.2), the tab menu items and their commands.
+	Tab View	Режим вкладок
+	Tab view	Режим вкладок
+	Tile View	Режим плиток
+	Tile view	Режим плиток

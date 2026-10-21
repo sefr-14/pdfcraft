@@ -92,6 +92,9 @@ impl PdfCraftApp {
                 "view.previous_view" => self.active.and_then(|i| self.views.get(i)).is_some_and(|v| !v.back.is_empty()),
                 "view.next_view" => self.active.and_then(|i| self.views.get(i)).is_some_and(|v| !v.forward.is_empty()),
                 "view.duplicate_tab" => self.active.is_some_and(|i| self.can_duplicate(i)),
+                // The arrangement already shown is greyed out, in the menu and the palette alike.
+                "view.tab_view" => self.layout_mode != crate::ViewLayout::Tabs,
+                "view.tile_view" => self.layout_mode != crate::ViewLayout::Tiles,
                 _ => true,
             }
     }
@@ -287,6 +290,8 @@ impl PdfCraftApp {
                     return self.duplicate_view(i).is_some();
                 }
             }
+            "view.tab_view" => self.set_view_layout(crate::ViewLayout::Tabs),
+            "view.tile_view" => self.set_view_layout(crate::ViewLayout::Tiles),
             "view.theme" => {
                 let next = if self.theme == ThemeKind::Light { ThemePreference::Dark } else { ThemePreference::Light };
                 self.set_theme_preference(next);

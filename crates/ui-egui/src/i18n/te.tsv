@@ -2349,3 +2349,8 @@ animation effects	Off	ఆఫ్
 # This fork (sefr-14/pdfcraft): Duplicate Tab (OV7), the tab menu item and its command.
 	Duplicate Tab	ట్యాబ్‌ను నకిలీ చేయి
 	Duplicate tab	ట్యాబ్‌ను నకిలీ చేయి
+# This fork (sefr-14/pdfcraft): Tab View and Tile View (OV7.2), the tab menu items and their commands.
+	Tab View	ట్యాబ్ వీక్షణ
+	Tab view	ట్యాబ్ వీక్షణ
+	Tile View	టైల్ వీక్షణ
+	Tile view	టైల్ వీక్షణ

@@ -149,6 +149,10 @@ fn every_registered_command_is_implemented() {
         if spec.id == "view.layout.cover" {
             app.set_option("layout", "two-up").unwrap();
         }
+        // Tab View is disabled while it is shown, as it is at every start.
+        if spec.id == "view.tab_view" {
+            app.set_view_layout(pdfcraft_ui_egui::ViewLayout::Tiles);
+        }
         // History commands need a real jump (and Back first to make Forward available).
         if matches!(spec.id, "view.previous_view" | "view.next_view") {
             app.views[0].go_to_page(1);

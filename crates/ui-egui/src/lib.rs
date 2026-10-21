@@ -139,6 +139,7 @@ pub mod scroll_speed;
 mod system_fonts;
 mod tab_context;
 pub mod theme;
+mod tile_view;
 pub mod ui_scale;
 pub mod updates;
 mod wheel_boost;
@@ -156,6 +157,10 @@ mod open_worker_tests;
 #[cfg(not(target_arch = "wasm32"))]
 mod duplicate_tab_tests;
 
+#[cfg(test)]
+#[cfg(not(target_arch = "wasm32"))]
+mod tile_view_tests;
+
 use pdfcraft_engine::{DocId, Session};
 
 pub use canvas::{DocView, RasterMemory, ViewKey};
@@ -163,6 +168,7 @@ pub use editing::{CloseRequest, SaveTarget};
 pub use files::{ExtractDraft, FilePurpose, FileRequest, RotateDraft, SplitDraft, SplitMode, SplitPlan};
 pub use recovery::{AUTOSAVE_SECS, RecoveryMeta, RecoveryStore};
 use theme::{ThemeKind, ThemePreference};
+pub use tile_view::ViewLayout;
 
 /// Top-level workspace modes (Acrobat's mode bar).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -498,6 +504,10 @@ pub struct PdfCraftApp {
     pub(crate) closed_tabs: Vec<String>,
     /// `None` shows the Home tab.
     pub active: Option<usize>,
+    /// Tab View or Tile View (OV7.2). Tab View at every start: it isn't kept in the settings.
+    pub layout_mode: ViewLayout,
+    /// The tiles drawn this frame in Tile View, which render alongside the active view.
+    pub(crate) tile_frame: Vec<usize>,
     pub mode: Mode,
     /// Workspace used for newly opened PDFs; independent of PDF Initial View metadata.
     pub default_mode: Mode,
@@ -903,6 +913,8 @@ impl PdfCraftApp {
             views: Vec::new(),
             closed_tabs: Vec::new(),
             active: None,
+            layout_mode: ViewLayout::Tabs,
+            tile_frame: Vec::new(),
             mode: Mode::AllTools,
             default_mode: Mode::AllTools,
             view_defaults: Default::default(),
@@ -2907,9 +2919,9 @@ impl PdfCraftApp {
         if self.modal_open() {
             return;
         }
-        if let Some(view) = self.active.and_then(|i| self.views.get_mut(i))
-            && view.auto_scroll.escape(ctx)
-        {
+        // Escape ends a middle-button gesture: the active view's, or in Tile View any tile's.
+        let (tiled, active) = (self.tiled(), self.active);
+        if self.views.iter_mut().enumerate().any(|(i, v)| (tiled || active == Some(i)) && v.auto_scroll.escape(ctx)) {
             return;
         }
         self.registry_shortcuts(ctx);
@@ -3187,9 +3199,12 @@ impl eframe::App for PdfCraftApp {
         // Scrolling and group-drag previews are transient: never resume after changing tabs,
         // opening a modal/palette, or returning to a window that lost focus.
         let blocked = self.modal_open() || self.palette_open || !ctx.input(|i| i.focused);
+        // In Tile View every tile keeps the middle-button gesture started over it (OV7.3): the
+        // tile under the pointer is navigated without being made the active one first.
+        let tiled = self.tiled();
         for (index, view) in self.views.iter_mut().enumerate() {
             view.objects.set_input_blocked(blocked || self.active != Some(index));
-            if blocked || self.active != Some(index) {
+            if blocked || (self.active != Some(index) && !tiled) {
                 view.auto_scroll.cancel();
             }
         }
@@ -3222,6 +3237,7 @@ impl eframe::App for PdfCraftApp {
         }
         // Tabs that show a document changed through another of its tabs catch up first.
         self.sync_shared_views();
+        self.tile_frame.clear();
         for view in &mut self.views {
             view.begin_render_frame();
         }
@@ -3282,6 +3298,7 @@ impl eframe::App for PdfCraftApp {
                 match self.active {
                     None if self.combine_showing() => combine_ui::page(self, ui),
                     None => home::show(self, ui),
+                    Some(_) if self.tiled() => tile_view::area(self, ui),
                     Some(index) => match compare_ui::side_by_side(self, index) {
                         Some((old, new)) => compare_ui::compare_area(self, old, new, ui),
                         None => canvas::document_area(self, index, ui),
@@ -3307,15 +3324,25 @@ impl PdfCraftApp {
         self.combine_thumbs_frame(ctx);
         // Retire hidden documents before admitting the visible document's textures, so the
         // three cache limits apply to the application, regardless of how many tabs are open.
-        // Side by side: the comparison's old file renders alongside the active one.
-        let partner = self.active.and_then(|i| compare_ui::side_by_side(self, i)).map(|(old, _)| old);
-        let shown: Vec<DocId> = self.active.into_iter().chain(partner).filter_map(|i| self.views.get(i).map(|v| v.id)).collect();
+        // Side by side: the comparison's old file renders alongside the active one. In Tile View
+        // every tile on screen renders, and the active view too (OV7.2).
+        let tiled = self.tiled();
+        let displayed: Vec<usize> = if tiled {
+            let mut shown = self.tile_frame.clone();
+            shown.extend(self.active);
+            shown.sort_unstable();
+            shown.dedup();
+            shown
+        } else {
+            let partner = self.active.and_then(|i| compare_ui::side_by_side(self, i)).map(|(old, _)| old);
+            self.active.into_iter().chain(partner).collect()
+        };
+        let shown: Vec<DocId> = displayed.iter().filter_map(|&i| self.views.get(i).map(|v| v.id)).collect();
         // A hidden tab of a document another tab shows (Duplicate Tab) must leave the shared
         // render pool alone: suspending would clear the shown tab's queue and drain its results.
         let mut requeue: Vec<DocId> = Vec::new();
         for (i, view) in self.views.iter_mut().enumerate() {
-            if Some(i) != self.active
-                && Some(i) != partner
+            if !displayed.contains(&i)
                 && let Some(doc) = self.session.get(view.id)
             {
                 if !shown.contains(&view.id) {
@@ -3326,12 +3353,25 @@ impl PdfCraftApp {
                 }
             }
         }
-        for i in self.active.into_iter().chain(partner) {
-            if let Some(view) = self.views.get_mut(i)
-                && let Some(doc) = self.session.get(view.id)
-            {
-                view.requeue |= requeue.contains(&view.id);
-                view.finish_render_frame(ctx, &doc.info, &doc.renderer);
+        // In Tile View the views on screen share one prefetch allowance between them.
+        let share = if tiled { displayed.len().max(1) } else { 1 };
+        let mut done: Vec<DocId> = Vec::new();
+        for id in shown {
+            if done.contains(&id) {
+                continue;
+            }
+            done.push(id);
+            let Some(doc) = self.session.get(id) else { continue };
+            // A document in several tiles hands its render pool one queue for all of them.
+            let mut group: Vec<&mut DocView> =
+                self.views.iter_mut().enumerate().filter(|(j, v)| v.id == id && displayed.contains(j)).map(|(_, v)| v).collect();
+            for view in group.iter_mut() {
+                view.budget_share = share;
+                view.requeue |= requeue.contains(&id);
+            }
+            match group.as_mut_slice() {
+                [view] => view.finish_render_frame(ctx, &doc.info, &doc.renderer),
+                views => canvas::finish_shared_render_frame(views, ctx, &doc.info, &doc.renderer),
             }
         }
     }
