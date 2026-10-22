@@ -85,6 +85,8 @@ pub struct MeasureView {
     snappers: Vec<(SnapKey, Lines)>,
     /// How many times a page's lines have been read for snapping (diagnostics and tests).
     pub lines_read: usize,
+    /// How many placements had to wait for a page's lines (diagnostics and tests).
+    pub click_waits: usize,
     /// Saved measurements per edit generation, for the panel.
     listing: Option<(u64, Result<measure::Listing, String>)>,
 }
@@ -118,6 +120,7 @@ impl Default for MeasureView {
             notice: None,
             snappers: Vec::new(),
             lines_read: 0,
+            click_waits: 0,
             listing: None,
         }
     }
@@ -167,7 +170,28 @@ impl MeasureView {
         }
     }
 
-    /// A page's drawn lines are being read for snapping: clicks on it place no point meanwhile.
+    /// A point is being placed on `page` while its lines load: wait for them, up to `CLICK_WAIT`,
+    /// so the click isn't lost to a worker that is a moment behind (a normal sheet takes
+    /// milliseconds; Windows build #22 lost the control channel's clicks to that race). Only the
+    /// read for the page as it is now (`SnapKey`) is waited for and filled in; on a timeout it
+    /// stays loading.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn wait_for_lines(&mut self, doc: &Document, page: usize) {
+        self.click_waits = self.click_waits.saturating_add(1);
+        let key = SnapKey::of(doc, page);
+        if let Some((_, lines)) = self.snappers.iter_mut().find(|(k, _)| *k == key)
+            && let Lines::Loading(rx) = lines
+        {
+            match rx.recv_timeout(CLICK_WAIT) {
+                Ok(done) => *lines = Lines::Ready(done),
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => *lines = Lines::Ready(Err(tl!("the worker stopped").into())),
+            }
+        }
+    }
+
+    /// A page's drawn lines are being read for snapping: a click on it waits for them (up to
+    /// `CLICK_WAIT`) and places no point if they still aren't in.
     pub fn snapping_loading(&mut self) -> bool {
         self.poll();
         self.snappers.iter().any(|(_, l)| matches!(l, Lines::Loading(_)))
@@ -181,6 +205,10 @@ impl MeasureView {
         tx
     }
 }
+
+/// How long a click made while a page's lines load waits for them before placing nothing.
+#[cfg(not(target_arch = "wasm32"))]
+const CLICK_WAIT: std::time::Duration = std::time::Duration::from_millis(500);
 
 /// Pages whose lines are kept for snapping: the current one and a few the pointer was over.
 const SNAPPERS: usize = 4;
@@ -339,12 +367,19 @@ pub(crate) fn page_input(
         let [x, y] = info.view_to_user(vx, vy);
         let mut point = [f64::from(x), f64::from(y)];
         let mut loading = false;
+        // A press held past egui's click time, or moved more than a few pixels, isn't a click:
+        // the point goes where the button is released (this fork, OV10). Once per release.
+        let placed = resp.clicked() || resp.drag_stopped_by(egui::PointerButton::Primary);
         if state.snap_enabled {
             let pixels_per_unit = f64::from((xf.rect.width() / xf.pw).max(1e-6));
             // A point `sensitivity` pixels from the pointer: the snapping reach, in any frame.
             let reach = doc.measurement_to_user(page, [f64::from(vx) + state.sensitivity / pixels_per_unit, f64::from(vy)]).unwrap_or(point);
             let (snaps, ctx) = (state.snaps, ui.ctx().clone());
             let mut error = None;
+            #[cfg(not(target_arch = "wasm32"))]
+            if placed && matches!(state.snapping(&ctx, doc, page), Snapping::Loading) {
+                state.wait_for_lines(doc, page);
+            }
             match state.snapping(&ctx, doc, page) {
                 Snapping::Loading => loading = true,
                 Snapping::Failed(e) => error = Some(crate::i18n::fmt(tl!("Snapping isn't available on this page: {reason}"), &[("reason", e)])),
@@ -371,11 +406,9 @@ pub(crate) fn page_input(
         }
         hover = Some(point);
         state.snapped = snap.map(|kind| (point, kind));
-        // A press held past egui's click time, or moved more than a few pixels, isn't a click:
-        // the point goes where the button is released (this fork, OV10).
-        let placed = resp.clicked() || resp.drag_stopped_by(egui::PointerButton::Primary);
         if loading {
-            // Never a silent unsnapped point: wait for the lines, or turn snapping off.
+            // Never a silent unsnapped point: a click that waited `CLICK_WAIT` for the lines in
+            // vain places none and says why; Snap to drawing off places points at once.
             notice(ui, pos, tl!("Reading the drawing for snapping…"));
         } else if placed {
             // An area closes on a click within 6 pixels of its first vertex.

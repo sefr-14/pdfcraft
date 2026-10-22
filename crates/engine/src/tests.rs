@@ -4080,6 +4080,31 @@ fn content_generation_skips_comment_edits_and_follows_everything_else() {
     session.redo(id).unwrap();
     assert_eq!(content(&session), start, "comments don't change what the page draws");
     assert!(edits(&session) >= edited + 3);
+    // Nor does a drawing scale, but it is read at once: the next measurement uses it.
+    let calibrated = edits(&session);
+    let scale = measure::Scale::new(0.25, "ft", 2).unwrap();
+    let viewport = Edit::SetMeasurementScale { page: 0, bbox: [0.0, 0.0, 100.0, 100.0], name: "Plan".into(), scale: scale.clone() };
+    session.apply(id, viewport).unwrap();
+    assert_eq!(content(&session), start, "a /VP viewport doesn't change what the page draws");
+    assert!(edits(&session) > calibrated, "caches keyed on the edit generation refresh");
+    let doc = session.get(id).unwrap();
+    assert_eq!(doc.measurement_scale(0, [50.0, 50.0]).unwrap().unit, "ft");
+    assert_eq!(doc.measurement_scale_or(0, [50.0, 50.0], 1.0 / 72.0, "in").unwrap().x, scale.x);
+    let m = measure::NewMeasurement {
+        page: 0,
+        kind: measure::Kind::Distance,
+        points: vec![[10.0, 10.0], [50.0, 10.0]],
+        scale: doc.measurement_scale(0, [10.0, 10.0]).unwrap(),
+        style: Style::default(),
+        label: String::new(),
+        author: "Tester".into(),
+    };
+    session.apply(id, Edit::AddMeasurement(m)).unwrap();
+    let listed = session.get(id).unwrap().measurements().unwrap();
+    assert_eq!(listed.measurements.last().map(|m| m.reading.label.as_str()), Some("10.00 ft"), "{listed:?}");
+    session.undo(id).unwrap();
+    session.undo(id).unwrap();
+    assert!(session.get(id).unwrap().measurement_scale(0, [50.0, 50.0]).unwrap().unit != "ft", "undo removes the viewport");
     session.apply(id, Edit::RotatePages { pages: vec![0], degrees: 90 }).unwrap();
     let rotated = content(&session);
     assert!(rotated > start);

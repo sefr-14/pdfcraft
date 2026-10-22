@@ -3822,7 +3822,10 @@ impl Session {
         }
         doc.dirty = true;
         doc.generation += 1;
-        if touches_content(scope) {
+        // A measurement viewport (/VP) is read where it is needed and never changes what the
+        // page draws. Its undo and redo know only the scope and count as a change: one extra
+        // read of the lines, never a stale one.
+        if touches_content(scope) && !matches!(edit, Edit::SetMeasurementScale { .. }) {
             doc.content_generation += 1;
         }
         doc.edit_notices = notices;
