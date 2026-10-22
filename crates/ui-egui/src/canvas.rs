@@ -2475,6 +2475,20 @@ fn copy_rendered(r: &pdfcraft_render::RenderedPage) -> pdfcraft_render::Rendered
     }
 }
 
+/// Escape's step for the view itself (`PdfCraftApp::escape_step` decides when): cancel a
+/// camera snapshot, else clear the text selection, else close the find bar. Returns whether
+/// there was one to take.
+pub(crate) fn escape_view(view: &mut DocView) -> bool {
+    if view.camera.is_some() || view.camera_done.is_some() {
+        view.pending_action = Some(ViewAction::CancelCamera);
+    } else if view.selection.is_some() {
+        view.selection = None;
+    } else if view.find.take().is_none() {
+        return false;
+    }
+    true
+}
+
 pub fn shortcuts(view: &mut DocView, ctx: &egui::Context, speed: crate::scroll_speed::ScrollSpeed) {
     use egui::{Key, KeyboardShortcut, Modifiers};
     if ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::F))) {
@@ -2541,15 +2555,6 @@ pub fn shortcuts(view: &mut DocView, ctx: &egui::Context, speed: crate::scroll_s
         view.view_history(true);
     }
     let key = |k| ctx.input(|i| i.key_pressed(k));
-    if key(Key::Escape) {
-        if view.camera.is_some() || view.camera_done.is_some() {
-            view.pending_action = Some(ViewAction::CancelCamera);
-        } else if view.selection.is_some() {
-            view.selection = None;
-        } else {
-            view.find = None;
-        }
-    }
     if key(Key::Home) {
         view.go_to_page(0);
     }
@@ -4192,7 +4197,7 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
     // One crop, then back to selecting (as Acrobat does).
     let cropped = view.pending_edit.as_ref().is_some_and(|e| matches!(e, pdfcraft_engine::Edit::SetPageBox { .. }));
     let mut tool = app.quick_tool;
-    comments::keys(ui.ctx(), view, &mut tool, allowed);
+    comments::keys(ui.ctx(), view, &mut tool, allowed, !app.escape_reserved);
     if preparing {
         crate::prepare::keys(ui.ctx(), view);
     }
@@ -4581,6 +4586,11 @@ fn page_size_hint(view: &DocView, info: &DocInfo, units: crate::units::Unit, are
         });
 }
 
+/// The find bar's text field.
+pub(crate) fn find_input_id() -> egui::Id {
+    egui::Id::new("find-input")
+}
+
 /// Acrobat-style floating find bar at the top-right of the document area.
 fn find_bar(view: &mut DocView, pages: usize, area: Rect, ui: &mut egui::Ui, t: &Tokens) {
     let Some(find) = view.find.as_mut() else { return };
@@ -4606,7 +4616,7 @@ fn find_bar(view: &mut DocView, pages: usize, area: Rect, ui: &mut egui::Ui, t: 
                     ui.horizontal(|ui| {
                         ui.add(icons::image("search", 16.0, t.text_muted));
                         let edit = egui::TextEdit::singleline(&mut find.query)
-                            .id(egui::Id::new("find-input"))
+                            .id(find_input_id())
                             .hint_text(tl!("Find text"))
                             .desired_width(220.0)
                             .frame(egui::Frame::NONE);

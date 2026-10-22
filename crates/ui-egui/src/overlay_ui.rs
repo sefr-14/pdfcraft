@@ -1710,13 +1710,18 @@ pub(crate) fn show(app: &mut PdfCraftApp, ctx: &egui::Context) {
     }
 }
 
+/// The wizard's window (and its layer's id).
+pub(crate) fn wizard_id() -> egui::Id {
+    egui::Id::new("overlay-wizard")
+}
+
 fn window(app: &mut PdfCraftApp, w: &mut Wizard, ctx: &egui::Context) {
     let t = Tokens::get(ctx);
     let screen = ctx.content_rect();
     let size = vec2((screen.width() - 80.0).clamp(560.0, 1180.0), (screen.height() - 80.0).clamp(420.0, 800.0));
     let mut open = true;
     egui::Window::new(tx("Overlay compare"))
-        .id(egui::Id::new("overlay-wizard"))
+        .id(wizard_id())
         .open(&mut open)
         .collapsible(false)
         .resizable(true)

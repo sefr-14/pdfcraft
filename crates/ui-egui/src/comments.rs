@@ -1578,23 +1578,33 @@ pub(crate) fn page_rotation(info: &DocInfo, page: usize) -> i64 {
     info.pages.get(page).map_or(0, |p| i64::from(p.rotation))
 }
 
-/// Delete / Escape handling for comments (only while no text field has focus).
-pub(crate) fn keys(ctx: &egui::Context, view: &mut DocView, tool: &mut QuickTool, allowed: bool) {
+/// Delete / Escape handling for comments (only while no text field has focus). `escape` is
+/// false when this frame's Escape belongs to something else (a field, a dialog, the palette).
+pub(crate) fn keys(ctx: &egui::Context, view: &mut DocView, tool: &mut QuickTool, allowed: bool, escape: bool) {
     if !ctx.input(|i| i.pointer.any_down()) {
         view.comments.cancelled_drag = false;
     }
     if ctx.egui_wants_keyboard_input() {
         return;
     }
+    // Backspace removes the last vertex of a measurement in progress; it never also deletes a
+    // selected comment (this fork, OV11).
+    let measuring = matches!(tool, QuickTool::Measure(_)) && !view.measure.points.is_empty();
     let cv = &mut view.comments;
-    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+    if escape && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         // One step back per press: cancel the gesture, then deselect, then drop the tool.
         let cancelled = cv.gesture.take().is_some() || cv.selected.take().is_some();
-        if !cancelled && matches!(tool, QuickTool::Comment(_)) {
+        let dropped = !cancelled && matches!(tool, QuickTool::Comment(_));
+        if dropped {
             *tool = QuickTool::Select;
+        }
+        // Taken: nothing else reacts to the same press (this fork, OV11).
+        if cancelled || dropped {
+            ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
         }
     }
     if allowed
+        && !measuring
         && let Some((page, index)) = cv.selected
         && ctx.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace))
     {

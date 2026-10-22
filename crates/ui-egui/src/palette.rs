@@ -45,7 +45,8 @@ pub fn show(app: &mut PdfCraftApp, ctx: &egui::Context) {
         return;
     }
     let t = Tokens::get(ctx);
-    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+    // Taken: nothing else reacts to the same press (this fork, OV11).
+    if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
         app.palette_open = false;
         return;
     }

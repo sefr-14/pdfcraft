@@ -37,6 +37,8 @@ mod chrome;
 mod combine_grid;
 mod image_pick;
 mod overlay_ui;
+// This fork: Escape takes one step back per press (OV11).
+mod escape;
 mod tags_ui;
 pub use combine_grid::ThumbState as CombineThumb;
 mod combine_ui;
@@ -702,6 +704,12 @@ pub struct PdfCraftApp {
     pub compare: Option<compare_ui::CompareState>,
     /// Overlay compare (this fork): the wizard, kept while closed so it resumes where it was left.
     pub(crate) overlay: Option<Box<overlay_ui::Wizard>>,
+    /// This frame's Escape belongs to a dialog, field, menu or the palette: nothing under it
+    /// reacts (this fork, OV11: `escape`).
+    pub(crate) escape_reserved: bool,
+    /// The widget with keyboard focus at the end of the last frame (egui drops it on Escape
+    /// before the app sees the press).
+    keyboard_owner: Option<egui::Id>,
     /// The JavaScript console and the Document JavaScripts draft.
     pub js_console: js_ui::JsConsole,
     pub doc_js: js_ui::DocJsDraft,
@@ -1032,6 +1040,8 @@ impl PdfCraftApp {
             compare_old: None,
             compare: None,
             overlay: None,
+            escape_reserved: false,
+            keyboard_owner: None,
             js_console: Default::default(),
             doc_js: Default::default(),
             a11y: a11y_ui::A11yState::default(),
@@ -2938,10 +2948,13 @@ impl PdfCraftApp {
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
         use egui::Key;
+        // This frame's Escape is free until something owns it (this fork, OV11: `escape`).
+        self.escape_reserved = false;
         // "Save changes?" is modal: its keys are its own (⌘D is Don't save there, not Document
         // properties; Escape cancels it rather than clearing a selection), and nothing may run
         // underneath it. They are read here, before the canvas can consume them.
         if self.close_request.is_some() {
+            self.escape_reserved = true;
             // These dialogs are drawn after the save prompt and own the keyboard while open.
             // Don't let Escape or Return resolve unsaved work underneath one.
             let covered = self.pending_link.is_some()
@@ -2958,6 +2971,7 @@ impl PdfCraftApp {
         // The other dialogs and prompts are modal too (⌘W closed the file behind Preferences,
         // #870).
         if self.modal_open() {
+            self.escape_reserved = true;
             return;
         }
         // Escape ends a middle-button gesture: the active view's, or in Tile View any tile's.
@@ -2966,10 +2980,8 @@ impl PdfCraftApp {
             return;
         }
         self.registry_shortcuts(ctx);
-        // (Esc closes a Combine file shown large first.)
-        if self.full_screen && self.combine_tab.preview.is_none() && ctx.input(|i| i.key_pressed(Key::Escape)) {
-            self.set_full_screen(ctx, false);
-        }
+        // One step back per press; leaving full screen is the last one (`escape_late`).
+        self.escape_step(ctx);
         if let Some(i) = self.active {
             // Select all belongs to the document or page grid, unless a text field or
             // overlay owns the keyboard. Other canvas shortcuts keep their own handling.
@@ -3310,6 +3322,7 @@ impl eframe::App for PdfCraftApp {
             // Notices too: a refused field value or a failed save must be seen in full screen.
             self.show_progress(&ctx);
             widgets::toast(self, &ctx);
+            self.escape_late(&ctx);
             self.finish_render_frame(&ctx);
             return;
         }
@@ -3355,6 +3368,7 @@ impl eframe::App for PdfCraftApp {
         overlay_ui::show(self, &ctx);
         self.show_progress(&ctx);
         widgets::toast(self, &ctx);
+        self.escape_late(&ctx);
         self.finish_render_frame(&ctx);
     }
 }
