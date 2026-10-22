@@ -72,7 +72,10 @@ fn at(h: &Harness<'static, PdfCraftApp>, view: usize, x: f32, y: f32) -> Pos2 {
     let r = v.page_screen_rect(0).expect("page on screen");
     let info = &app.session.get(v.id).unwrap().info.pages[0];
     let [vx, vy] = info.user_to_view(x, y);
-    pos2(r.left() + vx / info.width * r.width(), r.top() + vy / info.height * r.height())
+    let p = pos2(r.left() + vx / info.width * r.width(), r.top() + vy / info.height * r.height());
+    // A click outside the document area tests nothing (an earlier rotated-page probe did that).
+    assert!(v.viewport_rect().contains(p), "({x}, {y}) is at {p:?}, outside the document area {:?}", v.viewport_rect());
+    p
 }
 
 fn button(h: &mut Harness<'static, PdfCraftApp>, pos: Pos2, pressed: bool) {
@@ -480,4 +483,30 @@ fn calibrating_in_feet_and_inches_from_the_panel() {
     let m = &h.state().views[0].measure;
     assert!(m.custom_unit && m.unit == "m");
     assert!(h.query_all_by_value("m").next().is_some(), "the unit is typed in");
+}
+
+/// H3 of the "nothing was kept" report: page dictionaries a little out of the ordinary keep the
+/// measurement too.
+#[test]
+fn unusual_annotation_arrays_and_rotated_pages_keep_the_measurement() {
+    for (name, page, objects) in [
+        ("an annotation written inline in /Annots", "/Annots [<< /Type /Annot /Subtype /Square /Rect [10 10 20 20] >>]", ""),
+        ("an indirect /Annots array", "/Annots 5 0 R", "5 0 obj [] endobj\n"),
+        ("/Rotate 90", "/Rotate 90", ""),
+        ("/Rotate 270 and a crop box", "/Rotate 270 /CropBox [20 10 380 290]", ""),
+    ] {
+        let (mut h, id) = harness(pdf("", page, objects, LINES));
+        // A turned page stands taller than the window at the default zoom: show all of it.
+        h.state_mut().set_option("zoom", "100").unwrap();
+        h.run_steps(3);
+        tool(&mut h, Tool::Distance);
+        click_at(&mut h, 0, 100.0, 100.0);
+        click_at(&mut h, 0, 300.0, 200.0);
+        let listed = listing(&h, id);
+        assert_eq!(listed.measurements.len(), 1, "{name}: {listed:?}");
+        let points = &listed.measurements[0].points;
+        // Points are listed in displayed coordinates; their distance doesn't depend on the turn.
+        let shown = (points[1][0] - points[0][0]).hypot(points[1][1] - points[0][1]);
+        assert!((shown - 200f64.hypot(100.0)).abs() < 1.5, "{name}: {points:?}");
+    }
 }
