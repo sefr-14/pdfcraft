@@ -1,6 +1,6 @@
 > [!IMPORTANT]
 > **This is PdfCraft Overlay, an unofficial fork of [storytold/pdfcraft](https://github.com/storytold/pdfcraft).**
-> It is based on PdfCraft 0.11.0 by the ArtCraft team and adds an overlay compare for revisions of
+> It is based on PdfCraft 0.12.0 by the ArtCraft team and adds an overlay compare for revisions of
 > drawing sets. It is not made, endorsed or supported by the ArtCraft team. See
 > [About this fork](#about-this-fork); the rest of this README describes upstream PdfCraft.
 
@@ -69,6 +69,9 @@
 This repository, [sefr-14/pdfcraft](https://github.com/sefr-14/pdfcraft), is an unofficial fork of
 [storytold/pdfcraft](https://github.com/storytold/pdfcraft), based on PdfCraft by the ArtCraft team.
 It is not made, endorsed or supported by them, so report problems with the fork here, not upstream.
+
+Translations: upstream PdfCraft's labels keep all their translations. This fork's own labels are
+kept in English and Spanish; in other languages they may show in English.
 
 **What it adds: Overlay compare.** The Overlay button in the mode bar (also All tools › Compare
 files › Overlay two revisions) compares two revisions of a drawing set. A six-step wizard pairs the

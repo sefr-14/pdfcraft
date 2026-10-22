@@ -227,6 +227,9 @@ f0c9901c sync (16 Oct): `page_as_form` still copies one dictionary, and the ance
 the ec0a9650 sync (19 Oct, after upstream 0.9.0): `crates/organize/src/import.rs` is unchanged.
 Still open at the 41649514 sync (21 Oct, after upstream 0.10.1): `crates/organize` is unchanged.
 Still open at the v0.11.0 sync (3e306453, 21 Oct): the release changes no code in `crates/organize`.
+Still open at the v0.12.0 sync (39844f06, 22 Oct): `page_as_form` is unchanged; upstream's change
+to `crates/organize/src/import.rs` is how the objects an import added are found (they are not
+always numbered above the others), not which resources a page takes.
 
 Optional content at the ec0a9650 sync: upstream's one layer change (4ff53a8d) writes the Layers
 panel's choices into the default configuration of the copy made for printing. It doesn't change
@@ -243,6 +246,12 @@ what the overlay shows or asks about is the same as before the sync.
 Optional content at the v0.11.0 sync (3e306453): the release is the version bump, two dependency
 security updates, `xtask version set` and a renderer test. It changes no layer code, and
 `oc::eval` is unchanged, so what the overlay shows or asks about is the same as before the sync.
+
+Optional content at the v0.12.0 sync (39844f06): upstream's layer changes are the Layers panel's
+Reset to Initial Visibility (fcdf2a21), `layer_set` and `page_render` drawing with the document's
+view settings (92990b2e, automation), and set-layer-visibility actions run from links and push
+buttons (22752dc9). The overlay calls none of them, and `oc::eval` is unchanged, so what the
+overlay shows or asks about is the same as before the sync.
 
 Since the f0c9901c sync, `page_as_form` copies through upstream's bounded copier (af62daea): a
 source page whose resources nest more than 256 references or containers deep is refused with an
