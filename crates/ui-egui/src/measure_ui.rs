@@ -8,7 +8,7 @@ use pdfcraft_cos::ObjRef;
 use pdfcraft_engine::{
     Document, Edit, Style,
     measure::{
-        self, Kind, NewMeasurement, Point, Reading, Scale,
+        self, Kind, NewMeasurement, PageUnit, Point, Reading, Scale,
         snap::SnapKind,
         units::{self, EIGHTHS, LengthUnit},
     },
@@ -57,6 +57,7 @@ pub struct MeasureView {
     pub snaps: measure::snap::SnapOptions,
     pub snap_enabled: bool,
     pub sensitivity: f64,
+    /// The page side of the drawing scale, in its page unit ([`page_unit_of`]).
     pub drawing_points: f64,
     pub real_distance: f64,
     pub unit: String,
@@ -73,6 +74,8 @@ pub struct MeasureView {
     focus_known: bool,
     /// The known-distance field, as last drawn: Escape in it cancels the pending calibration.
     pub(crate) known_field: Option<egui::Id>,
+    /// The unit picked for the page side of the scale; `None` follows `unit`.
+    pub page_unit: Option<PageUnit>,
     pub precision: u8,
     pub name: String,
     pub whole_page: bool,
@@ -108,7 +111,7 @@ impl Default for MeasureView {
             snaps: Default::default(),
             snap_enabled: true,
             sensitivity: 6.0,
-            drawing_points: 72.0,
+            drawing_points: 1.0,
             real_distance: 1.0,
             unit: "in".into(),
             feet_inches: false,
@@ -117,6 +120,7 @@ impl Default for MeasureView {
             pending_calibration: None,
             focus_known: false,
             known_field: None,
+            page_unit: None,
             precision: 2,
             name: "Drawing scale".into(),
             whole_page: true,
@@ -142,8 +146,14 @@ pub struct CalibrationBefore {
     feet_inches: bool,
     custom_unit: bool,
     known_text: String,
+    page_unit: Option<PageUnit>,
 }
 
+/// The unit of the page side of a drawing scale: the one picked, else the real-world unit when it
+/// is pt, in, mm or cm (a plan at 1:50 in millimetres is 1 mm = 50 mm), else the display unit.
+pub(crate) fn page_unit_of(picked: Option<PageUnit>, unit: &str, display: crate::units::Unit) -> PageUnit {
+    picked.or_else(|| PageUnit::from_label(unit)).or_else(|| PageUnit::from_label(display.label())).unwrap_or(PageUnit::Pt)
+}
 impl MeasureView {
     /// Drop the measurement in progress and what it shows: points, live reading, the notice at
     /// the pointer, the last error and snap target. A pending calibration is a separate step.
@@ -173,6 +183,7 @@ impl MeasureView {
         self.feet_inches = before.feet_inches;
         self.custom_unit = before.custom_unit;
         self.known_text = before.known_text;
+        self.page_unit = before.page_unit;
         self.focus_known = false;
         true
     }
@@ -185,6 +196,7 @@ impl MeasureView {
             feet_inches: self.feet_inches,
             custom_unit: self.custom_unit,
             known_text: self.known_text.clone(),
+            page_unit: self.page_unit,
         }
     }
 
@@ -509,7 +521,7 @@ pub(crate) fn page_input(
     }
     if state.page == Some(page) && !state.points.is_empty() {
         if (resp.double_clicked() || !typing && ui.input(|i| i.key_pressed(egui::Key::Enter))) && matches!(tool, Tool::Perimeter | Tool::Area) {
-            finish(state, &mut view.pending_edit, doc, page, tool, author);
+            finish(state, &mut view.pending_edit, doc, page, tool, author, units);
         }
         if !typing && ui.input(|i| i.key_pressed(egui::Key::Backspace)) {
             state.points.pop();
@@ -591,10 +603,10 @@ fn place(state: &mut MeasureView, pending: &mut Option<Edit>, doc: &Document, cl
     }
     let finishes = closes || matches!(tool, Tool::Distance | Tool::Calibrate) && state.points.len() == 2;
     if finishes {
-        finish(state, pending, doc, page, tool, author);
+        finish(state, pending, doc, page, tool, author, units);
     }
 }
-fn finish(state: &mut MeasureView, pending: &mut Option<Edit>, doc: &Document, page: usize, tool: Tool, author: &str) {
+fn finish(state: &mut MeasureView, pending: &mut Option<Edit>, doc: &Document, page: usize, tool: Tool, author: &str, units: crate::units::Unit) {
     if tool == Tool::Calibrate {
         if let [a, b] = state.points.as_slice() {
             let a = doc.measurement_to_view(page, *a);
@@ -604,7 +616,7 @@ fn finish(state: &mut MeasureView, pending: &mut Option<Edit>, doc: &Document, p
                 if state.pending_calibration.is_none() {
                     state.pending_calibration = Some(state.calibration_before());
                 }
-                state.drawing_points = measure::distance(a, b);
+                state.drawing_points = measure::distance(a, b) / page_unit_of(state.page_unit, &state.unit, units).points();
                 state.focus_known = true;
             }
         }
@@ -664,13 +676,16 @@ fn panel_body(app: &mut PdfCraftApp, ui: &mut egui::Ui, _t: &Tokens) {
     }
     if state.seeded_page != Some(page) {
         state.seeded_page = Some(page);
-        if let (Ok(a), Ok(b)) = (doc.measurement_to_user(page, [0.0, 0.0]), doc.measurement_to_user(page, [72.0, 0.0]))
+        // One page unit (the one the scale's unit gives) and what it measures.
+        if let Ok(a) = doc.measurement_to_user(page, [0.0, 0.0])
             && let Ok(scale) = doc.measurement_scale_or(page, a, units.per_point(), units.label())
+            && let Ok(b) = doc.measurement_to_user(page, [page_unit_of(None, &scale.unit, units).points(), 0.0])
             && let Ok(reading) = measure::reading(Kind::Distance, &[a, b], &scale)
         {
-            state.drawing_points = 72.0;
+            state.drawing_points = 1.0;
             state.real_distance = reading.value;
             state.unit = scale.unit;
+            state.page_unit = None;
             state.precision = scale.precision;
             state.feet_inches = scale.feet_inches.is_some();
             state.custom_unit = !state.feet_inches && LengthUnit::from_label(&state.unit).is_none();
@@ -726,7 +741,7 @@ fn panel_body(app: &mut PdfCraftApp, ui: &mut egui::Ui, _t: &Tokens) {
     }
     ui.separator();
     ui.label(tl!("Drawing scale"));
-    scale_rows(ui, state);
+    scale_rows(ui, state, units);
     if ui.button(tl!("Calibrate from two points")).clicked() {
         tool = Some(Tool::Calibrate);
     }
@@ -778,7 +793,10 @@ fn panel_body(app: &mut PdfCraftApp, ui: &mut egui::Ui, _t: &Tokens) {
                 if state.feet_inches && known_feet(&state.known_text).is_none() {
                     return Err(tl!("Type a length such as 12'-5 3/8\" or 12.5'.").to_string());
                 }
-                let scale = Scale::calibrate(a, b, state.real_distance / state.drawing_points, &state.unit, state.precision);
+                // The page side in its page unit, as upstream's ratio ("1 mm = 50 mm"); then feet and
+                // inches when picked (this fork, OV10).
+                let page_unit = page_unit_of(state.page_unit, &state.unit, units);
+                let scale = Scale::ratio(a, b, state.drawing_points, page_unit, state.real_distance, &state.unit, state.precision);
                 // Feet and inches to 1/8 inch (this fork, OV10).
                 scale.and_then(|s| if state.feet_inches { s.in_feet_inches(EIGHTHS) } else { Ok(s) }).map_err(|e| e.to_string())
             });
@@ -844,9 +862,18 @@ fn known_feet(text: &str) -> Option<f64> {
 /// Drawing scale: the drawing distance, the known distance and its unit (this fork, OV10: a
 /// list of units, feet and inches typed as `12'-5 3/8"`, Custom for any other label). Picking
 /// another unit converts the known distance, so the scale stays the same.
-fn scale_rows(ui: &mut egui::Ui, state: &mut MeasureView) {
+fn scale_rows(ui: &mut egui::Ui, state: &mut MeasureView, units: crate::units::Unit) {
+    // The page side in a page unit, upstream's ratio ("1 mm = 50 mm" at 1:50).
     ui.horizontal(|ui| {
-        ui.add(egui::DragValue::new(&mut state.drawing_points).range(0.000001..=1e9).prefix("pt "));
+        ui.add(egui::DragValue::new(&mut state.drawing_points).range(0.000001..=1e9));
+        let page_unit = page_unit_of(state.page_unit, &state.unit, units);
+        egui::ComboBox::from_id_salt("measure-page-unit").selected_text(page_unit.label()).width(44.0).show_ui(ui, |ui| {
+            for u in PageUnit::ALL {
+                if ui.selectable_label(u == page_unit, u.label()).clicked() {
+                    state.page_unit = Some(u);
+                }
+            }
+        });
         ui.label("=");
     });
     if state.calibrating() {
