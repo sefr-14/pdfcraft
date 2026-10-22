@@ -15,6 +15,9 @@ concurrency:
 
 jobs:
   sonarcloud:
+    # This fork (sefr-14/pdfcraft): upstream's analysis, with upstream's secrets and SonarCloud
+    # project; it runs only there, so the fork's PRs don't carry a check that can't pass.
+    if: github.repository == 'storytold/pdfcraft'
     # Tracked at @main so org-wide CI improvements propagate without PR churn.
     uses: storytold/craft-common-actions/.github/workflows/sonarcloud.yml@main
     secrets: inherit
