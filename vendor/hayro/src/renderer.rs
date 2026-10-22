@@ -26,7 +26,7 @@ use vello_cpu::{
 /// PdfCraft patch: largest image drawn, in pixels (2^28 ≈ 268 MP, well above real page images).
 const MAX_IMAGE_PIXELS: u64 = 1 << 28;
 
-/// PdfCraft patch (21, this fork): the width, in device pixels, View ▸ Thin lines draws the
+/// PdfCraft patch (this fork, OV9): the width, in device pixels, View ▸ Thin lines draws the
 /// document's strokes at.
 const THIN_LINE_WIDTH: f32 = 1.0;
 
@@ -448,7 +448,7 @@ pub(crate) struct Renderer {
     /// PdfCraft patch (17): while the page's annotations are being drawn, paints keep their
     /// colours — reading colours replace document colours, never annotation colours.
     in_annotations: bool,
-    /// PdfCraft patch (21, this fork): View ▸ Thin lines — the document's strokes are drawn
+    /// PdfCraft patch (this fork, OV9): View ▸ Thin lines — the document's strokes are drawn
     /// one device pixel wide (see `set_stroke_properties`). Pattern cells inherit it as it
     /// stands when they are drawn (so a pattern in an annotation keeps its widths); masks
     /// never have it, so what a mask lets through doesn't change.
@@ -537,7 +537,7 @@ impl Renderer {
             line_width *= threshold;
         }
 
-        // PdfCraft patch (21, this fork): View ▸ Thin lines draws the document's strokes one
+        // PdfCraft patch (this fork, OV9): View ▸ Thin lines draws the document's strokes one
         // device pixel wide, as Revit's Thin Lines does. Only the width changes: the path,
         // dashes, caps and joins are as drawn. Stroked text, Type 3 glyphs and annotations
         // keep their widths.
