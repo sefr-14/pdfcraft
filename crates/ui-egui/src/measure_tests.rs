@@ -314,7 +314,10 @@ fn no_point_is_placed_while_the_drawing_is_read_for_snapping() {
     h.run_steps(1);
     button(&mut h, p, false);
     h.run_steps(3);
+    // The release waited (half a second) for lines that never came: no point, and it says why.
     assert!(h.state().views[0].measure.points.is_empty(), "no unsnapped point while loading");
+    assert_eq!(h.state().views[0].measure.click_waits, 1);
+    assert!(says(&h, "Reading the drawing for snapping"));
     // The lines arrive: the same click snaps.
     let bytes = h.state().session.get(id).unwrap().bytes.clone();
     tx.send(Snapper::read(bytes, None, 0, &HashSet::new())).unwrap();
@@ -333,6 +336,42 @@ fn no_point_is_placed_while_the_drawing_is_read_for_snapping() {
     h.run_steps(3);
     let points = h.state().views[0].measure.points.clone();
     assert!(points.len() == 1 && close(points[0], [351.0, 51.0], 1.0) && points[0] != [350.0, 50.0], "{points:?}");
+    assert_eq!(h.state().views[0].measure.click_waits, 1, "with snapping off nothing waits");
+}
+
+/// Windows build #22: the control channel's click (one hover frame, then press and release in
+/// the next) came before the worker had read the page's lines, and was lost, because frames run
+/// back to back. A worker 100 ms behind stands in for the slow runner, deterministically.
+#[test]
+fn a_click_while_the_lines_load_waits_for_them() {
+    let (mut h, id) = harness(plain());
+    tool(&mut h, Tool::Distance);
+    let tx = {
+        let app = h.state_mut();
+        let doc = app.session.get(id).unwrap();
+        app.views[0].measure.hold_snapping(doc, 0)
+    };
+    let bytes = h.state().session.get(id).unwrap().bytes.clone();
+    let slow = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let _ = tx.send(Snapper::read(bytes, None, 0, &HashSet::new()));
+    });
+    let p = at(&h, 0, 351.0, 51.0);
+    h.hover_at(p);
+    h.run_steps(1);
+    // The press alone places nothing, so it doesn't wait.
+    button(&mut h, p, true);
+    h.run_steps(1);
+    assert_eq!((h.state().views[0].measure.click_waits, h.state().views[0].measure.points.len()), (0, 0));
+    // The release does: it waits for the lines once and lands snapped, in its own frame.
+    button(&mut h, p, false);
+    h.run_steps(1);
+    let m = &h.state().views[0].measure;
+    assert_eq!(m.points, vec![[350.0, 50.0]], "the click is placed, snapped, in its own frame");
+    assert_eq!(m.click_waits, 1);
+    h.run_steps(3);
+    assert_eq!(h.state().views[0].measure.click_waits, 1, "nothing else waits once the lines are in");
+    slow.join().unwrap();
 }
 
 #[test]
@@ -445,6 +484,7 @@ fn calibrating_in_feet_and_inches_from_the_panel() {
     assert!(says(&h, "Nearest 1/8 inch"));
     type_feet(&mut h, "100'-0\"");
     assert!((h.state().views[0].measure.real_distance - 100.0).abs() < 1e-12);
+    let read = h.state().views[0].measure.lines_read;
     h.get_by_label("Apply scale").click();
     h.run_steps(3);
     let scale = h.state().session.get(id).unwrap().measurement_scale(0, [100.0, 100.0]).unwrap();
@@ -457,6 +497,8 @@ fn calibrating_in_feet_and_inches_from_the_panel() {
     click_at(&mut h, 0, 50.5, 249.5);
     let listed = listing(&h, id);
     assert_eq!(listed.measurements[0].reading.label, "66'-8\"");
+    // The new scale is used at once, and the page's lines weren't read again for it.
+    assert_eq!(h.state().views[0].measure.lines_read, read);
     let bytes = h.state_mut().session.save_bytes(id).unwrap();
     let mut session = Session::new();
     let reopened = session.open("plan.pdf", None, Arc::new(bytes.as_ref().clone()), None).unwrap();

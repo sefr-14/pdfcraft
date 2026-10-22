@@ -145,10 +145,12 @@ Perimeter, Area and Calibrate from two points) is made for scaled drawings:
 - **Snapping, before the first click too.** With Snap to drawing on, a ring and its name
   (Endpoint, Midpoint, Intersection, Path) show where a click will land, for the first point as
   for the next ones, and when calibrating. The drawing's lines are read as the Overlay wizard
-  reads them: up to 400,000 segments, and lines in layers hidden in the tab are left out. A large
-  sheet is read in the background; until it is done, "Reading the drawing for snapping…" shows
-  at the pointer and clicks place no point, so no point silently misses its target. Turn Snap to
-  drawing off to place points freely meanwhile.
+  reads them: up to 400,000 segments, and lines in layers hidden in the tab are left out. A sheet
+  is read in the background, with "Reading the drawing for snapping…" at the pointer while it
+  is. A click made meanwhile waits for it, up to half a second (a normal sheet takes
+  milliseconds), and lands snapped; if the sheet is still being read, the click places no point
+  and the notice stays, so no point silently misses its target. Turn Snap to drawing off to
+  place points freely meanwhile.
 - **The second click makes the measurement.** A distance is kept as soon as its second point is
   placed: the line and its value are drawn on the page and the document is marked as changed (it
   isn't saved until you save). Undo, Redo, Delete (select it in the panel's list) and Save work as
