@@ -2445,3 +2445,43 @@ animation effects	Off	オフ
 	Tab view	タブ表示
 	Tile View	タイル表示
 	Tile view	タイル表示
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	最新の Windows ビルドを探しています…
+	Latest available Windows build	入手可能な最新の Windows ビルド
+	Version: {v}	バージョン: {v}
+	Built: {date}	ビルド日時: {date}
+	Artifact: {name}	アーティファクト: {name}
+	This copy is version {c}.	このコピーのバージョンは {c} です。
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	ダウンロードには GitHub へのサインインが必要な場合があります。ビルドの保存期間には限りがあります。
+	View build on GitHub	GitHub でビルドを表示
+	View builds on GitHub	GitHub でビルド一覧を表示
+	No successful Windows build was found.	成功した Windows ビルドは見つかりませんでした。
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	最近の成功したビルドに、ダウンロードできる Windows ビルドは見つかりませんでした ({n} 件を確認)。
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	確認した Windows ビルドは期限切れのため、ダウンロードできません ({n} 件を確認)。
+	Older builds weren't checked.	それより古いビルドは確認していません。
+	Windows builds are listed at {page}.	Windows ビルドの一覧: {page}
+	Try again	再試行
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	このフォークの最新の Windows ビルドを GitHub で確認します。自動でダウンロードやインストールは行いません。
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	細線
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	バックグラウンド処理が停止しました
+	the page can't be mapped	ページの座標を変換できません
+	an internal error stopped it ({reason})	内部エラーで停止しました ({reason})
+	This document can't be read for measuring.	この文書は計測のために読み取れません。
+	Snapping isn't available on this page: {reason}	このページではスナップを使用できません: {reason}
+	Reading the drawing for snapping…	スナップ用に図面を読み込んでいます…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	この PDF ではコメントが許可されていないため、計測と縮尺を保存できません。
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	ページのこの部分には PdfCraft が読み取れない図面の縮尺があります: {reason}。校正して縮尺を設定してください。
+	That is the point already placed. Click a different point.	そこは既に配置した点です。別の点をクリックしてください。
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	インチ (in)
+	Feet (ft)	フィート (ft)
+	Feet and inches (ft-in)	フィートとインチ (ft-in)
+	Centimeters (cm)	センチメートル (cm)
+	Millimeters (mm)	ミリメートル (mm)
+	Meters (m)	メートル (m)
+	Known distance	既知の距離
+	Nearest 1/8 inch	1/8 インチ単位
+	Type a length such as 12'-5 3/8" or 12.5'.	12'-5 3/8" や 12.5' のように長さを入力してください。
+	Type the real distance between the two points.	2 点間の実際の距離を入力してください。

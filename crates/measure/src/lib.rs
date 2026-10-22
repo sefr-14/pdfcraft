@@ -4,6 +4,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod snap;
+pub mod units;
 use pdfcraft_annot::{Meta, NewAnnotation, Shape, Style};
 use pdfcraft_cos::{Dict, Document, ObjRef, Object, PdfString};
 use serde::Serialize;
@@ -69,6 +70,11 @@ pub struct Scale {
     pub area_unit: String,
     pub precision: u8,
     pub ratio: String,
+    /// This fork (OV10): lengths shown in feet and inches to the nearest `1/n` inch (`unit` is
+    /// then `ft`); `None` shows decimals with `precision` places. Areas are always decimal.
+    /// Left out of JSON when `None`, so decimal scales report exactly what they did before.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feet_inches: Option<u32>,
 }
 impl Default for Scale {
     fn default() -> Self {
@@ -81,6 +87,7 @@ impl Default for Scale {
             area_unit: "in^2".into(),
             precision: 2,
             ratio: "1 in = 1 in".into(),
+            feet_inches: None,
         }
     }
 }
@@ -95,9 +102,17 @@ impl Scale {
             area_unit: format!("{unit}^2"),
             precision,
             ratio: format!("1 pt = {units_per_user_unit} {unit}"),
+            feet_inches: None,
         };
         out.validate()?;
         Ok(out)
+    }
+    /// This scale showing lengths in feet and inches to the nearest `1/denominator` inch. Its
+    /// unit must be feet; the denominator a power of two up to 64.
+    pub fn in_feet_inches(mut self, denominator: u32) -> Result<Self> {
+        self.feet_inches = Some(denominator);
+        self.validate()?;
+        Ok(self)
     }
     pub fn calibrate(a: Point, b: Point, real_distance: f64, unit: &str, precision: u8) -> Result<Self> {
         check_points(&[a, b])?;
@@ -129,6 +144,14 @@ impl Scale {
         if self.ratio.len() > 256 || self.ratio.chars().any(char::is_control) {
             return Err(invalid("invalid scale ratio"));
         }
+        if let Some(d) = self.feet_inches {
+            if !FRACTIONS.contains(&d) {
+                return Err(invalid("a feet-and-inches fraction must be 1/2, 1/4, 1/8, 1/16, 1/32 or 1/64 inch"));
+            }
+            if self.unit != "ft" {
+                return Err(invalid("feet and inches need a scale in feet"));
+            }
+        }
         Ok(())
     }
     pub fn dictionary(&self) -> Result<Dict> {
@@ -146,30 +169,57 @@ impl Scale {
             d.set(b"SS".to_vec(), PdfString::text(""));
             Object::Array(vec![Object::Dict(d)])
         };
+        // Feet and inches (ISO 32000-2 §12.9.2): whole feet, truncated, then the rest in inches
+        // (`/C 12` converts the previous element's remainder) as a reduced fraction of `1/n` inch.
+        let length = |unit: &str, factor: f64| match self.feet_inches {
+            None => format(unit, factor),
+            Some(n) => {
+                let mut feet = Dict::new();
+                feet.set(b"Type".to_vec(), Object::name("NumberFormat"));
+                feet.set(b"U".to_vec(), PdfString::text("ft"));
+                feet.set(b"C".to_vec(), Object::Real(factor));
+                feet.set(b"F".to_vec(), Object::name("T"));
+                feet.set(b"SS".to_vec(), PdfString::text(""));
+                let mut inches = Dict::new();
+                inches.set(b"Type".to_vec(), Object::name("NumberFormat"));
+                inches.set(b"U".to_vec(), PdfString::text("in"));
+                inches.set(b"C".to_vec(), Object::Real(12.0));
+                inches.set(b"F".to_vec(), Object::name("F"));
+                inches.set(b"D".to_vec(), Object::Int(i64::from(n)));
+                inches.set(b"FD".to_vec(), Object::Bool(false));
+                inches.set(b"SS".to_vec(), PdfString::text(""));
+                Object::Array(vec![Object::Dict(feet), Object::Dict(inches)])
+            }
+        };
         let mut d = Dict::new();
         d.set(b"Type".to_vec(), Object::name("Measure"));
         d.set(b"Subtype".to_vec(), Object::name("RL"));
         d.set(b"R".to_vec(), PdfString::text(&self.ratio));
-        d.set(b"X".to_vec(), format(&self.unit, self.x));
+        d.set(b"X".to_vec(), length(&self.unit, self.x));
         if self.x != self.y {
-            d.set(b"Y".to_vec(), format(&self.unit, self.y));
+            d.set(b"Y".to_vec(), length(&self.unit, self.y));
             d.set(b"CYX".to_vec(), Object::Real(1.0));
         }
-        d.set(b"D".to_vec(), format(&self.unit, self.distance_factor));
+        d.set(b"D".to_vec(), length(&self.unit, self.distance_factor));
         d.set(b"A".to_vec(), format(&self.area_unit, self.area_factor));
         Ok(d)
     }
-    /// Single-unit decimal scales are editable. Compound/fractional and non-rectilinear
-    /// imports are refused explicitly; their dictionaries and appearance remain untouched.
+    /// Single-unit decimal scales, and feet and inches to a fraction of an inch (this fork), are
+    /// editable. Other compound or fractional and non-rectilinear imports are refused
+    /// explicitly; their dictionaries and appearance remain untouched.
     pub fn read(doc: &Document, object: &Object) -> Result<Self> {
         let o = doc.resolve(object);
         let d = o.as_dict().ok_or_else(|| invalid("invalid measure dictionary"))?;
         if d.name(b"Subtype").is_some_and(|n| n != b"RL") {
             return Err(invalid("only rectilinear measurement scales are supported"));
         }
-        let format = |key: &[u8]| -> Result<(String, f64, u8)> {
+        let format = |key: &[u8]| -> Result<(String, f64, u8, Option<u32>)> {
             let a = doc.resolve(d.get(key).ok_or_else(|| invalid("measurement scale lacks a number format"))?);
             let a = a.as_array().ok_or_else(|| invalid("invalid measurement number format"))?;
+            if a.len() == 2 {
+                let (unit, factor, n) = feet_and_inches(doc, a)?;
+                return Ok((unit, factor, 0, Some(n)));
+            }
             if a.len() != 1 {
                 return Err(invalid("compound measurement units are not supported yet"));
             }
@@ -183,23 +233,48 @@ impl Scale {
                 }
                 _ => return Err(invalid("fractional measurement formats are not supported yet")),
             };
-            Ok((text(f, b"U"), f.get(b"C").and_then(Object::as_f64).ok_or_else(|| invalid("missing conversion factor"))?, precision as u8))
+            Ok((text(f, b"U"), f.get(b"C").and_then(Object::as_f64).ok_or_else(|| invalid("missing conversion factor"))?, precision as u8, None))
         };
-        let (unit, x, _) = format(b"X")?;
+        let (unit, x, _, x_fraction) = format(b"X")?;
         let y = if d.contains(b"Y") {
-            let (_, y, _) = format(b"Y")?;
+            let (_, y, _, _) = format(b"Y")?;
             y * d.get(b"CYX").and_then(Object::as_f64).ok_or_else(|| invalid("Y scale requires CYX for lengths and areas"))?
         } else {
             x
         };
-        let (distance_unit, distance_factor, precision) = format(b"D")?;
+        let (distance_unit, distance_factor, precision, feet_inches) = format(b"D")?;
         if unit != distance_unit {
             return Err(invalid("different coordinate and distance units are not supported yet"));
         }
-        let (area_unit, area_factor, _) = format(b"A")?;
-        let out = Self { x, y, unit, distance_factor, area_factor, area_unit, precision, ratio: text(d, b"R") };
+        if x_fraction.is_some() != feet_inches.is_some() {
+            return Err(invalid("different coordinate and distance formats are not supported yet"));
+        }
+        let (area_unit, area_factor, _, area_fraction) = format(b"A")?;
+        if area_fraction.is_some() {
+            return Err(invalid("compound area units are not supported yet"));
+        }
+        // An area in decimals of the coordinate unit's square keeps PdfCraft's decimal precision.
+        let precision = if feet_inches.is_some() { 2 } else { precision };
+        let out = Self { x, y, unit, distance_factor, area_factor, area_unit, precision, ratio: text(d, b"R"), feet_inches };
         out.validate()?;
         Ok(out)
+    }
+}
+/// The fractions of an inch feet-and-inches scales may round to.
+const FRACTIONS: [u32; 6] = [2, 4, 8, 16, 32, 64];
+/// A two-element number format array for feet and inches (ISO 32000-2 §12.9.2): `ft` whose
+/// conversion factor is the scale's, then `in` with `/C 12` shown as a fraction of `1/n`
+/// inch. Returns the unit (`ft`), the factor and `n`; anything else is refused.
+fn feet_and_inches(doc: &Document, a: &[Object]) -> Result<(String, f64, u32)> {
+    let unsupported = || invalid("compound measurement units other than feet and inches are not supported yet");
+    let dict = |i: usize| a.get(i).map(|o| doc.resolve(o)).and_then(|o| o.as_dict().cloned()).ok_or_else(unsupported);
+    let (feet, inches) = (dict(0)?, dict(1)?);
+    let factor = feet.get(b"C").and_then(Object::as_f64).ok_or_else(|| invalid("missing conversion factor"))?;
+    let twelve = inches.get(b"C").and_then(Object::as_f64).is_some_and(|c| (c - 12.0).abs() < 1e-9);
+    let n = inches.int(b"D").and_then(|n| u32::try_from(n).ok()).filter(|n| FRACTIONS.contains(n));
+    match (text(&feet, b"U").trim(), text(&inches, b"U").trim(), inches.name(b"F"), twelve, n) {
+        ("ft", "in", Some(b"F"), true, Some(n)) => Ok(("ft".into(), factor, n)),
+        _ => Err(unsupported()),
     }
 }
 pub(crate) fn check_points(points: &[Point]) -> Result<()> {
@@ -256,7 +331,10 @@ pub fn reading(kind: Kind, points: &[Point], scale: &Scale) -> Result<Reading> {
     length *= scale.distance_factor;
     let value = if kind == Kind::Area { area } else { length };
     let unit = if kind == Kind::Area { scale.area_unit.clone() } else { scale.unit.clone() };
-    let label = format!("{value:.precision$} {unit}", precision = usize::from(scale.precision));
+    let label = match scale.feet_inches {
+        Some(n) if kind != Kind::Area => units::feet_inches(value, n),
+        _ => format!("{value:.precision$} {unit}", precision = usize::from(scale.precision)),
+    };
     if !value.is_finite() {
         return Err(invalid("measurement overflows its scale"));
     }

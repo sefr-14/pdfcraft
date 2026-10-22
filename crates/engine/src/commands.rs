@@ -229,6 +229,8 @@ pub const COMMANDS: &[CommandSpec] = &[
     // This fork (OV7.2): the active view alone, or every view side by side in columns.
     c("view.tab_view", "Tab view", VIEW, None, Document, "app-window"),
     c("view.tile_view", "Tile view", VIEW, None, Document, "columns-3"),
+    // This fork (OV9): every document's strokes one device pixel wide, as Revit's Thin Lines (View ▸ Page display).
+    c("view.thin_lines", "Thin lines", None, None, Nothing, "minus"),
     // View-local history also appears in the Page navigation section; don't duplicate its menu.
     c("view.previous_view", "Previous view", None, Some(Shortcut::cmd("[")), Document, "chevron-left"),
     c("view.next_view", "Next view", None, Some(Shortcut::cmd("]")), Document, "chevron-right"),

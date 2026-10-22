@@ -26,6 +26,10 @@ use vello_cpu::{
 /// PdfCraft patch: largest image drawn, in pixels (2^28 ≈ 268 MP, well above real page images).
 const MAX_IMAGE_PIXELS: u64 = 1 << 28;
 
+/// PdfCraft patch (21, this fork): the width, in device pixels, View ▸ Thin lines draws the
+/// document's strokes at.
+const THIN_LINE_WIDTH: f32 = 1.0;
+
 /// PdfCraft patch: source axes allowed into CatmullRom planning. Unlike the final pixmap,
 /// sources need not fit u16: a 65536-pixel strip can safely shrink to a 16-pixel image.
 /// This resource cap follows the existing CCITT column limit; the filter-work estimate below
@@ -435,6 +439,11 @@ pub(crate) struct Renderer {
     /// PdfCraft patch (17): while the page's annotations are being drawn, paints keep their
     /// colours — reading colours replace document colours, never annotation colours.
     in_annotations: bool,
+    /// PdfCraft patch (21, this fork): View ▸ Thin lines — the document's strokes are drawn
+    /// one device pixel wide (see `set_stroke_properties`). Pattern cells inherit it as it
+    /// stands when they are drawn (so a pattern in an annotation keeps its widths); masks
+    /// never have it, so what a mask lets through doesn't change.
+    pub(crate) thin_lines: bool,
     pub(crate) inside_pattern: bool,
     /// Soft masks drawn during this render. PdfCraft note: it belongs to one `Renderer` (one
     /// render, every nested renderer starting empty) and so to one `preview` setting: a mask
@@ -470,6 +479,7 @@ impl Renderer {
             ctx: RenderContext::new_with(width, height, settings),
             color_replacement,
             in_annotations: false,
+            thin_lines: false,
             inside_pattern: false,
             soft_mask_cache: HashMap::default(),
             outline_cache: cache.outline_cache.clone(),
@@ -501,6 +511,20 @@ impl Renderer {
         if transformed_width < threshold && !self.inside_pattern && !self.in_type3_glyph {
             line_width /= transformed_width;
             line_width *= threshold;
+        }
+
+        // PdfCraft patch (21, this fork): View ▸ Thin lines draws the document's strokes one
+        // device pixel wide, as Revit's Thin Lines does. Only the width changes: the path,
+        // dashes, caps and joins are as drawn. Stroked text, Type 3 glyphs and annotations
+        // keep their widths.
+        if self.thin_lines
+            && !is_text
+            && !self.in_type3_glyph
+            && !self.in_annotations
+            && min_factor.is_finite()
+            && min_factor > 0.0
+        {
+            line_width = THIN_LINE_WIDTH / min_factor;
         }
 
         // PdfCraft patch: a stroke far wider than the canvas looks the same as one a few canvases
@@ -571,6 +595,7 @@ impl Renderer {
                 // original values, so it is never remapped by the reading-colours setting.
                 color_replacement: None,
                 in_annotations: false,
+                thin_lines: false,
                 inside_pattern: false,
                 soft_mask_cache: HashMap::default(),
                 outline_cache: self.outline_cache.clone(),
@@ -1163,6 +1188,7 @@ impl Renderer {
                                 ),
                                 color_replacement: None,
                                 in_annotations: false,
+                                thin_lines: self.thin_lines && !self.in_annotations,
                                 cur_mask: None,
                                 inside_pattern: true,
                                 soft_mask_cache: HashMap::default(),
@@ -1217,6 +1243,7 @@ impl Renderer {
                             // content is never remapped by the reading-colours setting.
                             color_replacement: None,
                             in_annotations: false,
+                            thin_lines: self.thin_lines && !self.in_annotations,
                             cur_mask: None,
                             inside_pattern: true,
                             soft_mask_cache: HashMap::default(),
@@ -1533,6 +1560,7 @@ impl<'a> Device<'a> for Renderer {
                                         // the reading-colours setting.
                                         color_replacement: None,
                                         in_annotations: false,
+                                        thin_lines: false,
                                         inside_pattern: false,
                                         soft_mask_cache: HashMap::default(),
                                         outline_cache: self.outline_cache.clone(),
@@ -1829,6 +1857,7 @@ fn draw_soft_mask(mask: &SoftMask<'_>, settings: RenderSettings, width: u16, hei
         // content is never remapped by the reading-colours setting.
         color_replacement: None,
         in_annotations: false,
+        thin_lines: false,
         inside_pattern: false,
         cur_mask: None,
         soft_mask_cache: HashMap::default(),

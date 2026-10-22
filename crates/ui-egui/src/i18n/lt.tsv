@@ -2696,3 +2696,43 @@ theme	Appearance	Išvaizda
 	Tab view	Kortelių rodinys
 	Tile View	Išklotinės rodinys
 	Tile view	Išklotinės rodinys
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	Ieškoma naujausios „Windows“ versijos…
+	Latest available Windows build	Naujausia pasiekiama „Windows“ versija
+	Version: {v}	Versija: {v}
+	Built: {date}	Sukurta: {date}
+	Artifact: {name}	Artefaktas: {name}
+	This copy is version {c}.	Ši kopija yra {c} versijos.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	Norint ją atsisiųsti, „GitHub“ gali paprašyti prisijungti. Versijos saugomos ribotą laiką.
+	View build on GitHub	Peržiūrėti versiją „GitHub“
+	View builds on GitHub	Peržiūrėti versijas „GitHub“
+	No successful Windows build was found.	Sėkmingai sukurtos „Windows“ versijos nerasta.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	Tarp naujausių sėkmingai sukurtų versijų nerasta atsisiunčiamos „Windows“ versijos (patikrinta: {n}).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	Patikrintų „Windows“ versijų galiojimas baigėsi ir jų nebegalima atsisiųsti (patikrinta: {n}).
+	Older builds weren't checked.	Senesnės versijos nebuvo tikrinamos.
+	Windows builds are listed at {page}.	„Windows“ versijos išvardytos adresu {page}.
+	Try again	Bandyti dar kartą
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	„GitHub“ tikrinama naujausia šios atšakos „Windows“ versija. Nieko automatiškai neatsisiunčiama ir neįdiegiama.
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	Plonos linijos
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	foninis procesas sustojo
+	the page can't be mapped	puslapio koordinačių nepavyksta perskaičiuoti
+	an internal error stopped it ({reason})	jį sustabdė vidinė klaida ({reason})
+	This document can't be read for measuring.	Šio dokumento negalima nuskaityti matavimui.
+	Snapping isn't available on this page: {reason}	Šiame puslapyje pritraukimas negalimas: {reason}
+	Reading the drawing for snapping…	Brėžinys nuskaitomas pritraukimui…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	Šis PDF neleidžia komentarų, todėl matavimų ir mastelių išsaugoti negalima.
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Šioje puslapio dalyje yra brėžinio mastelis, kurio PdfCraft negali nuskaityti: {reason}. Kalibruokite, kad nustatytumėte mastelį.
+	That is the point already placed. Click a different point.	Tai jau padėtas taškas. Spustelėkite kitą tašką.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	Coliai (in)
+	Feet (ft)	Pėdos (ft)
+	Feet and inches (ft-in)	Pėdos ir coliai (ft-in)
+	Centimeters (cm)	Centimetrai (cm)
+	Millimeters (mm)	Milimetrai (mm)
+	Meters (m)	Metrai (m)
+	Known distance	Žinomas atstumas
+	Nearest 1/8 inch	Iki artimiausios 1/8 colio
+	Type a length such as 12'-5 3/8" or 12.5'.	Įveskite ilgį, pavyzdžiui, 12'-5 3/8" arba 12.5'.
+	Type the real distance between the two points.	Įveskite tikrąjį atstumą tarp dviejų taškų.

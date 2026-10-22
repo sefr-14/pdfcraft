@@ -2443,3 +2443,43 @@ animation effects	Off	Өшірулі
 	Tab view	Қойынды көрінісі
 	Tile View	Плиткалық көрініс
 	Tile view	Плиткалық көрініс
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	Windows үшін ең соңғы құрастыру ізделуде…
+	Latest available Windows build	Windows үшін қолжетімді ең соңғы құрастыру
+	Version: {v}	Нұсқа: {v}
+	Built: {date}	Құрастырылған уақыты: {date}
+	Artifact: {name}	Артефакт: {name}
+	This copy is version {c}.	Бұл көшірменің нұсқасы — {c}.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	Жүктеп алу үшін GitHub жүйеге кіруді сұрауы мүмкін. Құрастырулар шектеулі уақыт сақталады.
+	View build on GitHub	Құрастыруды GitHub-та қарау
+	View builds on GitHub	Құрастыруларды GitHub-та қарау
+	No successful Windows build was found.	Windows үшін сәтті құрастыру табылмады.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	Соңғы сәтті құрастырулардың ішінде жүктеп алуға болатын Windows құрастыруы табылмады ({n} тексерілді).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	Тексерілген Windows құрастыруларының мерзімі өтіп кеткен, оларды енді жүктеп алу мүмкін емес ({n} тексерілді).
+	Older builds weren't checked.	Ескірек құрастырулар тексерілмеді.
+	Windows builds are listed at {page}.	Windows құрастырулары мына жерде берілген: {page}.
+	Try again	Қайталап көру
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	GitHub-тан осы форктың Windows үшін ең соңғы құрастыруын сұрайды. Ештеңе автоматты түрде жүктелмейді немесе орнатылмайды.
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	Жіңішке сызықтар
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	фондық процесс тоқтады
+	the page can't be mapped	беттің координаталарын түрлендіру мүмкін емес
+	an internal error stopped it ({reason})	ішкі қате оны тоқтатты ({reason})
+	This document can't be read for measuring.	Бұл құжатты өлшеу үшін оқу мүмкін емес.
+	Snapping isn't available on this page: {reason}	Бұл бетте түйістіру қолжетімсіз: {reason}
+	Reading the drawing for snapping…	Түйістіру үшін сызба оқылуда…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	Бұл PDF түсініктемелерге рұқсат бермейді, сондықтан өлшемдер мен масштабтарды сақтау мүмкін емес.
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Беттің бұл бөлігінде PdfCraft оқи алмайтын сызба масштабы бар: {reason}. Масштаб орнату үшін калибрлеңіз.
+	That is the point already placed. Click a different point.	Бұл — бұрын қойылған нүкте. Басқа нүктені басыңыз.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	Дюйм (in)
+	Feet (ft)	Фут (ft)
+	Feet and inches (ft-in)	Фут және дюйм (ft-in)
+	Centimeters (cm)	Сантиметр (cm)
+	Millimeters (mm)	Миллиметр (mm)
+	Meters (m)	Метр (m)
+	Known distance	Белгілі қашықтық
+	Nearest 1/8 inch	Ең жақын 1/8 дюймге дейін
+	Type a length such as 12'-5 3/8" or 12.5'.	12'-5 3/8" немесе 12.5' сияқты ұзындықты енгізіңіз.
+	Type the real distance between the two points.	Екі нүкте арасындағы нақты қашықтықты енгізіңіз.

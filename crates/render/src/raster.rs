@@ -65,6 +65,10 @@ pub struct RenderConfig {
     /// View ▸ Reading colours: solid text and line-art paints are remapped for readability and
     /// the page clears to the setting's background. Display only; the document never changes.
     pub reading_colors: ReadingColors,
+    /// View ▸ Thin lines (this fork, OV9): the document's strokes are drawn one device pixel
+    /// wide; text, comments and other annotations keep their widths. Display only; the
+    /// document never changes, and print previews ignore it (see [`PRINT_TAG`]).
+    pub thin_lines: bool,
 }
 
 impl RenderConfig {
@@ -175,6 +179,12 @@ pub const PRINT_TAG: u64 = 1 << 60;
 /// document's setting and render with reading colours off.
 fn request_reading(config: &RenderConfig, req: &RenderRequest) -> ReadingColors {
     if req.tag & PRINT_TAG != 0 { ReadingColors::default() } else { config.reading_colors }
+}
+
+/// Whether a request draws thin lines: print previews ([`PRINT_TAG`]) show the strokes as
+/// they print, at their own widths.
+fn request_thin(config: &RenderConfig, req: &RenderRequest) -> bool {
+    config.thin_lines && req.tag & PRINT_TAG == 0
 }
 
 /// What a render that panicked or overran the watchdog is remembered by: its page and kind. Not
@@ -302,6 +312,7 @@ fn render_page<'a>(
     settings: &InterpreterSettings,
     reject_oversize: bool,
     reading: ReadingColors,
+    thin_lines: bool,
     req: RenderRequest,
 ) -> Result<Output, (String, bool)> {
     if req.kind == RequestKind::Text {
@@ -338,6 +349,7 @@ fn render_page<'a>(
                     y_offset: t.y as f32,
                     bg_color,
                     color_replacement,
+                    thin_lines,
                 }
             }
             None => {
@@ -359,6 +371,7 @@ fn render_page<'a>(
                     height: Some(side(h)),
                     bg_color,
                     color_replacement,
+                    thin_lines,
                     ..Default::default()
                 }
             }
@@ -463,7 +476,15 @@ impl PageRenderer {
         let cache = RenderCache::new();
         let warnings = Arc::new(Mutex::new(Vec::new()));
         let settings = warning_settings(&self.settings, warnings.clone());
-        let r = render_page(pdf, &cache, &settings, self.config.reject_oversize, request_reading(&self.config, &req), req);
+        let r = render_page(
+            pdf,
+            &cache,
+            &settings,
+            self.config.reject_oversize,
+            request_reading(&self.config, &req),
+            request_thin(&self.config, &req),
+            req,
+        );
         let warnings = take_warnings(&warnings);
         if matches!(r, Err((_, true))) {
             self.pdf = parse(&self.bytes, self.config.password.as_deref());
@@ -1193,7 +1214,15 @@ fn worker(
                         panic!("injected page panic");
                     }
                     match pdf {
-                        Some(pdf) => render_page(pdf, cache, &settings, config.reject_oversize, request_reading(&config, &req), req),
+                        Some(pdf) => render_page(
+                            pdf,
+                            cache,
+                            &settings,
+                            config.reject_oversize,
+                            request_reading(&config, &req),
+                            request_thin(&config, &req),
+                            req,
+                        ),
                         None => Err(("the document could not be parsed".into(), false)),
                     }
                 }))
@@ -6205,6 +6234,117 @@ trailer << /Root 1 0 R >>
         assert_eq!(&full.rgba[((60 * full.width + 50) * 4) as usize..][..4], &[237, 237, 237, 255]);
     }
 
+    /// View ▸ Thin lines (this fork, OV9) test page, 200 × 100 pt: a 10 pt blue stroke at x 30,
+    /// a 6 pt red dashed stroke at x 60, a black filled square, a stroked (Tr 1) green "H", a
+    /// tiling pattern of 3 pt black hatching, and a Square annotation with an 8 pt border.
+    fn thin_lines_page() -> Arc<Vec<u8>> {
+        let content = "0 0 1 RG 10 w 30 10 m 30 90 l S\n\
+                       1 0 0 RG 6 w [8 6] 0 d 60 20 m 60 80 l S [] 0 d\n\
+                       0 g 80 40 20 20 re f\n\
+                       BT /F1 30 Tf 1 Tr 1.5 w 0 0.5 0 RG 110 30 Td (H) Tj ET\n\
+                       /Pattern cs /P0 scn 140 10 40 30 re f";
+        let hatch = "0 0 0 RG 3 w 0 5 m 10 5 l S";
+        let border = "0 0 0 RG 8 w 144 54 42 32 re S";
+        Arc::new(
+            format!(
+                "%PDF-1.7\n\
+                 1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+                 2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+                 3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Contents 4 0 R /Annots [7 0 R] /Resources << /Font << /F1 5 0 R >> /Pattern << /P0 6 0 R >> >> >> endobj\n\
+                 4 0 obj << /Length {} >> stream\n{content}\nendstream endobj\n\
+                 5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n\
+                 6 0 obj << /Type /Pattern /PatternType 1 /PaintType 1 /TilingType 1 /BBox [0 0 10 10] /XStep 10 /YStep 10 /Resources << >> /Length {} >> stream\n{hatch}\nendstream endobj\n\
+                 7 0 obj << /Type /Annot /Subtype /Square /Rect [140 50 190 90] /BS << /W 8 >> /C [0 0 0] /AP << /N 8 0 R >> >> endobj\n\
+                 8 0 obj << /Type /XObject /Subtype /Form /BBox [140 50 190 90] /Length {} >> stream\n{border}\nendstream endobj\n\
+                 trailer << /Root 1 0 R >>\n%%EOF",
+                content.len(),
+                hatch.len(),
+                border.len()
+            )
+            .into_bytes(),
+        )
+    }
+
+    fn thin_lines_render(thin_lines: bool, tag: u64) -> RenderedPage {
+        let mut r = PageRenderer::new(thin_lines_page(), RenderConfig { thin_lines, ..Default::default() });
+        let page = r.render(RenderRequest { page: 0, kind: RequestKind::Pixels, tile: None, scale: 2.0, tag, preview: false });
+        assert!(page.error.is_none(), "{:?}", page.error);
+        assert_eq!((page.width, page.height), (400, 200));
+        page
+    }
+
+    /// Pixels of `page` in user-space rectangle `[x0, y0, x1, y1]` (y up, scale 2).
+    fn user_region(page: &RenderedPage, [x0, y0, x1, y1]: [u32; 4]) -> Vec<[u8; 4]> {
+        let mut out = Vec::new();
+        for y in (100 - y1) * 2..(100 - y0) * 2 {
+            for x in x0 * 2..x1 * 2 {
+                let i = ((y * page.width + x) * 4) as usize;
+                out.push([page.rgba[i], page.rgba[i + 1], page.rgba[i + 2], page.rgba[i + 3]]);
+            }
+        }
+        out
+    }
+
+    /// Thin lines draw the document's strokes one device pixel wide, keep dashes, and leave
+    /// fills, stroked text, patterns' neighbours and annotations exactly as they are.
+    #[test]
+    fn thin_lines_draw_document_strokes_one_pixel_wide_and_nothing_else() {
+        let off = thin_lines_render(false, 0);
+        let on = thin_lines_render(true, 0);
+        let px = |p: &RenderedPage, x: u32, y: u32| {
+            let i = ((y * p.width + x) * 4) as usize;
+            [p.rgba[i], p.rgba[i + 1], p.rgba[i + 2]]
+        };
+        // The 10 pt blue stroke: 20 device pixels across at scale 2, one (antialiased over at
+        // most two) with thin lines.
+        let blue = |p: &RenderedPage| (0..120).filter(|&x| matches!(px(p, x, 100), [r, _, b] if b > 128 && r < 128)).count();
+        assert!(blue(&off) >= 19, "off: {}", blue(&off));
+        assert!((1..=2).contains(&blue(&on)), "on: {}", blue(&on));
+        // The dashed red stroke keeps its dashes: the same runs down the line either way.
+        let runs = |p: &RenderedPage| {
+            let red = |y: u32| (116..124).any(|x| matches!(px(p, x, y), [r, g, _] if r > 128 && g < 128));
+            (40..160).filter(|&y| red(y) && !red(y - 1)).count()
+        };
+        assert_eq!(runs(&off), 5);
+        assert_eq!(runs(&on), runs(&off), "dashes are kept");
+        // Its width, across the first dash (user y 24, device row 152).
+        let red = |p: &RenderedPage| (100..140).filter(|&x| matches!(px(p, x, 152), [r, g, _] if r > 128 && g < 128)).count();
+        assert!(red(&off) >= 11 && (1..=2).contains(&red(&on)), "{} {}", red(&off), red(&on));
+        // Fills, stroked text and the annotation's 8 pt border are untouched.
+        for (what, rect) in [("fill", [78, 38, 102, 62]), ("stroked text", [108, 26, 138, 62]), ("annotation", [140, 50, 190, 90])] {
+            assert_eq!(user_region(&on, rect), user_region(&off, rect), "{what}");
+        }
+        // The pattern's hatching is document line art: thinned too (6 device rows per line to
+        // one pixel, antialiased over two).
+        let dark = |p: &RenderedPage| user_region(p, [140, 10, 180, 40]).iter().filter(|c| c[0] < 128).count();
+        assert!(dark(&off) >= 2 * dark(&on) && dark(&on) > 0, "{} {}", dark(&off), dark(&on));
+    }
+
+    /// A print preview shows the strokes as they print: thin lines don't apply to it.
+    #[test]
+    fn print_previews_ignore_thin_lines() {
+        assert_eq!(thin_lines_render(true, PRINT_TAG).rgba, thin_lines_render(false, 0).rgba);
+        assert_ne!(thin_lines_render(true, 0).rgba, thin_lines_render(false, 0).rgba);
+    }
+
+    /// A tile drawn with thin lines equals the same part of the whole page drawn with them, or
+    /// zooming in would show thick strokes at tile seams.
+    #[test]
+    fn thin_lines_tiles_match_full_render() {
+        let mut r = PageRenderer::new(thin_lines_page(), RenderConfig { thin_lines: true, ..Default::default() });
+        let full = r.render(RenderRequest { page: 0, kind: RequestKind::Pixels, tile: None, scale: 2.0, tag: 0, preview: false });
+        let tile = Tile { x: 40, y: 20, w: 120, h: 160 };
+        let part = r.render(RenderRequest { page: 0, kind: RequestKind::Pixels, tile: Some(tile), scale: 2.0, tag: 0, preview: false });
+        assert!(full.error.is_none() && part.error.is_none(), "{:?} {:?}", full.error, part.error);
+        for y in 0..tile.h {
+            for x in 0..tile.w {
+                let a = &full.rgba[(((y + tile.y) * full.width + x + tile.x) * 4) as usize..][..4];
+                let b = &part.rgba[((y * tile.w + x) * 4) as usize..][..4];
+                assert_eq!(a, b, "pixel {x},{y}");
+            }
+        }
+    }
+
     // A tile seam must not change the raster when large-page work is stitched back together.
     #[test]
     fn stitched_render_partitions_match_a_whole_render() {
@@ -6411,9 +6551,9 @@ endstream endobj
         let pdf = parse(&Arc::new(pdf), None).expect("parses");
         let cache = RenderCache::new();
         let settings = InterpreterSettings::default();
-        let preview = render_page(&pdf, &cache, &settings, false, ReadingColors::default(), req(true)).expect("preview renders");
-        let fin = render_page(&pdf, &cache, &settings, false, ReadingColors::default(), req(false)).expect("final renders");
-        let fresh = render_page(&pdf, &RenderCache::new(), &settings, false, ReadingColors::default(), req(false)).expect("final renders");
+        let preview = render_page(&pdf, &cache, &settings, false, ReadingColors::default(), false, req(true)).expect("preview renders");
+        let fin = render_page(&pdf, &cache, &settings, false, ReadingColors::default(), false, req(false)).expect("final renders");
+        let fresh = render_page(&pdf, &RenderCache::new(), &settings, false, ReadingColors::default(), false, req(false)).expect("final renders");
         assert_eq!(rgb_at(&preview.2, w, 35, 35), [0, 0, 255]);
         assert_eq!(&fin.2[..], &fresh.2[..], "a final render after a preview matches one with a fresh cache");
     }

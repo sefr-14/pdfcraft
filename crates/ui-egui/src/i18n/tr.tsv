@@ -2441,3 +2441,43 @@ animation effects	Off	Kapalı
 	Tab view	Sekme görünümü
 	Tile View	Döşeme görünümü
 	Tile view	Döşeme görünümü
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	En son Windows derlemesi aranıyor…
+	Latest available Windows build	Mevcut en son Windows derlemesi
+	Version: {v}	Sürüm: {v}
+	Built: {date}	Derlendi: {date}
+	Artifact: {name}	Yapıt: {name}
+	This copy is version {c}.	Bu kopya {c} sürümü.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	GitHub indirmek için oturum açmanızı isteyebilir. Derlemeler sınırlı bir süre saklanır.
+	View build on GitHub	Derlemeyi GitHub'da görüntüle
+	View builds on GitHub	Derlemeleri GitHub'da görüntüle
+	No successful Windows build was found.	Başarılı bir Windows derlemesi bulunamadı.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	En son başarılı derlemelerde indirilebilir bir Windows derlemesi bulunamadı ({n} denetlendi).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	Denetlenen Windows derlemelerinin süresi doldu ve artık indirilemez ({n} denetlendi).
+	Older builds weren't checked.	Daha eski derlemeler denetlenmedi.
+	Windows builds are listed at {page}.	Windows derlemeleri {page} adresinde listelenir.
+	Try again	Yeniden dene
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Bu fork'un en son Windows derlemesi için GitHub'ı sorgular. Hiçbir şey otomatik olarak indirilmez veya kurulmaz.
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	İnce çizgiler
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	arka plan işlemi durdu
+	the page can't be mapped	sayfa koordinatları dönüştürülemiyor
+	an internal error stopped it ({reason})	bir iç hata nedeniyle durdu ({reason})
+	This document can't be read for measuring.	Bu belge ölçüm için okunamıyor.
+	Snapping isn't available on this page: {reason}	Bu sayfada yakalama kullanılamıyor: {reason}
+	Reading the drawing for snapping…	Yakalama için çizim okunuyor…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	Bu PDF yorumlara izin vermiyor, bu yüzden ölçümler ve ölçekler kaydedilemez.
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Sayfanın bu bölümünde PdfCraft'ın okuyamadığı bir çizim ölçeği var: {reason}. Ölçek belirlemek için kalibre edin.
+	That is the point already placed. Click a different point.	Bu zaten yerleştirilmiş nokta. Farklı bir noktaya tıklayın.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	İnç (in)
+	Feet (ft)	Fit (ft)
+	Feet and inches (ft-in)	Fit ve inç (ft-in)
+	Centimeters (cm)	Santimetre (cm)
+	Millimeters (mm)	Milimetre (mm)
+	Meters (m)	Metre (m)
+	Known distance	Bilinen mesafe
+	Nearest 1/8 inch	En yakın 1/8 inçe
+	Type a length such as 12'-5 3/8" or 12.5'.	12'-5 3/8" veya 12.5' gibi bir uzunluk yazın.
+	Type the real distance between the two points.	İki nokta arasındaki gerçek mesafeyi yazın.

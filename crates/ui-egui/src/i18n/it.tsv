@@ -2657,3 +2657,43 @@ certificate	SHA-256 digest	Impronta SHA-256
 	Tab view	Vista a schede
 	Tile View	Vista affiancata
 	Tile view	Vista affiancata
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	Ricerca dell'ultima build per Windows…
+	Latest available Windows build	Ultima build per Windows disponibile
+	Version: {v}	Versione: {v}
+	Built: {date}	Compilata: {date}
+	Artifact: {name}	Artefatto: {name}
+	This copy is version {c}.	Questa copia è la versione {c}.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	GitHub potrebbe chiederti di accedere per scaricarla. Le build vengono conservate per un periodo limitato.
+	View build on GitHub	Vedi la build su GitHub
+	View builds on GitHub	Vedi le build su GitHub
+	No successful Windows build was found.	Non è stata trovata nessuna build per Windows riuscita.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	Nessuna build per Windows scaricabile tra le build riuscite più recenti ({n} controllate).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	Le build per Windows controllate sono scadute e non si possono più scaricare ({n} controllate).
+	Older builds weren't checked.	Le build più vecchie non sono state controllate.
+	Windows builds are listed at {page}.	Le build per Windows sono elencate su {page}.
+	Try again	Riprova
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Chiede a GitHub l'ultima build per Windows di questo fork. Nulla viene scaricato o installato automaticamente.
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	Linee sottili
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	il processo in background si è interrotto
+	the page can't be mapped	le coordinate della pagina non possono essere convertite
+	an internal error stopped it ({reason})	un errore interno lo ha interrotto ({reason})
+	This document can't be read for measuring.	Questo documento non può essere letto per misurare.
+	Snapping isn't available on this page: {reason}	L’aggancio non è disponibile in questa pagina: {reason}
+	Reading the drawing for snapping…	Lettura del disegno per l’aggancio…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	Questo PDF non consente commenti, quindi misure e scale non possono essere salvate.
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Questa parte della pagina ha una scala del disegno che PdfCraft non sa leggere: {reason}. Calibra per impostarne una.
+	That is the point already placed. Click a different point.	Questo è il punto già inserito. Fai clic su un altro punto.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	Pollici (in)
+	Feet (ft)	Piedi (ft)
+	Feet and inches (ft-in)	Piedi e pollici (ft-in)
+	Centimeters (cm)	Centimetri (cm)
+	Millimeters (mm)	Millimetri (mm)
+	Meters (m)	Metri (m)
+	Known distance	Distanza nota
+	Nearest 1/8 inch	Al 1/8 di pollice più vicino
+	Type a length such as 12'-5 3/8" or 12.5'.	Digita una lunghezza come 12'-5 3/8" o 12.5'.
+	Type the real distance between the two points.	Digita la distanza reale tra i due punti.

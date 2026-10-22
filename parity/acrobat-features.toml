@@ -1631,11 +1631,11 @@ title = "Show line weights"
 area = "B"
 tier = "P2"
 milestone = "M12"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["view.thin_lines"]
+tools = ["view_thin_lines"]
+evidence = ["crates/render/src/raster.rs::thin_lines_draw_document_strokes_one_pixel_wide_and_nothing_else", "crates/render/src/raster.rs::print_previews_ignore_thin_lines", "crates/ui-egui/src/thin_lines_tests.rs::thin_lines_reach_every_view_of_every_document_and_change_no_file", "crates/ui-egui/src/thin_lines_tests.rs::thin_lines_are_remembered_and_apply_to_documents_opened_later", "crates/automation/tests/automation.rs::thin_lines_through_tools"]
+notes = "this fork (OV9), modelled on Revit's Thin Lines: View > Page display > Thin lines draws every open document's strokes one device pixel wide (line weights hidden); off on first start, remembered across restarts. Display only: the file, printing, print previews, the Snapshot tool and the Overlay wizard keep the real widths. Comments and other annotations keep theirs too (the owner's choice), as do stroked text, Type 3 glyphs and mask content. Not per document in the UI, and no separate weight scaling"
 
 [[feature]]
 id = "view.cursor-coordinates"
@@ -1766,8 +1766,8 @@ milestone = "M3"
 status = "partial"
 commands = ["help.check_updates"]
 tools = []
-evidence = ["crates/ui-egui/tests/ui_group/updates.rs::a_newer_release_is_offered_for_download", "crates/ui-egui/tests/ui_group/updates.rs::nothing_is_asked_until_the_user_checks", "apps/pdfcraft/src/updates.rs::answers_are_read_and_only_our_release_pages_are_offered"]
-notes = "asks GitHub Releases on request and offers the release page. By the owner's decision there is no check at start and no in-place install (Acrobat has both)"
+evidence = ["crates/ui-egui/tests/ui_group/updates.rs::the_latest_available_build_is_shown_with_its_run_page", "crates/ui-egui/tests/ui_group/updates.rs::nothing_is_asked_until_the_user_checks", "apps/pdfcraft/src/updates.rs::the_newest_usable_artifact_of_main_wins", "apps/pdfcraft/src/updates.rs::expired_artifacts_are_never_offered"]
+notes = "this fork (OV8): on request, finds the latest available Windows x64 portable artifact of the fork's manually run overlay-windows.yml workflow on Main (five most recent successful runs; expired artifacts never offered) and opens its run page, where GitHub may ask the user to sign in to download. It doesn't compare the installed build with it (builds can share a version) and never falls back to upstream releases. By the owner's decision there is no check at start and no in-place install (Acrobat has both)"
 
 [[feature]]
 id = "view.single-key-accelerators"
@@ -4232,8 +4232,8 @@ milestone = "M12"
 status = "partial"
 commands = ["measure.distance"]
 tools = ["measure_distance"]
-evidence = ["crates/automation/tests/automation.rs::measurements_calibrate_draw_save_reopen_and_export", "crates/measure/src/tests.rs::calibrated_lengths_concave_areas_and_axis_scales", "crates/ui-egui/tests/control.rs::measurement_tools_draw_live_calibrate_save_and_export"]
-notes = "Two-point distance annotations with saved numeric captions and rectilinear scales. Partial: only single-unit decimal formats; compound (ft-in) and fractional formats are not supported (listed as unsupported, data kept), no leader lines or caption placement options, geospatial scales unsupported, and interop with Acrobat-authored measurements (reading theirs, Acrobat reading ours) is untested."
+evidence = ["crates/automation/tests/automation.rs::measurements_calibrate_draw_save_reopen_and_export", "crates/measure/src/tests.rs::calibrated_lengths_concave_areas_and_axis_scales", "crates/ui-egui/tests/control.rs::measurement_tools_draw_live_calibrate_save_and_export", "crates/ui-egui/src/measure_tests.rs::the_second_click_keeps_a_distance_that_undo_delete_and_save_handle", "crates/ui-egui/src/measure_tests.rs::a_slow_or_drifting_second_click_still_finishes_the_distance", "crates/ui-egui/src/measure_tests.rs::a_second_click_on_the_first_point_says_to_click_another", "crates/ui-egui/src/measure_tests.rs::a_pdf_that_forbids_comments_measures_but_says_nothing_is_kept", "crates/ui-egui/src/measure_tests.rs::a_duplicate_tab_and_a_tile_keep_their_measurements"]
+notes = "Two-point distance annotations with saved numeric captions and rectilinear scales; the second click (or a release after a short drag) keeps it, and a click that keeps nothing says why at the pointer (same point twice, no comment rights, an unreadable scale). Decimal units and, in this fork, feet and inches to 1/8 inch (12'-5 3/8\"). Partial: other compound and fractional formats are not supported (listed as unsupported, data kept), no leader lines or caption placement options, geospatial scales unsupported, and interop with Acrobat-authored measurements (reading theirs, Acrobat reading ours) is untested."
 
 [[feature]]
 id = "comment.measure-perimeter"
@@ -4268,8 +4268,8 @@ milestone = "M12"
 status = "partial"
 commands = ["measure.scale"]
 tools = ["measure_scale"]
-evidence = ["crates/measure/src/tests.rs::viewport_precedence_first_point_user_unit_and_roundtrip", "crates/measure/src/tests.rs::coordinates_roundtrip_for_crop_rotation_and_user_unit", "crates/automation/tests/automation.rs::measurements_calibrate_draw_save_reopen_and_export", "crates/ui-egui/tests/control.rs::measurement_tools_draw_live_calibrate_save_and_export"]
-notes = "Persistent rectangular viewports with last-containing-viewport precedence, numeric scale and two-point calibration. First vertex selects the scale; prior annotations retain theirs. Partial: single-unit decimal rectilinear scales only; compound (ft-in), fractional and differing distance units can't be authored or imported, no viewport editing/removal UI, and interop with Acrobat's scale ratio dialog and its saved viewports is untested."
+evidence = ["crates/measure/src/tests.rs::viewport_precedence_first_point_user_unit_and_roundtrip", "crates/measure/src/tests.rs::coordinates_roundtrip_for_crop_rotation_and_user_unit", "crates/automation/tests/automation.rs::measurements_calibrate_draw_save_reopen_and_export", "crates/ui-egui/tests/control.rs::measurement_tools_draw_live_calibrate_save_and_export", "crates/measure/src/tests.rs::feet_and_inches_scales_write_compound_formats_and_read_back", "crates/measure/src/tests.rs::an_acrobat_style_feet_and_inches_viewport_is_measured_in_feet_and_inches", "crates/measure/src/tests.rs::other_compound_and_fractional_formats_stay_unsupported_and_untouched", "crates/ui-egui/src/measure_tests.rs::calibrating_in_feet_and_inches_from_the_panel", "crates/ui-egui/src/measure_tests.rs::a_drawing_scale_that_cant_be_read_is_explained_and_feet_and_inches_are_read"]
+notes = "Persistent rectangular viewports with last-containing-viewport precedence, numeric scale and two-point calibration (both points snap). First vertex selects the scale; prior annotations retain theirs. This fork: a unit list (in, ft, ft-in, cm, mm, m, or a custom label) that converts the known distance, feet and inches typed as 12'-5 3/8\" and written as the ISO 32000-2 §12.9.2 two-element number format (checked against secondary descriptions of the standard, not its text), and read back from other files. Partial: other compound, fractional and differing distance units can't be authored or imported, no viewport editing/removal UI, and interop with Acrobat's scale ratio dialog and its saved viewports is untested."
 
 [[feature]]
 id = "comment.measure-snap"
@@ -4280,8 +4280,8 @@ milestone = "M12"
 status = "shipped"
 commands = ["measure.snap"]
 tools = ["measure_snap"]
-evidence = ["crates/automation/tests/automation.rs::measurement_snap_tool_covers_all_targets", "crates/measure/src/tests.rs::nested_forms_transforms_curves_and_cycles_are_bounded", "crates/measure/src/tests.rs::snap_paths_endpoints_midpoints_and_intersections"]
-notes = "Paths, endpoints, midpoints and intersections of painted vector geometry, including transformed Form XObjects. Cubics flattened to 0.2 user units. Bounded extraction and dense-intersection limits are reported. Raster/text outlines, clipping and optional-content visibility are not interpreted."
+evidence = ["crates/automation/tests/automation.rs::measurement_snap_tool_covers_all_targets", "crates/measure/src/tests.rs::nested_forms_transforms_curves_and_cycles_are_bounded", "crates/measure/src/tests.rs::snap_paths_endpoints_midpoints_and_intersections", "crates/ui-egui/src/measure_tests.rs::the_snap_target_shows_before_the_first_point_with_every_tool", "crates/ui-egui/src/measure_tests.rs::no_point_is_placed_while_the_drawing_is_read_for_snapping", "crates/ui-egui/src/measure_tests.rs::hidden_layers_and_dense_sheets_snap_as_they_are_shown"]
+notes = "Paths, endpoints, midpoints and intersections of painted vector geometry, including transformed Form XObjects. Cubics flattened to 0.2 user units. Bounded extraction and dense-intersection limits are reported. Raster/text outlines and clipping are not interpreted. This fork: the desktop tools snap with the Overlay wizard's reader (400,000 segments, layers hidden in the tab left out), read on a worker with no point placed while it loads, and show the target before the first point; the measure_snap automation tool still uses pdfcraft-measure's reader (20,000 segments, layer visibility not interpreted)."
 
 [[feature]]
 id = "comment.measure-info-panel"

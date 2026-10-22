@@ -2446,3 +2446,43 @@ animation effects	Off	Aus
 	Tab view	Tab-Ansicht
 	Tile View	Kachelansicht
 	Tile view	Kachelansicht
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	Suche nach dem neuesten Windows-Build…
+	Latest available Windows build	Neuester verfügbarer Windows-Build
+	Version: {v}	Version: {v}
+	Built: {date}	Erstellt: {date}
+	Artifact: {name}	Artefakt: {name}
+	This copy is version {c}.	Diese Kopie hat Version {c}.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	GitHub fragt zum Herunterladen eventuell nach einer Anmeldung. Builds werden nur begrenzte Zeit aufbewahrt.
+	View build on GitHub	Build auf GitHub ansehen
+	View builds on GitHub	Builds auf GitHub ansehen
+	No successful Windows build was found.	Es wurde kein erfolgreicher Windows-Build gefunden.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	In den letzten erfolgreichen Builds wurde kein herunterladbarer Windows-Build gefunden ({n} geprüft).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	Die geprüften Windows-Builds sind abgelaufen und können nicht mehr heruntergeladen werden ({n} geprüft).
+	Older builds weren't checked.	Ältere Builds wurden nicht geprüft.
+	Windows builds are listed at {page}.	Windows-Builds sind unter {page} aufgeführt.
+	Try again	Erneut versuchen
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Fragt GitHub nach dem neuesten Windows-Build dieses Forks. Es wird nichts automatisch heruntergeladen oder installiert.
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	Dünne Linien
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	der Hintergrundprozess wurde beendet
+	the page can't be mapped	die Seitenkoordinaten lassen sich nicht umrechnen
+	an internal error stopped it ({reason})	ein interner Fehler hat es abgebrochen ({reason})
+	This document can't be read for measuring.	Dieses Dokument kann zum Messen nicht gelesen werden.
+	Snapping isn't available on this page: {reason}	Einrasten ist auf dieser Seite nicht verfügbar: {reason}
+	Reading the drawing for snapping…	Zeichnung wird zum Einrasten gelesen…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	Dieses PDF erlaubt keine Kommentare, daher können Messungen und Maßstäbe nicht gespeichert werden.
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Dieser Teil der Seite hat einen Zeichnungsmaßstab, den PdfCraft nicht lesen kann: {reason}. Kalibrieren Sie, um einen festzulegen.
+	That is the point already placed. Click a different point.	Das ist der bereits gesetzte Punkt. Klicken Sie auf einen anderen Punkt.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	Zoll (in)
+	Feet (ft)	Fuß (ft)
+	Feet and inches (ft-in)	Fuß und Zoll (ft-in)
+	Centimeters (cm)	Zentimeter (cm)
+	Millimeters (mm)	Millimeter (mm)
+	Meters (m)	Meter (m)
+	Known distance	Bekannter Abstand
+	Nearest 1/8 inch	Auf 1/8 Zoll genau
+	Type a length such as 12'-5 3/8" or 12.5'.	Geben Sie eine Länge wie 12'-5 3/8" oder 12.5' ein.
+	Type the real distance between the two points.	Geben Sie den tatsächlichen Abstand zwischen den beiden Punkten ein.

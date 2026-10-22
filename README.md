@@ -126,6 +126,63 @@ palette ("Tile view", "Tab view"). PdfCraft starts in Tab View.
 - Tile View is part of the normal viewer, separate from Overlay compare: the Overlay wizard's own
   alignment controls are unchanged, and the wheel over its window never moves a tile behind it.
 
+**Also: Thin lines.** View › Page display › **Thin lines** (also on the rail's Page display menu
+and in the command palette) draws every line of the drawing one screen pixel wide, whatever its
+weight in the PDF and whatever the zoom, as CAD viewers do, so dense plans and details stay
+legible when zoomed out. It changes only how pages are shown:
+
+- Only the drawing's own lines are thinned, hatch patterns included. Text, fills and images are
+  unchanged, and so are comments, markups and measurements, which keep their widths.
+- Printing, exporting, the Overlay wizard and the PDF itself keep the original line weights. The
+  setting is not an edit: nothing is marked as changed and Save writes the same file.
+- It applies to every open document and every view of it (duplicate tabs and tiles too) and to
+  documents opened later. It is off on first launch and remembered from then on.
+- Automation: `view_thin_lines {doc, on}`; `page_render` follows it.
+
+**Also: measuring drawings.** The Measure objects tool (All tools › Measure objects: Distance,
+Perimeter, Area and Calibrate from two points) is made for scaled drawings:
+
+- **Snapping, before the first click too.** With Snap to drawing on, a ring and its name
+  (Endpoint, Midpoint, Intersection, Path) show where a click will land, for the first point as
+  for the next ones, and when calibrating. The drawing's lines are read as the Overlay wizard
+  reads them: up to 400,000 segments, and lines in layers hidden in the tab are left out. A large
+  sheet is read in the background; until it is done, "Reading the drawing for snapping…" shows
+  at the pointer and clicks place no point, so no point silently misses its target. Turn Snap to
+  drawing off to place points freely meanwhile.
+- **The second click makes the measurement.** A distance is kept as soon as its second point is
+  placed: the line and its value are drawn on the page and the document is marked as changed (it
+  isn't saved until you save). Undo, Redo, Delete (select it in the panel's list) and Save work as
+  for any comment, and the measurement reads the same after reopening. A press held a little long
+  or moved a few pixels still places the point, where the button comes up.
+- **When a click keeps nothing, it says why**, at the pointer and in the panel: the same point
+  clicked twice, a PDF that doesn't allow comments (the value is still shown, but nothing can be
+  saved), or a drawing scale on that part of the page that PdfCraft can't read (it is never
+  replaced by another scale; Calibrate sets one).
+- **Units.** Pick Inches, Feet, Feet and inches, Centimeters, Millimeters or Meters, or Custom to
+  type any other label. Feet and inches read `12'-5 3/8"`, to the nearest 1/8 inch (11.95" is
+  `1'-0"`). Picking another unit converts the known distance, so the scale stays the same.
+- **Calibrating.** Click two points of known distance (both snap), type the real distance in the
+  field that then takes the keyboard (`10'-0"`, `12' 5.375"`, `150"` or `12.5'` for feet and
+  inches) and Apply scale. A scale applies to the whole page or to a rectangle on it, as before.
+  The feet-and-inches scale is saved as the standard two-part number format (ISO 32000-2 §12.9.2)
+  and read back from other files that use it; other fractional or compound formats are listed as
+  unsupported and left untouched.
+- Automation: `measure_scale` takes `unit: "ft-in"`.
+
+**Also: Check for updates finds this fork's Windows build.** Help › Check for updates (or "Check
+for updates…" in the command palette) no longer offers upstream's releases, which don't have the
+features above. It asks GitHub for the five most recent successful runs of
+[`overlay-windows.yml`](.github/workflows/overlay-windows.yml) on `Main` and shows the newest one
+with a `pdfcraft-overlay-<ver>-<sha7>-windows-x64-portable` artifact that hasn't expired: its
+version, date, artifact name and a **View build on GitHub** link to its run.
+
+- It reports what is available, nothing more: it doesn't compare that build with the copy you're
+  running, and it never downloads, installs or starts a build. GitHub asks you to sign in to
+  download an artifact, and keeps artifacts for a limited time.
+- When the runs checked have no usable artifact (expired or missing), it says so and links to the
+  workflow's page. When GitHub can't be reached (offline, a timeout, a rate limit, an unexpected
+  answer) it says why and offers **Try again**; a failure is never reported as "no build".
+
 **What else differs from upstream**
 
 - The ArtCraft marks are left out of this fork's builds and of this README, as the

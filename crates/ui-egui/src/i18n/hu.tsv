@@ -2444,3 +2444,43 @@ animation effects	Off	Ki
 	Tab view	Lapnézet
 	Tile View	Csempés nézet
 	Tile view	Csempés nézet
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	A legújabb Windows-build keresése…
+	Latest available Windows build	Legújabb elérhető Windows-build
+	Version: {v}	Verzió: {v}
+	Built: {date}	Készült: {date}
+	Artifact: {name}	Artefaktum: {name}
+	This copy is version {c}.	Ez a példány a(z) {c} verzió.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	A letöltéshez a GitHub bejelentkezést kérhet. A buildeket korlátozott ideig őrzik meg.
+	View build on GitHub	Build megtekintése a GitHubon
+	View builds on GitHub	Buildek megtekintése a GitHubon
+	No successful Windows build was found.	Nem található sikeres Windows-build.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	A legutóbbi sikeres buildek között nem található letölthető Windows-build ({n} ellenőrizve).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	Az ellenőrzött Windows-buildek lejártak, és már nem tölthetők le ({n} ellenőrizve).
+	Older builds weren't checked.	A régebbi buildeket nem ellenőriztük.
+	Windows builds are listed at {page}.	A Windows-buildek listája: {page}.
+	Try again	Újrapróbálás
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	A GitHubtól kéri le ennek a forknak a legújabb Windows-buildjét. Semmi sem töltődik le vagy települ automatikusan.
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	Vékony vonalak
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	a háttérfolyamat leállt
+	the page can't be mapped	az oldal koordinátái nem alakíthatók át
+	an internal error stopped it ({reason})	belső hiba miatt leállt ({reason})
+	This document can't be read for measuring.	Ez a dokumentum méréshez nem olvasható be.
+	Snapping isn't available on this page: {reason}	Az illesztés ezen az oldalon nem érhető el: {reason}
+	Reading the drawing for snapping…	A rajz beolvasása az illesztéshez…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	Ez a PDF nem engedélyezi a megjegyzéseket, ezért a mérések és a méretarányok nem menthetők.
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Az oldal ezen részének olyan méretaránya van, amelyet a PdfCraft nem tud beolvasni: {reason}. Kalibrálással megadhat egyet.
+	That is the point already placed. Click a different point.	Ez a már elhelyezett pont. Kattintson egy másik pontra.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	Hüvelyk (in)
+	Feet (ft)	Láb (ft)
+	Feet and inches (ft-in)	Láb és hüvelyk (ft-in)
+	Centimeters (cm)	Centiméter (cm)
+	Millimeters (mm)	Milliméter (mm)
+	Meters (m)	Méter (m)
+	Known distance	Ismert távolság
+	Nearest 1/8 inch	1/8 hüvelykre kerekítve
+	Type a length such as 12'-5 3/8" or 12.5'.	Írjon be egy hosszt, például 12'-5 3/8" vagy 12.5'.
+	Type the real distance between the two points.	Írja be a két pont közötti valódi távolságot.

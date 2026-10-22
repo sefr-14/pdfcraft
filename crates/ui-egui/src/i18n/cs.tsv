@@ -2519,3 +2519,43 @@ animation effects	Off	Vypnuto
 	Tab view	Zobrazení karet
 	Tile View	Dlaždicové zobrazení
 	Tile view	Dlaždicové zobrazení
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	Hledá se nejnovější sestavení pro Windows…
+	Latest available Windows build	Nejnovější dostupné sestavení pro Windows
+	Version: {v}	Verze: {v}
+	Built: {date}	Sestaveno: {date}
+	Artifact: {name}	Artefakt: {name}
+	This copy is version {c}.	Tato kopie má verzi {c}.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	GitHub vás může ke stažení požádat o přihlášení. Sestavení se uchovávají jen omezenou dobu.
+	View build on GitHub	Zobrazit sestavení na GitHubu
+	View builds on GitHub	Zobrazit všechna sestavení na GitHubu
+	No successful Windows build was found.	Nebylo nalezeno žádné úspěšné sestavení pro Windows.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	V nejnovějších úspěšných sestaveních nebylo nalezeno žádné sestavení pro Windows ke stažení (zkontrolováno: {n}).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	Zkontrolovaná sestavení pro Windows vypršela a už je nelze stáhnout (zkontrolováno: {n}).
+	Older builds weren't checked.	Starší sestavení nebyla zkontrolována.
+	Windows builds are listed at {page}.	Sestavení pro Windows jsou uvedena na {page}.
+	Try again	Zkusit znovu
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Zjistí na GitHubu nejnovější sestavení tohoto forku pro Windows. Nic se automaticky nestahuje ani neinstaluje.
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	Tenké čáry
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	proces na pozadí se zastavil
+	the page can't be mapped	souřadnice stránky nelze převést
+	an internal error stopped it ({reason})	zastavila ho vnitřní chyba ({reason})
+	This document can't be read for measuring.	Tento dokument nelze pro měření přečíst.
+	Snapping isn't available on this page: {reason}	Přichytávání na této stránce není k dispozici: {reason}
+	Reading the drawing for snapping…	Načítání kresby pro přichytávání…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	Tento PDF nepovoluje komentáře, proto nelze měření a měřítka uložit.
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Tato část stránky má měřítko výkresu, které PdfCraft neumí přečíst: {reason}. Měřítko nastavíte kalibrací.
+	That is the point already placed. Click a different point.	To je již umístěný bod. Klikněte na jiný bod.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	Palce (in)
+	Feet (ft)	Stopy (ft)
+	Feet and inches (ft-in)	Stopy a palce (ft-in)
+	Centimeters (cm)	Centimetry (cm)
+	Millimeters (mm)	Milimetry (mm)
+	Meters (m)	Metry (m)
+	Known distance	Známá vzdálenost
+	Nearest 1/8 inch	Na nejbližší 1/8 palce
+	Type a length such as 12'-5 3/8" or 12.5'.	Zadejte délku, například 12'-5 3/8" nebo 12.5'.
+	Type the real distance between the two points.	Zadejte skutečnou vzdálenost mezi oběma body.

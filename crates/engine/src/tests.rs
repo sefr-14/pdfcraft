@@ -2897,6 +2897,27 @@ fn reading_colors_set_and_invalidated() {
     assert!(!s.set_reading_colors(DocId(u64::MAX), ReadingColors::WHITE_ON_BLACK));
 }
 
+/// View ▸ Thin lines (this fork, OV9) is a view setting: it re-renders (a new generation) but
+/// never edits the file, marks it modified or adds an undo step, and saving writes the same bytes.
+#[test]
+fn thin_lines_set_rerender_and_never_touch_the_file() {
+    let (mut s, id) = session_with(1);
+    let before = s.save_bytes(id).unwrap();
+    let generation = s.get(id).unwrap().generation;
+    assert_eq!(s.thin_lines(id), Some(false), "off unless set");
+    assert!(s.set_thin_lines(id, true));
+    assert_eq!(s.thin_lines(id), Some(true));
+    assert!(!s.set_thin_lines(id, true), "unchanged");
+    let doc = s.get(id).unwrap();
+    assert!(doc.generation > generation, "cached renders are dropped");
+    assert!(!doc.dirty);
+    assert_eq!(doc.can_undo(), None);
+    assert_eq!(*s.save_bytes(id).unwrap(), *before);
+    assert!(s.set_thin_lines(id, false), "back to off");
+    assert_eq!(s.thin_lines(DocId(u64::MAX)), None);
+    assert!(!s.set_thin_lines(DocId(u64::MAX), true));
+}
+
 #[test]
 fn signing_saving_trusting_and_commenting_afterwards() {
     let p12 = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../sign/tests/data/ec-p256.p12")).unwrap();
@@ -4034,6 +4055,40 @@ fn guard_turns_a_panic_into_an_error() {
     assert_eq!(guard(|| -> u8 { panic!("boom") }), Err("boom".to_string()));
     let n = 3;
     assert_eq!(guard(|| -> u8 { panic!("page {n} is bad") }), Err("page 3 is bad".to_string()));
+}
+
+/// This fork (OV10): the measuring tools' snapping lines are kept across the measurements they
+/// add, and read again after anything that can change what the page draws.
+#[test]
+fn content_generation_skips_comment_edits_and_follows_everything_else() {
+    let mut session = Session::default();
+    let id = session.open("plan.pdf", None, Arc::new(fixture(1)), None).unwrap();
+    let content = |s: &Session| s.get(id).unwrap().content_generation();
+    let edits = |s: &Session| s.get(id).unwrap().edit_generation();
+    let (start, edited) = (content(&session), edits(&session));
+    let m = measure::NewMeasurement {
+        page: 0,
+        kind: measure::Kind::Distance,
+        points: vec![[10.0, 20.0], [40.0, 60.0]],
+        scale: measure::Scale::new(0.1, "m", 2).unwrap(),
+        style: Style::default(),
+        label: "Wall".into(),
+        author: "Tester".into(),
+    };
+    session.apply(id, Edit::AddMeasurement(m)).unwrap();
+    session.undo(id).unwrap();
+    session.redo(id).unwrap();
+    assert_eq!(content(&session), start, "comments don't change what the page draws");
+    assert!(edits(&session) >= edited + 3);
+    session.apply(id, Edit::RotatePages { pages: vec![0], degrees: 90 }).unwrap();
+    let rotated = content(&session);
+    assert!(rotated > start);
+    session.undo(id).unwrap();
+    assert!(content(&session) > rotated, "undoing a page change is a change too");
+    let bytes = session.save_bytes(id).unwrap();
+    let saved = content(&session);
+    session.reload(id, bytes).unwrap();
+    assert!(content(&session) > saved, "a reloaded file never reuses an old number");
 }
 
 #[test]

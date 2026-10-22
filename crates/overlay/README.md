@@ -158,6 +158,8 @@ Step 3 adds `composite`, which writes the overlay page:
   densest real 36 × 24 in structural sheet tried has about 42,000), and content in a layer the
   tab hides is left out. Text, images, shadings and annotations aren't snap targets. Reading is
   lenient: an undecodable stream is skipped and counted, and a limit stops it with `truncated`.
+  The viewer's measuring tools snap with it too (OV10, `crates/ui-egui/src/measure_ui.rs`), so
+  a change here changes how they snap.
 
 The wizard itself is `crates/ui-egui/src/overlay_ui.rs` (Overlay compare… on the toolbar, in All
 tools ▸ Compare files, and the command `doc.overlay`).

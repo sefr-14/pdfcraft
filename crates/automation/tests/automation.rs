@@ -5625,6 +5625,17 @@ fn measurements_calibrate_draw_save_reopen_and_export() {
     let last = all["measurements"].as_array().unwrap().last().unwrap();
     assert!((last["reading"]["value"].as_f64().unwrap() - 10.0).abs() < 1e-6);
     assert_eq!(last["points"], json!([[100.0, 100.0], [180.0, 160.0]]));
+    // This fork (OV10): feet and inches. 60 pt = 10 ft, so a 3-4-5 triangle's 100 pt is 16'-8".
+    let ft_in = ok(&mut a, "measure_scale", json!({"doc":doc,"page":1,"points":[[10,10],[70,10]],"distance":10,"unit":"ft-in"}));
+    assert_eq!((&ft_in["scale"]["unit"], &ft_in["scale"]["feet_inches"]), (&json!("ft"), &json!(8)));
+    let m = ok(&mut a, "measure_info", json!({"doc":doc,"page":1,"type":"distance","points":[[110,110],[170,190]]}));
+    assert_eq!(m["reading"]["label"], "16'-8\"");
+    ok(&mut a, "measure_distance", json!({"doc":doc,"page":1,"points":[[110,110],[170,190]]}));
+    ok(&mut a, "doc_save", json!({"doc":doc,"path":"feet.pdf"}));
+    let feet = ok(&mut a, "doc_open", json!({"path":"feet.pdf"}))["doc"].as_u64().unwrap();
+    let listed = ok(&mut a, "measure_list", json!({"doc":feet}));
+    let last = listed["measurements"].as_array().unwrap().last().unwrap();
+    assert_eq!((&last["reading"]["label"], &listed["unsupported"]), (&json!("16'-8\""), &json!([])), "{listed}");
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -6584,6 +6595,59 @@ fn reading_colors_through_tools() {
         json!({ "mode": "off", "text": null, "background": null, "only_black": false, "line_art": false })
     );
     assert_eq!(render(&mut a, 1), page1_off);
+}
+
+/// A 200 × 300 pt page with a 10 pt black stroke at x 50 and a Square comment whose appearance
+/// has an 8 pt border (this fork's thin lines, OV9).
+fn thin_lines_fixture() -> Vec<u8> {
+    let content = "0 G 10 w 50 20 m 50 280 l S";
+    let border = "0 0 0 RG 8 w 104 104 92 92 re S";
+    format!(
+        "%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+         2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+         3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] /Contents 4 0 R /Annots [5 0 R] >> endobj\n\
+         4 0 obj << /Length {} >> stream\n{content}\nendstream endobj\n\
+         5 0 obj << /Type /Annot /Subtype /Square /Rect [100 100 200 200] /BS << /W 8 >> /C [0 0 0] /AP << /N 6 0 R >> >> endobj\n\
+         6 0 obj << /Type /XObject /Subtype /Form /BBox [100 100 200 200] /Length {} >> stream\n{border}\nendstream endobj\n\
+         trailer << /Root 1 0 R >>\n%%EOF",
+        content.len(),
+        border.len()
+    )
+    .into_bytes()
+}
+
+/// `view_thin_lines` draws the document's strokes one pixel wide in `page_render`, leaves the
+/// comment's border alone and never changes the file.
+#[test]
+fn thin_lines_through_tools() {
+    let dir = std::env::temp_dir().join(format!("pdfcraft-automation-thin-lines-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("a.pdf"), thin_lines_fixture()).unwrap();
+    let mut a = auto(&dir);
+    let doc = ok(&mut a, "doc_open", json!({ "path": "a.pdf" }))["doc"].as_u64().unwrap();
+    let render = |a: &mut Automation| png_pixels(&a.call("page_render", &json!({ "doc": doc, "page": 1, "dpi": 72 })).unwrap()[0]);
+    let dark_in_row = |px: &[u8], y: u32, xs: std::ops::Range<u32>| xs.filter(|&x| pixel(px, x, y)[0] < 128).count();
+
+    let off = render(&mut a);
+    assert!(dark_in_row(&off, 30, 0..100) >= 9, "the stroke is 10 px wide");
+    assert_eq!(ok(&mut a, "view_thin_lines", json!({ "doc": doc })), json!({ "on": true }));
+    let on = render(&mut a);
+    assert!((1..=2).contains(&dark_in_row(&on, 30, 0..100)), "one pixel: {}", dark_in_row(&on, 30, 0..100));
+    // The comment's border (rows 100..200 of the image) is drawn exactly as before.
+    for y in 100..200u32 {
+        assert_eq!(
+            &on[(y * 200 * 4) as usize..((y + 1) * 200 * 4) as usize][100 * 4..],
+            &off[(y * 200 * 4) as usize..((y + 1) * 200 * 4) as usize][100 * 4..],
+            "row {y}"
+        );
+    }
+    // A view setting: the document isn't modified, and the file on disk is as it was.
+    assert_eq!(ok(&mut a, "doc_info", json!({ "doc": doc }))["document"]["dirty"], json!(false));
+    assert_eq!(std::fs::read(dir.join("a.pdf")).unwrap(), thin_lines_fixture());
+    assert_eq!(ok(&mut a, "view_thin_lines", json!({ "doc": doc, "on": false })), json!({ "on": false }));
+    assert_eq!(render(&mut a), off);
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]

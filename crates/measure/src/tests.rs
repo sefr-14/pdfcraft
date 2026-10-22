@@ -363,3 +363,83 @@ fn user_unit_is_read_as_acrobat_reads_it() {
         close(view[1], 72.0);
     }
 }
+
+/// This fork (OV10): 1/4" = 1'-0" (a point on paper is 48/72 in, 1/18 ft, in the building).
+fn quarter_inch_scale() -> Scale {
+    Scale { area_unit: "ft^2".into(), ..Scale::new(48.0 / 72.0 / 12.0, "ft", 2).unwrap() }.in_feet_inches(units::EIGHTHS).unwrap()
+}
+
+#[test]
+fn feet_and_inches_scales_write_compound_formats_and_read_back() {
+    let mut d = fixture("", "", &[]);
+    let mut m = new(Kind::Distance, vec![[100.0, 100.0], [250.0, 100.0]]);
+    m.scale = quarter_inch_scale();
+    add(&mut d, &m, &Meta::default()).unwrap();
+    // 150 pt is 150/18 ft: 8'-4".
+    let listing = list(&d);
+    assert!(listing.unsupported.is_empty(), "{:?}", listing.unsupported);
+    let saved = &listing.measurements[0];
+    assert_eq!(saved.reading.label, "8'-4\"");
+    close(saved.reading.value, 150.0 / 18.0);
+    assert_eq!(saved.scale.feet_inches, Some(8));
+    // The /Measure dictionary: whole feet truncated, then inches as eighths (ISO 32000-2 §12.9.2).
+    let (_, a) = annot(&d, 0, 0).unwrap();
+    let measure = a.get(b"Measure").and_then(Object::as_dict).unwrap();
+    for key in [&b"X"[..], b"D"] {
+        let formats = measure.get(key).and_then(Object::as_array).unwrap();
+        assert_eq!(formats.len(), 2, "{}", String::from_utf8_lossy(key));
+        let (feet, inches) = (formats[0].as_dict().unwrap(), formats[1].as_dict().unwrap());
+        assert_eq!((text(feet, b"U"), feet.name(b"F")), ("ft".to_string(), Some(&b"T"[..])));
+        assert_eq!((text(inches, b"U"), inches.name(b"F"), inches.int(b"D")), ("in".to_string(), Some(&b"F"[..]), Some(8)));
+        close(inches.get(b"C").and_then(Object::as_f64).unwrap(), 12.0);
+    }
+    assert_eq!(measure.get(b"A").and_then(Object::as_array).map(Vec::len), Some(1), "areas stay decimal");
+    // Saved and reopened, it reads the same.
+    let reopened = Document::open(Arc::new(write_full(&d, &SaveOptions::default()).unwrap())).unwrap();
+    let again = &list(&reopened).measurements[0];
+    assert_eq!((again.reading.label.as_str(), again.scale.feet_inches), ("8'-4\"", Some(8)));
+    close(again.scale.x, 1.0 / 18.0);
+    // A caption PdfCraft draws in WinAnsi: ASCII ' and " only.
+    assert!(text(&a, b"Contents").is_ascii());
+}
+
+#[test]
+fn an_acrobat_style_feet_and_inches_viewport_is_measured_in_feet_and_inches() {
+    let vp = "/VP [<< /Type /Viewport /BBox [0 0 612 792] /Measure << /Type /Measure /Subtype /RL /R (1/4 in = 1 ft) \
+              /X [<< /Type /NumberFormat /U (ft) /C 0.0555556 /D 1 /F /D >> << /U (in) /C 12 /D 8 /F /F >>] \
+              /D [<< /U (ft) /C 1 /D 1 /F /D >> << /U (in) /C 12 /D 8 /F /F /FD true >>] /A [<< /U (sq ft) /C 1 >>] >> >>]";
+    let d = fixture("", vp, &[]);
+    let scale = scale_at(&d, 0, [100.0, 100.0]).unwrap();
+    assert_eq!((scale.unit.as_str(), scale.feet_inches), ("ft", Some(8)));
+    close(scale.x, 0.0555556);
+    let r = reading(Kind::Distance, &[[0.0, 0.0], [216.0, 0.0]], &scale).unwrap();
+    // 216 pt × 0.0555556 ft = 12.0000096 ft: the rounding carries into whole feet.
+    assert_eq!(r.label, "12'-0\"");
+    let r = reading(Kind::Area, &[[0.0, 0.0], [18.0, 0.0], [18.0, 18.0]], &scale).unwrap();
+    assert!(r.label.ends_with(" sq ft"), "areas stay decimal: {}", r.label);
+}
+
+#[test]
+fn other_compound_and_fractional_formats_stay_unsupported_and_untouched() {
+    for (what, x, reason) in [
+        ("miles, feet, inches", "[<< /U (mi) /C 0.0001 >> << /U (ft) /C 5280 >> << /U (in) /C 12 /F /F /D 8 >>]", "compound"),
+        ("metres and centimetres", "[<< /U (m) /C 0.0003 >> << /U (cm) /C 100 /F /F /D 8 >>]", "feet and inches"),
+        ("inches to a third", "[<< /U (ft) /C 0.05 >> << /U (in) /C 12 /F /F /D 3 >>]", "feet and inches"),
+        ("fractional inches", "[<< /U (in) /C 0.0138889 /F /F /D 16 >>]", "fractional"),
+    ] {
+        let vp = format!(
+            "/VP [<< /Type /Viewport /BBox [0 0 612 792] /Measure << /Type /Measure /Subtype /RL /X {x} /D {x} /A [<< /U (sq) /C 1 >>] >> >>]"
+        );
+        let mut d = fixture("", &vp, &[]);
+        let before = format!("{:?}", pdfcraft_model::pages(&d)[0].dict.get(b"VP"));
+        let err = scale_at(&d, 0, [100.0, 100.0]).unwrap_err().to_string();
+        assert!(err.contains(reason), "{what}: {err}");
+        // Measuring elsewhere on the page (a scale of its own) leaves the viewport as it was.
+        add(&mut d, &new(Kind::Distance, vec![[0.0, 0.0], [3.0, 4.0]]), &Meta::default()).unwrap();
+        assert_eq!(format!("{:?}", pdfcraft_model::pages(&d)[0].dict.get(b"VP")), before, "{what}");
+    }
+    // A feet-and-inches scale must be in feet, to a power-of-two fraction.
+    assert!(Scale::new(1.0, "m", 2).unwrap().in_feet_inches(8).is_err());
+    assert!(Scale::new(1.0, "ft", 2).unwrap().in_feet_inches(3).is_err());
+    assert!(Scale::new(1.0, "ft", 2).unwrap().in_feet_inches(16).is_ok());
+}

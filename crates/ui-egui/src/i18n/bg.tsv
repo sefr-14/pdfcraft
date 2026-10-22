@@ -2408,3 +2408,43 @@ animation effects	Off	Изключени
 	Tab view	Изглед с раздели
 	Tile View	Изглед с плочки
 	Tile view	Изглед с плочки
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	Търсене на най-новата компилация за Windows…
+	Latest available Windows build	Най-новата налична компилация за Windows
+	Version: {v}	Версия: {v}
+	Built: {date}	Компилирано: {date}
+	Artifact: {name}	Артефакт: {name}
+	This copy is version {c}.	Това копие е версия {c}.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	GitHub може да поиска да влезете, за да я изтеглите. Компилациите се пазят за ограничено време.
+	View build on GitHub	Преглед на компилацията в GitHub
+	View builds on GitHub	Преглед на компилациите в GitHub
+	No successful Windows build was found.	Не е намерена успешна компилация за Windows.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	Сред последните успешни компилации не е намерена компилация за Windows за изтегляне (проверени: {n}).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	Проверените компилации за Windows са изтекли и вече не могат да се изтеглят (проверени: {n}).
+	Older builds weren't checked.	По-старите компилации не са проверени.
+	Windows builds are listed at {page}.	Компилациите за Windows са изброени на {page}.
+	Try again	Опитай отново
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Запитва GitHub за най-новата компилация за Windows на този форк. Нищо не се изтегля и не се инсталира автоматично.
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	Тънки линии
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	фоновият процес спря
+	the page can't be mapped	координатите на страницата не могат да бъдат преобразувани
+	an internal error stopped it ({reason})	спря го вътрешна грешка ({reason})
+	This document can't be read for measuring.	Този документ не може да бъде прочетен за измерване.
+	Snapping isn't available on this page: {reason}	Прилепването не е налично на тази страница: {reason}
+	Reading the drawing for snapping…	Чертежът се чете за прилепване…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	Този PDF не разрешава коментари, затова измерванията и мащабите не могат да бъдат запазени.
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Тази част от страницата има мащаб на чертежа, който PdfCraft не може да прочете: {reason}. Калибрирайте, за да зададете мащаб.
+	That is the point already placed. Click a different point.	Това е вече поставената точка. Щракнете върху друга точка.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	Инчове (in)
+	Feet (ft)	Футове (ft)
+	Feet and inches (ft-in)	Футове и инчове (ft-in)
+	Centimeters (cm)	Сантиметри (cm)
+	Millimeters (mm)	Милиметри (mm)
+	Meters (m)	Метри (m)
+	Known distance	Известно разстояние
+	Nearest 1/8 inch	До най-близката 1/8 инча
+	Type a length such as 12'-5 3/8" or 12.5'.	Въведете дължина, например 12'-5 3/8" или 12.5'.
+	Type the real distance between the two points.	Въведете действителното разстояние между двете точки.

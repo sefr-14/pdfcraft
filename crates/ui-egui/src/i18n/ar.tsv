@@ -2722,3 +2722,43 @@ certificate	Version	الإصدار
 	Tab view	عرض علامات التبويب
 	Tile View	العرض المتجاور
 	Tile view	العرض المتجاور
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	جارٍ البحث عن أحدث بناء لنظام Windows…
+	Latest available Windows build	أحدث بناء متاح لنظام Windows
+	Version: {v}	الإصدار: {v}
+	Built: {date}	تاريخ البناء: {date}
+	Artifact: {name}	الحزمة: {name}
+	This copy is version {c}.	هذه النسخة من الإصدار {c}.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	قد يطلب منك GitHub تسجيل الدخول لتنزيله. تُحفَظ الإصدارات المبنية لمدة محدودة.
+	View build on GitHub	عرض البناء على GitHub
+	View builds on GitHub	عرض الإصدارات المبنية على GitHub
+	No successful Windows build was found.	لم يُعثَر على بناء ناجح لنظام Windows.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	لم يُعثَر على بناء قابل للتنزيل لنظام Windows في أحدث الإصدارات المبنية بنجاح (تم فحص {n}).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	انتهت صلاحية إصدارات Windows المبنية التي فُحصت ولم يعد بالإمكان تنزيلها (تم فحص {n}).
+	Older builds weren't checked.	لم تُفحَص الإصدارات المبنية الأقدم.
+	Windows builds are listed at {page}.	إصدارات Windows المبنية مدرجة في {page}.
+	Try again	إعادة المحاولة
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	يسأل GitHub عن أحدث بناء لنظام Windows من هذا الفرع. لا يُنزَّل أو يُثبَّت شيء تلقائيًا.
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	خطوط رفيعة
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	توقفت عملية الخلفية
+	the page can't be mapped	تعذّر تحويل إحداثيات الصفحة
+	an internal error stopped it ({reason})	أوقفه خطأ داخلي ({reason})
+	This document can't be read for measuring.	تعذّرت قراءة هذا المستند لإجراء القياس.
+	Snapping isn't available on this page: {reason}	الانجذاب غير متاح في هذه الصفحة: {reason}
+	Reading the drawing for snapping…	جارٍ قراءة الرسم للانجذاب…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	لا يسمح ملف PDF هذا بالتعليقات، لذا لا يمكن حفظ القياسات والمقاييس.
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	يحتوي هذا الجزء من الصفحة على مقياس رسم لا يستطيع PdfCraft قراءته: {reason}. عايِر لتعيين مقياس.
+	That is the point already placed. Click a different point.	هذه هي النقطة الموضوعة بالفعل. انقر نقطة مختلفة.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	بوصات (in)
+	Feet (ft)	أقدام (ft)
+	Feet and inches (ft-in)	أقدام وبوصات (ft-in)
+	Centimeters (cm)	سنتيمترات (cm)
+	Millimeters (mm)	مليمترات (mm)
+	Meters (m)	أمتار (m)
+	Known distance	المسافة المعروفة
+	Nearest 1/8 inch	لأقرب 1/8 بوصة
+	Type a length such as 12'-5 3/8" or 12.5'.	اكتب طولًا مثل 12'-5 3/8" أو 12.5'.
+	Type the real distance between the two points.	اكتب المسافة الحقيقية بين النقطتين.

@@ -157,6 +157,10 @@ pub struct RenderSettings {
     /// PdfCraft patch: when set, solid text and line-art paint colours are remapped while
     /// rendering; `None` renders exactly as without the patch.
     pub color_replacement: Option<ColorReplacement>,
+    /// PdfCraft patch (21, this fork): View ▸ Thin lines. The document's strokes are drawn one
+    /// device pixel wide whatever their width; text, Type 3 glyphs, masks and annotations keep
+    /// theirs. `false` renders exactly as without the patch.
+    pub thin_lines: bool,
 }
 
 impl Default for RenderSettings {
@@ -170,6 +174,7 @@ impl Default for RenderSettings {
             x_offset: 0.0,
             y_offset: 0.0,
             color_replacement: None,
+            thin_lines: false,
         }
     }
 }
@@ -263,6 +268,8 @@ pub fn render_into<'a>(
     // keep the highlight's colour and the band between them takes the background (white
     // backgrounds are unaffected — multiplying with white is the identity).
     device.push_transparency_group(1.0, None, BlendMode::Normal);
+    // PdfCraft patch (21): View ▸ Thin lines (see `RenderSettings::thin_lines`).
+    device.thin_lines = render_settings.thin_lines;
 
     device.ctx.set_paint(render_settings.bg_color);
     device

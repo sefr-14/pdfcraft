@@ -292,6 +292,7 @@ impl PdfCraftApp {
             }
             "view.tab_view" => self.set_view_layout(crate::ViewLayout::Tabs),
             "view.tile_view" => self.set_view_layout(crate::ViewLayout::Tiles),
+            "view.thin_lines" => self.set_thin_lines(!self.thin_lines),
             "view.theme" => {
                 let next = if self.theme == ThemeKind::Light { ThemePreference::Dark } else { ThemePreference::Light };
                 self.set_theme_preference(next);

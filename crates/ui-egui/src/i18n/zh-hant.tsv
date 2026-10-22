@@ -2395,3 +2395,43 @@ animation effects	Off	關
 	Tab view	分頁檢視
 	Tile View	並排檢視
 	Tile view	並排檢視
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	正在尋找最新的 Windows 組建…
+	Latest available Windows build	最新可用的 Windows 組建
+	Version: {v}	版本：{v}
+	Built: {date}	組建時間：{date}
+	Artifact: {name}	成品：{name}
+	This copy is version {c}.	此副本的版本為 {c}。
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	GitHub 可能會要求你登入後才能下載。組建只會保留一段有限的時間。
+	View build on GitHub	在 GitHub 上檢視組建
+	View builds on GitHub	在 GitHub 上檢視所有組建
+	No successful Windows build was found.	找不到成功的 Windows 組建。
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	在最近的成功組建中找不到可下載的 Windows 組建（已檢查 {n} 個）。
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	已檢查的 Windows 組建皆已過期，無法再下載（已檢查 {n} 個）。
+	Older builds weren't checked.	未檢查較舊的組建。
+	Windows builds are listed at {page}.	Windows 組建列於 {page}。
+	Try again	重試
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	向 GitHub 搜尋此分支的最新 Windows 組建。不會自動下載或安裝任何內容。
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	細線
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	背景處理程序已停止
+	the page can't be mapped	無法換算頁面座標
+	an internal error stopped it ({reason})	內部錯誤導致其停止（{reason}）
+	This document can't be read for measuring.	無法讀取此文件進行測量。
+	Snapping isn't available on this page: {reason}	此頁面無法使用吸附：{reason}
+	Reading the drawing for snapping…	正在讀取圖面以進行吸附…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	此 PDF 不允許加入註解，因此無法儲存測量與比例。
+	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	頁面的這一部分有 PdfCraft 無法讀取的圖面比例：{reason}。請校準以設定比例。
+	That is the point already placed. Click a different point.	這是已放置的點。請點選其他點。
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	英寸 (in)
+	Feet (ft)	英尺 (ft)
+	Feet and inches (ft-in)	英尺和英寸 (ft-in)
+	Centimeters (cm)	公分 (cm)
+	Millimeters (mm)	公釐 (mm)
+	Meters (m)	公尺 (m)
+	Known distance	已知距離
+	Nearest 1/8 inch	精確到 1/8 英寸
+	Type a length such as 12'-5 3/8" or 12.5'.	請輸入長度，例如 12'-5 3/8" 或 12.5'。
+	Type the real distance between the two points.	請輸入兩點之間的實際距離。
