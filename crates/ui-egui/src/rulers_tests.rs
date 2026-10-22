@@ -488,3 +488,19 @@ fn clearing_guides_and_two_tabs_of_one_pdf() {
         stored["document_views"]["docs"].as_array().unwrap().iter().find(|d| d["path"].as_str().is_some_and(|p| p.ends_with("tabs.pdf"))).cloned();
     assert_eq!(entry.map(|e| e["guides"].clone()), Some(serde_json::json!([])), "cleared in the settings too");
 }
+
+/// Guides are drawn whether or not the page's border is: upstream's page gaps can be turned off
+/// (SYNC.10b), and the guides came after the border.
+#[test]
+fn guides_are_drawn_with_page_gaps_on_and_off() {
+    let file = plans("gaps.pdf");
+    let mut h = harness(1600.0, move |app| open(app, &file));
+    let id = h.state().views[0].id;
+    h.state_mut().doc_prefs.add_guide(id, 0, Axis::Y, 150.0).unwrap();
+    for gaps in [true, false] {
+        h.state_mut().views[0].show_page_gaps = gaps;
+        h.run_steps(3);
+        let drawn = h.output().shapes.iter().any(|c| matches!(&c.shape, egui::Shape::LineSegment { stroke, .. } if stroke.color == guides::GUIDE));
+        assert!(drawn, "page gaps {gaps}: the guide is drawn");
+    }
+}

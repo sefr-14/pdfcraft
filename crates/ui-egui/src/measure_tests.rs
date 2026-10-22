@@ -7,7 +7,7 @@ use std::sync::Arc;
 use egui::{Pos2, pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use pdfcraft_engine::{DocId, Session, measure::snap::SnapKind};
+use pdfcraft_engine::{DocId, Session, measure::PageUnit, measure::snap::SnapKind};
 
 use crate::measure_ui::{Snapper, Tool};
 use crate::{PdfCraftApp, QuickTool, ViewLayout};
@@ -806,4 +806,63 @@ fn backspace_removes_a_vertex_and_never_a_selected_comment_too() {
     h.state_mut().execute("measure.distance");
     h.run_steps(2);
     assert_eq!(h.state().views[0].comments.selected, None);
+}
+
+/// An open menu takes Escape first, as upstream does since #3535: the menu closes and the
+/// points stay; the next press cancels them (SYNC.10b, where the two Escape rules meet).
+#[test]
+fn escape_closes_an_open_menu_before_the_points() {
+    let (mut h, id) = harness(plain());
+    tool(&mut h, Tool::Distance);
+    click_at(&mut h, 0, 100.0, 100.0);
+    h.get_by_label_contains("Page display:").click();
+    h.run_steps(3);
+    assert!(egui::Popup::is_any_open(&h.ctx), "the rail's Page display menu is open");
+    escape(&mut h);
+    assert!(!egui::Popup::is_any_open(&h.ctx), "the menu closed");
+    assert_eq!(h.state().views[0].measure.points.len(), 1, "and the points stay");
+    escape(&mut h);
+    assert!(h.state().views[0].measure.points.is_empty(), "the next press cancels them");
+    assert_eq!(h.state().quick_tool, QuickTool::Measure(Tool::Distance));
+    untouched(&h, id);
+}
+
+/// Upstream's ratio (the page side in a page unit) with this fork's feet and inches and Escape
+/// (SYNC.10b): a calibration's page side is in the picked page unit, Escape gives the page unit
+/// back with the other fields, and the scale applied is a centimetre ratio shown in feet and
+/// inches.
+#[test]
+fn a_centimetre_ratio_calibrated_in_feet_and_inches_escape_then_apply() {
+    let (mut h, id) = harness(plain());
+    tool(&mut h, Tool::Calibrate);
+    pick_unit(&mut h, "Inches (in)", "Feet and inches (ft-in)");
+    h.state_mut().views[0].measure.page_unit = Some(PageUnit::Cm);
+    h.run_steps(2);
+    let fields = |h: &Harness<'static, PdfCraftApp>| {
+        let m = &h.state().views[0].measure;
+        (m.drawing_points, m.real_distance, m.unit.clone(), m.feet_inches, m.page_unit)
+    };
+    let before = fields(&h);
+    click_at(&mut h, 0, 100.0, 100.0);
+    click_at(&mut h, 0, 300.0, 100.0);
+    let cm = 72.0 / 2.54;
+    assert!((h.state().views[0].measure.drawing_points - 200.0 / cm).abs() < 0.05, "200 pt in centimetres");
+    // Inches picked for the page side meanwhile: Escape gives the centimetres back too.
+    h.state_mut().views[0].measure.page_unit = Some(PageUnit::In);
+    escape(&mut h);
+    assert!(!h.state().views[0].measure.calibrating());
+    assert_eq!(fields(&h), before, "every field back, the page unit included");
+    // Calibrate again and apply: 200 pt is 50 ft, a centimetre ratio shown in feet and inches.
+    click_at(&mut h, 0, 100.0, 100.0);
+    click_at(&mut h, 0, 300.0, 100.0);
+    type_feet(&mut h, "50'-0\"");
+    h.get_by_label("Apply scale").click();
+    h.run_steps(3);
+    let scale = h.state().session.get(id).unwrap().measurement_scale(0, [100.0, 100.0]).unwrap();
+    assert_eq!((scale.unit.as_str(), scale.feet_inches), ("ft", Some(8)));
+    assert!(scale.ratio.contains(" cm = "), "{}", scale.ratio);
+    tool(&mut h, Tool::Distance);
+    click_at(&mut h, 0, 100.0, 100.0);
+    click_at(&mut h, 0, 300.0, 100.0);
+    assert_eq!(listing(&h, id).measurements[0].reading.label, "50'-0\"");
 }
