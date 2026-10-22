@@ -79,7 +79,7 @@ impl PageGuides {
     fn len(&self) -> usize {
         self.x.len().saturating_add(self.y.len())
     }
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.x.is_empty() && self.y.is_empty()
     }
 }

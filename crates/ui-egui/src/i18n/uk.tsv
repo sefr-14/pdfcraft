@@ -2511,3 +2511,7 @@ animation effects	Off	Вимкнено
 	Rulers	Лінійки
 	Guides	Напрямні
 	Points (pt)	Пункти (pt)
+# This fork (sefr-14/pdfcraft): guides on the pages, Clear Guides on Page / Clear All Guides (OV11).
+	Clear Guides on Page	Очистити напрямні на сторінці
+	Clear All Guides	Очистити всі напрямні
+	This page already has as many guides as PdfCraft keeps.	На цій сторінці вже стільки напрямних, скільки зберігає PdfCraft.

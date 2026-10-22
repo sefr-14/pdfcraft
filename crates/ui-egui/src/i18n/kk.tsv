@@ -2487,3 +2487,7 @@ animation effects	Off	Өшірулі
 	Rulers	Сызғыштар
 	Guides	Бағыттауыштар
 	Points (pt)	Пункт (pt)
+# This fork (sefr-14/pdfcraft): guides on the pages, Clear Guides on Page / Clear All Guides (OV11).
+	Clear Guides on Page	Беттегі бағыттауыштарды тазалау
+	Clear All Guides	Барлық бағыттауыштарды тазалау
+	This page already has as many guides as PdfCraft keeps.	Бұл бетте PdfCraft сақтайтын бағыттауыштар саны бұрыннан бар.

@@ -2402,3 +2402,7 @@ animation effects	Off	Выкл
 	Rulers	Линейки
 	Guides	Направляющие
 	Points (pt)	Пункты (pt)
+# This fork (sefr-14/pdfcraft): guides on the pages, Clear Guides on Page / Clear All Guides (OV11).
+	Clear Guides on Page	Удалить направляющие на странице
+	Clear All Guides	Удалить все направляющие
+	This page already has as many guides as PdfCraft keeps.	На этой странице уже столько направляющих, сколько хранит PdfCraft.

@@ -2452,3 +2452,7 @@ animation effects	Off	Изключени
 	Rulers	Линийки
 	Guides	Помощни линии
 	Points (pt)	Пунктове (pt)
+# This fork (sefr-14/pdfcraft): guides on the pages, Clear Guides on Page / Clear All Guides (OV11).
+	Clear Guides on Page	Изчистване на помощните линии на страницата
+	Clear All Guides	Изчистване на всички помощни линии
+	This page already has as many guides as PdfCraft keeps.	Тази страница вече има толкова помощни линии, колкото PdfCraft пази.

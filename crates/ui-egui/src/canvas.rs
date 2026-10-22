@@ -559,6 +559,8 @@ pub struct DocView {
     /// Commenting state: selected comment, gestures, composer.
     pub comments: crate::comments::CommentView,
     pub measure: crate::measure_ui::MeasureView,
+    /// This fork (OV11): the guide selected or held in this view (the guides are the document's).
+    pub guides: crate::guides::GuideView,
     /// Form filling state: the focused field.
     pub forms: crate::forms_ui::FormView,
     /// Prepare a form: the selected field and the gesture in progress.
@@ -846,6 +848,7 @@ impl DocView {
             slow_pages: HashSet::new(),
             comments: Default::default(),
             measure: Default::default(),
+            guides: Default::default(),
             forms: Default::default(),
             prepare: Default::default(),
             content: Default::default(),
@@ -2927,8 +2930,13 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
         }
     };
 
+    // This fork (OV11): the Hand tool takes a guide before the page view pans, from where the
+    // pages were last frame. A held guide doesn't pan.
+    let hand_guides = tools && unobstructed && app.quick_tool == QuickTool::Hand && !middle_gesture;
+    let held = crate::guides::press(ui, view, info, &mut app.doc_prefs, doc.id, avail, hand_guides);
+    let marks = app.doc_prefs.state(doc.id).filter(|s| s.prefs.guides_shown);
     let mut scroll = egui::ScrollArea::both().auto_shrink([false, false]).scroll_source(egui::scroll_area::ScrollSource {
-        drag: if middle_gesture {
+        drag: if middle_gesture || held {
             egui::scroll_area::DragScroll::Never
         } else if app.quick_tool == QuickTool::Hand {
             egui::scroll_area::DragScroll::Always
@@ -2956,6 +2964,7 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
     // below still wins.
     if app.quick_tool == QuickTool::Hand
         && !middle_gesture
+        && !held
         && let Some(id) = view.page_widget.filter(|id| ui.ctx().is_being_dragged(*id))
     {
         let moved = if ui.ctx().drag_started_id() == Some(id) {
@@ -3320,6 +3329,10 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
                 view.move_background.paint(ui, painter, &xf, i, info, &view.content, page_tex);
             }
             painter.rect_stroke(r, CornerRadius::ZERO, Stroke::new(0.5, t.border.gamma_multiply(0.8)), egui::StrokeKind::Outside);
+            // This fork (OV11): the document's guides, drawn over the page as the view's marks.
+            if let (Some(guides), Some(page)) = (marks.and_then(|m| m.page(i)), info.pages.get(i)) {
+                crate::guides::paint(painter, page, &xf, i, guides, view.guides.selected, t.accent);
+            }
 
             // Comments: tools, selection, moving and resizing come before text selection.
             let pcx = comments::PageCx { page: i, xf: &xf, info, tool, prefs, allowed, hidden: comments_hidden, redact_mark };
@@ -4022,7 +4035,12 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
     view.viewport_screen = out.inner_rect;
     view.auto_scroll.paint(ui, avail);
     // This fork (OV11): the rulers, from where this frame put the pages.
-    crate::rulers::show(ui, view, &mut app.doc_prefs, doc.id, full, avail, tools && unobstructed);
+    if let Some(why) = crate::rulers::show(ui, view, info, &mut app.doc_prefs, doc.id, full, avail, tools && unobstructed) {
+        refused = Some(why.to_string());
+    }
+    if hand_guides {
+        crate::guides::hover_cursor(ui, view, info, &app.doc_prefs, doc.id, avail);
+    }
     if unobstructed && matches!(tool, QuickTool::Select | QuickTool::ColumnSelect) {
         copy_selected |= selection_actions(ui, avail, view, info, prefs, allowed && !comments_hidden, can_copy);
     }
@@ -4203,6 +4221,10 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
     // One crop, then back to selecting (as Acrobat does).
     let cropped = view.pending_edit.as_ref().is_some_and(|e| matches!(e, pdfcraft_engine::Edit::SetPageBox { .. }));
     let mut tool = app.quick_tool;
+    // This fork (OV11): Delete takes a selected guide first, and is consumed.
+    if unobstructed {
+        crate::guides::keys(ui.ctx(), view, &mut app.doc_prefs, doc.id);
+    }
     comments::keys(ui.ctx(), view, &mut tool, allowed, !app.escape_reserved);
     if preparing {
         crate::prepare::keys(ui.ctx(), view);

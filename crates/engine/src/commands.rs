@@ -234,6 +234,8 @@ pub const COMMANDS: &[CommandSpec] = &[
     // This fork (OV11): rulers and guides, per PDF, in PdfCraft's settings (View ▸ Page display).
     c("view.rulers", "Rulers", None, Some(Shortcut::cmd("R")), Document, "ruler"),
     c("view.guides", "Guides", None, None, Document, "hash"),
+    c("view.clear_guides_page", "Clear Guides on Page", None, None, Document, "eraser"),
+    c("view.clear_guides", "Clear All Guides", None, None, Document, "trash-2"),
     // View-local history also appears in the Page navigation section; don't duplicate its menu.
     c("view.previous_view", "Previous view", None, Some(Shortcut::cmd("[")), Document, "chevron-left"),
     c("view.next_view", "Next view", None, Some(Shortcut::cmd("]")), Document, "chevron-right"),

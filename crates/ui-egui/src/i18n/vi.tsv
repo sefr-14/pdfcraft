@@ -2742,3 +2742,7 @@ key	Space	Space
 	Rulers	Thước kẻ
 	Guides	Đường gióng
 	Points (pt)	Điểm (pt)
+# This fork (sefr-14/pdfcraft): guides on the pages, Clear Guides on Page / Clear All Guides (OV11).
+	Clear Guides on Page	Xóa đường gióng trên trang
+	Clear All Guides	Xóa tất cả đường gióng
+	This page already has as many guides as PdfCraft keeps.	Trang này đã có số đường gióng tối đa mà PdfCraft lưu giữ.

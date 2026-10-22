@@ -2489,3 +2489,7 @@ animation effects	Off	オフ
 	Rulers	定規
 	Guides	ガイド
 	Points (pt)	ポイント (pt)
+# This fork (sefr-14/pdfcraft): guides on the pages, Clear Guides on Page / Clear All Guides (OV11).
+	Clear Guides on Page	ページのガイドを消去
+	Clear All Guides	すべてのガイドを消去
+	This page already has as many guides as PdfCraft keeps.	このページには PdfCraft が保持できる数のガイドがすでにあります。

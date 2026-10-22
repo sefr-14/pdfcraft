@@ -8,7 +8,8 @@
 //!    command palette, the Combine preview, or the Overlay wizard window under the pointer.
 //!    A text field that belongs to a step below is that step: Escape in the find field closes
 //!    the find bar, and in a pending calibration's known-distance field cancels the calibration.
-//! 2. With a measuring tool: the points of a measurement in progress, else a calibration waiting
+//! 2. A guide being pulled out of a ruler or moved (it goes back), else the selected guide.
+//!    With a measuring tool: the points of a measurement in progress, else a calibration waiting
 //!    for its known distance (fields back as they were), else the selected measurement or comment.
 //! 3. The view's own state: a camera snapshot, else the text selection, else the find bar.
 //! 4. A measuring tool with nothing left to cancel gives way to Select.
@@ -54,6 +55,12 @@ impl PdfCraftApp {
         }
         let Some(i) = active else { return };
         let view = &mut self.views[i];
+        // A guide held by the pointer goes back; else the selected guide is let go of.
+        let id = view.id;
+        if crate::guides::cancel_drag(view, &mut self.doc_prefs, id) || view.guides.selected.take().is_some() {
+            take(ctx);
+            return;
+        }
         if measuring {
             let step = if !view.measure.points.is_empty() {
                 view.measure.cancel();

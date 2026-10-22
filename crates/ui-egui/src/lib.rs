@@ -41,6 +41,7 @@ mod overlay_ui;
 mod escape;
 // This fork: rulers and guides, remembered per PDF in the settings (OV11).
 pub mod doc_prefs;
+mod guides;
 mod rulers;
 mod tags_ui;
 pub use combine_grid::ThumbState as CombineThumb;

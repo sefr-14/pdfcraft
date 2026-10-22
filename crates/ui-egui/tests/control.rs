@@ -315,6 +315,33 @@ fn control_sets_and_reports_the_rulers_without_changing_the_document() {
     assert_eq!(doc["dirty"], false, "not a change to save");
 }
 
+/// This fork (OV11): a drag from the top ruler onto page 1 makes a guide there, which `ui.state`
+/// lists; `view.clear_guides` clears it. Neither changes the document.
+#[test]
+fn control_drag_from_the_ruler_makes_a_guide_that_ui_state_lists() {
+    let (mut h, c) = harness();
+    ok(&mut h, &c, "ui.set", json!({ "key": "rulers", "value": "on" }));
+    h.run_steps(3);
+    let state = ok(&mut h, &c, "ui.state", json!({}));
+    let viewport = state["active"]["viewport"].clone();
+    let page = state["active"]["pages_on_screen"][0]["rect"].clone();
+    let num = |v: &Value| v.as_f64().unwrap();
+    let x = (num(&page[0]) + num(&page[2])) / 2.0;
+    let (top, to) = (num(&viewport[1]) - 10.0, num(&page[1]) + 0.4 * (num(&page[3]) - num(&page[1])));
+    assert!(to < num(&viewport[3]), "the target is on screen");
+    ok(&mut h, &c, "ui.drag", json!({ "from": [x, top], "to": [x, to], "steps": 8 }));
+    h.run_steps(3);
+    let state = ok(&mut h, &c, "ui.state", json!({}));
+    let guides = state["active"]["guides"].as_array().unwrap().clone();
+    assert_eq!(guides.len(), 1, "{guides:?}");
+    assert_eq!(guides[0]["page"], 1);
+    assert_eq!(guides[0]["axis"], "y", "horizontal on an upright page: a line of constant y");
+    assert!(guides[0]["at"].as_f64().is_some_and(f64::is_finite));
+    assert_eq!(state["documents"][0]["dirty"], false);
+    ok(&mut h, &c, "ui.command", json!({ "id": "view.clear_guides" }));
+    assert_eq!(ok(&mut h, &c, "ui.state", json!({}))["active"]["guides"], json!([]));
+}
+
 #[test]
 fn lithuanian_password_dialog_translates_dynamic_labels_and_validation() {
     let (mut h, c) = harness();

@@ -2,13 +2,16 @@
 //! View ▸ Page display ▸ Rulers shows them, per PDF; right-click one to pick its unit. They
 //! measure the page as printed (points, `/UserUnit` included), from the top-left corner of the
 //! page under the pointer, or of the current page; a calibrated drawing scale doesn't change
-//! them. What is remembered, and where, is in [`crate::doc_prefs`].
+//! them. Dragging out of a ruler, or double-clicking it, makes a guide ([`crate::guides`]). What
+//! is remembered, and where, is in [`crate::doc_prefs`].
 
 use egui::{Align2, Pos2, Rect, Sense, Stroke, vec2};
 use pdfcraft_engine::DocId;
+use pdfcraft_render::DocInfo;
 
 use crate::canvas::{DocView, PageXform};
 use crate::doc_prefs::{DocPrefs, ViewPrefs};
+use crate::guides::Pull;
 use crate::theme::{self, Tokens};
 use crate::units::Unit;
 
@@ -116,15 +119,35 @@ enum Pick {
     Unit(Unit),
     Rulers(bool),
     Guides(bool),
+    /// Clear Guides on Page, for this page.
+    ClearPage(usize),
+    ClearAll,
 }
 
 /// Draw the rulers in the strips `full` has beyond `inner`, from this frame's page positions,
-/// and take their input when `input` (the active view, nothing over the page).
-pub(crate) fn show(ui: &mut egui::Ui, view: &DocView, prefs: &mut DocPrefs, id: DocId, full: Rect, inner: Rect, input: bool) {
-    let Some(state) = prefs.state(id) else { return };
+/// and take their input when `input` (the active view, nothing over the page): their menu, and
+/// guides pulled out of them or made by double-clicking them. Returns why a guide wasn't made.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn show(
+    ui: &mut egui::Ui,
+    view: &mut DocView,
+    info: &DocInfo,
+    prefs: &mut DocPrefs,
+    id: DocId,
+    full: Rect,
+    inner: Rect,
+    input: bool,
+) -> Option<&'static str> {
+    let state = prefs.state(id)?;
     let current = state.prefs;
+    let aligned = aligned_page(view, None).map(|(i, _)| i);
+    let has_page = aligned.is_some_and(|i| state.page(i).is_some_and(|g| !g.is_empty()));
+    let has_any = state.pages_with_guides().next().is_some();
+    if !current.rulers || inner == full || !input {
+        view.guides.pulling = None;
+    }
     if !current.rulers || inner == full {
-        return;
+        return None;
     }
     let t = Tokens::get(ui.ctx());
     let top = Rect::from_min_max(Pos2::new(inner.left(), full.top()), Pos2::new(full.right(), inner.top()));
@@ -133,17 +156,51 @@ pub(crate) fn show(ui: &mut egui::Ui, view: &DocView, prefs: &mut DocPrefs, id: 
     let pointer = ui.input(|i| i.pointer.hover_pos());
     let page = aligned_page(view, pointer.filter(|p| inner.contains(*p)));
     let mut pick = None;
+    let mut made = Ok(None);
     for (rect, horizontal) in [(top, true), (left, false)] {
         paint(ui, rect, horizontal, page, current.unit, pointer, &t);
-        if input {
-            let resp = ui.interact(rect, ui.id().with(("ruler", view.key, horizontal)), Sense::click_and_drag());
-            resp.context_menu(|ui| {
-                if let Some(p) = menu(ui, current) {
-                    pick = Some(p);
-                    ui.close();
-                }
-            });
+        if !input {
+            continue;
         }
+        let resp = ui.interact(rect, ui.id().with(("ruler", view.key, horizontal)), Sense::click_and_drag());
+        let pull = if horizontal { Pull::Horizontal } else { Pull::Vertical };
+        if resp.drag_started_by(egui::PointerButton::Primary) {
+            view.guides.pulling = Some(pull);
+        }
+        let at = ui.input(|i| i.pointer.latest_pos());
+        if resp.drag_stopped_by(egui::PointerButton::Primary)
+            && view.guides.pulling.take() == Some(pull)
+            && let Some(p) = at.filter(|p| inner.contains(*p))
+            && let Some(&shown) = view.screen_xforms.iter().find(|(_, xf)| xf.rect.contains(p))
+        {
+            // Released over a page: the guide goes there. Off every page, nothing is made.
+            made = crate::guides::create(info, prefs, id, shown, p, horizontal);
+        }
+        if resp.double_clicked()
+            && let (Some(p), Some(shown)) = (at, aligned_page(view, None))
+        {
+            // The top ruler makes a guide across the page at that x, the left one at that y.
+            let on_page = if horizontal { Pos2::new(p.x, shown.1.rect.center().y) } else { Pos2::new(shown.1.rect.center().x, p.y) };
+            made = crate::guides::create(info, prefs, id, shown, on_page, !horizontal);
+        }
+        resp.context_menu(|ui| {
+            if let Some(p) = menu(ui, current, aligned.filter(|_| has_page), has_any) {
+                pick = Some(p);
+                ui.close();
+            }
+        });
+    }
+    if !ui.input(|i| i.pointer.primary_down()) {
+        view.guides.pulling = None;
+    }
+    // The guide being pulled out, across the page view at the pointer.
+    if let (Some(pull), Some(p)) = (view.guides.pulling, pointer.filter(|p| inner.contains(*p))) {
+        let line = match pull {
+            Pull::Horizontal => [Pos2::new(inner.left(), p.y), Pos2::new(inner.right(), p.y)],
+            Pull::Vertical => [Pos2::new(p.x, inner.top()), Pos2::new(p.x, inner.bottom())],
+        };
+        let ppp = ui.ctx().pixels_per_point().max(0.1);
+        ui.painter_at(inner).line_segment(line, Stroke::new(1.0 / ppp, crate::guides::GUIDE));
     }
     let painter = ui.painter_at(corner);
     painter.rect_filled(corner, 0.0, t.chrome);
@@ -152,12 +209,20 @@ pub(crate) fn show(ui: &mut egui::Ui, view: &DocView, prefs: &mut DocPrefs, id: 
         Some(Pick::Unit(unit)) => prefs.set_unit(id, unit),
         Some(Pick::Rulers(on)) => prefs.set_rulers(id, on),
         Some(Pick::Guides(on)) => prefs.set_guides_shown(id, on),
+        Some(Pick::ClearPage(page)) => {
+            prefs.clear_page(id, page);
+        }
+        Some(Pick::ClearAll) => {
+            prefs.clear_all(id);
+        }
         None => {}
     }
+    made.err().map(|()| tl!("This page already has as many guides as PdfCraft keeps."))
 }
 
-/// A ruler's context menu: its unit, and whether the rulers and guides show.
-fn menu(ui: &mut egui::Ui, current: ViewPrefs) -> Option<Pick> {
+/// A ruler's context menu: its unit, whether the rulers and guides show, and clearing guides
+/// (on `page` when it has any; on every page when `any`).
+fn menu(ui: &mut egui::Ui, current: ViewPrefs, page: Option<usize>, any: bool) -> Option<Pick> {
     let mut pick = None;
     for unit in UNITS {
         if ui.add(crate::widgets::radio(current.unit == unit, unit_name(unit))).clicked() {
@@ -171,6 +236,13 @@ fn menu(ui: &mut egui::Ui, current: ViewPrefs) -> Option<Pick> {
     }
     if ui.add(crate::widgets::checkbox(&mut guides, tl!("Guides"))).changed() {
         pick = Some(Pick::Guides(guides));
+    }
+    ui.separator();
+    if ui.add_enabled(page.is_some(), egui::Button::new(tl!("Clear Guides on Page"))).clicked() {
+        pick = page.map(Pick::ClearPage);
+    }
+    if ui.add_enabled(any, egui::Button::new(tl!("Clear All Guides"))).clicked() {
+        pick = Some(Pick::ClearAll);
     }
     pick
 }
@@ -231,6 +303,20 @@ impl crate::PdfCraftApp {
         } else {
             self.doc_prefs.set_rulers(id, !now.rulers);
         }
+    }
+
+    /// Clear Guides on Page (the active view's current page) or, without `page_only`, Clear All
+    /// Guides, for the active document.
+    pub(crate) fn clear_guides(&mut self, page_only: bool) {
+        self.sync_doc_prefs();
+        let Some((i, id)) = self.active_ids() else { return };
+        if page_only {
+            let page = self.views[i].current;
+            self.doc_prefs.clear_page(id, page);
+        } else {
+            self.doc_prefs.clear_all(id);
+        }
+        self.views[i].guides = Default::default();
     }
 
     /// `ui.set` / `--rulers`-style options for the active document: `rulers` and `guides` (on or
