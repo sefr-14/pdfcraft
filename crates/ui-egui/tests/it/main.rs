@@ -49,6 +49,8 @@ mod links;
 mod marks;
 mod object_selection;
 mod ocr;
+// This fork: Overlay compare in the real shell.
+mod overlay;
 mod pageboxes;
 mod panel_snapshots;
 mod pdf_links;

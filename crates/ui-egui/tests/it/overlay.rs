@@ -230,6 +230,8 @@ fn on_page(view: egui::Rect, x: f32, y: f32) -> egui::Pos2 {
 #[test]
 fn wizard_screenshots() {
     let Ok(dir) = std::env::var("PDFCRAFT_SHOT") else { return };
+    // Renders pixels: one wgpu device at a time (see `crate::gpu`).
+    let _gpu = crate::gpu();
     let dir = std::path::PathBuf::from(dir);
     std::fs::create_dir_all(&dir).unwrap();
     let mut h = harness();
@@ -372,6 +374,8 @@ fn text_of(h: &Harness<'static, PdfCraftApp>, label: &str) -> String {
 /// keeps the pairing, and Undo brings back what re-pairing replaced.
 #[test]
 fn pages_step_compare_as_arrows_and_re_pairing() {
+    // Renders pixels when PDFCRAFT_SHOT asks for screenshots: one wgpu device at a time.
+    let _gpu = std::env::var_os("PDFCRAFT_SHOT").map(|_| crate::gpu());
     let mut h = Harness::builder().with_size(egui::vec2(1500.0, 1000.0)).build_eframe(|_cc| {
         let mut app = PdfCraftApp::new();
         app.set_option("language", "en").unwrap();
@@ -453,6 +457,8 @@ fn pages_step_compare_as_arrows_and_re_pairing() {
 /// sheet sizes off needs none.
 #[test]
 fn different_sheet_sizes_need_a_confirmed_factor() {
+    // Renders pixels when PDFCRAFT_SHOT asks for screenshots: one wgpu device at a time.
+    let _gpu = std::env::var_os("PDFCRAFT_SHOT").map(|_| crate::gpu());
     let mut h = harness_with(drawing(100), drawing_sized(240, [(600, 400), (600, 400)]));
     to_sheet_and_alignment(&mut h);
     h.get_by_label("Old: 300 × 200 pt · New: 600 × 400 pt · Scale: New × 0.5000, to confirm");
@@ -524,6 +530,8 @@ fn sheet_sizes_per_pair_are_kept() {
 /// at a time, through a partly picked set and a finished one, and the expected point follows.
 #[test]
 fn three_old_points_then_three_new_points() {
+    // Renders pixels when PDFCRAFT_SHOT asks for screenshots: one wgpu device at a time.
+    let _gpu = std::env::var_os("PDFCRAFT_SHOT").map(|_| crate::gpu());
     let mut h = harness();
     to_sheet_and_alignment(&mut h);
     wait_for_drawings(&mut h, true);
