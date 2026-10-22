@@ -704,7 +704,13 @@ impl PdfCraftApp {
             };
             match delivered {
                 Ok(()) => {
-                    let _ = self.session.mark_saved(id, bytes, None);
+                    self.sync_doc_prefs();
+                    if self.session.mark_saved(id, bytes, None).is_ok()
+                        && let Some(doc) = self.session.get(id)
+                    {
+                        // Its pages as saved, whatever objects they have now (OV11).
+                        self.doc_prefs.rebase(doc);
+                    }
                     self.refresh_document_views(id);
                     // The host reports where the file went (and any failure) itself.
                     if !to_host {
@@ -798,8 +804,15 @@ impl PdfCraftApp {
         }
         // Our own write is not a change on disk to reload (#431).
         self.watch.known_now(id, dest);
+        // Rulers and guides catch up with this frame's edits before the pages are re-based.
+        self.sync_doc_prefs();
         match self.session.mark_saved(id, bytes, Some(dest.to_string())) {
             Ok(()) => {
+                // Rulers and guides go with the pages as saved, whatever objects a full rewrite
+                // gave them (this fork, OV11).
+                if let Some(doc) = self.session.get(id) {
+                    self.doc_prefs.rebase(doc);
+                }
                 self.forget_recovery(id);
                 self.refresh_document_views(id);
                 // Saving over a version that changed on disk keeps this one: nothing to ask, in

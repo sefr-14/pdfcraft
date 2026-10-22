@@ -2918,6 +2918,44 @@ fn thin_lines_set_rerender_and_never_touch_the_file() {
     assert!(!s.set_thin_lines(DocId(u64::MAX), true));
 }
 
+/// Per-PDF view settings (this fork, OV11) tell files apart by the trailer's `/ID` and keep
+/// guides with their page by its object. Reading either changes nothing.
+#[test]
+fn file_id_and_page_objects_only_read() {
+    let (mut s, id) = session_with(3);
+    let before = s.save_bytes(id).unwrap();
+    let doc = s.get(id).unwrap();
+    assert_eq!(doc.file_id(), None, "the fixture has no /ID");
+    let pages = doc.page_objects().unwrap();
+    assert_eq!(pages, [(4, 0), (6, 0), (8, 0)]);
+    assert!(!doc.dirty);
+    assert_eq!(doc.can_undo(), None);
+    assert_eq!(*s.save_bytes(id).unwrap(), *before);
+
+    // Pages keep their objects through a move, a deletion and its undo.
+    s.apply(id, Edit::MovePages { pages: vec![0], to: 3 }).unwrap();
+    assert_eq!(s.get(id).unwrap().page_objects().unwrap(), [pages[1], pages[2], pages[0]]);
+    s.apply(id, Edit::DeletePages { pages: vec![0] }).unwrap();
+    assert_eq!(s.get(id).unwrap().page_objects().unwrap(), [pages[2], pages[0]]);
+    s.undo(id).unwrap();
+    assert_eq!(s.get(id).unwrap().page_objects().unwrap(), [pages[1], pages[2], pages[0]]);
+
+    // A saved file has an /ID (the writer adds one), which reads back unchanged.
+    let saved = s.save_bytes(id).unwrap();
+    let mut t = Session::new();
+    let copy = t.open("copy.pdf", None, saved, None).unwrap();
+    let file_id = t.get(copy).unwrap().file_id().expect("an /ID");
+    assert!(!file_id.is_empty() && file_id.len() <= MAX_FILE_ID);
+    let again = t.save_bytes(copy).unwrap();
+    let copy2 = t.open("copy2.pdf", None, again, None).unwrap();
+    assert_eq!(t.get(copy2).unwrap().file_id(), Some(file_id), "saving keeps it");
+
+    // An /ID string too long to be one counts as none.
+    let long = String::from_utf8(fixture(1)).unwrap().replace("/Root 1 0 R", &format!("/Root 1 0 R /ID [<{}> <00>]", "ab".repeat(MAX_FILE_ID + 1)));
+    let odd = t.open("odd.pdf", None, Arc::new(long.into_bytes()), None).unwrap();
+    assert_eq!(t.get(odd).unwrap().file_id(), None);
+}
+
 #[test]
 fn signing_saving_trusting_and_commenting_afterwards() {
     let p12 = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../sign/tests/data/ec-p256.p12")).unwrap();

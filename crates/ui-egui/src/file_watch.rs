@@ -415,11 +415,15 @@ impl PdfCraftApp {
     /// document (Duplicate Tab) shows the new version, each keeping its own place.
     fn reload_view(&mut self, i: usize, bytes: Arc<Vec<u8>>) {
         let Some(id) = self.views.get(i).map(|v| v.id) else { return };
+        // Rulers and guides catch up with the document as it is before it is replaced (OV11).
+        self.sync_doc_prefs();
         match self.session.reload(id, bytes) {
             Ok(()) => {
                 // Whatever was unsaved is gone, so there is nothing left to recover.
                 self.forget_recovery(id);
                 if let Some(doc) = self.session.get(id) {
+                    // Guides stay with their page numbers (this fork, OV11).
+                    self.doc_prefs.rebase(doc);
                     let version = crate::content_version(doc);
                     for view in self.views.iter_mut().filter(|v| v.id == id) {
                         view.document_replaced(&doc.info);
