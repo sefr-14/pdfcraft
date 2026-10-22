@@ -511,7 +511,7 @@ pub struct DocView {
     page_heights: Vec<f32>,
     /// Screen rects of the pages drawn last frame (hit-testing, tests, automation).
     screen_rects: Vec<(usize, Rect)>,
-    screen_xforms: Vec<(usize, PageXform)>,
+    pub(crate) screen_xforms: Vec<(usize, PageXform)>,
     /// The scroll viewport on screen last frame.
     viewport_screen: Rect,
     /// Pending zoom anchor: page, fractional position (also in gutters), and viewport offset.
@@ -2621,9 +2621,10 @@ fn page_scroll<R>(
     ui: &mut egui::Ui,
     scroll: egui::ScrollArea,
     id: egui::Id,
+    rect: Rect,
     draw: impl FnOnce(&mut egui::Ui, egui::Rect) -> R,
 ) -> egui::scroll_area::ScrollAreaOutput<R> {
-    ui.scope_builder(egui::UiBuilder::new().id(id), |ui| scroll.show_viewport(ui, draw)).inner
+    ui.scope_builder(egui::UiBuilder::new().id(id).max_rect(rect), |ui| scroll.show_viewport(ui, draw)).inner
 }
 
 /// How a view drawn by [`document_area_with`] takes pointer input (OV7.3).
@@ -2713,7 +2714,10 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
         return;
     }
 
-    let avail = ui.available_rect_before_wrap();
+    // This fork (OV11): the rulers take their strips off the page area's top and left.
+    let full = ui.available_rect_before_wrap();
+    let ruled = app.doc_prefs.state(doc.id).is_some_and(|s| s.prefs.rulers);
+    let avail = if ruled { crate::rulers::inner(full) } else { full };
     view.viewport_w = avail.width();
     view.viewport_h = avail.height();
     let old_zoom = view.zoom;
@@ -3107,7 +3111,7 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
         }
     }
     let selection_wheel = view.selection_drag && navigation_enabled && unobstructed && !single_paging && ui.rect_contains_pointer(avail);
-    let out = page_scroll(ui, scroll, egui::Id::new(("page-view-scope", view.key)), |ui, viewport| {
+    let out = page_scroll(ui, scroll, egui::Id::new(("page-view-scope", view.key)), avail, |ui, viewport| {
         // egui's drag responses accept every pointer button. Keep a wheel gesture from also
         // selecting text, drawing a mark, or panning with the Hand tool. A navigation-only view
         // (another tile) takes no clicks either: only the scroll area itself, outside this
@@ -4017,6 +4021,8 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
 
     view.viewport_screen = out.inner_rect;
     view.auto_scroll.paint(ui, avail);
+    // This fork (OV11): the rulers, from where this frame put the pages.
+    crate::rulers::show(ui, view, &mut app.doc_prefs, doc.id, full, avail, tools && unobstructed);
     if unobstructed && matches!(tool, QuickTool::Select | QuickTool::ColumnSelect) {
         copy_selected |= selection_actions(ui, avail, view, info, prefs, allowed && !comments_hidden, can_copy);
     }

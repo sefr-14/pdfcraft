@@ -2762,3 +2762,7 @@ certificate	Version	الإصدار
 	Nearest 1/8 inch	لأقرب 1/8 بوصة
 	Type a length such as 12'-5 3/8" or 12.5'.	اكتب طولًا مثل 12'-5 3/8" أو 12.5'.
 	Type the real distance between the two points.	اكتب المسافة الحقيقية بين النقطتين.
+# This fork (sefr-14/pdfcraft): View > Page display > Rulers and Guides, the ruler units (OV11).
+	Rulers	المساطر
+	Guides	خطوط الدليل
+	Points (pt)	نقاط (pt)

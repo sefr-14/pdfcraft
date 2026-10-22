@@ -2398,3 +2398,7 @@ animation effects	Off	Выкл
 	Nearest 1/8 inch	С точностью до 1/8 дюйма
 	Type a length such as 12'-5 3/8" or 12.5'.	Введите длину, например 12'-5 3/8" или 12.5'.
 	Type the real distance between the two points.	Введите реальное расстояние между двумя точками.
+# This fork (sefr-14/pdfcraft): View > Page display > Rulers and Guides, the ruler units (OV11).
+	Rulers	Линейки
+	Guides	Направляющие
+	Points (pt)	Пункты (pt)

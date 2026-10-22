@@ -2481,3 +2481,7 @@ animation effects	Off	Kapalı
 	Nearest 1/8 inch	En yakın 1/8 inçe
 	Type a length such as 12'-5 3/8" or 12.5'.	12'-5 3/8" veya 12.5' gibi bir uzunluk yazın.
 	Type the real distance between the two points.	İki nokta arasındaki gerçek mesafeyi yazın.
+# This fork (sefr-14/pdfcraft): View > Page display > Rulers and Guides, the ruler units (OV11).
+	Rulers	Cetveller
+	Guides	Kılavuzlar
+	Points (pt)	Punto (pt)

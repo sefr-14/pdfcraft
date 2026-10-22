@@ -287,6 +287,34 @@ fn theme_commands_and_options_report_preference_and_effective_colours() {
     assert_eq!(ok(&mut h, &c, "ui.state", json!({}))["theme_preference"], "System");
 }
 
+/// This fork (OV11): the active PDF's rulers through `ui.set`, `ui.command` and `ui.state`; a
+/// view setting, never a change to the document.
+#[test]
+fn control_sets_and_reports_the_rulers_without_changing_the_document() {
+    let (mut h, c) = harness();
+    let active = |h: &mut Harness<'static, PdfCraftApp>| ok(h, &c, "ui.state", json!({}))["active"].clone();
+    let state = active(&mut h);
+    assert_eq!(state["rulers"]["shown"], false, "hidden for a PDF seen for the first time");
+    assert_eq!(state["guides_shown"], true);
+    assert_eq!(state["guides"], json!([]));
+    ok(&mut h, &c, "ui.set", json!({ "key": "rulers", "value": "on" }));
+    ok(&mut h, &c, "ui.set", json!({ "key": "ruler_unit", "value": "mm" }));
+    ok(&mut h, &c, "ui.set", json!({ "key": "guides", "value": "off" }));
+    let state = active(&mut h);
+    assert_eq!(state["rulers"], json!({ "shown": true, "unit": "mm" }));
+    assert_eq!(state["guides_shown"], false);
+    for (key, value) in [("rulers", "maybe"), ("guides", ""), ("ruler_unit", "furlong")] {
+        assert!(call(&mut h, &c, "ui.set", json!({ "key": key, "value": value })).is_err(), "{key}={value}");
+    }
+    ok(&mut h, &c, "ui.command", json!({ "id": "view.rulers" }));
+    ok(&mut h, &c, "ui.command", json!({ "id": "view.guides" }));
+    let state = active(&mut h);
+    assert_eq!(state["rulers"], json!({ "shown": false, "unit": "mm" }));
+    assert_eq!(state["guides_shown"], true);
+    let doc = &ok(&mut h, &c, "ui.state", json!({}))["documents"][0];
+    assert_eq!(doc["dirty"], false, "not a change to save");
+}
+
 #[test]
 fn lithuanian_password_dialog_translates_dynamic_labels_and_validation() {
     let (mut h, c) = harness();

@@ -41,6 +41,7 @@ mod overlay_ui;
 mod escape;
 // This fork: rulers and guides, remembered per PDF in the settings (OV11).
 pub mod doc_prefs;
+mod rulers;
 mod tags_ui;
 pub use combine_grid::ThumbState as CombineThumb;
 mod combine_ui;
@@ -172,6 +173,10 @@ mod thin_lines_tests;
 #[cfg(test)]
 #[cfg(not(target_arch = "wasm32"))]
 mod measure_tests;
+
+#[cfg(test)]
+#[cfg(not(target_arch = "wasm32"))]
+mod rulers_tests;
 
 use pdfcraft_engine::{DocId, Session};
 
@@ -2640,6 +2645,10 @@ impl PdfCraftApp {
     ///
     /// This is the seed of the UI control channel (M3.9): the same verbs become `ui.set` calls.
     pub fn set_option(&mut self, key: &str, value: &str) -> Result<(), String> {
+        // This fork (OV11): the active PDF's rulers and guides.
+        if matches!(key, "rulers" | "guides" | "ruler_unit") {
+            return self.set_ruler_option(key, value);
+        }
         let view = self.active.and_then(|i| self.views.get_mut(i));
         match (key, view) {
             ("language", _) => {

@@ -2486,3 +2486,7 @@ animation effects	Off	Aus
 	Nearest 1/8 inch	Auf 1/8 Zoll genau
 	Type a length such as 12'-5 3/8" or 12.5'.	Geben Sie eine Länge wie 12'-5 3/8" oder 12.5' ein.
 	Type the real distance between the two points.	Geben Sie den tatsächlichen Abstand zwischen den beiden Punkten ein.
+# This fork (sefr-14/pdfcraft): View > Page display > Rulers and Guides, the ruler units (OV11).
+	Rulers	Lineale
+	Guides	Hilfslinien
+	Points (pt)	Punkt (pt)

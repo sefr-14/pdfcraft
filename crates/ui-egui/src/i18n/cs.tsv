@@ -2559,3 +2559,7 @@ animation effects	Off	Vypnuto
 	Nearest 1/8 inch	Na nejbližší 1/8 palce
 	Type a length such as 12'-5 3/8" or 12.5'.	Zadejte délku, například 12'-5 3/8" nebo 12.5'.
 	Type the real distance between the two points.	Zadejte skutečnou vzdálenost mezi oběma body.
+# This fork (sefr-14/pdfcraft): View > Page display > Rulers and Guides, the ruler units (OV11).
+	Rulers	Pravítka
+	Guides	Vodítka
+	Points (pt)	Body (pt)

@@ -2491,3 +2491,7 @@ animation effects	Off	Ανενεργά
 	Nearest 1/8 inch	Στο πλησιέστερο 1/8 της ίντσας
 	Type a length such as 12'-5 3/8" or 12.5'.	Πληκτρολογήστε ένα μήκος, π.χ. 12'-5 3/8" ή 12.5'.
 	Type the real distance between the two points.	Πληκτρολογήστε την πραγματική απόσταση μεταξύ των δύο σημείων.
+# This fork (sefr-14/pdfcraft): View > Page display > Rulers and Guides, the ruler units (OV11).
+	Rulers	Χάρακες
+	Guides	Οδηγοί
+	Points (pt)	Στιγμές (pt)

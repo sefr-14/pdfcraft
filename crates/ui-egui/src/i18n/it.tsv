@@ -2697,3 +2697,7 @@ certificate	SHA-256 digest	Impronta SHA-256
 	Nearest 1/8 inch	Al 1/8 di pollice più vicino
 	Type a length such as 12'-5 3/8" or 12.5'.	Digita una lunghezza come 12'-5 3/8" o 12.5'.
 	Type the real distance between the two points.	Digita la distanza reale tra i due punti.
+# This fork (sefr-14/pdfcraft): View > Page display > Rulers and Guides, the ruler units (OV11).
+	Rulers	Righelli
+	Guides	Guide
+	Points (pt)	Punti (pt)

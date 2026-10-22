@@ -2499,3 +2499,7 @@ animation effects	Off	Desativados
 	Nearest 1/8 inch	Ao 1/8 de polegada mais próximo
 	Type a length such as 12'-5 3/8" or 12.5'.	Digite um comprimento como 12'-5 3/8" ou 12.5'.
 	Type the real distance between the two points.	Digite a distância real entre os dois pontos.
+# This fork (sefr-14/pdfcraft): View > Page display > Rulers and Guides, the ruler units (OV11).
+	Rulers	Réguas
+	Guides	Guias
+	Points (pt)	Pontos (pt)

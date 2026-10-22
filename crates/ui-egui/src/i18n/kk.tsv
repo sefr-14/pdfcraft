@@ -2483,3 +2483,7 @@ animation effects	Off	Өшірулі
 	Nearest 1/8 inch	Ең жақын 1/8 дюймге дейін
 	Type a length such as 12'-5 3/8" or 12.5'.	12'-5 3/8" немесе 12.5' сияқты ұзындықты енгізіңіз.
 	Type the real distance between the two points.	Екі нүкте арасындағы нақты қашықтықты енгізіңіз.
+# This fork (sefr-14/pdfcraft): View > Page display > Rulers and Guides, the ruler units (OV11).
+	Rulers	Сызғыштар
+	Guides	Бағыттауыштар
+	Points (pt)	Пункт (pt)

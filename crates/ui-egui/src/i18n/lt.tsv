@@ -2736,3 +2736,7 @@ theme	Appearance	Išvaizda
 	Nearest 1/8 inch	Iki artimiausios 1/8 colio
 	Type a length such as 12'-5 3/8" or 12.5'.	Įveskite ilgį, pavyzdžiui, 12'-5 3/8" arba 12.5'.
 	Type the real distance between the two points.	Įveskite tikrąjį atstumą tarp dviejų taškų.
+# This fork (sefr-14/pdfcraft): View > Page display > Rulers and Guides, the ruler units (OV11).
+	Rulers	Liniuotės
+	Guides	Pagalbinės linijos
+	Points (pt)	Taškai (pt)

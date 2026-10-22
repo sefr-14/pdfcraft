@@ -2738,3 +2738,7 @@ key	Space	Space
 	Nearest 1/8 inch	Làm tròn đến 1/8 inch
 	Type a length such as 12'-5 3/8" or 12.5'.	Nhập độ dài, ví dụ 12'-5 3/8" hoặc 12.5'.
 	Type the real distance between the two points.	Nhập khoảng cách thực giữa hai điểm.
+# This fork (sefr-14/pdfcraft): View > Page display > Rulers and Guides, the ruler units (OV11).
+	Rulers	Thước kẻ
+	Guides	Đường gióng
+	Points (pt)	Điểm (pt)
