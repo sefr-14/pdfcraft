@@ -32,6 +32,9 @@
 //!   `select` accepts physical page numbers and ranges such as `1,12,16-18`; blank clears the
 //!   explicit selection. This is the same bounded parser as the Organize Pages field; invalid
 //!   input leaves the previous selection unchanged. `ui.state.active.selected_pages` reports it.
+//!   This fork (OV11): `rulers` and `guides` (on/off) and `ruler_unit` (pt, in, mm, cm) for the
+//!   active PDF, remembered for it; `ui.state.active` reports `rulers {shown, unit}`,
+//!   `guides_shown` and `guides [{page, axis, at}]` (pages 1-based, `at` in user space).
 //!   `default-mode=all|read|edit|convert|sign` applies to future PDF opens; `mode` overrides it
 //!   for this session without changing the saved preference. `ui.state.default_mode` reports it.
 //!   `theme=light|dark|system` changes the saved theme preference; `ui.state.theme_preference`
@@ -668,7 +671,7 @@ impl Host for crate::PdfCraftApp {
             self.pending_opens.iter().map(|pending| json!({ "token": pending.token, "name": pending.name, "path": pending.path })).collect();
         #[cfg(target_arch = "wasm32")]
         let pending_opens: Vec<Value> = Vec::new();
-        json!({
+        let mut state = json!({
             "docking": self.docking,
             "documents": docs,
             "pending_opens": pending_opens,
@@ -739,7 +742,23 @@ impl Host for crate::PdfCraftApp {
             "progress": self.progress_notice.as_ref().map(|p| json!({ "label": p.label, "fraction": p.fraction })),
             "password_prompt": self.password_prompt.is_some(),
             "close_prompt": self.close_request.is_some(),
-        })
+        });
+        // This fork (OV11): the active PDF's rulers and guides (pages 1-based, user space).
+        if let (Some(view), Some(out)) = (active, state.get_mut("active").and_then(Value::as_object_mut))
+            && let Some(marks) = self.doc_prefs.state(view.id)
+        {
+            out.insert("rulers".into(), json!({ "shown": marks.prefs.rulers, "unit": marks.prefs.unit.label() }));
+            out.insert("guides_shown".into(), json!(marks.prefs.guides_shown));
+            let guides: Vec<Value> = marks
+                .pages_with_guides()
+                .flat_map(|(page, g)| {
+                    let x = g.x.iter().map(move |at| json!({ "page": page + 1, "axis": "x", "at": at }));
+                    x.chain(g.y.iter().map(move |at| json!({ "page": page + 1, "axis": "y", "at": at })))
+                })
+                .collect();
+            out.insert("guides".into(), Value::Array(guides));
+        }
+        state
     }
 
     fn command(&mut self, id: &str) -> Reply {

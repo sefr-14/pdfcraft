@@ -616,7 +616,8 @@ fn main_menu(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                             v.view_history(true);
                         }
                         ui.separator();
-                        if let Some(id) = page_display_menu(ui, &app.views[i], app.thin_lines) {
+                        let marks = app.doc_prefs.state(app.views[i].id).map(|s| s.prefs);
+                        if let Some(id) = page_display_menu(ui, &app.views[i], app.thin_lines, marks) {
                             app.execute(id);
                         }
                         ui.separator();
@@ -697,6 +698,7 @@ pub fn right_rail(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
 
             // Page navigation cluster at the bottom (as in Acrobat's rail).
             let thin_lines = app.thin_lines;
+            let marks = app.doc_prefs.state(app.views[index].id).map(|s| s.prefs);
             let view = &mut app.views[index];
             let mut page_display = None;
             ui.with_layout(Layout::bottom_up(Align::Center), |ui| {
@@ -715,7 +717,7 @@ pub fn right_rail(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                 page_display = egui::Popup::menu(&resp)
                     .show(|ui| {
                         ui.set_min_width(220.0);
-                        rail_view_menu(ui, view, thin_lines)
+                        rail_view_menu(ui, view, thin_lines, marks)
                     })
                     .and_then(|r| r.inner);
                 let tip = crate::commands::key_tip(ui.ctx(), tl!("Rotate view clockwise ({key})"), crate::commands::ROTATE_CW);
@@ -817,9 +819,10 @@ pub fn right_rail(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
         });
 }
 
-/// View ▸ Page display and the rail's Page display menu: the layouts and the cover page.
+/// View ▸ Page display and the rail's Page display menu: the layouts and the cover page, and
+/// this fork's Thin lines and the document's rulers and guides (`marks`, OV11).
 /// Returns the command a click asks for, for the caller to run.
-fn page_display_menu(ui: &mut egui::Ui, view: &DocView, thin_lines: bool) -> Option<&'static str> {
+fn page_display_menu(ui: &mut egui::Ui, view: &DocView, thin_lines: bool, marks: Option<crate::doc_prefs::ViewPrefs>) -> Option<&'static str> {
     let t = Tokens::get(ui.ctx());
     ui.label(egui::RichText::new(tl!("Page display")).color(t.text_faint).small());
     let mut picked = None;
@@ -843,6 +846,14 @@ fn page_display_menu(ui: &mut egui::Ui, view: &DocView, thin_lines: bool) -> Opt
     if ui.add(widgets::checkbox(&mut thin, tl!("Thin lines"))).changed() {
         picked = Some("view.thin_lines");
     }
+    // This fork (OV11): this PDF's, remembered for it.
+    let (mut rulers, mut guides) = marks.map_or((false, true), |m| (m.rulers, m.guides_shown));
+    if ui.add_enabled(marks.is_some(), widgets::checkbox(&mut rulers, tl!("Rulers"))).changed() {
+        picked = Some("view.rulers");
+    }
+    if ui.add_enabled(marks.is_some(), widgets::checkbox(&mut guides, tl!("Guides"))).changed() {
+        picked = Some("view.guides");
+    }
     if picked.is_some() {
         ui.close();
     }
@@ -851,7 +862,7 @@ fn page_display_menu(ui: &mut egui::Ui, view: &DocView, thin_lines: bool) -> Opt
 
 /// The rail's Page display menu: Acrobat's view choices around the page display. Zoom changes
 /// apply at once; the command a click asks for is returned for the caller to run.
-fn rail_view_menu(ui: &mut egui::Ui, view: &mut DocView, thin_lines: bool) -> Option<&'static str> {
+fn rail_view_menu(ui: &mut egui::Ui, view: &mut DocView, thin_lines: bool, marks: Option<crate::doc_prefs::ViewPrefs>) -> Option<&'static str> {
     let mut picked = None;
     for (id, label) in [("view.fit_width_scrolling", "Fit to width scrolling"), ("view.fit_one_page", "Fit one full page")] {
         if ui.button(tl!(label)).clicked() {
@@ -871,7 +882,7 @@ fn rail_view_menu(ui: &mut egui::Ui, view: &mut DocView, thin_lines: bool) -> Op
         picked = Some("view.fit_visible");
     }
     ui.separator();
-    picked = page_display_menu(ui, view, thin_lines).or(picked);
+    picked = page_display_menu(ui, view, thin_lines, marks).or(picked);
     ui.separator();
     for (id, label) in [("view.read_mode", "Read mode"), ("view.full_screen", "Full screen mode")] {
         if ui.button(tl!(label)).clicked() {

@@ -360,6 +360,10 @@ impl Editor {
     }
 }
 
+/// The longest trailer `/ID` string [`Document::file_id`] returns: writers use 16-byte (MD5)
+/// or 32-byte strings; anything far longer is not an identifier worth keeping.
+pub const MAX_FILE_ID: usize = 64;
+
 pub struct Document {
     pub id: DocId,
     pub name: String,
@@ -580,6 +584,25 @@ impl Document {
     pub fn measurement_paths(&self, page: usize) -> Result<measure::snap::Geometry, String> {
         let e = self.editor.as_ref().ok_or("the document can't be read")?;
         measure::snap::geometry(&e.cos, page).map_err(|e| e.to_string())
+    }
+
+    /// The first string of the trailer's `/ID`, the file's permanent identifier (ISO 32000-2
+    /// §14.4), when it has one of 1 to [`MAX_FILE_ID`] bytes and the object graph can be read.
+    /// Only reads (this fork, OV11: per-PDF view settings tell files apart with it).
+    pub fn file_id(&self) -> Option<Vec<u8>> {
+        let e = self.editor.as_ref()?;
+        let id = e.cos.resolve(e.cos.trailer().get(b"ID")?);
+        let first = e.cos.resolve(id.as_array()?.first()?);
+        let bytes = &first.as_string()?.bytes;
+        (!bytes.is_empty() && bytes.len() <= MAX_FILE_ID).then(|| bytes.clone())
+    }
+
+    /// Each page's object (number, generation), in page order, or `None` without a readable
+    /// object graph. Pages keep their objects through reordering, insertion, deletion and undo.
+    /// Only reads (this fork, OV11: guides follow their page).
+    pub fn page_objects(&self) -> Option<Vec<(u32, u16)>> {
+        let e = self.editor.as_ref()?;
+        Some(pdfcraft_model::pages(&e.cos).iter().map(|p| (p.obj.num, p.obj.generation)).collect())
     }
 
     /// A counter that changes with every edit (for caches of derived data).

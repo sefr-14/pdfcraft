@@ -2394,3 +2394,11 @@ animation effects	Off	ఆఫ్
 	Nearest 1/8 inch	సమీప 1/8 అంగుళానికి
 	Type a length such as 12'-5 3/8" or 12.5'.	12'-5 3/8" లేదా 12.5' వంటి పొడవును టైప్ చేయండి.
 	Type the real distance between the two points.	రెండు బిందువుల మధ్య వాస్తవ దూరాన్ని టైప్ చేయండి.
+# This fork (sefr-14/pdfcraft): View > Page display > Rulers and Guides, the ruler units (OV11).
+	Rulers	రూలర్లు
+	Guides	గైడ్‌లు
+	Points (pt)	పాయింట్లు (pt)
+# This fork (sefr-14/pdfcraft): guides on the pages, Clear Guides on Page / Clear All Guides (OV11).
+	Clear Guides on Page	పేజీలోని గైడ్‌లను క్లియర్ చేయి
+	Clear All Guides	అన్ని గైడ్‌లను క్లియర్ చేయి
+	This page already has as many guides as PdfCraft keeps.	ఈ పేజీలో ఇప్పటికే PdfCraft ఉంచగలిగినన్ని గైడ్‌లు ఉన్నాయి.

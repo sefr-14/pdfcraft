@@ -511,7 +511,7 @@ pub struct DocView {
     page_heights: Vec<f32>,
     /// Screen rects of the pages drawn last frame (hit-testing, tests, automation).
     screen_rects: Vec<(usize, Rect)>,
-    screen_xforms: Vec<(usize, PageXform)>,
+    pub(crate) screen_xforms: Vec<(usize, PageXform)>,
     /// The scroll viewport on screen last frame.
     viewport_screen: Rect,
     /// Pending zoom anchor: page, fractional position (also in gutters), and viewport offset.
@@ -559,6 +559,8 @@ pub struct DocView {
     /// Commenting state: selected comment, gestures, composer.
     pub comments: crate::comments::CommentView,
     pub measure: crate::measure_ui::MeasureView,
+    /// This fork (OV11): the guide selected or held in this view (the guides are the document's).
+    pub guides: crate::guides::GuideView,
     /// Form filling state: the focused field.
     pub forms: crate::forms_ui::FormView,
     /// Prepare a form: the selected field and the gesture in progress.
@@ -846,6 +848,7 @@ impl DocView {
             slow_pages: HashSet::new(),
             comments: Default::default(),
             measure: Default::default(),
+            guides: Default::default(),
             forms: Default::default(),
             prepare: Default::default(),
             content: Default::default(),
@@ -2475,6 +2478,20 @@ fn copy_rendered(r: &pdfcraft_render::RenderedPage) -> pdfcraft_render::Rendered
     }
 }
 
+/// Escape's step for the view itself (`PdfCraftApp::escape_step` decides when): cancel a
+/// camera snapshot, else clear the text selection, else close the find bar. Returns whether
+/// there was one to take.
+pub(crate) fn escape_view(view: &mut DocView) -> bool {
+    if view.camera.is_some() || view.camera_done.is_some() {
+        view.pending_action = Some(ViewAction::CancelCamera);
+    } else if view.selection.is_some() {
+        view.selection = None;
+    } else if view.find.take().is_none() {
+        return false;
+    }
+    true
+}
+
 pub fn shortcuts(view: &mut DocView, ctx: &egui::Context, speed: crate::scroll_speed::ScrollSpeed) {
     use egui::{Key, KeyboardShortcut, Modifiers};
     if ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::F))) {
@@ -2541,15 +2558,6 @@ pub fn shortcuts(view: &mut DocView, ctx: &egui::Context, speed: crate::scroll_s
         view.view_history(true);
     }
     let key = |k| ctx.input(|i| i.key_pressed(k));
-    if key(Key::Escape) {
-        if view.camera.is_some() || view.camera_done.is_some() {
-            view.pending_action = Some(ViewAction::CancelCamera);
-        } else if view.selection.is_some() {
-            view.selection = None;
-        } else {
-            view.find = None;
-        }
-    }
     if key(Key::Home) {
         view.go_to_page(0);
     }
@@ -2616,9 +2624,10 @@ fn page_scroll<R>(
     ui: &mut egui::Ui,
     scroll: egui::ScrollArea,
     id: egui::Id,
+    rect: Rect,
     draw: impl FnOnce(&mut egui::Ui, egui::Rect) -> R,
 ) -> egui::scroll_area::ScrollAreaOutput<R> {
-    ui.scope_builder(egui::UiBuilder::new().id(id), |ui| scroll.show_viewport(ui, draw)).inner
+    ui.scope_builder(egui::UiBuilder::new().id(id).max_rect(rect), |ui| scroll.show_viewport(ui, draw)).inner
 }
 
 /// How a view drawn by [`document_area_with`] takes pointer input (OV7.3).
@@ -2708,7 +2717,10 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
         return;
     }
 
-    let avail = ui.available_rect_before_wrap();
+    // This fork (OV11): the rulers take their strips off the page area's top and left.
+    let full = ui.available_rect_before_wrap();
+    let ruled = app.doc_prefs.state(doc.id).is_some_and(|s| s.prefs.rulers);
+    let avail = if ruled { crate::rulers::inner(full) } else { full };
     view.viewport_w = avail.width();
     view.viewport_h = avail.height();
     let old_zoom = view.zoom;
@@ -2918,8 +2930,13 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
         }
     };
 
+    // This fork (OV11): the Hand tool takes a guide before the page view pans, from where the
+    // pages were last frame. A held guide doesn't pan.
+    let hand_guides = tools && unobstructed && app.quick_tool == QuickTool::Hand && !middle_gesture;
+    let held = crate::guides::press(ui, view, info, &mut app.doc_prefs, doc.id, avail, hand_guides);
+    let marks = app.doc_prefs.state(doc.id).filter(|s| s.prefs.guides_shown);
     let mut scroll = egui::ScrollArea::both().auto_shrink([false, false]).scroll_source(egui::scroll_area::ScrollSource {
-        drag: if middle_gesture {
+        drag: if middle_gesture || held {
             egui::scroll_area::DragScroll::Never
         } else if app.quick_tool == QuickTool::Hand {
             egui::scroll_area::DragScroll::Always
@@ -2947,6 +2964,7 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
     // below still wins.
     if app.quick_tool == QuickTool::Hand
         && !middle_gesture
+        && !held
         && let Some(id) = view.page_widget.filter(|id| ui.ctx().is_being_dragged(*id))
     {
         let moved = if ui.ctx().drag_started_id() == Some(id) {
@@ -3102,7 +3120,7 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
         }
     }
     let selection_wheel = view.selection_drag && navigation_enabled && unobstructed && !single_paging && ui.rect_contains_pointer(avail);
-    let out = page_scroll(ui, scroll, egui::Id::new(("page-view-scope", view.key)), |ui, viewport| {
+    let out = page_scroll(ui, scroll, egui::Id::new(("page-view-scope", view.key)), avail, |ui, viewport| {
         // egui's drag responses accept every pointer button. Keep a wheel gesture from also
         // selecting text, drawing a mark, or panning with the Hand tool. A navigation-only view
         // (another tile) takes no clicks either: only the scroll area itself, outside this
@@ -3311,6 +3329,10 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
                 view.move_background.paint(ui, painter, &xf, i, info, &view.content, page_tex);
             }
             painter.rect_stroke(r, CornerRadius::ZERO, Stroke::new(0.5, t.border.gamma_multiply(0.8)), egui::StrokeKind::Outside);
+            // This fork (OV11): the document's guides, drawn over the page as the view's marks.
+            if let (Some(guides), Some(page)) = (marks.and_then(|m| m.page(i)), info.pages.get(i)) {
+                crate::guides::paint(painter, page, &xf, i, guides, view.guides.selected, t.accent);
+            }
 
             // Comments: tools, selection, moving and resizing come before text selection.
             let pcx = comments::PageCx { page: i, xf: &xf, info, tool, prefs, allowed, hidden: comments_hidden, redact_mark };
@@ -4012,6 +4034,13 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
 
     view.viewport_screen = out.inner_rect;
     view.auto_scroll.paint(ui, avail);
+    // This fork (OV11): the rulers, from where this frame put the pages.
+    if let Some(why) = crate::rulers::show(ui, view, info, &mut app.doc_prefs, doc.id, full, avail, tools && unobstructed) {
+        refused = Some(why.to_string());
+    }
+    if hand_guides {
+        crate::guides::hover_cursor(ui, view, info, &app.doc_prefs, doc.id, avail);
+    }
     if unobstructed && matches!(tool, QuickTool::Select | QuickTool::ColumnSelect) {
         copy_selected |= selection_actions(ui, avail, view, info, prefs, allowed && !comments_hidden, can_copy);
     }
@@ -4192,7 +4221,11 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
     // One crop, then back to selecting (as Acrobat does).
     let cropped = view.pending_edit.as_ref().is_some_and(|e| matches!(e, pdfcraft_engine::Edit::SetPageBox { .. }));
     let mut tool = app.quick_tool;
-    comments::keys(ui.ctx(), view, &mut tool, allowed);
+    // This fork (OV11): Delete takes a selected guide first, and is consumed.
+    if unobstructed {
+        crate::guides::keys(ui.ctx(), view, &mut app.doc_prefs, doc.id);
+    }
+    comments::keys(ui.ctx(), view, &mut tool, allowed, !app.escape_reserved);
     if preparing {
         crate::prepare::keys(ui.ctx(), view);
     }
@@ -4581,6 +4614,11 @@ fn page_size_hint(view: &DocView, info: &DocInfo, units: crate::units::Unit, are
         });
 }
 
+/// The find bar's text field.
+pub(crate) fn find_input_id() -> egui::Id {
+    egui::Id::new("find-input")
+}
+
 /// Acrobat-style floating find bar at the top-right of the document area.
 fn find_bar(view: &mut DocView, pages: usize, area: Rect, ui: &mut egui::Ui, t: &Tokens) {
     let Some(find) = view.find.as_mut() else { return };
@@ -4606,7 +4644,7 @@ fn find_bar(view: &mut DocView, pages: usize, area: Rect, ui: &mut egui::Ui, t: 
                     ui.horizontal(|ui| {
                         ui.add(icons::image("search", 16.0, t.text_muted));
                         let edit = egui::TextEdit::singleline(&mut find.query)
-                            .id(egui::Id::new("find-input"))
+                            .id(find_input_id())
                             .hint_text(tl!("Find text"))
                             .desired_width(220.0)
                             .frame(egui::Frame::NONE);

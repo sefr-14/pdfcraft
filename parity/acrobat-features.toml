@@ -1595,11 +1595,11 @@ title = "Rulers"
 area = "B"
 tier = "P2"
 milestone = "M12"
-status = "planned"
-commands = []
+status = "shipped"
+commands = ["view.rulers"]
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/ui-egui/src/rulers_tests.rs::rulers_show_per_pdf_take_their_strips_and_dont_change_the_pdf", "crates/ui-egui/src/rulers_tests.rs::rulers_and_their_unit_are_remembered_per_pdf_across_a_restart", "crates/ui-egui/src/rulers_tests.rs::each_tile_has_its_documents_rulers_and_duplicate_tabs_share_them", "crates/ui-egui/src/rulers.rs::ticks_read_from_the_page_corner_at_a_readable_spacing", "crates/ui-egui/tests/control.rs::control_sets_and_reports_the_rulers_without_changing_the_document"]
+notes = "this fork (OV11), modelled on Foxit PDF Reader: View > Page display > Rulers (Ctrl/Cmd+R) shows top and left rulers in Tab View and each tile, reading from the top-left corner of the page under the pointer (else the current page), in lengths on paper; right-click for pt, in, mm or cm. Remembered per PDF in PdfCraft's settings, never in the PDF. Missing: a calibrated drawing scale doesn't change the ruler's reading (the measure tool's does), no origin dragging, and no headless automation tool (control channel `ui.set rulers` / `ruler_unit` only: these are app settings, not document data)"
 
 [[feature]]
 id = "view.grid"
@@ -1619,11 +1619,11 @@ title = "Guides"
 area = "B"
 tier = "P2"
 milestone = "M12"
-status = "planned"
-commands = []
+status = "shipped"
+commands = ["view.guides", "view.clear_guides_page", "view.clear_guides"]
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/ui-egui/src/rulers_tests.rs::guides_pulled_out_of_the_rulers_land_on_the_page_and_come_back_after_a_restart", "crates/ui-egui/src/rulers_tests.rs::the_hand_tool_moves_selects_and_deletes_guides_and_escape_puts_one_back", "crates/ui-egui/src/rulers_tests.rs::clearing_guides_and_two_tabs_of_one_pdf", "crates/ui-egui/src/guides.rs::guides_stay_on_the_same_user_space_line_at_every_zoom_rotation_crop_and_user_unit", "crates/ui-egui/src/doc_prefs.rs::guides_follow_their_page_and_a_deleted_page_is_never_stored", "crates/ui-egui/src/doc_prefs.rs::renumbered_pages_keep_guides_by_position_but_never_a_deleted_pages", "crates/ui-egui/tests/control.rs::control_drag_from_the_ruler_makes_a_guide_that_ui_state_lists"]
+notes = "this fork (OV11): drag from a ruler (or double-click it) to make a guide on the page under the pointer; with the Hand tool drag a guide to move it, click to select, Delete to remove; Escape puts a dragged guide back; Clear Guides on Page / Clear All Guides; View > Page display > Guides hides them. Kept in PDF user space per page, so zoom, scroll, view rotation, CropBox, /Rotate and /UserUnit never move them; they follow page moves, inserts, deletes and undo. Shared by Duplicate Tab and Tile View views; remembered per PDF (path checked against /ID or the page count) in PdfCraft's settings, never written to the PDF, printed, exported or put into Overlay output. Missing: no grid, no snap to guides, no guide colour setting, no drag-back-to-ruler delete, guides move only with the Hand tool, and documents without a path (new, combined, the web) keep them for the session only"
 
 [[feature]]
 id = "view.line-weights"
@@ -10005,11 +10005,11 @@ title = "Preferences: units and guides"
 area = "N"
 tier = "P2"
 milestone = "M14"
-status = "planned"
-commands = []
+status = "partial"
+commands = ["view.rulers", "view.guides"]
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/ui-egui/src/doc_prefs.rs::the_app_keeps_them_in_its_settings_and_never_in_the_pdf", "crates/ui-egui/src/doc_prefs.rs::untrusted_settings_are_skipped_and_capped", "crates/ui-egui/src/rulers_tests.rs::rulers_and_their_unit_are_remembered_per_pdf_across_a_restart"]
+notes = "this fork (OV11): the ruler unit (pt, in, mm, cm) is chosen from the ruler's menu per PDF, starting from the app-wide Units preference, and rulers and guides are shown or hidden per PDF, all remembered in PdfCraft's settings. Missing: no Units & Guides page in Preferences, no grid settings, no guide colour"
 
 [[feature]]
 id = "misc.prefs-content-editing"

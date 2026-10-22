@@ -2507,3 +2507,11 @@ animation effects	Off	Вимкнено
 	Nearest 1/8 inch	З точністю до 1/8 дюйма
 	Type a length such as 12'-5 3/8" or 12.5'.	Введіть довжину, наприклад 12'-5 3/8" або 12.5'.
 	Type the real distance between the two points.	Введіть реальну відстань між двома точками.
+# This fork (sefr-14/pdfcraft): View > Page display > Rulers and Guides, the ruler units (OV11).
+	Rulers	Лінійки
+	Guides	Напрямні
+	Points (pt)	Пункти (pt)
+# This fork (sefr-14/pdfcraft): guides on the pages, Clear Guides on Page / Clear All Guides (OV11).
+	Clear Guides on Page	Очистити напрямні на сторінці
+	Clear All Guides	Очистити всі напрямні
+	This page already has as many guides as PdfCraft keeps.	На цій сторінці вже стільки напрямних, скільки зберігає PdfCraft.

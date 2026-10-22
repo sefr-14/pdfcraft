@@ -287,6 +287,61 @@ fn theme_commands_and_options_report_preference_and_effective_colours() {
     assert_eq!(ok(&mut h, &c, "ui.state", json!({}))["theme_preference"], "System");
 }
 
+/// This fork (OV11): the active PDF's rulers through `ui.set`, `ui.command` and `ui.state`; a
+/// view setting, never a change to the document.
+#[test]
+fn control_sets_and_reports_the_rulers_without_changing_the_document() {
+    let (mut h, c) = harness();
+    let active = |h: &mut Harness<'static, PdfCraftApp>| ok(h, &c, "ui.state", json!({}))["active"].clone();
+    let state = active(&mut h);
+    assert_eq!(state["rulers"]["shown"], false, "hidden for a PDF seen for the first time");
+    assert_eq!(state["guides_shown"], true);
+    assert_eq!(state["guides"], json!([]));
+    ok(&mut h, &c, "ui.set", json!({ "key": "rulers", "value": "on" }));
+    ok(&mut h, &c, "ui.set", json!({ "key": "ruler_unit", "value": "mm" }));
+    ok(&mut h, &c, "ui.set", json!({ "key": "guides", "value": "off" }));
+    let state = active(&mut h);
+    assert_eq!(state["rulers"], json!({ "shown": true, "unit": "mm" }));
+    assert_eq!(state["guides_shown"], false);
+    for (key, value) in [("rulers", "maybe"), ("guides", ""), ("ruler_unit", "furlong")] {
+        assert!(call(&mut h, &c, "ui.set", json!({ "key": key, "value": value })).is_err(), "{key}={value}");
+    }
+    ok(&mut h, &c, "ui.command", json!({ "id": "view.rulers" }));
+    ok(&mut h, &c, "ui.command", json!({ "id": "view.guides" }));
+    let state = active(&mut h);
+    assert_eq!(state["rulers"], json!({ "shown": false, "unit": "mm" }));
+    assert_eq!(state["guides_shown"], true);
+    let doc = &ok(&mut h, &c, "ui.state", json!({}))["documents"][0];
+    assert_eq!(doc["dirty"], false, "not a change to save");
+}
+
+/// This fork (OV11): a drag from the top ruler onto page 1 makes a guide there, which `ui.state`
+/// lists; `view.clear_guides` clears it. Neither changes the document.
+#[test]
+fn control_drag_from_the_ruler_makes_a_guide_that_ui_state_lists() {
+    let (mut h, c) = harness();
+    ok(&mut h, &c, "ui.set", json!({ "key": "rulers", "value": "on" }));
+    h.run_steps(3);
+    let state = ok(&mut h, &c, "ui.state", json!({}));
+    let viewport = state["active"]["viewport"].clone();
+    let page = state["active"]["pages_on_screen"][0]["rect"].clone();
+    let num = |v: &Value| v.as_f64().unwrap();
+    let x = (num(&page[0]) + num(&page[2])) / 2.0;
+    let (top, to) = (num(&viewport[1]) - 10.0, num(&page[1]) + 0.4 * (num(&page[3]) - num(&page[1])));
+    assert!(to < num(&viewport[3]), "the target is on screen");
+    ok(&mut h, &c, "ui.drag", json!({ "from": [x, top], "to": [x, to], "steps": 8 }));
+    h.run_steps(3);
+    let state = ok(&mut h, &c, "ui.state", json!({}));
+    let guides = state["active"]["guides"].as_array().unwrap().clone();
+    assert_eq!(guides.len(), 1, "{guides:?}");
+    assert_eq!(guides[0]["page"], 1);
+    assert_eq!(guides[0]["axis"], "y", "horizontal on an upright page: a line of constant y");
+    assert!(guides[0]["at"].as_f64().is_some_and(f64::is_finite));
+    assert_eq!(state["documents"][0]["dirty"], false);
+    ok(&mut h, &c, "ui.command", json!({ "id": "view.clear_guides" }));
+    assert_eq!(ok(&mut h, &c, "ui.state", json!({}))["active"]["guides"], json!([]));
+}
+
 #[test]
 fn lithuanian_password_dialog_translates_dynamic_labels_and_validation() {
     let (mut h, c) = harness();

@@ -172,6 +172,8 @@ Ranked; detail and the full milestone table in [docs/roadmap.md](docs/roadmap.md
 
 ## Progress log
 
+- **2026-10-22 (this fork, OV11):** Escape in the measuring tools takes one step back per press and is consumed by whatever acts on it: points in progress, then a pending calibration (fields restored), then the tool; never through a text field, dialog, menu or the palette, never also closing the find bar or full screen. View › Page display › Rulers (Ctrl/Cmd+R) and Guides: rulers in pt, in, mm or cm, guides pulled from the rulers or made by double-clicking them, moved, selected and deleted with the Hand tool, cleared per page or all, kept in PDF user space, and shared by every tab and tile. Remembered per PDF in PdfCraft's settings (path checked against /ID or the page count), never written into the PDF. Estimates unchanged.
+
 - **2026-10-19 (M14, #3373):** The main menu and its long submenus scroll in short windows, keeping their commands reachable. Estimates unchanged.
 
 - **2026-10-19 (M3, #3387):** Save-prompt shortcuts yield to later consent and utility dialogs; a synthetic UI regression checks that an edited document stays open. Estimates unchanged.

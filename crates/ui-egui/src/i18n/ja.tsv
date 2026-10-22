@@ -2485,3 +2485,11 @@ animation effects	Off	オフ
 	Nearest 1/8 inch	1/8 インチ単位
 	Type a length such as 12'-5 3/8" or 12.5'.	12'-5 3/8" や 12.5' のように長さを入力してください。
 	Type the real distance between the two points.	2 点間の実際の距離を入力してください。
+# This fork (sefr-14/pdfcraft): View > Page display > Rulers and Guides, the ruler units (OV11).
+	Rulers	定規
+	Guides	ガイド
+	Points (pt)	ポイント (pt)
+# This fork (sefr-14/pdfcraft): guides on the pages, Clear Guides on Page / Clear All Guides (OV11).
+	Clear Guides on Page	ページのガイドを消去
+	Clear All Guides	すべてのガイドを消去
+	This page already has as many guides as PdfCraft keeps.	このページには PdfCraft が保持できる数のガイドがすでにあります。

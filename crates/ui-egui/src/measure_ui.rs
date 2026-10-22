@@ -66,17 +66,23 @@ pub struct MeasureView {
     pub custom_unit: bool,
     /// The known distance as typed in feet and inches.
     pub known_text: String,
-    /// Two points were just clicked to calibrate: the known distance is asked for next.
-    pub calibrated: bool,
+    /// Two points were just clicked to calibrate: the known distance is asked for next, and
+    /// these are the scale fields from before the clicks, which Escape puts back (this fork,
+    /// OV11). Kept apart from `points`, so it is never taken for a measurement in progress.
+    pub pending_calibration: Option<CalibrationBefore>,
     focus_known: bool,
+    /// The known-distance field, as last drawn: Escape in it cancels the pending calibration.
+    pub(crate) known_field: Option<egui::Id>,
     pub precision: u8,
     pub name: String,
     pub whole_page: bool,
     pub rect: [f64; 4],
     pub label: String,
     seeded_page: Option<usize>,
-    /// What the pointer snapped to, and where, when it was last over a page (tests read it).
+    /// What the pointer snapped to, and where, while it is over a page (tests read it).
     pub snapped: Option<(Point, SnapKind)>,
+    /// The page `snapped` is on.
+    snapped_on: Option<usize>,
     /// Why the last click placed or kept nothing, on the page it was on (shown at the pointer
     /// and in the panel).
     pub notice: Option<(usize, String)>,
@@ -108,8 +114,9 @@ impl Default for MeasureView {
             feet_inches: false,
             custom_unit: false,
             known_text: String::new(),
-            calibrated: false,
+            pending_calibration: None,
             focus_known: false,
+            known_field: None,
             precision: 2,
             name: "Drawing scale".into(),
             whole_page: true,
@@ -117,6 +124,7 @@ impl Default for MeasureView {
             label: String::new(),
             seeded_page: None,
             snapped: None,
+            snapped_on: None,
             notice: None,
             snappers: Vec::new(),
             lines_read: 0,
@@ -125,13 +133,59 @@ impl Default for MeasureView {
         }
     }
 }
+/// The Drawing scale fields as they were before two points were clicked to calibrate.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CalibrationBefore {
+    drawing_points: f64,
+    real_distance: f64,
+    unit: String,
+    feet_inches: bool,
+    custom_unit: bool,
+    known_text: String,
+}
+
 impl MeasureView {
+    /// Drop the measurement in progress and what it shows: points, live reading, the notice at
+    /// the pointer, the last error and snap target. A pending calibration is a separate step.
     pub fn cancel(&mut self) {
         self.points.clear();
         self.page = None;
         self.reading = None;
         self.scale = None;
         self.notice = None;
+        self.error = None;
+        self.snapped = None;
+    }
+
+    /// The known distance is asked for: two points were clicked to calibrate.
+    pub fn calibrating(&self) -> bool {
+        self.pending_calibration.is_some()
+    }
+
+    /// Cancel a calibration waiting for its known distance: the scale fields go back to what
+    /// they held before the two clicks. A scale applied earlier is in the document and stays.
+    /// Returns whether there was one.
+    pub fn cancel_calibration(&mut self) -> bool {
+        let Some(before) = self.pending_calibration.take() else { return false };
+        self.drawing_points = before.drawing_points;
+        self.real_distance = before.real_distance;
+        self.unit = before.unit;
+        self.feet_inches = before.feet_inches;
+        self.custom_unit = before.custom_unit;
+        self.known_text = before.known_text;
+        self.focus_known = false;
+        true
+    }
+
+    fn calibration_before(&self) -> CalibrationBefore {
+        CalibrationBefore {
+            drawing_points: self.drawing_points,
+            real_distance: self.real_distance,
+            unit: self.unit.clone(),
+            feet_inches: self.feet_inches,
+            custom_unit: self.custom_unit,
+            known_text: self.known_text.clone(),
+        }
     }
 
     /// The drawn lines of `page` for snapping: read once on a worker per content generation and
@@ -329,7 +383,8 @@ pub(crate) fn page_input(
     let xf = cx.xf;
     let author = &cx.prefs.author;
     let Some(info) = doc.info.pages.get(page) else { return };
-    let pos = ui.input(|i| i.pointer.hover_pos()).filter(|p| xf.rect.contains(*p));
+    // Not through a window drawn over the page, such as the Overlay wizard (this fork, OV11).
+    let pos = ui.input(|i| i.pointer.hover_pos()).filter(|p| xf.rect.contains(*p) && ui.ctx().layer_id_at(*p) == Some(ui.layer_id()));
     let current = view.current;
     let state = &mut view.measure;
     if !doc.editable() {
@@ -346,10 +401,8 @@ pub(crate) fn page_input(
         state.tool = Some(tool);
     }
     // Keys belong to a focused text field (the label, unit or viewport name) when there is one.
+    // Escape is not read here: `PdfCraftApp::escape_step` takes one step back per press.
     let typing = ui.ctx().egui_wants_keyboard_input();
-    if !typing && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-        state.cancel();
-    }
     let screen = |p: Point| {
         let v = info.user_to_view(p[0] as f32, p[1] as f32);
         xf.norm_to_screen(v[0] / xf.pw, v[1] / xf.ph)
@@ -406,6 +459,7 @@ pub(crate) fn page_input(
         }
         hover = Some(point);
         state.snapped = snap.map(|kind| (point, kind));
+        state.snapped_on = Some(page);
         if loading {
             // Never a silent unsnapped point: a click that waited `CLICK_WAIT` for the lines in
             // vain places none and says why; Snap to drawing off places points at once.
@@ -422,6 +476,10 @@ pub(crate) fn page_input(
             _ if !allowed && !loading => notice(ui, pos, tl!("This PDF doesn't allow comments, so measurements and scales can't be saved.")),
             _ => {}
         }
+    } else if state.snapped_on == Some(page) {
+        // The pointer left this page, or a window covers it: no target here any more.
+        state.snapped = None;
+        state.snapped_on = None;
     }
     // The pointer's target, before the first point too (this fork, OV10).
     let stroke = Stroke::new(1.5, Color32::from_rgb(0, 120, 214));
@@ -542,8 +600,11 @@ fn finish(state: &mut MeasureView, pending: &mut Option<Edit>, doc: &Document, p
             let a = doc.measurement_to_view(page, *a);
             let b = doc.measurement_to_view(page, *b);
             if let (Ok(a), Ok(b)) = (a, b) {
+                // Clicking two more points keeps what the fields held before the first pair.
+                if state.pending_calibration.is_none() {
+                    state.pending_calibration = Some(state.calibration_before());
+                }
                 state.drawing_points = measure::distance(a, b);
-                state.calibrated = true;
                 state.focus_known = true;
             }
         }
@@ -614,7 +675,7 @@ fn panel_body(app: &mut PdfCraftApp, ui: &mut egui::Ui, _t: &Tokens) {
             state.feet_inches = scale.feet_inches.is_some();
             state.custom_unit = !state.feet_inches && LengthUnit::from_label(&state.unit).is_none();
             state.known_text = units::feet_inches(state.real_distance, EIGHTHS);
-            state.calibrated = false;
+            state.pending_calibration = None;
         }
     }
     ui.label(tl!("Click vertices. Enter or double-click finishes a perimeter or area. Click the first point to close an area."));
@@ -648,7 +709,7 @@ fn panel_body(app: &mut PdfCraftApp, ui: &mut egui::Ui, _t: &Tokens) {
     }
     ui.horizontal(|ui| {
         ui.label(tl!("Label"));
-        ui.add(crate::widgets::line(&mut state.label).desired_width(130.0).char_limit(128));
+        ui.add(crate::widgets::line(&mut state.label).id(egui::Id::new("measure-label")).desired_width(130.0).char_limit(128));
     });
     ui.separator();
     ui.add(widgets::checkbox(&mut state.snap_enabled, tl!("Snap to drawing")));
@@ -723,7 +784,7 @@ fn panel_body(app: &mut PdfCraftApp, ui: &mut egui::Ui, _t: &Tokens) {
             });
         match result {
             Ok(scale) => {
-                state.calibrated = false;
+                state.pending_calibration = None;
                 let [x, y, w, h] = if state.whole_page { [0.0, 0.0, f64::from(info.width), f64::from(info.height)] } else { state.rect };
                 let a = info.view_to_user(x as f32, y as f32);
                 let b = info.view_to_user((x + w) as f32, (y + h) as f32);
@@ -745,7 +806,7 @@ fn panel_body(app: &mut PdfCraftApp, ui: &mut egui::Ui, _t: &Tokens) {
         app.quick_tool = QuickTool::Select;
     }
     if let Some(tool) = tool {
-        app.views[index].measure.cancel();
+        pick(&mut app.views[index]);
         app.quick_tool = QuickTool::Measure(tool);
     }
     if export {
@@ -788,7 +849,7 @@ fn scale_rows(ui: &mut egui::Ui, state: &mut MeasureView) {
         ui.add(egui::DragValue::new(&mut state.drawing_points).range(0.000001..=1e9).prefix("pt "));
         ui.label("=");
     });
-    if state.calibrated {
+    if state.calibrating() {
         ui.label(egui::RichText::new(tl!("Type the real distance between the two points.")).strong());
     }
     let focus = std::mem::take(&mut state.focus_known);
@@ -808,6 +869,7 @@ fn scale_rows(ui: &mut egui::Ui, state: &mut MeasureView) {
         if focus {
             known.request_focus();
         }
+        state.known_field = Some(known.id);
     });
     if state.feet_inches && known_feet(&state.known_text).is_none() {
         ui.colored_label(Color32::from_rgb(190, 50, 50), tl!("Type a length such as 12'-5 3/8\" or 12.5'."));
@@ -851,13 +913,20 @@ fn scale_rows(ui: &mut egui::Ui, state: &mut MeasureView) {
     }
 }
 
+/// A measuring tool is picked in `view`: nothing in progress, and no comment left selected from
+/// before, which the next Backspace (a vertex here) would delete too (this fork, OV11).
+fn pick(view: &mut DocView) {
+    view.measure.cancel();
+    view.comments.selected = None;
+}
+
 pub(crate) fn command(app: &mut PdfCraftApp, id: &str) {
     app.left = LeftPanel::Tool("measure");
     app.left_open = true;
     if let Some((index, _)) = app.active_ids()
         && let Some(tool) = id.strip_prefix("measure.").and_then(Tool::from_name)
     {
-        app.views[index].measure.cancel();
+        pick(&mut app.views[index]);
         app.quick_tool = QuickTool::Measure(tool);
     }
     if id == "measure.export" {

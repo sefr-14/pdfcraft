@@ -2485,3 +2485,11 @@ animation effects	Off	Désactivés
 	Nearest 1/8 inch	Au 1/8 de pouce près
 	Type a length such as 12'-5 3/8" or 12.5'.	Saisissez une longueur comme 12'-5 3/8" ou 12.5'.
 	Type the real distance between the two points.	Saisissez la distance réelle entre les deux points.
+# This fork (sefr-14/pdfcraft): View > Page display > Rulers and Guides, the ruler units (OV11).
+	Rulers	Règles
+	Guides	Repères
+	Points (pt)	Points (pt)
+# This fork (sefr-14/pdfcraft): guides on the pages, Clear Guides on Page / Clear All Guides (OV11).
+	Clear Guides on Page	Effacer les repères de la page
+	Clear All Guides	Effacer tous les repères
+	This page already has as many guides as PdfCraft keeps.	Cette page a déjà autant de repères que PdfCraft en conserve.

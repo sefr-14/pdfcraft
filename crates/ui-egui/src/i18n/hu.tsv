@@ -2484,3 +2484,11 @@ animation effects	Off	Ki
 	Nearest 1/8 inch	1/8 hüvelykre kerekítve
 	Type a length such as 12'-5 3/8" or 12.5'.	Írjon be egy hosszt, például 12'-5 3/8" vagy 12.5'.
 	Type the real distance between the two points.	Írja be a két pont közötti valódi távolságot.
+# This fork (sefr-14/pdfcraft): View > Page display > Rulers and Guides, the ruler units (OV11).
+	Rulers	Vonalzók
+	Guides	Segédvonalak
+	Points (pt)	Pont (pt)
+# This fork (sefr-14/pdfcraft): guides on the pages, Clear Guides on Page / Clear All Guides (OV11).
+	Clear Guides on Page	Segédvonalak törlése az oldalon
+	Clear All Guides	Összes segédvonal törlése
+	This page already has as many guides as PdfCraft keeps.	Ezen az oldalon már annyi segédvonal van, amennyit a PdfCraft megőriz.

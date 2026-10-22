@@ -169,7 +169,55 @@ Perimeter, Area and Calibrate from two points) is made for scaled drawings:
   The feet-and-inches scale is saved as the standard two-part number format (ISO 32000-2 §12.9.2)
   and read back from other files that use it; other fractional or compound formats are listed as
   unsupported and left untouched.
+- **Escape steps back one thing per press.** The first press cancels the points of a distance,
+  perimeter or area in progress, or a calibration waiting for its known distance (the scale
+  fields go back to what they held; a scale applied earlier stays); the next press leaves the
+  tool for Select. With nothing in progress, one press leaves the tool, and a measurement just
+  made stays. Escape in a text field (the known distance, Label, a custom unit, the find field)
+  only leaves the field, and Escape that closes a dialog, menu or the command palette does only
+  that. One press never also closes the find bar or leaves full screen, and it never changes the
+  PDF.
 - Automation: `measure_scale` takes `unit: "ft-in"`.
+
+**Also: Rulers and guides.** View › Page display › **Rulers** (Ctrl+R, ⌘R on macOS; also on the
+rail's Page display menu and in the command palette) shows rulers along the top and left of the
+page view, as in Foxit PDF Reader:
+
+- **Rulers** read from the top-left corner of the page under the pointer (else the current page),
+  in lengths on paper. Right-click a ruler for its unit: Points, Inches, Millimeters or
+  Centimeters. A PDF seen for the first time starts with your Units preference.
+- **Making a guide.** Drag down from the top ruler for a horizontal guide, or right from the left
+  ruler for a vertical one, and let go over the page (let go off the pages and nothing is made).
+  Or double-click a ruler: the top one for a vertical guide across the current page at that point,
+  the left one for a horizontal guide.
+- **Moving and deleting.** With the Hand tool, drag a guide (the pointer shows a resize arrow
+  near one) to move it; click it to select it, then press Delete or Backspace to delete it.
+  Escape while dragging puts the guide back; Escape with a guide selected lets go of it.
+  Right-click a ruler for **Clear Guides on Page** (the current page) and **Clear All Guides**,
+  also in the command palette.
+- **Showing.** View › Page display › **Guides** shows or hides the guides without deleting them.
+  With the rulers hidden, guides still show and can be moved and deleted.
+- **Guides stay on the drawing.** A guide is kept in the page's own coordinates, so zooming,
+  scrolling, rotating the view, a page's crop box, rotation or scale never move it off what it
+  marks, and it follows its page when pages are moved, inserted or deleted (Undo brings a
+  deleted page's guides back).
+- **Remembered per PDF, never in it.** Rulers on or off, guides shown or hidden, the unit and
+  the guides are kept for each PDF in PdfCraft's own settings file (`app.ron`, with your other
+  preferences: on Windows in `%APPDATA%\PdfCraft\data`, or `PdfCraftData` beside the program in
+  portable mode) and come back when the file is opened again. They are never written into the
+  PDF: the document isn't marked as changed, nothing goes on the Undo list, and guides are never
+  printed, exported, snapshotted or put into Overlay output.
+- **Every view of the PDF shares them.** A guide made, moved or deleted in one tab (Duplicate
+  Tab) or tile shows in the others; each keeps its own page, zoom and scroll.
+- **Which file is which.** A file is recognised by its path, checked against the identifier the
+  PDF carries (or its page count, for a PDF without one). A different PDF saved at the same path
+  gets none of the old one's guides. A moved or renamed file keeps its guides when it has the
+  same identifier and page count and nothing is left at the old path. Save As copies them to the
+  new file. A document that hasn't been saved to a file (a new, combined or downloaded one) keeps
+  them until you close it, or until Save As gives it a file. On the web, files have no path, so
+  rulers and guides last until the tab is closed.
+- Automation: `ui.set` `rulers`, `guides` and `ruler_unit`, and `ui.state` lists the guides
+  (control channel). There is no headless tool: these are app settings, not part of the document.
 
 **Also: Check for updates finds this fork's Windows build.** Help › Check for updates (or "Check
 for updates…" in the command palette) no longer offers upstream's releases, which don't have the

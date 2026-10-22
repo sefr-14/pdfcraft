@@ -37,6 +37,12 @@ mod chrome;
 mod combine_grid;
 mod image_pick;
 mod overlay_ui;
+// This fork: Escape takes one step back per press (OV11).
+mod escape;
+// This fork: rulers and guides, remembered per PDF in the settings (OV11).
+pub mod doc_prefs;
+mod guides;
+mod rulers;
 mod tags_ui;
 pub use combine_grid::ThumbState as CombineThumb;
 mod combine_ui;
@@ -168,6 +174,10 @@ mod thin_lines_tests;
 #[cfg(test)]
 #[cfg(not(target_arch = "wasm32"))]
 mod measure_tests;
+
+#[cfg(test)]
+#[cfg(not(target_arch = "wasm32"))]
+mod rulers_tests;
 
 use pdfcraft_engine::{DocId, Session};
 
@@ -702,6 +712,14 @@ pub struct PdfCraftApp {
     pub compare: Option<compare_ui::CompareState>,
     /// Overlay compare (this fork): the wizard, kept while closed so it resumes where it was left.
     pub(crate) overlay: Option<Box<overlay_ui::Wizard>>,
+    /// This frame's Escape belongs to a dialog, field, menu or the palette: nothing under it
+    /// reacts (this fork, OV11: `escape`).
+    pub(crate) escape_reserved: bool,
+    /// The widget with keyboard focus at the end of the last frame (egui drops it on Escape
+    /// before the app sees the press).
+    keyboard_owner: Option<egui::Id>,
+    /// Rulers and guides of every document, remembered per PDF (this fork, OV11).
+    pub doc_prefs: doc_prefs::DocPrefs,
     /// The JavaScript console and the Document JavaScripts draft.
     pub js_console: js_ui::JsConsole,
     pub doc_js: js_ui::DocJsDraft,
@@ -1032,6 +1050,9 @@ impl PdfCraftApp {
             compare_old: None,
             compare: None,
             overlay: None,
+            escape_reserved: false,
+            keyboard_owner: None,
+            doc_prefs: doc_prefs::DocPrefs::default(),
             js_console: Default::default(),
             doc_js: Default::default(),
             a11y: a11y_ui::A11yState::default(),
@@ -2446,6 +2467,8 @@ impl PdfCraftApp {
         v["hide_empty_highlight_hover"] = serde_json::Value::Bool(self.comment_prefs.hide_empty_highlight_hover);
         // This fork (OV9): View ▸ Thin lines.
         v["thin_lines"] = serde_json::Value::Bool(self.thin_lines);
+        // This fork (OV11): rulers and guides, per PDF.
+        v["document_views"] = self.doc_prefs.to_json();
         v.to_string()
     }
 
@@ -2537,6 +2560,8 @@ impl PdfCraftApp {
         if let Some(on) = v["thin_lines"].as_bool() {
             self.set_thin_lines(on);
         }
+        // This fork (OV11): rulers and guides, per PDF (untrusted: see `doc_prefs`).
+        self.doc_prefs.load(&v["document_views"]);
         // Settings are untrusted: a size out of range follows the system instead.
         self.ui_scale = v["ui_scale"].as_f64().and_then(ui_scale::valid);
         // Settings are untrusted: an unusable pattern keeps the default.
@@ -2621,6 +2646,10 @@ impl PdfCraftApp {
     ///
     /// This is the seed of the UI control channel (M3.9): the same verbs become `ui.set` calls.
     pub fn set_option(&mut self, key: &str, value: &str) -> Result<(), String> {
+        // This fork (OV11): the active PDF's rulers and guides.
+        if matches!(key, "rulers" | "guides" | "ruler_unit") {
+            return self.set_ruler_option(key, value);
+        }
         let view = self.active.and_then(|i| self.views.get_mut(i));
         match (key, view) {
             ("language", _) => {
@@ -2938,10 +2967,13 @@ impl PdfCraftApp {
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
         use egui::Key;
+        // This frame's Escape is free until something owns it (this fork, OV11: `escape`).
+        self.escape_reserved = false;
         // "Save changes?" is modal: its keys are its own (⌘D is Don't save there, not Document
         // properties; Escape cancels it rather than clearing a selection), and nothing may run
         // underneath it. They are read here, before the canvas can consume them.
         if self.close_request.is_some() {
+            self.escape_reserved = true;
             // These dialogs are drawn after the save prompt and own the keyboard while open.
             // Don't let Escape or Return resolve unsaved work underneath one.
             let covered = self.pending_link.is_some()
@@ -2958,6 +2990,7 @@ impl PdfCraftApp {
         // The other dialogs and prompts are modal too (⌘W closed the file behind Preferences,
         // #870).
         if self.modal_open() {
+            self.escape_reserved = true;
             return;
         }
         // Escape ends a middle-button gesture: the active view's, or in Tile View any tile's.
@@ -2966,10 +2999,8 @@ impl PdfCraftApp {
             return;
         }
         self.registry_shortcuts(ctx);
-        // (Esc closes a Combine file shown large first.)
-        if self.full_screen && self.combine_tab.preview.is_none() && ctx.input(|i| i.key_pressed(Key::Escape)) {
-            self.set_full_screen(ctx, false);
-        }
+        // One step back per press; leaving full screen is the last one (`escape_late`).
+        self.escape_step(ctx);
         if let Some(i) = self.active {
             // Select all belongs to the document or page grid, unless a text field or
             // overlay owns the keyboard. Other canvas shortcuts keep their own handling.
@@ -3103,6 +3134,13 @@ impl eframe::App for PdfCraftApp {
             self.window_state.keep(storage, minimized);
         }
         storage.set_string("pdfcraft", self.persist());
+        self.doc_prefs.written();
+    }
+
+    /// A ruler or guide change reaches the settings file within seconds (this fork, OV11);
+    /// otherwise eframe's interval.
+    fn auto_save_interval(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(if self.doc_prefs.changed() { 2 } else { 30 })
     }
 
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -3278,6 +3316,12 @@ impl eframe::App for PdfCraftApp {
         }
         // Tabs that show a document changed through another of its tabs catch up first.
         self.sync_shared_views();
+        // Rulers and guides follow opened, changed, saved and closed documents (OV11).
+        self.sync_doc_prefs();
+        if self.doc_prefs.changed() {
+            // A frame once `auto_save_interval` has passed, for eframe to write the settings.
+            ctx.request_repaint_after(std::time::Duration::from_millis(2100));
+        }
         self.tile_frame.clear();
         for view in &mut self.views {
             view.begin_render_frame();
@@ -3310,6 +3354,7 @@ impl eframe::App for PdfCraftApp {
             // Notices too: a refused field value or a failed save must be seen in full screen.
             self.show_progress(&ctx);
             widgets::toast(self, &ctx);
+            self.escape_late(&ctx);
             self.finish_render_frame(&ctx);
             return;
         }
@@ -3355,11 +3400,20 @@ impl eframe::App for PdfCraftApp {
         overlay_ui::show(self, &ctx);
         self.show_progress(&ctx);
         widgets::toast(self, &ctx);
+        self.escape_late(&ctx);
         self.finish_render_frame(&ctx);
     }
 }
 
 impl PdfCraftApp {
+    /// Rulers and guides of the documents with a tab: remembered ones applied when a document
+    /// opens, pages and saves followed, closed ones let go of (this fork, OV11).
+    pub(crate) fn sync_doc_prefs(&mut self) {
+        let views = &self.views;
+        let docs = self.session.docs().iter().filter(|d| views.iter().any(|v| v.id == d.id));
+        self.doc_prefs.sync(docs, self.units);
+    }
+
     fn finish_render_frame(&mut self, ctx: &egui::Context) {
         // The Combine grid's thumbnails, whichever tab shows (renders under way still finish).
         self.combine_thumbs_frame(ctx);

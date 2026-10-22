@@ -552,3 +552,239 @@ fn unusual_annotation_arrays_and_rotated_pages_keep_the_measurement() {
         assert!((shown - 200f64.hypot(100.0)).abs() < 1.5, "{name}: {points:?}");
     }
 }
+
+// ── Escape: one step back per press (this fork, OV11) ───────────────────────────────────────
+
+fn escape(h: &mut Harness<'static, PdfCraftApp>) {
+    h.key_press(egui::Key::Escape);
+    h.run_steps(3);
+}
+
+/// Nothing was edited: no change to save and no undo step.
+fn untouched(h: &Harness<'static, PdfCraftApp>, id: DocId) {
+    let doc = h.state().session.get(id).unwrap();
+    assert!(!doc.dirty, "Escape changed the document");
+    assert_eq!(doc.can_undo(), None, "Escape added an undo step");
+}
+
+#[test]
+fn escape_cancels_the_points_in_progress_then_leaves_the_tool() {
+    for (t, points) in [(Tool::Distance, 1), (Tool::Perimeter, 3), (Tool::Area, 3)] {
+        let (mut h, id) = harness(plain());
+        tool(&mut h, t);
+        for (x, y) in [(100.0, 100.0), (300.0, 200.0), (300.0, 100.0)].into_iter().take(points) {
+            click_at(&mut h, 0, x, y);
+        }
+        assert_eq!(h.state().views[0].measure.points.len(), points, "{t:?}");
+        escape(&mut h);
+        let app = h.state();
+        assert!(app.views[0].measure.points.is_empty() && app.views[0].measure.reading.is_none(), "{t:?}: the first press cancels");
+        assert_eq!(app.quick_tool, QuickTool::Measure(t), "{t:?}: the first press keeps the tool");
+        assert_eq!(kept(&h, id), 0, "{t:?}: nothing is kept");
+        untouched(&h, id);
+        escape(&mut h);
+        assert_eq!(h.state().quick_tool, QuickTool::Select, "{t:?}: the second press leaves the idle tool");
+        untouched(&h, id);
+    }
+}
+
+#[test]
+fn escape_after_a_measurement_leaves_the_tool_and_keeps_the_measurement() {
+    let (mut h, id) = harness(plain());
+    tool(&mut h, Tool::Distance);
+    click_at(&mut h, 0, 100.0, 100.0);
+    click_at(&mut h, 0, 300.0, 200.0);
+    assert_eq!(kept(&h, id), 1);
+    escape(&mut h);
+    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(kept(&h, id), 1, "the measurement stays");
+}
+
+#[test]
+fn escape_cancels_a_pending_calibration_and_puts_the_scale_fields_back() {
+    let (mut h, id) = harness(plain());
+    tool(&mut h, Tool::Calibrate);
+    let before = {
+        let m = &h.state().views[0].measure;
+        (m.drawing_points, m.real_distance, m.unit.clone(), m.known_text.clone())
+    };
+    click_at(&mut h, 0, 100.0, 100.0);
+    click_at(&mut h, 0, 300.0, 100.0);
+    let m = &h.state().views[0].measure;
+    assert!(m.calibrating() && m.points.is_empty(), "two clicks ask for the known distance");
+    assert!((m.drawing_points - 200.0).abs() < 1.0, "{}", m.drawing_points);
+    // The known-distance field takes the keyboard; Escape there is the calibration's own step.
+    assert!(h.ctx.memory(|mem| mem.focused()).is_some(), "the known-distance field has the keyboard");
+    escape(&mut h);
+    let m = &h.state().views[0].measure;
+    assert!(!m.calibrating(), "the first press cancels the calibration");
+    assert_eq!((m.drawing_points, m.real_distance, m.unit.clone(), m.known_text.clone()), before, "the fields are back");
+    assert_eq!(h.state().quick_tool, QuickTool::Measure(Tool::Calibrate), "the tool stays for the next press");
+    untouched(&h, id);
+    escape(&mut h);
+    assert_eq!(h.state().quick_tool, QuickTool::Select);
+
+    // Without the field focused (clicked away to the page's margin), the same single step.
+    tool(&mut h, Tool::Calibrate);
+    click_at(&mut h, 0, 100.0, 100.0);
+    click_at(&mut h, 0, 300.0, 100.0);
+    h.ctx.memory_mut(|mem| mem.stop_text_input());
+    h.run_steps(2);
+    escape(&mut h);
+    assert!(!h.state().views[0].measure.calibrating());
+    assert_eq!(h.state().quick_tool, QuickTool::Measure(Tool::Calibrate));
+    untouched(&h, id);
+}
+
+#[test]
+fn a_pending_calibration_is_not_taken_for_points_in_progress() {
+    // A first point of a new pair while the known distance is still asked for: the points go
+    // first, the calibration with the next press, the tool with the one after.
+    let (mut h, _) = harness(plain());
+    tool(&mut h, Tool::Calibrate);
+    click_at(&mut h, 0, 100.0, 100.0);
+    click_at(&mut h, 0, 300.0, 100.0);
+    h.ctx.memory_mut(|mem| mem.stop_text_input());
+    click_at(&mut h, 0, 100.0, 200.0);
+    let m = &h.state().views[0].measure;
+    assert!(m.calibrating() && m.points.len() == 1);
+    escape(&mut h);
+    let m = &h.state().views[0].measure;
+    assert!(m.calibrating() && m.points.is_empty(), "the points first");
+    escape(&mut h);
+    assert!(!h.state().views[0].measure.calibrating(), "then the calibration");
+    assert_eq!(h.state().quick_tool, QuickTool::Measure(Tool::Calibrate));
+    escape(&mut h);
+    assert_eq!(h.state().quick_tool, QuickTool::Select);
+}
+
+#[test]
+fn escape_in_a_measure_panel_field_only_leaves_the_field() {
+    let (mut h, id) = harness(plain());
+    tool(&mut h, Tool::Perimeter);
+    click_at(&mut h, 0, 100.0, 100.0);
+    click_at(&mut h, 0, 300.0, 200.0);
+    let label = egui::Id::new("measure-label");
+    h.ctx.memory_mut(|mem| mem.request_focus(label));
+    h.run_steps(2);
+    assert_eq!(h.ctx.memory(|mem| mem.focused()), Some(label));
+    escape(&mut h);
+    assert_eq!(h.state().views[0].measure.points.len(), 2, "the perimeter in progress stays");
+    assert_eq!(h.state().quick_tool, QuickTool::Measure(Tool::Perimeter));
+    assert_eq!(h.ctx.memory(|mem| mem.focused()), None, "the field let go of the keyboard");
+    escape(&mut h);
+    assert!(h.state().views[0].measure.points.is_empty(), "the next press cancels it");
+    untouched(&h, id);
+}
+
+#[test]
+fn one_escape_never_also_closes_the_find_bar_or_full_screen() {
+    let (mut h, id) = harness(plain());
+    tool(&mut h, Tool::Distance);
+    h.state_mut().views[0].find = Some(Default::default());
+    let ctx = h.ctx.clone();
+    h.state_mut().set_full_screen(&ctx, true);
+    h.run_steps(3);
+    click_at(&mut h, 0, 100.0, 100.0);
+    let steps = |h: &Harness<'static, PdfCraftApp>| {
+        let app = h.state();
+        (app.views[0].measure.points.len(), app.views[0].find.is_some(), app.quick_tool, app.full_screen)
+    };
+    assert_eq!(steps(&h), (1, true, QuickTool::Measure(Tool::Distance), true));
+    escape(&mut h);
+    assert_eq!(steps(&h), (0, true, QuickTool::Measure(Tool::Distance), true), "the points only");
+    escape(&mut h);
+    assert_eq!(steps(&h), (0, false, QuickTool::Measure(Tool::Distance), true), "then the find bar");
+    escape(&mut h);
+    assert_eq!(steps(&h), (0, false, QuickTool::Select, true), "then the tool");
+    escape(&mut h);
+    assert_eq!(steps(&h), (0, false, QuickTool::Select, false), "then full screen");
+    untouched(&h, id);
+}
+
+#[test]
+fn escape_for_a_dialog_the_palette_or_the_wizard_keeps_the_points() {
+    for over in ["dialog", "palette", "wizard"] {
+        let (mut h, id) = harness(plain());
+        tool(&mut h, Tool::Distance);
+        click_at(&mut h, 0, 100.0, 100.0);
+        match over {
+            "dialog" => h.state_mut().dialog = Some(crate::Dialog::Preferences),
+            "palette" => h.state_mut().palette_open = true,
+            _ => h.state_mut().overlay_open(),
+        }
+        h.run_steps(4);
+        if over == "wizard" {
+            // The pointer over the wizard's window, which covers the page.
+            let r = h.ctx.memory(|mem| mem.area_rect(crate::overlay_ui::wizard_id())).expect("the wizard is shown");
+            h.hover_at(r.center());
+            h.run_steps(2);
+        }
+        escape(&mut h);
+        let app = h.state();
+        assert_eq!(app.views[0].measure.points.len(), 1, "{over}: Escape there leaves the measurement alone");
+        assert_eq!(app.quick_tool, QuickTool::Measure(Tool::Distance), "{over}");
+        match over {
+            "dialog" => assert!(app.dialog.is_none(), "the dialog closes"),
+            "palette" => assert!(!app.palette_open, "the palette closes"),
+            _ => {}
+        }
+        untouched(&h, id);
+    }
+}
+
+#[test]
+fn the_wizard_over_the_page_doesnt_drive_the_measure_tool() {
+    let (mut h, _) = harness(plain());
+    tool(&mut h, Tool::Distance);
+    // The middle of the line from (200, 150) to (260, 150): a snap target while nothing covers it.
+    let p = at(&h, 0, 230.0, 150.0);
+    settle(&mut h, p);
+    assert_eq!(h.state().views[0].measure.snapped, Some(([230.0, 150.0], SnapKind::Midpoint)));
+    h.state_mut().overlay_open();
+    h.run_steps(4);
+    let r = h.ctx.memory(|mem| mem.area_rect(crate::overlay_ui::wizard_id())).expect("the wizard is shown");
+    assert!(r.contains(p), "the wizard covers that point");
+    h.hover_at(p + egui::vec2(0.5, 0.0));
+    h.run_steps(3);
+    assert_eq!(h.state().views[0].measure.snapped, None, "no snap target through the wizard");
+}
+
+#[test]
+fn escape_in_an_inactive_tile_leaves_its_measurement_alone() {
+    let mut h = harness_with(2600.0, |app| {
+        app.open_bytes("plan.pdf", None, plain()).unwrap();
+        app.open_bytes("detail.pdf", None, plain()).unwrap();
+        app.set_view_layout(ViewLayout::Tiles);
+        app.active = Some(0);
+    });
+    tool(&mut h, Tool::Perimeter);
+    click_at(&mut h, 0, 100.0, 100.0);
+    click_at(&mut h, 0, 300.0, 200.0);
+    h.state_mut().active = Some(1);
+    h.run_steps(2);
+    escape(&mut h);
+    assert_eq!(h.state().views[0].measure.points.len(), 2, "the inactive tile keeps its perimeter");
+    assert_eq!(h.state().quick_tool, QuickTool::Select, "the active tile had nothing to cancel");
+}
+
+#[test]
+fn backspace_removes_a_vertex_and_never_a_selected_comment_too() {
+    let annot = "5 0 obj << /Type /Annot /Subtype /Square /Rect [300 200 360 260] /C [1 0 0] >> endobj\n";
+    let (mut h, id) = harness(pdf("", "/Annots [5 0 R]", annot, LINES));
+    tool(&mut h, Tool::Perimeter);
+    click_at(&mut h, 0, 100.0, 100.0);
+    click_at(&mut h, 0, 300.0, 50.0);
+    // A comment selected meanwhile (a right-click selects one with any tool).
+    h.state_mut().views[0].comments.selected = Some((0, 0));
+    h.key_press(egui::Key::Backspace);
+    h.run_steps(3);
+    assert_eq!(h.state().views[0].measure.points.len(), 1, "Backspace removed the last vertex");
+    assert_eq!(h.state().session.get(id).unwrap().info.annotations.len(), 1, "and not the comment");
+    untouched(&h, id);
+    // Picking a measuring tool leaves no comment selected for a later Backspace to delete.
+    h.state_mut().views[0].comments.selected = Some((0, 0));
+    h.state_mut().execute("measure.distance");
+    h.run_steps(2);
+    assert_eq!(h.state().views[0].comments.selected, None);
+}
