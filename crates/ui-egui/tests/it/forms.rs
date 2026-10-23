@@ -500,11 +500,29 @@ fn wait_for_file(h: &mut Harness<'static, PdfCraftApp>, path: &std::path::Path) 
     h.run_steps(1);
 }
 
+/// A fresh directory for one test's files. Every integration test runs in one process
+/// (`tests/it`), and two tests here once picked the same name ("same-frame"): each emptied the
+/// other's directory between its save and its read. The counter gives every call its own.
 fn scratch(name: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("pdfcraft-forms-{name}-{}", std::process::id()));
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("pdfcraft-forms-{name}-{}-{n}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
+}
+
+/// Two tests that pick the same name still get their own directories (SYNC.10c: the Windows
+/// runner lost `tabbing_back_…`'s saved file to `typing_and_saving_in_the_same_frame_…`, which
+/// also used "same-frame").
+#[test]
+fn scratch_directories_never_collide() {
+    let first = scratch("collide");
+    let second = scratch("collide");
+    assert_ne!(first, second);
+    assert!(first.is_dir() && second.is_dir(), "the second call leaves the first one's directory alone");
+    let _ = std::fs::remove_dir_all(&first);
+    let _ = std::fs::remove_dir_all(&second);
 }
 
 #[test]

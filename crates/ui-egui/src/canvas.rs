@@ -240,6 +240,12 @@ pub struct Find {
     pub whole_words: bool,
     /// Shown in the Search panel (Advanced Search) instead of the find bar.
     pub in_panel: bool,
+    /// The page viewed when the search last ran: it picks the first match at or after it.
+    pub origin: usize,
+    /// Whether `current` is still the search's own pick, with no jump since it ran. Pages' text
+    /// comes from the render workers in no fixed order, so a page read later can hold an earlier
+    /// match, and the pick then moves to it (this fork, SYNC.10c).
+    pub auto_pick: bool,
 }
 
 /// A text selection on one page.
@@ -1323,6 +1329,8 @@ impl DocView {
         f.case_query = f.query.clone();
         f.matches.clear();
         f.current = None;
+        f.origin = self.current;
+        f.auto_pick = true;
         if f.case_query.trim().is_empty() {
             return;
         }
@@ -1354,7 +1362,21 @@ impl DocView {
         f.matches.extend(text.find_opts(&f.case_query, f.case_sensitive, f.whole_words).into_iter().map(|r| (page, r)));
         f.matches.sort_by_key(|(p, r)| (*p, r.start));
         f.current = current_key.as_ref().and_then(|k| f.matches.iter().position(|m| m == k));
-        if f.current.is_none() && !f.matches.is_empty() {
+        if f.auto_pick {
+            // Still the search's own pick: the first match at or after the page viewed when it
+            // ran, whichever page's text came in first (this fork, SYNC.10c).
+            let origin = f.origin;
+            let first = f.matches.iter().position(|(p, _)| *p >= origin).or_else(|| (!f.matches.is_empty()).then_some(0));
+            if let Some(i) = first
+                && f.current != Some(i)
+            {
+                f.current = Some(i);
+                let page = f.matches.get(i).map(|m| m.0);
+                if let Some(p) = page {
+                    self.flash_match(p);
+                }
+            }
+        } else if f.current.is_none() && !f.matches.is_empty() {
             // First match at or after the page being viewed.
             let cur = self.current;
             let i = f.matches.iter().position(|(p, _)| *p >= cur).unwrap_or(0);
@@ -1435,6 +1457,10 @@ impl DocView {
     }
 
     pub fn go_to_page(&mut self, page: usize) {
+        // A jump (a search result, the next match, a page) ends the search's own pick.
+        if let Some(f) = self.find.as_mut() {
+            f.auto_pick = false;
+        }
         let page = page.min(self.page_count.saturating_sub(1));
         if page != self.current {
             // The view history (Previous view / Next view).
@@ -6323,6 +6349,56 @@ trailer << /Root 1 0 R >>
         assert_eq!(v.current, 3);
         assert!(v.back.is_empty());
         assert_eq!(v.forward, vec![4]);
+    }
+
+    /// Pages' text comes from the render workers in no fixed order. A search that ran before the
+    /// viewed page's text came in still picks the first match at or after that page once it does,
+    /// until a jump of the user's own (SYNC.10c: the Windows runner read page 2 first, and the
+    /// Search panel snapshot showed page 2's match picked).
+    #[test]
+    fn the_searchs_own_pick_follows_text_that_arrives_out_of_order() {
+        let text = || -> Arc<PageText> {
+            pdfcraft_render::PageText {
+                glyphs: vec![pdfcraft_render::TextGlyph {
+                    text: "match".into(),
+                    rect: [20.0, 260.0, 60.0, 280.0],
+                    quad: [[20.0, 260.0], [60.0, 260.0], [60.0, 280.0], [20.0, 280.0]],
+                    direction: [1.0, 0.0],
+                }],
+                line_of: vec![0],
+                space_before: vec![false],
+            }
+            .into()
+        };
+        let mut v = view(5, PageLayout::Single, true);
+        let pick = |v: &DocView| v.find.as_ref().and_then(|f| f.current.and_then(|c| f.matches.get(c))).map(|m| m.0);
+        // Searched on page 1 with only page 3's text in: page 3's match is picked and shown.
+        v.texts.insert(2, text());
+        v.find = Some(Find { query: "match".into(), ..Default::default() });
+        v.rerun_find();
+        assert_eq!((pick(&v), v.current), (Some(2), 2));
+        // Page 1's text comes in: its match is the first at or after page 1, so it is picked.
+        v.texts.insert(0, text());
+        v.refresh_find_page(0);
+        assert_eq!((pick(&v), v.current), (Some(0), 0), "the pick moves back to page 1");
+        assert!(v.back.is_empty(), "the search's own moves join no history");
+        // A page read again (its text was evicted) moves nothing.
+        v.goto = None;
+        v.refresh_find_page(2);
+        assert_eq!((pick(&v), v.goto), (Some(0), None));
+        // After the next match is asked for, a late page leaves the pick where the user put it.
+        v.find_step(true);
+        assert_eq!(pick(&v), Some(2));
+        v.texts.insert(1, text());
+        v.refresh_find_page(1);
+        assert_eq!((pick(&v), v.current), (Some(2), 2), "a jump ends the search's own pick");
+        // A new search picks again, from the page now viewed.
+        v.go_to_page(1);
+        v.rerun_find();
+        assert_eq!(pick(&v), Some(1));
+        v.texts.insert(4, text());
+        v.refresh_find_page(4);
+        assert_eq!(pick(&v), Some(1), "a later page's match doesn't take the pick");
     }
 
     #[test]
