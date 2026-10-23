@@ -7,7 +7,7 @@ use std::sync::Arc;
 use egui::{Pos2, pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use pdfcraft_engine::{DocId, Session, measure::snap::SnapKind};
+use pdfcraft_engine::{DocId, Session, measure::PageUnit, measure::snap::SnapKind};
 
 use crate::measure_ui::{Snapper, Tool};
 use crate::{PdfCraftApp, QuickTool, ViewLayout};
@@ -132,6 +132,14 @@ fn kept(h: &Harness<'static, PdfCraftApp>, id: DocId) -> usize {
     listing(h, id).measurements.len()
 }
 
+/// The drawing scale's page side in points: it is kept in its page unit (upstream's ratio, "1 mm =
+/// 50 mm"), so a calibration's two clicks read back as the distance between them.
+fn drawing_pt(h: &Harness<'static, PdfCraftApp>) -> f64 {
+    let app = h.state();
+    let m = &app.views[0].measure;
+    m.drawing_points * crate::measure_ui::page_unit_of(m.page_unit, &m.unit, app.units).points()
+}
+
 fn says(h: &Harness<'static, PdfCraftApp>, text: &str) -> bool {
     h.query_all_by_label_contains(text).next().is_some()
 }
@@ -231,7 +239,7 @@ fn a_drawing_scale_that_cant_be_read_is_explained_and_feet_and_inches_are_read()
         tool(&mut h, Tool::Calibrate);
         click_at(&mut h, 0, 100.0, 100.0);
         click_at(&mut h, 0, 300.0, 100.0);
-        assert!((h.state().views[0].measure.drawing_points - 200.0).abs() < 1.0, "{name}");
+        assert!((drawing_pt(&h) - 200.0).abs() < 1.0, "{name}");
     }
     // An Acrobat-style architectural scale, 1 in = 4 ft, in feet and inches.
     let (mut h, id) = harness(with_scale(
@@ -289,7 +297,7 @@ fn the_snap_target_shows_before_the_first_point_with_every_tool() {
         click_at(&mut h, 0, 51.5, 249.0);
         match t {
             Tool::Distance => assert_eq!(listing(&h, id).measurements[0].points, vec![[350.0, 50.0], [50.0, 250.0]]),
-            Tool::Calibrate => assert!((h.state().views[0].measure.drawing_points - 300f64.hypot(200.0)).abs() < 1e-9),
+            Tool::Calibrate => assert!((drawing_pt(&h) - 300f64.hypot(200.0)).abs() < 1e-9),
             _ => assert_eq!(h.state().views[0].measure.points, vec![[350.0, 50.0], [50.0, 250.0]], "{t:?}"),
         }
     }
@@ -469,7 +477,7 @@ fn calibrating_in_feet_and_inches_from_the_panel() {
     // Both ends of the bottom line, snapped: 300 pt apart.
     click_at(&mut h, 0, 50.5, 50.5);
     click_at(&mut h, 0, 349.5, 50.5);
-    assert!((h.state().views[0].measure.drawing_points - 300.0).abs() < 1e-9);
+    assert!((drawing_pt(&h) - 300.0).abs() < 1e-9);
     assert!(says(&h, "Type the real distance between the two points"));
     assert!(
         h.query_all_by(|n| n.is_focused() && n.role() == egui::accesskit::Role::SpinButton).next().is_some(),
@@ -606,19 +614,19 @@ fn escape_cancels_a_pending_calibration_and_puts_the_scale_fields_back() {
     tool(&mut h, Tool::Calibrate);
     let before = {
         let m = &h.state().views[0].measure;
-        (m.drawing_points, m.real_distance, m.unit.clone(), m.known_text.clone())
+        (m.drawing_points, m.real_distance, m.unit.clone(), m.known_text.clone(), m.page_unit)
     };
     click_at(&mut h, 0, 100.0, 100.0);
     click_at(&mut h, 0, 300.0, 100.0);
     let m = &h.state().views[0].measure;
     assert!(m.calibrating() && m.points.is_empty(), "two clicks ask for the known distance");
-    assert!((m.drawing_points - 200.0).abs() < 1.0, "{}", m.drawing_points);
+    assert!((drawing_pt(&h) - 200.0).abs() < 1.0, "{}", m.drawing_points);
     // The known-distance field takes the keyboard; Escape there is the calibration's own step.
     assert!(h.ctx.memory(|mem| mem.focused()).is_some(), "the known-distance field has the keyboard");
     escape(&mut h);
     let m = &h.state().views[0].measure;
     assert!(!m.calibrating(), "the first press cancels the calibration");
-    assert_eq!((m.drawing_points, m.real_distance, m.unit.clone(), m.known_text.clone()), before, "the fields are back");
+    assert_eq!((m.drawing_points, m.real_distance, m.unit.clone(), m.known_text.clone(), m.page_unit), before, "the fields are back");
     assert_eq!(h.state().quick_tool, QuickTool::Measure(Tool::Calibrate), "the tool stays for the next press");
     untouched(&h, id);
     escape(&mut h);
@@ -680,25 +688,36 @@ fn escape_in_a_measure_panel_field_only_leaves_the_field() {
 #[test]
 fn one_escape_never_also_closes_the_find_bar_or_full_screen() {
     let (mut h, id) = harness(plain());
+    let steps = |h: &Harness<'static, PdfCraftApp>| {
+        let app = h.state();
+        (app.views[0].measure.points.len(), app.views[0].find.is_some(), app.quick_tool, app.full_screen)
+    };
+    // Measuring with the find bar open: the points, then the find bar, then the tool.
+    tool(&mut h, Tool::Distance);
+    h.state_mut().views[0].find = Some(Default::default());
+    h.run_steps(3);
+    click_at(&mut h, 0, 100.0, 100.0);
+    assert_eq!(steps(&h), (1, true, QuickTool::Measure(Tool::Distance), false));
+    escape(&mut h);
+    assert_eq!(steps(&h), (0, true, QuickTool::Measure(Tool::Distance), false), "the points only");
+    escape(&mut h);
+    assert_eq!(steps(&h), (0, false, QuickTool::Measure(Tool::Distance), false), "then the find bar");
+    escape(&mut h);
+    assert_eq!(steps(&h), (0, false, QuickTool::Select, false), "then the tool");
+
+    // Full screen hides the tools and selects Select there, giving the tool back on leaving
+    // (upstream, review on #2070), so nothing is measured in it. With the find bar open, one
+    // press closes the find bar and the next leaves full screen, never both at once.
     tool(&mut h, Tool::Distance);
     h.state_mut().views[0].find = Some(Default::default());
     let ctx = h.ctx.clone();
     h.state_mut().set_full_screen(&ctx, true);
     h.run_steps(3);
-    click_at(&mut h, 0, 100.0, 100.0);
-    let steps = |h: &Harness<'static, PdfCraftApp>| {
-        let app = h.state();
-        (app.views[0].measure.points.len(), app.views[0].find.is_some(), app.quick_tool, app.full_screen)
-    };
-    assert_eq!(steps(&h), (1, true, QuickTool::Measure(Tool::Distance), true));
+    assert_eq!(steps(&h), (0, true, QuickTool::Select, true));
     escape(&mut h);
-    assert_eq!(steps(&h), (0, true, QuickTool::Measure(Tool::Distance), true), "the points only");
+    assert_eq!(steps(&h), (0, false, QuickTool::Select, true), "the find bar only");
     escape(&mut h);
-    assert_eq!(steps(&h), (0, false, QuickTool::Measure(Tool::Distance), true), "then the find bar");
-    escape(&mut h);
-    assert_eq!(steps(&h), (0, false, QuickTool::Select, true), "then the tool");
-    escape(&mut h);
-    assert_eq!(steps(&h), (0, false, QuickTool::Select, false), "then full screen");
+    assert_eq!(steps(&h), (0, false, QuickTool::Measure(Tool::Distance), false), "then full screen, the tool back");
     untouched(&h, id);
 }
 
@@ -787,4 +806,63 @@ fn backspace_removes_a_vertex_and_never_a_selected_comment_too() {
     h.state_mut().execute("measure.distance");
     h.run_steps(2);
     assert_eq!(h.state().views[0].comments.selected, None);
+}
+
+/// An open menu takes Escape first, as upstream does since #3535: the menu closes and the
+/// points stay; the next press cancels them (SYNC.10b, where the two Escape rules meet).
+#[test]
+fn escape_closes_an_open_menu_before_the_points() {
+    let (mut h, id) = harness(plain());
+    tool(&mut h, Tool::Distance);
+    click_at(&mut h, 0, 100.0, 100.0);
+    h.get_by_label_contains("Page display:").click();
+    h.run_steps(3);
+    assert!(egui::Popup::is_any_open(&h.ctx), "the rail's Page display menu is open");
+    escape(&mut h);
+    assert!(!egui::Popup::is_any_open(&h.ctx), "the menu closed");
+    assert_eq!(h.state().views[0].measure.points.len(), 1, "and the points stay");
+    escape(&mut h);
+    assert!(h.state().views[0].measure.points.is_empty(), "the next press cancels them");
+    assert_eq!(h.state().quick_tool, QuickTool::Measure(Tool::Distance));
+    untouched(&h, id);
+}
+
+/// Upstream's ratio (the page side in a page unit) with this fork's feet and inches and Escape
+/// (SYNC.10b): a calibration's page side is in the picked page unit, Escape gives the page unit
+/// back with the other fields, and the scale applied is a centimetre ratio shown in feet and
+/// inches.
+#[test]
+fn a_centimetre_ratio_calibrated_in_feet_and_inches_escape_then_apply() {
+    let (mut h, id) = harness(plain());
+    tool(&mut h, Tool::Calibrate);
+    pick_unit(&mut h, "Inches (in)", "Feet and inches (ft-in)");
+    h.state_mut().views[0].measure.page_unit = Some(PageUnit::Cm);
+    h.run_steps(2);
+    let fields = |h: &Harness<'static, PdfCraftApp>| {
+        let m = &h.state().views[0].measure;
+        (m.drawing_points, m.real_distance, m.unit.clone(), m.feet_inches, m.page_unit)
+    };
+    let before = fields(&h);
+    click_at(&mut h, 0, 100.0, 100.0);
+    click_at(&mut h, 0, 300.0, 100.0);
+    let cm = 72.0 / 2.54;
+    assert!((h.state().views[0].measure.drawing_points - 200.0 / cm).abs() < 0.05, "200 pt in centimetres");
+    // Inches picked for the page side meanwhile: Escape gives the centimetres back too.
+    h.state_mut().views[0].measure.page_unit = Some(PageUnit::In);
+    escape(&mut h);
+    assert!(!h.state().views[0].measure.calibrating());
+    assert_eq!(fields(&h), before, "every field back, the page unit included");
+    // Calibrate again and apply: 200 pt is 50 ft, a centimetre ratio shown in feet and inches.
+    click_at(&mut h, 0, 100.0, 100.0);
+    click_at(&mut h, 0, 300.0, 100.0);
+    type_feet(&mut h, "50'-0\"");
+    h.get_by_label("Apply scale").click();
+    h.run_steps(3);
+    let scale = h.state().session.get(id).unwrap().measurement_scale(0, [100.0, 100.0]).unwrap();
+    assert_eq!((scale.unit.as_str(), scale.feet_inches), ("ft", Some(8)));
+    assert!(scale.ratio.contains(" cm = "), "{}", scale.ratio);
+    tool(&mut h, Tool::Distance);
+    click_at(&mut h, 0, 100.0, 100.0);
+    click_at(&mut h, 0, 300.0, 100.0);
+    assert_eq!(listing(&h, id).measurements[0].reading.label, "50'-0\"");
 }

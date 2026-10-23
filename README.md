@@ -1,8 +1,12 @@
 > [!IMPORTANT]
 > **This is PdfCraft Overlay, an unofficial fork of [storytold/pdfcraft](https://github.com/storytold/pdfcraft).**
-> It is based on PdfCraft 0.11.0 by the ArtCraft team and adds an overlay compare for revisions of
+> It is based on PdfCraft 0.12.0 by the ArtCraft team and adds an overlay compare for revisions of
 > drawing sets. It is not made, endorsed or supported by the ArtCraft team. See
 > [About this fork](#about-this-fork); the rest of this README describes upstream PdfCraft.
+
+<p align="center">
+  <img src="assets/app-icon/hicolor/256x256/apps/ai.storyteller.pdfcraft.png" width="128" height="128" alt="PdfCraft icon: an engraved lion on a teal tile">
+</p>
 
 <h1 align="center">PdfCraft</h1>
 
@@ -65,6 +69,9 @@
 This repository, [sefr-14/pdfcraft](https://github.com/sefr-14/pdfcraft), is an unofficial fork of
 [storytold/pdfcraft](https://github.com/storytold/pdfcraft), based on PdfCraft by the ArtCraft team.
 It is not made, endorsed or supported by them, so report problems with the fork here, not upstream.
+
+Translations: upstream PdfCraft's labels keep all their translations. This fork's own labels are
+kept in English and Spanish; in other languages they may show in English.
 
 **What it adds: Overlay compare.** The Overlay button in the mode bar (also All tools › Compare
 files › Overlay two revisions) compares two revisions of a drawing set. A six-step wizard pairs the
@@ -313,6 +320,8 @@ Search the whole document as you type, step through matches with <kbd>⌘G</kbd>
 Right-click a PDF tab to close it, reopen the last closed file-backed tab, or reveal its file. Closing still asks about unsaved changes. Reopening reads the saved file from disk; it does not restore discarded edits. Reveal selects the file in Explorer or Finder. On Linux and FreeBSD it requests `org.freedesktop.FileManager1.ShowItems`, falling back to opening the containing directory with `xdg-open` when that service is unavailable. Reopen and Reveal are unavailable on the web; Reveal is also unavailable for pathless documents.
 
 Bookmarks, page thumbnails and the document's own page labels (i, ii, 1, 2…) keep you oriented in long documents. Search bookmark titles in the Bookmarks panel to find nested entries even when their parents are collapsed. Matches keep their ancestors for context; Clear restores the unfiltered tree without changing its expansion state.
+
+In **Inspector > Pages**, use **Thumbnail size** and the smaller/larger buttons to show more pages or inspect larger previews (50–150%). This changes only the thumbnails, keeping multi-page selection and the current page in view. The size belongs to the open document view and survives reloading its file; it is not remembered after restarting. Agents can set it with `ui.set {"key":"thumbnail-zoom","value":"75"}` and read `active.thumbnail_zoom` from `ui.state`.
 
 <table>
 <tr>
