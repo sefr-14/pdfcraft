@@ -1108,6 +1108,16 @@ fn shift_holds_each_new_vertex_of_connected_lines_and_polygons() {
     assert_eq!(polygon.points.len(), 3, "{:?}", polygon.points);
     assert!((polygon.points[1][1] - 40.0).abs() < 0.5 && (polygon.points[2][0] - 260.0).abs() < 0.5, "{:?}", polygon.points);
 
+    h.state_mut().set_option("quick", "cloud").unwrap();
+    shift(&mut h, true);
+    for p in [(20.0, 170.0), (100.0, 175.0), (95.0, 195.0), (20.0, 170.0)] {
+        click_pt(&mut h, p);
+    }
+    shift(&mut h, false);
+    let cloud = newest(&h);
+    assert_eq!((cloud.subtype.as_str(), cloud.points.len()), ("Polygon", 3), "a cloud closed on its first vertex: {:?}", cloud.points);
+    assert!((cloud.points[1][1] - 170.0).abs() < 0.5 && (cloud.points[2][0] - 100.0).abs() < 0.5, "{:?}", cloud.points);
+
     h.state_mut().set_option("quick", "square").unwrap();
     shift_drag_pt(&mut h, (20.0, 20.0), (120.0, 60.0));
     let r = comments(&h).into_iter().find(|a| a.subtype == "Square").expect("a rectangle").rect;

@@ -465,6 +465,10 @@ pub struct DocView {
     /// (fractions of the displayed page; `None` leaves that axis to `goto`) to put `rel` points
     /// from the viewport's top-left corner.
     goto_point: Option<(usize, Option<f32>, Option<f32>, Vec2)>,
+    /// Pending Find step (this fork, OV12): the chosen match's page and its view-space box, to
+    /// bring near the viewport's centre without changing zoom (resolved in
+    /// `document_area_with`, against that frame's layout).
+    reveal_match: Option<(usize, [f32; 4])>,
     /// Pending keyboard scrolling, in points down (negative: up): ↓ / ↑, and Page Down /
     /// Page Up where the pages scroll.
     pub key_scroll: f32,
@@ -680,6 +684,9 @@ pub struct DocView {
     /// in-flight ones cannot be cancelled mid-operator. Older tiles and the backdrop stay
     /// stretched meanwhile; fresh tiles go out once the pan settles.
     pub(crate) last_scroll: Vec2,
+    /// What `last_scroll` was measured against (this fork, OV12): a Find step keeps a match where
+    /// it is only if this frame's pages are laid out the same.
+    last_scroll_frame: Option<ScrollFrame>,
     /// Side-by-side compare: scroll to here this frame, following the other half.
     pub(crate) sync_scroll: Option<Vec2>,
     /// The page widget's id, by which the Hand tool finds its drag before the pages are laid out.
@@ -818,6 +825,7 @@ impl DocView {
             forward: Vec::new(),
             goto: None,
             goto_point: None,
+            reveal_match: None,
             key_scroll: 0.0,
             single_edges: None,
             flash: None,
@@ -899,6 +907,7 @@ impl DocView {
             last_scale: 0.0,
             sharp_hold_until: 0.0,
             last_scroll: Vec2::ZERO,
+            last_scroll_frame: None,
             sync_scroll: None,
             page_widget: None,
             pan_hold_until: 0.0,
@@ -946,6 +955,7 @@ impl DocView {
         }
         self.goto = None;
         self.goto_point = None;
+        self.reveal_match = None;
         self.zoom_anchor = None;
         self.flash = None;
         // Thumbnail drags hold page indexes from before the change.
@@ -1373,6 +1383,8 @@ impl DocView {
     pub fn rerun_find(&mut self) {
         let Some(f) = self.find.as_mut() else { return };
         f.case_query = f.query.clone();
+        // A step of the old query no longer applies.
+        self.reveal_match = None;
         f.matches.clear();
         f.current = None;
         f.origin = self.current;
@@ -1441,7 +1453,7 @@ impl DocView {
         f.current = Some(i);
         self.go_to_page(p);
         self.goto_point = None;
-        self.flash_match(p);
+        self.reveal(i, p);
     }
 
     /// Move to the next/previous match.
@@ -1458,7 +1470,28 @@ impl DocView {
         // Only explicit search navigation joins history; background refresh uses flash_match alone.
         self.go_to_page(p);
         self.goto_point = None;
-        self.flash_match(p);
+        self.reveal(next, p);
+    }
+
+    /// An explicit Find step to match `i` on page `p` (this fork, OV12): the match is brought
+    /// near the viewport's centre, at the same zoom, unless it is already in the middle half.
+    /// Without the page's text (not read yet) the page is shown as before.
+    fn reveal(&mut self, i: usize, p: usize) {
+        match self.match_box(i) {
+            Some(b) => {
+                self.goto = None;
+                self.reveal_match = Some((p, b));
+            }
+            None => self.flash_match(p),
+        }
+    }
+
+    /// Match `i`'s box in view space: the union of its glyphs' boxes.
+    fn match_box(&self, i: usize) -> Option<[f32; 4]> {
+        let (p, r) = self.find.as_ref()?.matches.get(i)?;
+        let mut boxes = self.texts.get(p)?.glyphs.get(r.clone())?.iter().map(|g| g.rect).filter(|b| b.iter().all(|v| v.is_finite()));
+        let first = boxes.next()?;
+        Some(boxes.fold(first, |a, b| [a[0].min(b[0]), a[1].min(b[1]), a[2].max(b[2]), a[3].max(b[3])]))
     }
 
     fn flash_match(&mut self, page: usize) {
@@ -1481,6 +1514,15 @@ impl DocView {
         let (_, xf) = self.screen_xforms.iter().find(|(p, _)| *p == page)?;
         let g = self.texts.get(&page)?.glyphs.get(glyph)?;
         Some(xf.view_rect(g.rect).center())
+    }
+
+    /// Where the current Find match is on screen this frame: its glyphs' boxes joined, if its
+    /// page is on screen and its text is loaded (UI tests and automation; this fork, OV12).
+    pub fn find_match_screen_rect(&self) -> Option<Rect> {
+        let i = self.find.as_ref()?.current?;
+        let (page, _) = self.find.as_ref()?.matches.get(i)?;
+        let (_, xf) = self.screen_xforms.iter().find(|(p, _)| p == page)?;
+        Some(xf.view_rect(self.match_box(i)?))
     }
 
     /// Selected text, if any (⌘C).
@@ -1526,6 +1568,8 @@ impl DocView {
         // Partial wheel motion belongs to the old place.
         self.reset_coarse_state();
         self.goto = Some((page, 0.0));
+        // Any jump replaces a pending Find step; the steps set theirs after this.
+        self.reveal_match = None;
         self.current = page;
     }
 
@@ -1679,6 +1723,7 @@ impl DocView {
         to.push(self.current);
         let page = page.min(self.page_count.saturating_sub(1));
         self.goto = Some((page, 0.0));
+        self.reveal_match = None;
         self.current = page;
         self.reset_coarse_state();
         true
@@ -2565,6 +2610,28 @@ fn annotation_hover_text(a: &pdfcraft_render::Annotation) -> Option<String> {
     Some(if body.is_empty() { who } else { format!("{who}\n{body}") })
 }
 
+/// The layout a scroll offset was measured against (this fork, OV12): the content and viewport
+/// sizes, the zoom and the view's turn.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ScrollFrame {
+    content: Vec2,
+    viewport: Vec2,
+    zoom: f32,
+    rotation: u16,
+}
+
+/// A Find match's view-space box `b` on a page laid out at `r` (scroll-content coordinates, its
+/// top `y_shift` above the content's), with its `/Rotate` and the view's turn: the box as
+/// `[x0, y0, x1, y1]` in content coordinates. `None` for a box that isn't finite.
+fn match_on_content(p: &pdfcraft_render::PageInfo, b: [f32; 4], view_rotation: u16, r: Rect, y_shift: f32) -> Option<[f32; 4]> {
+    let u = p.view_rect_to_user(b);
+    let [Some(ax), Some(ay)] = p.dest_fraction(Some(u[0]), Some(u[1]), view_rotation) else { return None };
+    let [Some(bx), Some(by)] = p.dest_fraction(Some(u[2]), Some(u[3]), view_rotation) else { return None };
+    let x = |f: f32| r.left() + f * r.width();
+    let y = |f: f32| r.top() - y_shift + f * r.height();
+    Some([x(ax.min(bx)), y(ay.min(by)), x(ax.max(bx)), y(ay.max(by))])
+}
+
 /// The scroll offset that puts `point` (content coordinates) at `rel` in the viewport, kept within
 /// the content as egui keeps it. egui clamps only after drawing, so an offset past the end showed
 /// the page misplaced for a frame and then jumped (zooming out beside a page that fits).
@@ -3380,6 +3447,9 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
         let max = vec2((content_w - avail.width()).max(0.0), (content_h - avail.height()).max(0.0));
         scroll = scroll.scroll_offset((view.last_scroll - moved).clamp(Vec2::ZERO, max));
     }
+    // Something else places the view this frame (this fork, OV12: a Find step can't trust where
+    // it was last frame then).
+    let moved_this_frame = view.sync_scroll.is_some() || view.zoom_anchor.is_some() || view.goto.is_some() || view.goto_point.is_some();
     if let Some(v) = view.sync_scroll.take() {
         scroll = scroll.scroll_offset(v);
     }
@@ -3515,6 +3585,29 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
         }
         if let Some(fy) = fy {
             scroll = scroll.vertical_scroll_offset((r.top() - y_shift + fy * r.height() - rel.y).clamp(0.0, max_y));
+        }
+    }
+    // A Find step (this fork, OV12): the match near the viewport's centre, at this zoom. It
+    // stays put when it is already wholly in the middle half of the viewport, judged from where
+    // the view was last frame only if nothing else moves it this frame and the pages are laid
+    // out as they were then; otherwise it is centred.
+    let reveal = view.reveal_match.take();
+    let placed = reveal.and_then(|(page, b)| match_on_content(info.pages.get(page)?, b, view.rotation, *rects.get(page)?, y_shift));
+    if let Some((page, _)) = reveal.filter(|_| placed.is_none()) {
+        // Not placeable (no such page laid out, a box that isn't finite): the page, as before.
+        view.goto = Some((page, 0.0));
+        ui.ctx().request_repaint();
+    }
+    if let Some([x0, y0, x1, y1]) = placed {
+        let size = avail.size();
+        let (max_x, max_y) = ((content_w - size.x).max(0.0), (content_h - size.y).max(0.0));
+        let frame = ScrollFrame { content: vec2(content_w, content_h), viewport: size, zoom: view.zoom, rotation: view.rotation };
+        let at = view.last_scroll;
+        let settled = !moved_this_frame && view.last_scroll_frame == Some(frame);
+        let in_middle = |lo: f32, hi: f32, from: f32, len: f32| lo >= from + len * 0.25 && hi <= from + len * 0.75;
+        if !(settled && in_middle(x0, x1, at.x, size.x) && in_middle(y0, y1, at.y, size.y)) {
+            let centre = pos2(x0 * 0.5 + x1 * 0.5, y0 * 0.5 + y1 * 0.5);
+            scroll = scroll.scroll_offset(vec2((centre.x - size.x / 2.0).clamp(0.0, max_x), (centre.y - size.y / 2.0).clamp(0.0, max_y)));
         }
     }
     let selection_wheel = view.selection_drag && navigation_enabled && unobstructed && !single_paging && ui.rect_contains_pointer(avail);
@@ -4499,6 +4592,8 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
         view.fling.moved((scroll_offset - view.last_scroll).length() > 0.01);
     }
     view.last_scroll = scroll_offset;
+    view.last_scroll_frame =
+        Some(ScrollFrame { content: vec2(content_w, content_h), viewport: avail.size(), zoom: view.zoom, rotation: view.rotation });
     let pan_held = now_settle < view.pan_hold_until;
     let (mut wanted, visible_now) = out.inner;
     // Single-page and two-page views draw only the current row, so the next one was first asked
@@ -6471,7 +6566,9 @@ trailer << /Root 1 0 R >>
                 v.go_to_match(0);
             }
             assert_eq!(v.back, vec![0], "explicit search jump must remember its origin");
-            assert_eq!(v.goto, Some((3, 0.5)), "keep the match offset instead of the page top");
+            // This fork (OV12): the match is brought near the centre, not to the page top.
+            assert_eq!(v.goto, None, "no page-top jump for a match whose box is known");
+            assert_eq!(v.reveal_match, Some((3, [20.0, 260.0, 60.0, 280.0])), "the match's box to centre");
             assert_eq!(v.current, 3);
             assert_eq!(v.current_page_label(None), "4");
             // Chrome refreshes the idle page box; navigation must not overwrite a draft
@@ -6489,6 +6586,30 @@ trailer << /Root 1 0 R >>
             assert!(v.forward.is_empty(), "a new explicit jump discards Forward");
             assert_eq!(v.back, vec![0]);
         }
+    }
+
+    /// OV12: a step to a match whose page text isn't read yet shows its page as before; any other
+    /// jump, a new query or a changed document drops a pending step, so an old one never moves
+    /// the view later.
+    #[test]
+    fn a_pending_find_step_falls_back_or_is_dropped() {
+        let mut v = history_search_view();
+        v.go_to_match(2);
+        assert_eq!((v.reveal_match, v.goto.map(|g| g.0)), (None, Some(1)), "page 2's text isn't read: its page");
+        v.go_to_match(0);
+        assert!(v.reveal_match.is_some());
+        v.go_to_page(4);
+        assert_eq!(v.reveal_match, None, "a page jump replaces it");
+        v.go_to_match(0);
+        assert!(v.view_history(false));
+        assert_eq!(v.reveal_match, None, "Previous view replaces it");
+        v.go_to_match(0);
+        v.rerun_find();
+        assert_eq!(v.reveal_match, None, "a new query drops it");
+        v.go_to_match(0);
+        let info = thumbnail_info(5);
+        v.document_changed(&info);
+        assert_eq!(v.reveal_match, None, "a changed document drops it");
     }
 
     #[test]

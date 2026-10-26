@@ -1418,8 +1418,8 @@ milestone = "M3"
 status = "shipped"
 commands = ["edit.find"]
 tools = []
-evidence = ["crates/ui-egui/tests/it/ui.rs::find_counts_matches_across_pages"]
-notes = ""
+evidence = ["crates/ui-egui/tests/it/ui.rs::find_counts_matches_across_pages", "crates/ui-egui/tests/it/viewer.rs::find_steps_centre_the_match_without_changing_zoom", "crates/ui-egui/tests/it/viewer.rs::a_find_step_moves_only_its_own_view", "crates/ui-egui/src/canvas.rs::a_pending_find_step_falls_back_or_is_dropped"]
+notes = "This fork (OV12): Next, Previous and a Search panel result bring the match near the middle of the page view at the same zoom, in every layout and view turn, unless it is already in the middle half; the search's own first pick still shows it near the top. Per view (Duplicate Tab, Tile View); in Compare the other half follows only when the half under the pointer steps."
 
 [[feature]]
 id = "view.find-options"
@@ -3751,8 +3751,8 @@ milestone = "M5"
 status = "shipped"
 commands = ["comment.line"]
 tools = ["comment_add"]
-evidence = ["crates/annot/src/tests.rs::every_tool_creates_a_drawable_comment", "crates/annot/src/tests.rs::a_positive_leader_length_puts_the_line_above_a_left_to_right_line_and_a_negative_one_below", "crates/annot/src/tests.rs::an_inline_caption_breaks_the_line_around_its_text"]
-notes = "A line without an appearance is drawn with its leader lines (/LL, /LLE, /LLO: the line sits |LL| + LLO from /L, on the left of travel for a positive /LL) and its caption (/Cap, /CP Inline or Top, /CO), endings at the line itself (ISO 32000-2 Table 178). Not yet: the tool can't add leader lines or a caption, the caption is always black Helvetica 10 (no /DS or rich-text styling), and drawing past /Rect is clipped (/Rect isn't grown)."
+evidence = ["crates/annot/src/tests.rs::every_tool_creates_a_drawable_comment", "crates/annot/src/tests.rs::a_positive_leader_length_puts_the_line_above_a_left_to_right_line_and_a_negative_one_below", "crates/annot/src/tests.rs::an_inline_caption_breaks_the_line_around_its_text", "crates/ui-egui/tests/it/comments.rs::shift_holds_a_drawn_line_or_arrow_level_or_plumb", "crates/ui-egui/tests/it/comments.rs::shift_follows_the_page_as_it_is_shown"]
+notes = "A line without an appearance is drawn with its leader lines (/LL, /LLE, /LLO: the line sits |LL| + LLO from /L, on the left of travel for a positive /LL) and its caption (/Cap, /CP Inline or Top, /CO), endings at the line itself (ISO 32000-2 Table 178). Not yet: the tool can't add leader lines or a caption, the caption is always black Helvetica 10 (no /DS or rich-text styling), and drawing past /Rect is clipped (/Rect isn't grown). This fork (OV12): Shift while drawing holds the line level or plumb as the page is shown, only while held."
 
 [[feature]]
 id = "comment.arrow"
@@ -3763,8 +3763,8 @@ milestone = "M5"
 status = "shipped"
 commands = ["comment.arrow"]
 tools = ["comment_add"]
-evidence = ["crates/ui-egui/tests/it/comments.rs::shapes_and_ink_are_drawn_by_dragging"]
-notes = ""
+evidence = ["crates/ui-egui/tests/it/comments.rs::shapes_and_ink_are_drawn_by_dragging", "crates/ui-egui/tests/it/comments.rs::shift_holds_a_drawn_line_or_arrow_level_or_plumb", "crates/ui-egui/tests/it/comments.rs::shift_during_a_drag_takes_effect_at_once_and_follows_the_pointer"]
+notes = "This fork (OV12): Shift while drawing holds the arrow level or plumb as the page is shown, only while held."
 
 [[feature]]
 id = "comment.rectangle"
@@ -3799,8 +3799,8 @@ milestone = "M5"
 status = "shipped"
 commands = ["comment.polygon"]
 tools = ["comment_add"]
-evidence = ["crates/annot/src/tests.rs::polygons_clouds_connected_lines_callouts_and_carets_are_drawn", "crates/ui-egui/tests/it/comments.rs::polygons_clouds_connected_lines_callouts_and_inserted_text", "crates/automation/tests/it/automation.rs::drawing_comments_through_tools"]
-notes = "click the corners; Enter, double-click or the first point finishes"
+evidence = ["crates/annot/src/tests.rs::polygons_clouds_connected_lines_callouts_and_carets_are_drawn", "crates/ui-egui/tests/it/comments.rs::polygons_clouds_connected_lines_callouts_and_inserted_text", "crates/automation/tests/it/automation.rs::drawing_comments_through_tools", "crates/ui-egui/tests/it/comments.rs::shift_holds_each_new_vertex_of_connected_lines_and_polygons"]
+notes = "click the corners; Enter, double-click or the first point finishes. This fork (OV12): with Shift held, each new vertex is level or plumb with the last."
 
 [[feature]]
 id = "comment.polyline"
@@ -3811,8 +3811,8 @@ milestone = "M5"
 status = "shipped"
 commands = ["comment.polyline"]
 tools = ["comment_add"]
-evidence = ["crates/annot/src/tests.rs::polygons_clouds_connected_lines_callouts_and_carets_are_drawn", "crates/ui-egui/tests/it/comments.rs::polygons_clouds_connected_lines_callouts_and_inserted_text", "crates/automation/tests/it/automation.rs::drawing_comments_through_tools"]
-notes = ""
+evidence = ["crates/annot/src/tests.rs::polygons_clouds_connected_lines_callouts_and_carets_are_drawn", "crates/ui-egui/tests/it/comments.rs::polygons_clouds_connected_lines_callouts_and_inserted_text", "crates/automation/tests/it/automation.rs::drawing_comments_through_tools", "crates/ui-egui/tests/it/comments.rs::shift_holds_each_new_vertex_of_connected_lines_and_polygons"]
+notes = "This fork (OV12): with Shift held, each new vertex is level or plumb with the last."
 
 [[feature]]
 id = "comment.cloud"
@@ -3823,8 +3823,8 @@ milestone = "M5"
 status = "shipped"
 commands = ["comment.cloud"]
 tools = ["comment_add"]
-evidence = ["crates/annot/src/tests.rs::polygons_clouds_connected_lines_callouts_and_carets_are_drawn", "crates/annot/src/tests.rs::cloud_paths_bulge_outwards_either_way_round", "crates/ui-egui/tests/it/comments.rs::polygons_clouds_connected_lines_callouts_and_inserted_text", "crates/automation/tests/it/automation.rs::drawing_comments_through_tools"]
-notes = "polygon with a cloudy border (/BE /S /C, /IT /PolygonCloud)"
+evidence = ["crates/annot/src/tests.rs::polygons_clouds_connected_lines_callouts_and_carets_are_drawn", "crates/annot/src/tests.rs::cloud_paths_bulge_outwards_either_way_round", "crates/ui-egui/tests/it/comments.rs::polygons_clouds_connected_lines_callouts_and_inserted_text", "crates/automation/tests/it/automation.rs::drawing_comments_through_tools", "crates/ui-egui/tests/it/comments.rs::shift_holds_each_new_vertex_of_connected_lines_and_polygons"]
+notes = "polygon with a cloudy border (/BE /S /C, /IT /PolygonCloud). This fork (OV12): with Shift held, each new vertex is level or plumb with the last."
 
 [[feature]]
 id = "comment.area-highlight"
