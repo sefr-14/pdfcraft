@@ -866,3 +866,19 @@ fn a_centimetre_ratio_calibrated_in_feet_and_inches_escape_then_apply() {
     click_at(&mut h, 0, 300.0, 100.0);
     assert_eq!(listing(&h, id).measurements[0].reading.label, "50'-0\"");
 }
+
+/// Upstream's 1:N field (v0.14.0) switches the scale to metres. After feet and inches or a
+/// Custom unit were picked (this fork, OV10) it must leave those too, or the next Apply would
+/// still read the known distance as feet and inches (SYNC.11).
+#[test]
+fn a_typed_ratio_after_feet_and_inches_or_a_custom_unit_is_metres() {
+    for (feet_inches, custom_unit) in [(true, false), (false, true)] {
+        let mut m = crate::measure_ui::MeasureView::default();
+        (m.feet_inches, m.custom_unit, m.unit) = (feet_inches, custom_unit, "ft".into());
+        assert!(crate::measure_ui::set_ratio(&mut m, 50.0));
+        assert!(!m.feet_inches && !m.custom_unit, "{feet_inches} {custom_unit}");
+        assert_eq!((m.unit.as_str(), m.page_unit, m.drawing_points), ("m", Some(PageUnit::Mm), 1.0));
+        assert!((m.real_distance - 0.05).abs() < 1e-12, "{}", m.real_distance);
+        assert_eq!(m.ratio_text, "1:50");
+    }
+}

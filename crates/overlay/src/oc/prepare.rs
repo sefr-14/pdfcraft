@@ -846,7 +846,7 @@ impl Walker<'_> {
                 }
                 FieldKind::CheckBox | FieldKind::Radio if missing => {
                     let on = w.on_state.clone().unwrap_or_else(|| "Yes".into());
-                    let states = pdfcraft_forms::appearance::check_box_states(&mut self.copy, &w, f.kind, &on);
+                    let states = pdfcraft_forms::appearance::check_box_states(&mut self.copy, &w, f.kind, &on, &f.da);
                     let state = d.name(b"AS").map(<[u8]>::to_vec).unwrap_or_else(|| b"Off".to_vec());
                     let picked = states.get(b"N").and_then(|n| self.copy.dict(n)).and_then(|n| n.get(&state).and_then(Object::as_ref));
                     return match picked {

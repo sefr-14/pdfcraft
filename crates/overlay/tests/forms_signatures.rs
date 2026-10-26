@@ -136,7 +136,7 @@ fn fields_render_as_the_control() {
     // (its value doesn't change, so `set_value` leaves its appearance alone).
     let later = pdfcraft_forms::fields(&filled).into_iter().find(|f| f.name == "later").expect("later");
     let w = later.widgets[0].clone();
-    let ap = pdfcraft_forms::appearance::check_box_states(&mut filled, &w, later.kind, "Yes");
+    let ap = pdfcraft_forms::appearance::check_box_states(&mut filled, &w, later.kind, "Yes", &later.da);
     filled.update_dict(w.obj, |d| d.set(b"AP".to_vec(), Object::Dict(ap))).expect("widget");
     let filled = synth::save(&filled, true);
     let p = prep(&doc);
