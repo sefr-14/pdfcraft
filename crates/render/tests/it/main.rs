@@ -9,6 +9,7 @@ mod named_form_properties;
 mod search;
 mod separation_all;
 mod stroke_degenerate_cubic;
+mod stray_q_in_a_form;
 mod substitute_widths;
 mod tiling_cell_placement;
 mod type3_text_clip;
