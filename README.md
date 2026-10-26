@@ -1,6 +1,6 @@
 > [!IMPORTANT]
 > **This is PdfCraft Overlay, an unofficial fork of [storytold/pdfcraft](https://github.com/storytold/pdfcraft).**
-> It is based on PdfCraft 0.12.0 by the ArtCraft team and adds an overlay compare for revisions of
+> It is based on PdfCraft 0.14.0 (upstream tag `v0.14.0`, 5a78b22) by the ArtCraft team and adds an overlay compare for revisions of
 > drawing sets. It is not made, endorsed or supported by the ArtCraft team. See
 > [About this fork](#about-this-fork); the rest of this README describes upstream PdfCraft.
 

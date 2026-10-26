@@ -1186,7 +1186,7 @@ fn t6_to_t9(p: &mut Proof) {
     }
     let later = pdfcraft_forms::fields(&filled).into_iter().find(|f| f.name == "later").expect("later");
     let w = later.widgets[0].clone();
-    let ap = pdfcraft_forms::appearance::check_box_states(&mut filled, &w, later.kind, "Yes");
+    let ap = pdfcraft_forms::appearance::check_box_states(&mut filled, &w, later.kind, "Yes", &later.da);
     filled.update_dict(w.obj, |d| d.set(b"AP".to_vec(), Object::Dict(ap))).expect("widget");
     cases.push(("T8-form".into(), form, synth::save(&filled, true), false));
     for (name, source, control_src, t6) in &cases {

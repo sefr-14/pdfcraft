@@ -230,6 +230,11 @@ Still open at the v0.11.0 sync (3e306453, 21 Oct): the release changes no code i
 Still open at the v0.12.0 sync (39844f06, 22 Oct): `page_as_form` is unchanged; upstream's change
 to `crates/organize/src/import.rs` is how the objects an import added are found (they are not
 always numbered above the others), not which resources a page takes.
+Still open at the v0.14.0 sync (5a78b223, 25 Oct): `page_as_form` still takes one resource
+dictionary. Upstream's changes to it join the page's content streams within one page decode budget
+(`DecodeBudget::page()`: 256 MiB of decoded content, 50 000 forms; 9c9bbe2a) and set the form's
+`/Matrix` from the page rotation as before; a page past that budget is refused and the overlay
+reports it as a source failure (`OverlayError::Source`) rather than reading without bound.
 
 Optional content at the ec0a9650 sync: upstream's one layer change (4ff53a8d) writes the Layers
 panel's choices into the default configuration of the copy made for printing. It doesn't change
@@ -251,6 +256,11 @@ Optional content at the v0.12.0 sync (39844f06): upstream's layer changes are th
 Reset to Initial Visibility (fcdf2a21), `layer_set` and `page_render` drawing with the document's
 view settings (92990b2e, automation), and set-layer-visibility actions run from links and push
 buttons (22752dc9). The overlay calls none of them, and `oc::eval` is unchanged, so what the
+overlay shows or asks about is the same as before the sync.
+
+Optional content at the v0.14.0 sync (5a78b223): upstream changes no layer evaluation. Its one
+optional-content change is that page import keeps a split widget's `/OC` (organize, #2289); the
+overlay doesn't import widgets, and its own `oc::eval` and `oc::prepare` are unchanged, so what the
 overlay shows or asks about is the same as before the sync.
 
 Since the f0c9901c sync, `page_as_form` copies through upstream's bounded copier (af62daea): a
