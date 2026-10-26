@@ -476,3 +476,33 @@ fn placement_or_none(a: &Document, b: &Document, reg: &Matrix, expand: bool) -> 
     let (fb, _) = frame_of_page(b, 0).ok()?;
     place(&fa, &fb, SheetMatch::Off, reg, expand, &Settings::default()).ok()
 }
+
+/// A source page whose content decodes past upstream's page budget (`DecodeBudget::page()`,
+/// 256 MiB; v0.14.0, 9c9bbe2a) is refused, naming the side and page, rather than read without
+/// bound; nothing is composed and the sources are left as they were (SYNC.11). The content is
+/// one 1 MiB stream listed 257 times, so the file stays small.
+#[test]
+fn a_page_past_the_decode_budget_is_a_clear_source_failure() {
+    use pdfcraft_cos::Stream;
+    let mut big = src(Page::new(612.0, 792.0, "0 g 1 1 10 10 re f"));
+    let page = pdfcraft_model::pages(&big).first().expect("one page").obj;
+    let blank = big.add(Object::Stream(Stream::flate(Dict::new(), &vec![b' '; 1 << 20])));
+    let over = (pdfcraft_cos::MAX_PAGE_DECODED >> 20) + 1;
+    big.update_dict(page, |d| d.set(b"Contents".to_vec(), Object::Array(vec![Object::Ref(blank); over]))).expect("contents");
+    let bytes_a = synth::save(&big, true);
+    let bytes_b = synth::pdf(&[Page::new(612.0, 792.0, "0 g 2 2 10 10 re f")]);
+    let (a, b) = (synth::open(&bytes_a), synth::open(&bytes_b));
+    let (copy_a, copy_b) = ((*bytes_a).clone(), (*bytes_b).clone());
+    let p = placement(&a, &b, &Matrix::IDENTITY, false);
+    let err = compose(Some(Source { doc: &a, page: 0 }), Some(Source { doc: &b, page: 0 }), &p, &Style::default()).expect_err("refused");
+    match &err {
+        OverlayError::Source { side: 'A', page: 0, reason } => {
+            assert!(reason.contains(&format!("limit of {} bytes", pdfcraft_cos::MAX_PAGE_DECODED)), "{reason}");
+        }
+        other => panic!("not a source failure of A's first page: {other:?}"),
+    }
+    assert!(err.to_string().starts_with("document A, page 1: "), "{err}");
+    assert!(!a.is_modified() && !b.is_modified());
+    assert_eq!(**a.bytes(), copy_a);
+    assert_eq!(**b.bytes(), copy_b);
+}
