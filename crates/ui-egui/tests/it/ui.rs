@@ -1865,7 +1865,8 @@ fn full_screen_neither_is_remembered_nor_hides_the_last_view() {
 }
 
 /// The expanded All tools view covers the documents, so Escape closes it and nothing else: the
-/// hidden document's find bar stays (this fork's one-step Escape, OV11, at the v0.14.0 sync).
+/// hidden document's find bar stays. The view's search field holds the keyboard, so this fork's
+/// one-step Escape (OV11) leaves the press to it (checked at the v0.14.0 sync, SYNC.11).
 #[test]
 fn escape_over_an_open_document_closes_only_the_expanded_all_tools() {
     let mut h = harness(|app| {
