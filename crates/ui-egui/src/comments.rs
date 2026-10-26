@@ -808,6 +808,24 @@ pub(crate) fn resized(r: Rect, (hx, hy): (i8, i8), d: egui::Vec2, aspect_ratio: 
     Rect::from_two_pos(r.min, r.max)
 }
 
+/// Shift held while drawing a segment (this fork, OV12): `p` held level or plumb with `anchor`,
+/// both on screen, so along the page's axes as it is shown (its `/Rotate` and the view's turn
+/// are quarter turns). The axis is the one the pointer moved further along; a tie stays level.
+fn orthogonal(anchor: Pos2, p: Pos2) -> Pos2 {
+    let d = p - anchor;
+    if d.x.abs() >= d.y.abs() { pos2(p.x, anchor.y) } else { pos2(anchor.x, p.y) }
+}
+
+/// Where the next vertex of a polygon, connected line or cloud goes for the pointer at `p`
+/// (screen): with Shift, level or plumb with the last vertex ([`orthogonal`]). The click and the
+/// rubber band both use it, so what is drawn is what was shown.
+fn segment_end(cx: &PageCx<'_>, points: &[[f64; 2]], p: Pos2, shift: bool) -> Pos2 {
+    match points.last() {
+        Some(last) if shift => orthogonal(cx.to_screen(*last), p),
+        _ => p,
+    }
+}
+
 /// Comment input on one page, before text selection runs. Returns `true` when the pointer
 /// gesture belongs to commenting (text selection must ignore it).
 pub(crate) fn page_input(ui: &egui::Ui, resp: &egui::Response, cx: &PageCx<'_>, view: &mut DocView) -> bool {
@@ -856,15 +874,23 @@ pub(crate) fn page_input(ui: &egui::Ui, resp: &egui::Response, cx: &PageCx<'_>, 
                 && let Some(p) = pointer
             {
                 let p = clamp_to(page_rect, p);
-                let u = cx.to_user(p);
                 if matches!(*tool, CommentTool::Ink | CommentTool::Eraser) {
                     let last = points.last().map(|l| cx.to_screen(*l)).unwrap_or(p);
                     if last.distance(p) >= 1.5 {
-                        points.push(u);
+                        points.push(cx.to_user(p));
                     }
                 } else {
+                    // Shift held: a line or arrow is level or plumb as the page is shown (this
+                    // fork, OV12). Taken from the pointer every frame, so letting go of Shift
+                    // frees the angle at once.
+                    let p = match points.first() {
+                        Some(a) if matches!(*tool, CommentTool::Line | CommentTool::Arrow) && ui.input(|i| i.modifiers.shift) => {
+                            orthogonal(cx.to_screen(*a), p)
+                        }
+                        _ => p,
+                    };
                     points.truncate(1);
-                    points.push(u);
+                    points.push(cx.to_user(p));
                 }
             }
             if resp.drag_stopped()
@@ -919,11 +945,13 @@ pub(crate) fn page_input(ui: &egui::Ui, resp: &egui::Response, cx: &PageCx<'_>, 
                 && over_page
                 && let Some(p) = pointer
             {
-                let u = cx.to_user(p);
+                let shift = ui.input(|i| i.modifiers.shift);
                 match cv.gesture.as_mut() {
                     Some(Gesture::Draw { page, tool: t, points }) if *page == cx.page && *t == tool => {
-                        // Clicking the first point again closes a polygon.
+                        // Clicking the first point again closes a polygon, where the pointer is.
                         let closes = points.len() >= 3 && tool != CommentTool::PolyLine && cx.to_screen(points[0]).distance(p) <= 6.0;
+                        let p = segment_end(cx, points, p, shift);
+                        let u = cx.to_user(p);
                         let repeat = points.last().is_some_and(|l| cx.to_screen(*l).distance(p) < 2.0);
                         if closes {
                             let pts = std::mem::take(points);
@@ -938,7 +966,7 @@ pub(crate) fn page_input(ui: &egui::Ui, resp: &egui::Response, cx: &PageCx<'_>, 
                         }
                     }
                     _ => {
-                        cv.gesture = Some(Gesture::Draw { page: cx.page, tool, points: vec![u] });
+                        cv.gesture = Some(Gesture::Draw { page: cx.page, tool, points: vec![cx.to_user(p)] });
                         cv.selected = None;
                     }
                 }
@@ -1473,7 +1501,7 @@ fn paint_draw(painter: &egui::Painter, cx: &PageCx<'_>, tool: &CommentTool, poin
                 // The vertices so far, and a rubber band to the pointer.
                 let mut line = pts.clone();
                 if let Some(p) = cx.ptr.pos {
-                    line.push(p);
+                    line.push(segment_end(cx, points, p, painter.ctx().input(|i| i.modifiers.shift)));
                 }
                 painter.add(egui::Shape::line(line, stroke));
                 if let Some(first) = pts.first().filter(|_| *tool != CommentTool::PolyLine && pts.len() >= 3) {
@@ -2657,6 +2685,16 @@ mod tests {
             assert!(icons::exists(t.icon()), "icon {}", t.icon());
             assert!(GROUPS[t.group()].contains(&t));
         }
+    }
+
+    /// OV12: Shift keeps the axis the pointer moved further along, from the anchor, on screen.
+    #[test]
+    fn orthogonal_keeps_the_longer_axis() {
+        let a = pos2(100.0, 100.0);
+        assert_eq!(orthogonal(a, pos2(180.0, 130.0)), pos2(180.0, 100.0), "mostly across: level");
+        assert_eq!(orthogonal(a, pos2(70.0, 20.0)), pos2(100.0, 20.0), "mostly up: plumb");
+        assert_eq!(orthogonal(a, pos2(140.0, 60.0)), pos2(140.0, 100.0), "a tie stays level");
+        assert_eq!(orthogonal(a, a), a);
     }
 
     #[test]

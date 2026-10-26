@@ -959,6 +959,171 @@ fn line_ends_are_dragged_to_change_length_and_angle() {
     assert!((p[1][0] - 200.0).abs() < 1.0 && (p[1][1] - 160.0).abs() < 1.0, "{p:?}");
 }
 
+fn shift(h: &mut Harness<'static, PdfCraftApp>, held: bool) {
+    h.event(egui::Event::ModifiersChanged(if held { egui::Modifiers::SHIFT } else { egui::Modifiers::NONE }));
+    h.run_steps(1);
+}
+
+/// The live end of the line or arrow being dragged, in user space.
+fn live_end(h: &Harness<'static, PdfCraftApp>) -> [f64; 2] {
+    match &h.state().views[0].comments.gesture {
+        Some(pdfcraft_ui_egui::comments::Gesture::Draw { points, .. }) => *points.last().expect("a live end"),
+        other => panic!("no drawing in progress: {other:?}"),
+    }
+}
+
+/// The newest annotation (the highest index: the list is in paint order).
+fn newest(h: &Harness<'static, PdfCraftApp>) -> Annotation {
+    comments(h).into_iter().max_by_key(|a| a.index).expect("an annotation")
+}
+
+/// The newest annotation's two ends.
+fn last_ends(h: &Harness<'static, PdfCraftApp>) -> [[f32; 2]; 2] {
+    let p = newest(h).points;
+    assert_eq!(p.len(), 2, "{p:?}");
+    [p[0], p[1]]
+}
+
+/// A drag between two page points with Shift held from before the press to after the release.
+fn shift_drag_pt(h: &mut Harness<'static, PdfCraftApp>, a: (f32, f32), b: (f32, f32)) {
+    shift(h, true);
+    drag_pt(h, a, b);
+    shift(h, false);
+}
+
+/// OV12 (this fork): Shift holds a line or arrow being drawn level or plumb, along the axis the
+/// pointer moved further on, only while it is held; the saved line is what the preview showed,
+/// an ordinary Line annotation that Undo takes back. Without Shift lines keep any angle.
+#[test]
+fn shift_holds_a_drawn_line_or_arrow_level_or_plumb() {
+    let mut h = harness(|app| app.set_option("quick", "line").unwrap());
+    drag_pt(&mut h, (40.0, 40.0), (140.0, 100.0));
+    let [a, b] = last_ends(&h);
+    assert!((b[0] - a[0]).abs() > 90.0 && (b[1] - a[1]).abs() > 50.0, "free angle: {a:?} {b:?}");
+
+    shift_drag_pt(&mut h, (40.0, 150.0), (140.0, 130.0));
+    let [a, b] = last_ends(&h);
+    assert!((a[1] - 150.0).abs() < 0.5 && (b[1] - 150.0).abs() < 0.5 && (b[0] - 140.0).abs() < 1.0, "level: {a:?} {b:?}");
+
+    h.state_mut().set_option("quick", "arrow").unwrap();
+    shift_drag_pt(&mut h, (200.0, 40.0), (215.0, 140.0));
+    let arrow = newest(&h);
+    assert_eq!(arrow.subtype, "Line");
+    let [a, b] = [arrow.points[0], arrow.points[1]];
+    assert!((a[0] - 200.0).abs() < 0.5 && (b[0] - 200.0).abs() < 0.5 && (b[1] - 140.0).abs() < 1.0, "plumb: {a:?} {b:?}");
+
+    // Undo takes the arrow back like any other comment.
+    let n = comments(&h).len();
+    h.state_mut().undo();
+    h.run_steps(2);
+    assert_eq!(comments(&h).len(), n - 1);
+}
+
+/// OV12: pressing, releasing and pressing Shift again during one drag, without moving the
+/// pointer in between: each change shows at once, the end always comes from the pointer (never
+/// from the end Shift held), and the axis follows where the pointer is now.
+#[test]
+fn shift_during_a_drag_takes_effect_at_once_and_follows_the_pointer() {
+    let mut h = harness(|app| app.set_option("quick", "line").unwrap());
+    let (from, diagonal) = (at(&h, 40.0, 40.0), at(&h, 140.0, 80.0));
+    h.hover_at(from);
+    h.run_steps(1);
+    h.drag_at(from);
+    h.run_steps(1);
+    for k in 1..=4 {
+        h.hover_at(from + (diagonal - from) * (k as f32 / 4.0));
+        h.run_steps(1);
+    }
+    let free = live_end(&h);
+    assert!((free[1] - 80.0).abs() < 1.0, "free while Shift is up: {free:?}");
+    shift(&mut h, true);
+    let held = live_end(&h);
+    assert!((held[1] - 40.0).abs() < 0.5 && (held[0] - 140.0).abs() < 1.0, "level at once: {held:?}");
+    shift(&mut h, false);
+    let freed = live_end(&h);
+    assert!((freed[0] - free[0]).abs() < 0.5 && (freed[1] - free[1]).abs() < 0.5, "free again at once: {freed:?}");
+    // Mostly up now, Shift held: plumb.
+    shift(&mut h, true);
+    let up = at(&h, 60.0, 150.0);
+    h.hover_at(up);
+    h.run_steps(1);
+    let plumb = live_end(&h);
+    assert!((plumb[0] - 40.0).abs() < 0.5 && (plumb[1] - 150.0).abs() < 1.0, "the other axis: {plumb:?}");
+    // Released with Shift up: the saved line is free.
+    shift(&mut h, false);
+    h.drop_at(up);
+    h.run_steps(3);
+    let [a, b] = last_ends(&h);
+    assert!((a[0] - 40.0).abs() < 1.0 && (b[0] - 60.0).abs() < 1.0 && (b[1] - 150.0).abs() < 1.0, "{a:?} {b:?}");
+}
+
+/// OV12: level or plumb as the page is shown, on a page with `/Rotate 90` and in a view turned a
+/// quarter: a drag mostly across the screen saves a line that is level on screen, which on
+/// these pages runs along the page's y axis.
+#[test]
+fn shift_follows_the_page_as_it_is_shown() {
+    let rotated = String::from_utf8(TEXT_FIXTURE.to_vec()).unwrap().replacen("/MediaBox [0 0 300 200]", "/MediaBox [0 0 300 200] /Rotate 90", 1);
+    for (bytes, view) in [(rotated.into_bytes(), 0u16), (TEXT_FIXTURE.to_vec(), 90)] {
+        let mut h = harness_with_bytes(bytes, |app| app.set_option("quick", "line").unwrap());
+        while h.state().views[0].rotation != view {
+            h.state_mut().views[0].rotate_view(true);
+        }
+        h.run_steps(3);
+        crate::support::settle(&mut h);
+        let r = h.state().views[0].page_screen_rect(0).expect("page 1 on screen");
+        let (from, to) = (r.left_top() + r.size() * egui::vec2(0.2, 0.3), r.left_top() + r.size() * egui::vec2(0.7, 0.4));
+        shift(&mut h, true);
+        drag(&mut h, from, to);
+        shift(&mut h, false);
+        let [a, b] = last_ends(&h);
+        assert!((a[0] - b[0]).abs() < 0.5 && (a[1] - b[1]).abs() > 50.0, "view {view}: level on screen: {a:?} {b:?}");
+    }
+}
+
+/// OV12: connected lines, polygons and clouds hold each new vertex level or plumb with the last
+/// while Shift is held; the first vertex is where it is clicked, and a polygon still closes on
+/// its first vertex. Rectangles keep their free drag.
+#[test]
+fn shift_holds_each_new_vertex_of_connected_lines_and_polygons() {
+    let mut h = harness(|app| app.set_option("quick", "polyline").unwrap());
+    click_pt(&mut h, (20.0, 150.0));
+    shift(&mut h, true);
+    click_pt(&mut h, (100.0, 140.0));
+    click_pt(&mut h, (110.0, 60.0));
+    shift(&mut h, false);
+    h.key_press(egui::Key::Enter);
+    h.run_steps(3);
+    let p = comments(&h).into_iter().find(|a| a.subtype == "PolyLine").expect("a connected line").points;
+    assert_eq!(p.len(), 3, "{p:?}");
+    assert!((p[1][1] - 150.0).abs() < 0.5 && (p[1][0] - 100.0).abs() < 1.0, "level: {p:?}");
+    assert!((p[2][0] - 100.0).abs() < 0.5 && (p[2][1] - 60.0).abs() < 1.0, "plumb: {p:?}");
+
+    h.state_mut().set_option("quick", "polygon").unwrap();
+    shift(&mut h, true);
+    for p in [(160.0, 40.0), (260.0, 45.0), (255.0, 120.0), (160.0, 40.0)] {
+        click_pt(&mut h, p);
+    }
+    shift(&mut h, false);
+    let polygon = comments(&h).into_iter().find(|a| a.subtype == "Polygon").expect("closed on its first vertex");
+    assert_eq!(polygon.points.len(), 3, "{:?}", polygon.points);
+    assert!((polygon.points[1][1] - 40.0).abs() < 0.5 && (polygon.points[2][0] - 260.0).abs() < 0.5, "{:?}", polygon.points);
+
+    h.state_mut().set_option("quick", "cloud").unwrap();
+    shift(&mut h, true);
+    for p in [(20.0, 170.0), (100.0, 175.0), (95.0, 195.0), (20.0, 170.0)] {
+        click_pt(&mut h, p);
+    }
+    shift(&mut h, false);
+    let cloud = newest(&h);
+    assert_eq!((cloud.subtype.as_str(), cloud.points.len()), ("Polygon", 3), "a cloud closed on its first vertex: {:?}", cloud.points);
+    assert!((cloud.points[1][1] - 170.0).abs() < 0.5 && (cloud.points[2][0] - 100.0).abs() < 0.5, "{:?}", cloud.points);
+
+    h.state_mut().set_option("quick", "square").unwrap();
+    shift_drag_pt(&mut h, (20.0, 20.0), (120.0, 60.0));
+    let r = comments(&h).into_iter().find(|a| a.subtype == "Square").expect("a rectangle").rect;
+    assert!((r[2] - r[0] - 100.0).abs() < 3.0 && (r[3] - r[1] - 40.0).abs() < 3.0, "unchanged by Shift: {r:?}");
+}
+
 /// The arrow keys move the selected comment a screen pixel, ⌘/Ctrl or Shift and an arrow ten,
 /// instead of scrolling or turning the page; each press is one undo step. Without a selection
 /// the arrows scroll and turn pages as before.

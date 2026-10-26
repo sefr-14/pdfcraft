@@ -2087,3 +2087,87 @@ fn go_to_page_brings_the_page_into_view_horizontally() {
     let (r, vp) = (v.page_screen_rect(2).expect("page 3 on screen"), v.viewport_rect());
     assert!(r.left() >= vp.left() && r.right() <= vp.right(), "page 3 at {r:?}, viewport {vp:?}");
 }
+
+/// Open Find on tab `tab` for `query` and wait for `want` matches (the search reads page text
+/// in the background).
+fn find_ready(h: &mut Harness<'static, PdfCraftApp>, tab: usize, query: &str, want: usize) {
+    h.state_mut().views[tab].open_find();
+    h.state_mut().views[tab].find.as_mut().unwrap().query = query.into();
+    h.state_mut().views[tab].rerun_find();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while std::time::Instant::now() < deadline && h.state().views[tab].find.as_ref().unwrap().matches.len() < want {
+        h.run_steps(2);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    assert_eq!(h.state().views[tab].find.as_ref().unwrap().matches.len(), want, "{query:?}");
+    h.state_mut().views[tab].find.as_mut().unwrap().focus = false;
+    h.ctx.memory_mut(|m| m.surrender_focus(egui::Id::new("find-input")));
+    h.run_steps(2);
+}
+
+/// Where tab `tab`'s current match is, from its viewport's centre.
+fn off_centre(h: &Harness<'static, PdfCraftApp>, tab: usize) -> egui::Vec2 {
+    let v = &h.state().views[tab];
+    v.find_match_screen_rect().expect("the match is on screen").center() - v.viewport_rect().center()
+}
+
+/// OV12 (this fork): Next and Previous bring the match to the middle of the page view, at the
+/// zoom it has, on another page, in each layout and view turn; a match already in the middle
+/// half stays where it is.
+#[test]
+fn find_steps_centre_the_match_without_changing_zoom() {
+    for (layout, rotation) in [("continuous", 0u16), ("single", 0), ("two-page", 0), ("continuous", 90), ("continuous", 180), ("continuous", 270)] {
+        let mut h = harness();
+        h.state_mut().active = Some(0);
+        h.state_mut().set_option("layout", layout).unwrap();
+        // High enough that the match can be centred from every side, low enough that it fits
+        // the middle half with room to move.
+        h.state_mut().set_option("zoom", "800").unwrap();
+        h.state_mut().views[0].rotation = rotation;
+        h.run_steps(4);
+        // "2", then "4": one match each, on pages 2 and 4, narrower than the middle half at this
+        // zoom (a match wider than that is always centred).
+        find_ready(&mut h, 0, "2", 1);
+        find_ready(&mut h, 0, "4", 1);
+        let zoom = h.state().views[0].zoom;
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::G);
+        h.run_steps(6);
+        assert_eq!(h.state().views[0].current, 3, "{layout} {rotation}°");
+        let off = off_centre(&h, 0);
+        assert!(off.length() < 3.0, "{layout} {rotation}°: the match is {off:?} from the centre");
+        assert_eq!(h.state().views[0].zoom, zoom, "{layout} {rotation}°: zoom unchanged");
+
+        // Moved a little (still in the middle half): stepping to it again doesn't move the view.
+        h.state_mut().views[0].key_scroll = 40.0;
+        h.run_steps(4);
+        let before = off_centre(&h, 0);
+        assert!(before.length() > 20.0, "{layout} {rotation}°: the view moved {before:?}");
+        h.key_press_modifiers(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::G);
+        h.run_steps(6);
+        let after = off_centre(&h, 0);
+        assert!((after - before).length() < 0.5, "{layout} {rotation}°: no jump, {before:?} → {after:?}");
+    }
+}
+
+/// OV12: a step in one view of a document (Duplicate Tab, Tile View) centres that view only;
+/// the other keeps its place.
+#[test]
+fn a_find_step_moves_only_its_own_view() {
+    let mut h = harness();
+    h.state_mut().active = Some(0);
+    h.state_mut().set_option("zoom", "1600").unwrap();
+    h.run_steps(4);
+    let twin = h.state_mut().duplicate_view(0).expect("a duplicate");
+    h.state_mut().set_view_layout(pdfcraft_ui_egui::ViewLayout::Tiles);
+    h.state_mut().active = Some(0);
+    h.run_steps(6);
+    let other = h.state().views[twin].current;
+    let other_page = h.state().views[twin].page_screen_rect(other);
+    find_ready(&mut h, 0, "4", 1);
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::G);
+    h.run_steps(6);
+    assert!(off_centre(&h, 0).length() < 3.0, "the stepped view is centred");
+    assert_eq!(h.state().views[twin].current, other, "the other view stays on its page");
+    assert_eq!(h.state().views[twin].page_screen_rect(other), other_page, "and where it was on it");
+    assert!(h.state().views[twin].find.is_none(), "with no search of its own");
+}

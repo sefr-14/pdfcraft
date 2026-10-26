@@ -226,6 +226,20 @@ page view, as in Foxit PDF Reader:
 - Automation: `ui.set` `rulers`, `guides` and `ruler_unit`, and `ui.state` lists the guides
   (control channel). There is no headless tool: these are app settings, not part of the document.
 
+**Also: straight lines with Shift, and Find results in the middle (OV12).**
+
+- While drawing a Line or Arrow comment, hold **Shift** to keep it horizontal or vertical as the
+  page is shown (rotated pages and View › Rotate View included): it follows the direction you
+  dragged further in. Let go of Shift and the angle is free again at once, even mid-drag. Connected
+  lines, polygons and clouds do the same for each new corner, from the last one. The result is an
+  ordinary line or polygon comment (edit, restyle, undo as usual). Rectangles, ovals, reshaping a
+  line's ends (Shift: 45°) and the measuring tools are unchanged.
+- In Find (Ctrl+F), **Next** and **Previous** (the arrows, Enter / Shift+Enter, Ctrl+G /
+  Shift+Ctrl+G) and a click on a Search panel result bring the match to the middle of the page
+  view, at the same zoom. A match already in the middle half of the view stays where it is; one
+  near the start or end of the document goes as near the middle as scrolling allows. The search's
+  own first pick still shows its match near the top. Each tab and tile keeps its own place.
+
 **Also: Check for updates finds this fork's Windows build.** Help › Check for updates (or "Check
 for updates…" in the command palette) no longer offers upstream's releases, which don't have the
 features above. It asks GitHub for the five most recent successful runs of
