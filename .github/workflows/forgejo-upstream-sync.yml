@@ -1,0 +1,57 @@
+# Fork-only workflow (sefr-14/pdfcraft): once a day, trial-merge upstream PdfCraft
+# (storytold/pdfcraft main) into Forgejo Main (sefr/pdfcraft on git.ferrive.me) and prepare an
+# unmerged review PR, or keep one conflict-tracking issue up to date.
+#
+# - The trial merge runs in a throwaway bare repository (git merge-tree): no working tree, so no
+#   conflict marker can ever be committed or pushed (scripts/automation/sync_upstream.py).
+# - Appends to the integration branch upstream-sync/main (or upstream-sync/main-v<N>) without
+#   rewriting it, pauses when a person has committed to it, and never merges into Main.
+# - A clean merge is not proof of compatibility: the PR lists the fork's regression-sensitive
+#   features for review. Windows builds are not triggered from here.
+# - The manual run's branch_version starts a new versioned branch after a sync PR was closed
+#   unmerged or its branch cannot be fast-forwarded (README.md, "Upstream branch lifecycle").
+
+name: forgejo upstream sync
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+    inputs:
+      branch_version:
+        description: "Start or continue upstream-sync/main-v<N> (2 or more); empty for the normal branch"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: forgejo-upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Upstream trial integration
+    if: github.repository == 'sefr-14/pdfcraft'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: forgejo-sync
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: Main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Trial-merge upstream
+        env:
+          BRANCH_VERSION: ${{ inputs.branch_version || '' }}
+          FORGEJO_URL: ${{ vars.FORGEJO_URL || 'https://git.ferrive.me' }}
+          FORGEJO_REPO: ${{ vars.FORGEJO_REPO || 'sefr/pdfcraft' }}
+          FORGEJO_USER: ${{ secrets.FORGEJO_USER }}
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          UPSTREAM_GIT_URL: https://github.com/storytold/pdfcraft.git
+          UPSTREAM_BRANCH: main
+          SYNC_OBJECT_CACHE: ${{ github.workspace }}/.git/objects
+        run: python3 -I scripts/automation/sync_upstream.py
