@@ -1,0 +1,2 @@
+GitHub to Forgejo PR synchronization test.
+This file is temporary. Do not merge this PR.
