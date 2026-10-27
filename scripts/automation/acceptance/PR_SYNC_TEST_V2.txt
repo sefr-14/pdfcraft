@@ -1,0 +1,2 @@
+GitHub to Forgejo PR synchronization test v2.
+Temporary integration test. Do not merge.
