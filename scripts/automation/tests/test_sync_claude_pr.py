@@ -8,6 +8,8 @@ import os
 import unittest
 
 from fakes import (
+    CF_ID,
+    CF_SECRET,
     FORGEJO_TOKEN,
     GITHUB_TOKEN,
     Fault,
@@ -399,9 +401,8 @@ class ErrorsAndRedaction(BridgeTestCase):
         self.forgejo.faults.append(Fault("GET", r"/pulls$", 503, times=2))
         self.assertEqual(self.run_bridge().status, "created")
 
-    def test_main_redacts_tokens_everywhere(self):
+    def main_env(self, **extra) -> str:
         summary = os.path.join(self.remotes.root, "summary.md")
-        self.forgejo.faults.append(Fault("GET", r"/pulls$", 401, body={"message": f"bad token {FORGEJO_TOKEN}"}))
         os.environ.update({
             "SYNC_TESTING": "1", "GITHUB_REPOSITORY": "sefr-14/pdfcraft", "PR_NUMBER": str(N),
             "GITHUB_API_URL": self.github.url, "GITHUB_SERVER_URL": "https://github.com",
@@ -409,12 +410,23 @@ class ErrorsAndRedaction(BridgeTestCase):
             "FORGEJO_URL": self.forgejo.url, "FORGEJO_GIT_URL": self.remotes.url("forgejo"),
             "FORGEJO_USER": "pdfcraft-sync", "FORGEJO_TOKEN": FORGEJO_TOKEN,
             "GITHUB_ACTIONS": "true", "GITHUB_STEP_SUMMARY": summary, "no_proxy": "127.0.0.1",
-            "NO_PROXY": "127.0.0.1",
+            "NO_PROXY": "127.0.0.1", **extra,
         })
+        return summary
+
+    def run_main(self) -> tuple[int, str, str]:
         sync_claude_pr.REDACTOR.__init__()
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = sync_claude_pr.main()
+        return code, out.getvalue(), err.getvalue()
+
+    def test_main_redacts_tokens_everywhere(self):
+        self.forgejo.faults.append(Fault("GET", r"/pulls$", 401, body={
+            "message": f"bad token {FORGEJO_TOKEN} CF-Access-Client-Secret: {CF_SECRET} id {CF_ID}"}))
+        summary = self.main_env(CF_ACCESS_CLIENT_ID=CF_ID, CF_ACCESS_CLIENT_SECRET=CF_SECRET)
+        self.forgejo.require_cf = (CF_ID, CF_SECRET)
+        code, stdout, stderr = self.run_main()
         self.assertEqual(code, 1)
         with open(summary, encoding="utf-8") as handle:
             summary_text = handle.read()
@@ -422,13 +434,76 @@ class ErrorsAndRedaction(BridgeTestCase):
         b64 = base64.b64encode(f"pdfcraft-sync:{FORGEJO_TOKEN}".encode()).decode()
         # The ::add-mask:: lines are the one place the secret may appear: they are how
         # GitHub learns to mask it. Everything else must be clean.
-        logged = "\n".join(line for line in out.getvalue().splitlines() if not line.startswith("::add-mask::"))
-        for text in (logged, err.getvalue(), summary_text):
-            self.assertNotIn(FORGEJO_TOKEN, text)
-            self.assertNotIn(GITHUB_TOKEN, text)
-            self.assertNotIn(b64, text)
+        logged = "\n".join(line for line in stdout.splitlines() if not line.startswith("::add-mask::"))
+        for text in (logged, stderr, summary_text):
+            for secret in (FORGEJO_TOKEN, GITHUB_TOKEN, b64, CF_ID, CF_SECRET):
+                self.assertNotIn(secret, text)
         self.assertIn("HTTP 401", logged)
-        self.assertIn("::stop-commands::", out.getvalue())
+        self.assertIn("::stop-commands::", stdout)
+
+    def test_main_masks_every_credential_before_anything_else_is_printed(self):
+        import base64
+        self.main_env(CF_ACCESS_CLIENT_ID=CF_ID, CF_ACCESS_CLIENT_SECRET=CF_SECRET)
+        self.forgejo.require_cf = (CF_ID, CF_SECRET)
+        code, stdout, _ = self.run_main()
+        self.assertEqual(code, 0, stdout)
+        lines = stdout.splitlines()
+        first_other = next(i for i, line in enumerate(lines) if not line.startswith("::add-mask::"))
+        self.assertTrue(lines[first_other].startswith("::stop-commands::"))
+        masked = {line[len("::add-mask::"):] for line in lines[:first_other]}
+        b64 = base64.b64encode(f"pdfcraft-sync:{FORGEJO_TOKEN}".encode()).decode()
+        self.assertLessEqual({FORGEJO_TOKEN, GITHUB_TOKEN, b64, CF_ID, CF_SECRET}, masked)
+        self.assertFalse([l for l in lines[first_other:] if l.startswith("::add-mask::")])
+
+    def test_main_registers_basic_base64_for_the_default_user(self):
+        import base64
+        self.main_env(FORGEJO_USER="")
+        code, stdout, _ = self.run_main()
+        self.assertEqual(code, 0, stdout)
+        b64 = base64.b64encode(f"pdfcraft-sync:{FORGEJO_TOKEN}".encode()).decode()
+        self.assertIn(f"::add-mask::{b64}", stdout)
+
+    def test_main_with_cloudflare_reaches_forgejo(self):
+        self.main_env(CF_ACCESS_CLIENT_ID=CF_ID, CF_ACCESS_CLIENT_SECRET=CF_SECRET)
+        self.forgejo.require_cf = (CF_ID, CF_SECRET)
+        code, stdout, _ = self.run_main()
+        self.assertEqual(code, 0, stdout)
+        self.assertEqual(len(self.forgejo.open_pulls()), 1)
+        for headers in self.forgejo.headers:
+            self.assertEqual(headers["cf-access-client-secret"], CF_SECRET)
+            self.assertEqual(headers["authorization"], f"token {FORGEJO_TOKEN}")
+        for headers in self.github.headers:
+            self.assertNotIn("cf-access-client-id", headers)
+            self.assertNotIn("cf-access-client-secret", headers)
+
+    def test_main_without_cloudflare_is_unchanged(self):
+        self.main_env()
+        code, stdout, _ = self.run_main()
+        self.assertEqual(code, 0, stdout)
+        self.assertEqual(len(self.forgejo.open_pulls()), 1)
+        self.assertNotIn("cf-access-client-id", self.forgejo.headers[0])
+
+    def test_main_refuses_half_configured_cloudflare_before_any_request(self):
+        for name, value in (("CF_ACCESS_CLIENT_ID", CF_ID), ("CF_ACCESS_CLIENT_SECRET", CF_SECRET)):
+            with self.subTest(only=name):
+                os.environ.pop("CF_ACCESS_CLIENT_ID", None)
+                os.environ.pop("CF_ACCESS_CLIENT_SECRET", None)
+                self.main_env(**{name: value})
+                code, stdout, stderr = self.run_main()
+                self.assertEqual(code, 1)
+                self.assertIn("half configured", stdout)
+                self.assertNotIn(value, stdout + stderr)
+                self.assertEqual(self.forgejo.requests, [])
+                self.assertEqual(self.github.gets, 0)
+                self.assertEqual(self.github.headers, [])
+
+    def test_main_refuses_a_token_that_would_split_a_header(self):
+        self.main_env(FORGEJO_TOKEN=FORGEJO_TOKEN + "\r\nX-Evil: 1")
+        code, stdout, stderr = self.run_main()
+        self.assertEqual(code, 1)
+        self.assertIn("FORGEJO_TOKEN contains characters not allowed", stdout)
+        self.assertNotIn(FORGEJO_TOKEN, stdout + stderr)
+        self.assertEqual(self.forgejo.requests, [])
 
 
 if __name__ == "__main__":

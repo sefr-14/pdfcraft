@@ -14,6 +14,9 @@ the bot's repository-restricted token deliberately lacks, and no repository-scop
 names the token's owner. ``FORGEJO_USER`` is only used as the user name in Git's HTTP
 authentication and in the test commit's e-mail address.
 
+``CF_ACCESS_CLIENT_ID`` and ``CF_ACCESS_CLIENT_SECRET`` are optional: set both to run from outside
+Cloudflare Access's bypass rules, neither from a bypassed host. One without the other fails.
+
 Write pass (``--confirm-writes``), each step in order, stopping at the first failure:
   4. ``PATCH`` the repository with an empty body: must be refused (403). With an admin token it
      would be a no-op, so it is harmless either way.
@@ -41,6 +44,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from common import (  # noqa: E402
     REDACTOR,
+    CloudflareAccess,
     Git,
     GitAuth,
     SyncError,
@@ -178,10 +182,14 @@ def main(argv: list[str] | None = None) -> int:
         user = validate_branch_name(env_str("FORGEJO_USER", "pdfcraft-sync"), "user name")
         token = env_str("FORGEJO_TOKEN", required=True)
         REDACTOR.add_credential(user, token)
+        # Optional: a host inside an Access bypass (the TrueNAS host) needs no service token.
+        cf_access = CloudflareAccess.from_env()
+        if cf_access is not None:
+            cf_access.register(REDACTOR)
         git_url = validate_https_url(env_str("FORGEJO_GIT_URL", f"{url}/{repo}.git"), "Forgejo Git URL", args.allow_local)
-        git = Git.temporary(auth=GitAuth(url, user, token),
+        git = Git.temporary(auth=GitAuth(url, user, token, cf_access),
                             identity=git_identity("PdfCraft sync acceptance test", f"{user}@noreply.invalid"))
-        test = Acceptance(ForgejoClient(url, repo, token), git, git_url, env_str("BASE_BRANCH", "Main"))
+        test = Acceptance(ForgejoClient(url, repo, token, cf_access=cf_access), git, git_url, env_str("BASE_BRANCH", "Main"))
         ok = test.read_checks()
         if ok and args.confirm_writes:
             ok = test.write_checks()

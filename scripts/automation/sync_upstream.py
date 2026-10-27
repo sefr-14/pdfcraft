@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from common import (  # noqa: E402
     REDACTOR,
+    CloudflareAccess,
     Git,
     GitAuth,
     GitError,
@@ -45,6 +46,7 @@ from common import (  # noqa: E402
     md_code,
     printable,
     validate_branch_name,
+    validate_header_value,
     validate_https_url,
     validate_repo_slug,
     validate_sha,
@@ -107,6 +109,9 @@ class Config:
     committer_email: str
     dry_run: bool = False
     object_cache: str = ""
+    # The Cloudflare Access service token for the Forgejo host; None where Access lets the
+    # runner through without one (local and bypassed deployments).
+    cf_access: CloudflareAccess | None = None
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -137,6 +142,7 @@ class Config:
             committer_email=email,
             dry_run=env_flag("DRY_RUN"),
             object_cache=env_str("SYNC_OBJECT_CACHE"),
+            cf_access=CloudflareAccess.from_env(),
         )
 
 
@@ -576,15 +582,22 @@ def main() -> int:
     git: Git | None = None
     try:
         cfg = Config.from_env()
-        REDACTOR.add_credential(cfg.forgejo_user, cfg.forgejo_token)
+        if cfg.forgejo_token:
+            # Before anything registers or prints it: a CR/LF would split a header or a mask line.
+            validate_header_value(cfg.forgejo_token, "FORGEJO_TOKEN")
+        # The same user name GitAuth falls back to, so base64(user:token) is always registered.
+        REDACTOR.add_credential(cfg.forgejo_user or "pdfcraft-sync", cfg.forgejo_token)
+        if cfg.cf_access is not None:
+            cfg.cf_access.register(REDACTOR)
         reporter = Reporter(REDACTOR)
         if not cfg.forgejo_token and not cfg.dry_run:
             raise SyncError("FORGEJO_TOKEN is not set")
-        auth = GitAuth(cfg.forgejo_url, cfg.forgejo_user or "pdfcraft-sync", cfg.forgejo_token) if cfg.forgejo_token else None
+        auth = (GitAuth(cfg.forgejo_url, cfg.forgejo_user or "pdfcraft-sync", cfg.forgejo_token, cfg.cf_access)
+                if cfg.forgejo_token else None)
         git = Git.temporary(auth=auth, identity=git_identity(cfg.committer_name, cfg.committer_email))
         if cfg.object_cache:
             git.add_alternate(cfg.object_cache)
-        forgejo = ForgejoClient(cfg.forgejo_url, cfg.forgejo_repo, cfg.forgejo_token or None)
+        forgejo = ForgejoClient(cfg.forgejo_url, cfg.forgejo_repo, cfg.forgejo_token or None, cf_access=cfg.cf_access)
         return UpstreamSync(cfg, forgejo, git, reporter).run().exit_code
     except (SyncError, ApiError) as exc:
         reporter = reporter or Reporter(REDACTOR)

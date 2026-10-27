@@ -30,6 +30,9 @@ from common import Git, Redactor, Reporter  # noqa: E402
 
 FORGEJO_TOKEN = "fj_test_token_5f3a9c1e7b2d4a6f8e0c"
 GITHUB_TOKEN = "ghs_testtokenABCDEFGHIJKLMNOPQRSTUV0123"
+# Fake Cloudflare Access service token; real ones never appear in tests.
+CF_ID = "cf_test_id_0123456789abcdef.access"
+CF_SECRET = "cf_test_secret_9f8e7d6c5b4a39281706"
 IDENTITY = {
     "GIT_AUTHOR_NAME": "Test Author",
     "GIT_AUTHOR_EMAIL": "author@example.invalid",
@@ -169,6 +172,11 @@ class FakeForgejo:
         self.next_index = 1
         self.faults: list[Fault] = []
         self.requests: list[tuple[str, str]] = []
+        self.headers: list[dict[str, str]] = []  # each request's headers, names lower-cased
+        # (client id, secret): when set, a request without both answers like Cloudflare Access,
+        # with a 302 to ``access_redirect`` (a login page), before Forgejo sees it.
+        self.require_cf: tuple[str, str] | None = None
+        self.access_redirect = "http://127.0.0.1:9/cdn-cgi/access/login"
         self.before_request = None  # callable(method, path) -> None
         self.swagger = None  # served unauthenticated at /swagger.v1.json when set
         self.lock = threading.RLock()
@@ -271,6 +279,11 @@ class FakeForgejo:
                 hit = None
                 with fake.lock:
                     fake.requests.append((method, path))
+                    fake.headers.append({k.lower(): v for k, v in self.headers.items()})
+                    if fake.require_cf is not None and (
+                        self.headers.get("CF-Access-Client-Id"), self.headers.get("CF-Access-Client-Secret")
+                    ) != fake.require_cf:
+                        return self._send(302, b"<html>Sign in</html>", {"Location": fake.access_redirect})
                     if fake.before_request:
                         fake.before_request(method, path)
                     for fault in list(fake.faults):
@@ -390,6 +403,7 @@ class FakeGitHub:
         self.token = token
         self.pulls: dict[tuple[str, int], dict] = {}
         self.gets = 0
+        self.headers: list[dict[str, str]] = []  # each request's headers, names lower-cased
         self.on_get = None  # callable(count) -> None, before answering
         self.server = _Server(self._handler())
 
@@ -409,6 +423,7 @@ class FakeGitHub:
 
             def do_GET(self):
                 match = re.fullmatch(r"/repos/([^/]+)/([^/]+)/pulls/([0-9]+)", urllib.parse.urlparse(self.path).path)
+                fake.headers.append({k.lower(): v for k, v in self.headers.items()})
                 if self.headers.get("Authorization") != f"Bearer {fake.token}":
                     status, payload = 401, {"message": "Bad credentials"}
                 elif not match:
@@ -428,6 +443,125 @@ class FakeGitHub:
                 self.wfile.write(data)
 
         return Handler
+
+
+class RecordingServer:
+    """Answers every request with 200 ``{}`` and records its headers: a redirect target or a
+    stand-in for a host that must never receive credentials."""
+
+    def __init__(self) -> None:
+        self.headers: list[dict[str, str]] = []
+        fake = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def _answer(self):
+                fake.headers.append({k.lower(): v for k, v in self.headers.items()})
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+            do_GET = do_POST = do_PATCH = _answer
+
+        self.server = _Server(Handler)
+
+    @property
+    def url(self) -> str:
+        return self.server.url
+
+    def stop(self) -> None:
+        self.server.stop()
+
+
+class GitHttpServer:
+    """Git's smart HTTP protocol over 127.0.0.1, served by ``git http-backend`` as CGI.
+
+    Every request's headers are recorded. ``require`` maps header names to the values a request
+    must carry: a missing Cloudflare header answers 302 to ``redirect_to`` (like Access), a wrong
+    or missing ``Authorization`` answers 401. ``fail_status`` makes every request fail that way
+    after it was recorded.
+    """
+
+    def __init__(self, project_root: str, require: dict[str, str] | None = None,
+                 redirect_to: str = "http://127.0.0.1:9/") -> None:
+        self.project_root = project_root
+        self.require = dict(require or {})
+        self.redirect_to = redirect_to
+        self.fail_status: int | None = None
+        self.headers: list[dict[str, str]] = []
+        fake = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def _plain(self, status, text, extra=None):
+                data = text.encode("utf-8")
+                self.send_response(status)
+                self.send_header("Content-Type", "text/plain")
+                self.send_header("Content-Length", str(len(data)))
+                for key, value in (extra or {}).items():
+                    self.send_header(key, value)
+                self.end_headers()
+                self.wfile.write(data)
+
+            def _cgi(self):
+                fake.headers.append({k.lower(): v for k, v in self.headers.items()})
+                length = int(self.headers.get("Content-Length") or 0)
+                body = self.rfile.read(length) if length else b""
+                for name, value in fake.require.items():
+                    if self.headers.get(name) != value:
+                        if name.lower().startswith("cf-access-"):
+                            return self._plain(302, "Sign in", {"Location": fake.redirect_to})
+                        return self._plain(401, "Unauthorized", {"WWW-Authenticate": 'Basic realm="x"'})
+                if fake.fail_status:
+                    return self._plain(fake.fail_status, "injected failure")
+                parsed = urllib.parse.urlparse(self.path)
+                env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+                env.update({
+                    "GIT_PROJECT_ROOT": fake.project_root, "GIT_HTTP_EXPORT_ALL": "1",
+                    "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull,
+                    "REQUEST_METHOD": self.command, "PATH_INFO": parsed.path,
+                    "QUERY_STRING": parsed.query, "CONTENT_TYPE": self.headers.get("Content-Type", ""),
+                    "CONTENT_LENGTH": str(len(body)), "REMOTE_USER": "pdfcraft-sync", "REMOTE_ADDR": "127.0.0.1",
+                })
+                if self.headers.get("Content-Encoding"):
+                    env["HTTP_CONTENT_ENCODING"] = self.headers["Content-Encoding"]
+                if self.headers.get("Git-Protocol"):
+                    env["GIT_PROTOCOL"] = self.headers["Git-Protocol"]
+                proc = subprocess.run(["git", "http-backend"], input=body, env=env,
+                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+                head, _, payload = proc.stdout.partition(b"\r\n\r\n")
+                if not _:
+                    head, _, payload = proc.stdout.partition(b"\n\n")
+                status, headers = 200, []
+                for line in head.decode("latin-1").splitlines():
+                    key, _, value = line.partition(":")
+                    if key.lower() == "status":
+                        status = int(value.strip().split()[0])
+                    elif key:
+                        headers.append((key, value.strip()))
+                self.send_response(status)
+                for key, value in headers:
+                    self.send_header(key, value)
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+            do_GET = do_POST = _cgi
+
+        self.server = _Server(Handler)
+
+    @property
+    def url(self) -> str:
+        return self.server.url
+
+    def stop(self) -> None:
+        self.server.stop()
 
 
 def github_pr(number: int, sha: str, *, head_ref: str = "claude/feature-x", head_repo: str = "sefr-14/pdfcraft",
@@ -459,6 +593,8 @@ class SyncTestCase(unittest.TestCase):
         os.environ["SYNC_ALLOW_FILE_PROTOCOL"] = "always"
         os.environ.pop("GITHUB_ACTIONS", None)
         os.environ.pop("GITHUB_STEP_SUMMARY", None)
+        os.environ.pop("CF_ACCESS_CLIENT_ID", None)  # hermetic: tests opt in to Cloudflare Access
+        os.environ.pop("CF_ACCESS_CLIENT_SECRET", None)
         self.remotes = Remotes()
         self.forgejo = FakeForgejo(self.remotes.bare["forgejo"])
         self.addCleanup(self.forgejo.stop)

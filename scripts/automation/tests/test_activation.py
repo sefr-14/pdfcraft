@@ -7,7 +7,7 @@ import io
 import os
 import unittest
 
-from fakes import FORGEJO_TOKEN, Fault, SyncTestCase, git
+from fakes import CF_ID, CF_SECRET, FORGEJO_TOKEN, Fault, SyncTestCase, git
 
 import forgejo_acceptance
 import forgejo_api_check
@@ -99,6 +99,23 @@ class Acceptance(SyncTestCase):
         self.assertEqual(code, 1)
         self.assertIn("already exists", out)
         self.assertEqual(self.forgejo.pulls, {})
+
+    def test_read_pass_through_cloudflare_access(self):
+        os.environ.update({"CF_ACCESS_CLIENT_ID": CF_ID, "CF_ACCESS_CLIENT_SECRET": CF_SECRET})
+        self.forgejo.require_cf = (CF_ID, CF_SECRET)
+        code, out = self.run_main()
+        self.assertEqual(code, 0, out)
+        self.assertTrue(all(h.get("cf-access-client-secret") == CF_SECRET for h in self.forgejo.headers))
+        for secret in (FORGEJO_TOKEN, CF_ID, CF_SECRET):
+            self.assertNotIn(secret, out)
+
+    def test_half_configured_cloudflare_fails(self):
+        os.environ["CF_ACCESS_CLIENT_SECRET"] = CF_SECRET
+        code, out = self.run_main()
+        self.assertEqual(code, 1)
+        self.assertIn("half configured", out)
+        self.assertNotIn(CF_SECRET, out)
+        self.assertEqual(self.forgejo.requests, [])
 
     def test_admin_token_fails_the_read_pass(self):
         real_route = self.forgejo.route

@@ -45,6 +45,35 @@ class EventPolicy(unittest.TestCase):
         users = [n for n in all_workflows() if re.search(r"secrets\.FORGEJO", read(n))]
         self.assertEqual(sorted(users), sorted(SYNC))
 
+    def test_cloudflare_secrets_only_in_the_sync_workflows(self):
+        # forgejo-http-diagnostic.yml is a temporary read-only probe, removed separately.
+        users = [n for n in all_workflows()
+                 if re.search(r"secrets\.CF_ACCESS", read(n)) and n != "forgejo-http-diagnostic.yml"]
+        self.assertEqual(sorted(users), sorted(SYNC))
+
+    def test_sync_steps_pass_both_cloudflare_secrets(self):
+        for name in SYNC:
+            text = code(read(name))
+            for var in ("CF_ACCESS_CLIENT_ID", "CF_ACCESS_CLIENT_SECRET"):
+                self.assertEqual(len(re.findall(rf"^\s+{var}: \$\{{\{{ secrets\.{var} \}}\}}$", text, re.M)), 1,
+                                 f"{name}: {var}")
+
+    @unittest.skipIf(yaml is None, "PyYAML not installed")
+    def test_cloudflare_secrets_reach_the_script_step_only(self):
+        for name in SYNC:
+            doc = yaml.safe_load(read(name))
+            for job in doc["jobs"].values():
+                self.assertNotIn("env", job, name)
+                for step in job["steps"]:
+                    env = step.get("env") or {}
+                    runs_script = "scripts/automation/" in str(step.get("run", ""))
+                    for var in ("CF_ACCESS_CLIENT_ID", "CF_ACCESS_CLIENT_SECRET", "FORGEJO_TOKEN"):
+                        if runs_script:
+                            self.assertEqual(env.get(var), f"${{{{ secrets.{var} }}}}", f"{name}: {var}")
+                        else:
+                            self.assertNotIn(var, env, f"{name}: {var} outside the script step")
+            self.assertNotIn("env", doc, name)
+
     def test_tests_workflow_has_no_secrets(self):
         self.assertNotIn("secrets.", read("automation-tests.yml"))
 
