@@ -5,20 +5,24 @@
     ... --confirm-writes        # only after the read-only pass, and with approval
 
 Read-only pass (default):
-  1. ``GET /user`` is the expected bot account.
-  2. The repository reports ``permissions.push = true`` and ``admin = false``.
-  3. Branch protections cannot be read (403/404): the bot is not an administrator.
-  4. ``Main`` exists; its SHA is printed.
+  1. The repository reports ``permissions.push = true`` and ``admin = false`` for the token.
+  2. Branch protections cannot be read (403/404): the bot is not an administrator.
+  3. ``git ls-remote``, sending the token, finds ``Main``; its SHA is printed.
+
+The token's account identity is not verified. ``GET /user`` needs the ``read:user`` scope, which
+the bot's repository-restricted token deliberately lacks, and no repository-scoped endpoint
+names the token's owner. ``FORGEJO_USER`` is only used as the user name in Git's HTTP
+authentication and in the test commit's e-mail address.
 
 Write pass (``--confirm-writes``), each step in order, stopping at the first failure:
-  5. ``PATCH`` the repository with an empty body: must be refused (403). With an admin token it
+  4. ``PATCH`` the repository with an empty body: must be refused (403). With an admin token it
      would be a no-op, so it is harmless either way.
-  6. Make one harmless commit on top of Main that adds
+  5. Make one harmless commit on top of Main that adds
      ``scripts/automation/acceptance/ACCEPTANCE.txt`` (a timestamp), in a throwaway repository,
      and push it without force to ``github-pr/0``. Refuses to run if that branch exists.
-  7. Open a PR from ``github-pr/0`` into Main titled "do not merge", comment on it, edit its title
+  6. Open a PR from ``github-pr/0`` into Main titled "do not merge", comment on it, edit its title
      and close it. It is never merged.
-  8. Open an issue, comment on it and close it.
+  7. Open an issue, comment on it and close it.
 
 It never pushes to Main and never deletes anything: delete ``github-pr/0`` by hand afterwards.
 Whether the bot can push to Main is checked by an administrator reading Main's branch
@@ -55,11 +59,10 @@ TEST_FILE = "scripts/automation/acceptance/ACCEPTANCE.txt"
 
 
 class Acceptance:
-    def __init__(self, client: ForgejoClient, git: Git, git_url: str, user: str, base: str, out=None):
+    def __init__(self, client: ForgejoClient, git: Git, git_url: str, base: str, out=None):
         self.client = client
         self.git = git
         self.git_url = git_url
-        self.user = user
         self.base = base
         self.out = out if out is not None else sys.stdout
         self.created: list[str] = []
@@ -69,12 +72,7 @@ class Acceptance:
 
     def read_checks(self) -> bool:
         ok = True
-        login = str(self.client.current_user().get("login", ""))
-        if login == self.user:
-            self.say("ok", f"authenticated as {printable(login)}")
-        else:
-            self.say("FAIL", f"authenticated as {printable(login)!r}, expected {self.user!r}")
-            ok = False
+        self.say("note", "token owner not verified: GET /user needs read:user, which this token is not meant to have")
         perms = self.client.get_repo().get("permissions") or {}
         if perms.get("push") is True and perms.get("admin") is False:
             self.say("ok", "repository permissions: push yes, admin no")
@@ -183,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
         git_url = validate_https_url(env_str("FORGEJO_GIT_URL", f"{url}/{repo}.git"), "Forgejo Git URL", args.allow_local)
         git = Git.temporary(auth=GitAuth(url, user, token),
                             identity=git_identity("PdfCraft sync acceptance test", f"{user}@noreply.invalid"))
-        test = Acceptance(ForgejoClient(url, repo, token), git, git_url, user, env_str("BASE_BRANCH", "Main"))
+        test = Acceptance(ForgejoClient(url, repo, token), git, git_url, env_str("BASE_BRANCH", "Main"))
         ok = test.read_checks()
         if ok and args.confirm_writes:
             ok = test.write_checks()

@@ -7,7 +7,7 @@ import io
 import os
 import unittest
 
-from fakes import FORGEJO_TOKEN, SyncTestCase, git
+from fakes import FORGEJO_TOKEN, Fault, SyncTestCase, git
 
 import forgejo_acceptance
 import forgejo_api_check
@@ -44,6 +44,9 @@ class Acceptance(SyncTestCase):
         self.main = self.remotes.commit(None, {"README": "base\n"}, "base")
         self.remotes.set_ref("forgejo", "refs/heads/Main", self.main)
         self.forgejo.swagger = swagger()
+        # Like the real repository-restricted bot token, which has no read:user scope.
+        self.forgejo.faults.append(Fault("GET", r"^/api/v1/user$", 403, times=1000, body={
+            "message": "token does not have at least one of required scope(s): [read:user]"}))
         os.environ.update({
             "FORGEJO_URL": self.forgejo.url, "FORGEJO_GIT_URL": self.remotes.url("forgejo"),
             "FORGEJO_USER": "pdfcraft-sync", "FORGEJO_TOKEN": FORGEJO_TOKEN,
@@ -63,6 +66,15 @@ class Acceptance(SyncTestCase):
         self.assertIsNone(self.remotes.ref("forgejo", "refs/heads/github-pr/0"))
         self.assertFalse([r for r in self.forgejo.requests if r[0] != "GET"])
         self.assertNotIn(FORGEJO_TOKEN, out)
+
+    def test_read_pass_needs_no_read_user_scope_and_claims_no_identity(self):
+        code, out = self.run_main()
+        self.assertEqual(code, 0, out)
+        self.assertNotIn(("GET", "/api/v1/user"), self.forgejo.requests)
+        self.assertIn("token owner not verified", out)
+        self.assertNotIn("authenticated as", out)
+        self.assertIn("repository permissions: push yes, admin no", out)
+        self.assertIn(f"Main is at {self.main}", out)
 
     def test_write_pass_makes_a_real_change_and_never_merges(self):
         code, out = self.run_main("--confirm-writes")
