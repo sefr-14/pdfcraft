@@ -1,7 +1,7 @@
 # GitHub → Forgejo synchronization (fork automation)
 
-Status: implemented and tested locally against fakes. **Not activated**: no credential, event
-policy or bootstrap has been set up. Last updated 2026-10-27.
+Status: bootstrapped into `Main` (Forgejo PR #1). The bot token exists and its acceptance
+test is in progress; the workflows are not yet relied on. Last updated 2026-10-27.
 
 This fork (`sefr-14/pdfcraft` on GitHub) is integrated on Forgejo (`sefr/pdfcraft` on
 `git.ferrive.me`). Forgejo `Main` is authoritative and push-mirrors `Main` to GitHub. Claude Code
@@ -203,6 +203,9 @@ A clean merge is not proof of compatibility.
     - `head.sha` survives a closed PR whose branch was deleted;
     - `type=issues` excludes PRs from the issue list.
 - **Bot permissions.** Unverified until `forgejo_acceptance.py` runs.
+- **Token owner.** Not verified by any script. `GET /user` needs the `read:user` scope, which the
+  repository-restricted bot token deliberately lacks, and no repository-scoped endpoint names the
+  token's owner. Neither sync workflow needs that endpoint.
 - **Main protection.** That the bot cannot push to `Main` is checked by an administrator, never
   by trying.
 - **Event policy.** GitHub's per-workflow-file execution policies (confirmed available by the
@@ -238,6 +241,10 @@ Every step that writes anything needs separate approval. In order:
 3. **Acceptance test** (from a trusted local checkout):
    `FORGEJO_USER=pdfcraft-sync FORGEJO_TOKEN=… python3 -I scripts/automation/forgejo_acceptance.py`,
    then the same with `--confirm-writes`.
+   - The read-only pass checks the token's repository permissions (push, not admin), that branch
+     protections are refused to it, and that `git ls-remote` finds `Main` with the token sent.
+     It does not check which account owns the token: that needs `read:user`, which the token is
+     not meant to have. Confirm the owner in Forgejo's token settings when you create the token.
    - The write pass pushes one harmless commit (adding
      `scripts/automation/acceptance/ACCEPTANCE.txt`) to `github-pr/0`.
    - It then opens, comments on, edits and closes a PR (never merged), and opens, comments on
