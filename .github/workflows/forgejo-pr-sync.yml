@@ -1,0 +1,67 @@
+# Fork-only workflow (sefr-14/pdfcraft): bridge a same-repository GitHub pull request into a
+# Forgejo pull request on the authoritative repository (sefr/pdfcraft on git.ferrive.me).
+#
+# - pull_request_target, so the workflow file and scripts always come from Main (GitHub runs the
+#   default branch's copy since December 2025). A PR cannot change what runs with the secret.
+#   The PR's code is never checked out or executed: its commits are fetched as Git objects and
+#   pushed on to Forgejo as data (scripts/automation/sync_claude_pr.py).
+# - From 2 December 2026 GitHub blocks pull_request_target in public repositories without an
+#   event policy. This workflow needs a policy allowing pull_request_target for this file only
+#   (Settings > Actions > Policies); see scripts/automation/README.md, "Activation".
+# - Only PRs from branches of this repository into Main are bridged; fork PRs are rejected.
+# - The GitHub token is read-only. Results go to the job summary and to Forgejo.
+# - Never merges, never force-pushes, never touches Main (the scripts' push guard refuses it).
+
+name: forgejo pr sync
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited, closed]
+    branches: [Main]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: GitHub pull request number to reconcile
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  pull-requests: read
+
+# One run per PR at a time; a newer event waits rather than cancelling a push half way.
+concurrency:
+  group: forgejo-pr-sync-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Bridge to Forgejo
+    if: >-
+      github.repository == 'sefr-14/pdfcraft' &&
+      (github.event_name == 'workflow_dispatch' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: forgejo-sync
+    steps:
+      # The trusted default branch only; never the PR head or merge ref.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: Main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bridge the pull request
+        env:
+          # Numbers and SHAs only: no PR text reaches the shell. The script re-reads the PR from
+          # the API and validates everything it uses.
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          EVENT_ACTION: ${{ github.event.action || 'workflow_dispatch' }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+          GITHUB_TOKEN: ${{ github.token }}
+          FORGEJO_URL: ${{ vars.FORGEJO_URL || 'https://git.ferrive.me' }}
+          FORGEJO_REPO: ${{ vars.FORGEJO_REPO || 'sefr/pdfcraft' }}
+          FORGEJO_USER: ${{ secrets.FORGEJO_USER }}
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          SYNC_OBJECT_CACHE: ${{ github.workspace }}/.git/objects
+        run: python3 -I scripts/automation/sync_claude_pr.py
