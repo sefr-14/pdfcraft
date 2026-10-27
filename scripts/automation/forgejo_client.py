@@ -12,7 +12,13 @@ Error handling:
   says it did nothing; any other ambiguous POST failure is raised, and the caller's next run
   re-lists before creating, so a retry can never duplicate a pull request, issue or comment.
 
-No request header is ever logged, and every error message is redacted.
+Redirects are refused (:class:`ApiError`, status 3xx), never followed: urllib would replay every
+request header, ``Authorization`` and the Cloudflare Access service token included, to whatever
+host the redirect names, and a redirect means the request never reached Forgejo anyway. The
+usual cause is Cloudflare Access rejecting or missing the service token (``common.CloudflareAccess``).
+
+No request header is ever logged, no redirect body or location is reported, and every error
+message is redacted.
 """
 
 from __future__ import annotations
@@ -25,7 +31,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Callable, Iterator
 
-from common import REDACTOR, Redactor, SyncError, printable, validate_repo_slug
+from common import REDACTOR, CloudflareAccess, Redactor, SyncError, printable, validate_repo_slug
 
 USER_AGENT = "pdfcraft-sync/1 (+scripts/automation)"
 MAX_RESPONSE_BYTES = 32 * 1024 * 1024
@@ -60,6 +66,17 @@ class TransientError(ApiError):
 
 
 _RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+
+
+class _RefuseRedirects(urllib.request.BaseHandler):
+    """Turns every redirect into an error before ``HTTPRedirectHandler`` (order 500) can follow it."""
+
+    handler_order = 100
+
+    def _refuse(self, req, fp, code, msg, headers):
+        raise urllib.error.HTTPError(req.full_url, code, msg, headers, fp)
+
+    http_error_301 = http_error_302 = http_error_303 = http_error_307 = http_error_308 = _refuse
 
 
 class HttpClient:
@@ -128,7 +145,8 @@ class HttpClient:
                         raise ApiError(f"{self.name} {method} {self._safe_path(path)}: invalid JSON") from None
             except urllib.error.HTTPError as exc:
                 status = exc.code
-                detail = self._error_detail(exc)
+                # A redirect's body is a login page or similar: never worth reporting.
+                detail = "" if 300 <= status < 400 else self._error_detail(exc)
                 if status in _RETRYABLE_STATUS and self._may_retry(method, status) and attempt <= self.retries:
                     retry_after = self._retry_after(exc)
                 else:
@@ -177,6 +195,9 @@ class HttpClient:
 
     def _typed(self, status: int, method: str, path: str, detail: str) -> ApiError:
         msg = self.redactor.redact(f"{self.name} {method} {self._safe_path(path)}: HTTP {status} {detail}".strip())
+        if 300 <= status < 400:
+            return ApiError(msg + " redirect refused (Cloudflare Access or a proxy intercepted the request;"
+                            " check CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET)", status)
         if status == 401:
             return AuthError(msg + " (token missing, revoked or expired)", status)
         if status == 403:
@@ -195,13 +216,25 @@ def _q(value: str) -> str:
 
 
 class ForgejoClient(HttpClient):
-    """The Forgejo operations the automation uses, on one repository."""
+    """The Forgejo operations the automation uses, on one repository.
 
-    def __init__(self, base_url: str, repo: str, token: str | None, **kwargs):
+    ``cf_access`` adds the Cloudflare Access service-token headers to this client's requests
+    only; other clients (GitHub) never see them. Redirects are always refused.
+    """
+
+    def __init__(self, base_url: str, repo: str, token: str | None, *,
+                 cf_access: CloudflareAccess | None = None, **kwargs):
+        opener = kwargs.pop("opener", None) or urllib.request.build_opener()
+        opener.add_handler(_RefuseRedirects())
+        extra_headers = dict(kwargs.pop("extra_headers", None) or {})
+        if cf_access is not None:
+            extra_headers.update(cf_access.headers())
         super().__init__(
             base_url.rstrip("/") + "/api/v1",
             f"token {token}" if token else None,
             name="Forgejo",
+            opener=opener,
+            extra_headers=extra_headers,
             **kwargs,
         )
         owner, name = validate_repo_slug(repo, "Forgejo repository").split("/", 1)

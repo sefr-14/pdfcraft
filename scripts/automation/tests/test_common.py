@@ -9,20 +9,23 @@ import subprocess
 import unittest
 from unittest import mock
 
-from fakes import FORGEJO_TOKEN, SyncTestCase
+from fakes import CF_ID, CF_SECRET, FORGEJO_TOKEN, SyncTestCase
 
 from common import (
+    CloudflareAccess,
     Git,
     GitAuth,
     GitError,
     PushRefused,
     Redactor,
     Reporter,
+    SyncError,
     ValidationError,
     check_push_destination,
     quote_untrusted,
     sanitize_title,
     validate_branch_name,
+    validate_header_value,
     validate_https_url,
     validate_repo_slug,
     validate_sha,
@@ -142,6 +145,23 @@ class Redaction(unittest.TestCase):
     def test_bytes(self):
         self.assertNotIn(FORGEJO_TOKEN, self.r.redact(FORGEJO_TOKEN.encode()))
 
+    def test_basic_authorization_base64_is_redacted(self):
+        for text in (f"Authorization: Basic {self.b64}", f"http.extraHeader=Authorization: Basic {self.b64}",
+                     f"credentials {self.b64} end", f"{self.b64}"):
+            with self.subTest(text=text[:30]):
+                self.assertNotIn(self.b64, self.r.redact(text))
+        # Unregistered: the header shape alone is enough.
+        self.assertNotIn(self.b64, Redactor().redact(f"Authorization: Basic {self.b64}"))
+
+    def test_cloudflare_credentials_registered_and_header_shapes(self):
+        CloudflareAccess(CF_ID, CF_SECRET).register(self.r)
+        out = self.r.redact(f"id={CF_ID} secret={CF_SECRET}")
+        self.assertNotIn(CF_ID, out)
+        self.assertNotIn(CF_SECRET, out)
+        out = Redactor().redact(f"CF-Access-Client-Id: {CF_ID}\ncf-access-client-secret={CF_SECRET}")
+        self.assertNotIn(CF_ID, out)
+        self.assertNotIn(CF_SECRET, out)
+
     def test_reporter_redacts_log_annotations_and_summary(self):
         stream = io.StringIO()
         rep = Reporter(self.r, stream=stream, actions=True)
@@ -175,15 +195,117 @@ class Redaction(unittest.TestCase):
         self.assertFalse([i for i in resume if start < i < forged])  # commands still stopped
 
 
+class CloudflareConfig(unittest.TestCase):
+    def env(self, **values):
+        clean = {k: v for k, v in os.environ.items() if not k.startswith("CF_ACCESS_")}
+        clean.update(values)
+        return mock.patch.dict(os.environ, clean, clear=True)
+
+    def test_both_absent_is_none(self):
+        with self.env():
+            self.assertIsNone(CloudflareAccess.from_env())
+
+    def test_both_present(self):
+        with self.env(CF_ACCESS_CLIENT_ID=CF_ID, CF_ACCESS_CLIENT_SECRET=CF_SECRET):
+            cf = CloudflareAccess.from_env()
+        self.assertEqual(cf.headers(), {"CF-Access-Client-Id": CF_ID, "CF-Access-Client-Secret": CF_SECRET})
+
+    def test_exactly_one_present_fails_without_printing_it(self):
+        for values, missing in (({"CF_ACCESS_CLIENT_ID": CF_ID}, "CF_ACCESS_CLIENT_SECRET is not"),
+                                ({"CF_ACCESS_CLIENT_SECRET": CF_SECRET}, "CF_ACCESS_CLIENT_ID is not"),
+                                ({"CF_ACCESS_CLIENT_ID": CF_ID, "CF_ACCESS_CLIENT_SECRET": "  \n"}, "SECRET is not"),
+                                ({"CF_ACCESS_CLIENT_ID": "", "CF_ACCESS_CLIENT_SECRET": CF_SECRET}, "ID is not")):
+            with self.subTest(values=sorted(values)), self.env(**values):
+                with self.assertRaises(SyncError) as ctx:
+                    CloudflareAccess.from_env()
+                self.assertIn("half configured", str(ctx.exception))
+                self.assertIn(missing, str(ctx.exception))
+                self.assertNotIn(CF_ID, str(ctx.exception))
+                self.assertNotIn(CF_SECRET, str(ctx.exception))
+
+    def test_empty_and_whitespace_only_count_as_absent(self):
+        for value in ("", " ", "\t\n "):
+            with self.subTest(value=value), self.env(CF_ACCESS_CLIENT_ID=value, CF_ACCESS_CLIENT_SECRET=value):
+                self.assertIsNone(CloudflareAccess.from_env())
+
+    def test_surrounding_whitespace_is_stripped(self):
+        with self.env(CF_ACCESS_CLIENT_ID=f" {CF_ID}\n", CF_ACCESS_CLIENT_SECRET=f"{CF_SECRET}\r\n"):
+            cf = CloudflareAccess.from_env()
+        self.assertEqual((cf.client_id, cf.client_secret), (CF_ID, CF_SECRET))
+
+    def test_header_injection_is_refused(self):
+        for bad in (f"{CF_SECRET}\r\nX-Evil: 1", f"{CF_SECRET}\nX-Evil: 1",
+                    f"{CF_SECRET} x", f"{CF_SECRET}\x7f", f"{CF_SECRET}é", "x" * 5000):
+            with self.subTest(bad=bad[:40]), self.env(CF_ACCESS_CLIENT_ID=CF_ID, CF_ACCESS_CLIENT_SECRET=bad):
+                with self.assertRaises(ValidationError) as ctx:
+                    CloudflareAccess.from_env()
+                self.assertIn("CF_ACCESS_CLIENT_SECRET", str(ctx.exception))
+                self.assertNotIn(CF_SECRET, str(ctx.exception))
+
+    def test_validate_header_value(self):
+        self.assertEqual(validate_header_value(FORGEJO_TOKEN, "FORGEJO_TOKEN"), FORGEJO_TOKEN)
+        for bad in ("", "a b", "a\nb", "a\rb", "tab\there", "nul\x00", None):  # NUL cannot reach os.environ
+            with self.subTest(bad=bad), self.assertRaises(ValidationError) as ctx:
+                validate_header_value(bad, "FORGEJO_TOKEN")
+            self.assertIn("FORGEJO_TOKEN", str(ctx.exception))
+
+
 class GitRunner(SyncTestCase):
     def test_credentials_never_on_argv_and_scoped_to_forgejo(self):
-        g = Git(git_dir="/tmp/x", auth=GitAuth("https://git.ferrive.me", "pdfcraft-sync", FORGEJO_TOKEN))
-        with mock.patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0, b"", b"")) as run:
-            g.run(["ls-remote", "https://git.ferrive.me/sefr/pdfcraft.git", "refs/heads/Main"])
-        argv, env = run.call_args.args[0], run.call_args.kwargs["env"]
-        self.assertFalse([a for a in argv if FORGEJO_TOKEN in a or "extraHeader" in a])
-        self.assertEqual(env["GIT_CONFIG_KEY_0"], "http.https://git.ferrive.me/.extraHeader")
-        self.assertEqual(env["GIT_TERMINAL_PROMPT"], "0")
+        for cf in (None, CloudflareAccess(CF_ID, CF_SECRET)):
+            with self.subTest(cloudflare=cf is not None):
+                g = Git(git_dir="/tmp/x", auth=GitAuth("https://git.ferrive.me", "pdfcraft-sync", FORGEJO_TOKEN, cf))
+                with mock.patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0, b"", b"")) as run:
+                    g.run(["ls-remote", "https://git.ferrive.me/sefr/pdfcraft.git", "refs/heads/Main"])
+                argv, env = run.call_args.args[0], run.call_args.kwargs["env"]
+                self.assertFalse([a for a in argv if FORGEJO_TOKEN in a or CF_ID in a or CF_SECRET in a
+                                  or "extraHeader" in a or "followRedirects" in a])
+                self.assertEqual(env["GIT_CONFIG_KEY_0"], "http.https://git.ferrive.me/.extraHeader")
+                self.assertEqual(env["GIT_TERMINAL_PROMPT"], "0")
+
+    # The raw, internal Git environment: it must carry the credentials (and only for the Forgejo
+    # prefix). Whether they ever become visible is tested separately, in test_git_http_auth.
+
+    def test_git_auth_env_without_cloudflare_keeps_basic_and_refuses_redirects(self):
+        b64 = base64.b64encode(f"pdfcraft-sync:{FORGEJO_TOKEN}".encode()).decode()
+        self.assertEqual(GitAuth("https://git.ferrive.me/", "pdfcraft-sync", FORGEJO_TOKEN).env(), {
+            "GIT_CONFIG_COUNT": "2",
+            "GIT_CONFIG_KEY_0": "http.https://git.ferrive.me/.extraHeader",
+            "GIT_CONFIG_VALUE_0": f"Authorization: Basic {b64}",
+            "GIT_CONFIG_KEY_1": "http.https://git.ferrive.me/.followRedirects",
+            "GIT_CONFIG_VALUE_1": "false",
+        })
+
+    def test_git_auth_env_with_cloudflare_has_three_headers_for_the_same_prefix(self):
+        b64 = base64.b64encode(f"pdfcraft-sync:{FORGEJO_TOKEN}".encode()).decode()
+        env = GitAuth("https://git.ferrive.me", "pdfcraft-sync", FORGEJO_TOKEN,
+                      CloudflareAccess(CF_ID, CF_SECRET)).env()
+        self.assertEqual(env, {
+            "GIT_CONFIG_COUNT": "4",
+            "GIT_CONFIG_KEY_0": "http.https://git.ferrive.me/.extraHeader",
+            "GIT_CONFIG_VALUE_0": f"Authorization: Basic {b64}",
+            "GIT_CONFIG_KEY_1": "http.https://git.ferrive.me/.extraHeader",
+            "GIT_CONFIG_VALUE_1": f"CF-Access-Client-Id: {CF_ID}",
+            "GIT_CONFIG_KEY_2": "http.https://git.ferrive.me/.extraHeader",
+            "GIT_CONFIG_VALUE_2": f"CF-Access-Client-Secret: {CF_SECRET}",
+            "GIT_CONFIG_KEY_3": "http.https://git.ferrive.me/.followRedirects",
+            "GIT_CONFIG_VALUE_3": "false",
+        })
+
+    def test_inherited_git_config_entries_are_replaced_not_merged(self):
+        g = Git(git_dir="/tmp/x", auth=GitAuth("https://git.ferrive.me", "u", FORGEJO_TOKEN))
+        with mock.patch.dict(os.environ, {"GIT_CONFIG_COUNT": "5", "GIT_CONFIG_KEY_4": "http.extraHeader",
+                                          "GIT_CONFIG_VALUE_4": "X-Leak: 1"}):
+            env = g._env()
+        self.assertEqual(env["GIT_CONFIG_COUNT"], "2")
+        self.assertNotIn("GIT_CONFIG_KEY_4", env)
+
+    def test_reprs_hide_credentials(self):
+        cf = CloudflareAccess(CF_ID, CF_SECRET)
+        auth = GitAuth("https://git.ferrive.me", "pdfcraft-sync", FORGEJO_TOKEN, cf)
+        for text in (repr(cf), str(cf), repr(auth), repr(Git(git_dir="/tmp/x", auth=auth))):
+            for secret in (CF_ID, CF_SECRET, FORGEJO_TOKEN):
+                self.assertNotIn(secret, text)
 
     def test_trace_variables_are_dropped(self):
         g = Git(git_dir="/tmp/x")

@@ -5,6 +5,8 @@ GitHub pull requests or from Forgejo, and every one of them can be hostile. The 
 
 - Git runs as a list of arguments, never through a shell, with credentials passed only through
   the environment (``GIT_CONFIG_*``), never on the command line, in a URL or in a remote.
+- Credentials are sent only to the Forgejo URL prefix, and requests carrying them never follow
+  a redirect, so no header can be replayed to another host.
 - Every push goes through :func:`check_push_destination`, which only accepts the automation's own
   branch namespaces. ``Main`` and force pushes are refused before Git is even started.
 - Every line that reaches a log, an annotation, an exception message or the job summary passes
@@ -98,6 +100,8 @@ class Redactor:
         re.compile(r"(?i)(\b[a-z][a-z0-9+.-]*://[^/\s:@]+:)[^@\s/]+(@)"),
         # GitHub token shapes.
         re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b"),
+        # Cloudflare Access service-token headers.
+        re.compile(r"(?i)(cf-access-client-(?:id|secret)\s*[:=]\s*)[^\s\"',;]+"),
     )
 
     def __init__(self) -> None:
@@ -135,6 +139,7 @@ class Redactor:
         out = self._PATTERNS[0].sub(lambda m: m.group(1) + "***", out)
         out = self._PATTERNS[1].sub(lambda m: m.group(1) + "***" + m.group(2), out)
         out = self._PATTERNS[2].sub("***", out)
+        out = self._PATTERNS[3].sub(lambda m: m.group(1) + "***", out)
         return out
 
 
@@ -230,6 +235,19 @@ def quote_untrusted(text: object, limit: int = 20000) -> str:
     return quoted
 
 
+_HEADER_VALUE_RE = re.compile(r"[\x21-\x7e]{1,4096}")
+
+
+def validate_header_value(value: str, what: str) -> str:
+    """A credential bound for an HTTP header: visible ASCII only, so no CR/LF can split it.
+
+    The error names the variable, never the value.
+    """
+    if not isinstance(value, str) or not _HEADER_VALUE_RE.fullmatch(value):
+        raise ValidationError(f"{what} contains characters not allowed in an HTTP header (or is too long)")
+    return value
+
+
 def md_code(value: object) -> str:
     """Untrusted text as inline Markdown code, safe for tables and summaries."""
     text = printable(value).replace("`", "'").replace("|", "\\|")
@@ -309,22 +327,85 @@ class Reporter:
 # Git
 
 
+@dataclass(frozen=True)
+class CloudflareAccess:
+    """A Cloudflare Access service token, sent to the Forgejo host only.
+
+    Cloudflare Access sits in front of Forgejo and answers unauthenticated requests from outside
+    its bypass rules (GitHub-hosted runners, for one) with a 302 to its login page. The service
+    token gets the request through to Forgejo, where the bot token still does the authorization.
+    """
+
+    client_id: str
+    client_secret: str
+
+    ID_VAR = "CF_ACCESS_CLIENT_ID"
+    SECRET_VAR = "CF_ACCESS_CLIENT_SECRET"
+
+    def __repr__(self) -> str:
+        return "CloudflareAccess(client_id=***, client_secret=***)"
+
+    @classmethod
+    def from_env(cls) -> "CloudflareAccess | None":
+        """Both variables set: the token. Neither: None. Exactly one: an error, never a guess.
+
+        Empty and whitespace-only values count as unset (GitHub passes ``""`` for a missing
+        secret); surrounding whitespace, such as a pasted trailing newline, is stripped.
+        """
+        client_id = os.environ.get(cls.ID_VAR, "").strip()
+        client_secret = os.environ.get(cls.SECRET_VAR, "").strip()
+        if not client_id and not client_secret:
+            return None
+        if not client_id or not client_secret:
+            have, missing = (cls.ID_VAR, cls.SECRET_VAR) if client_id else (cls.SECRET_VAR, cls.ID_VAR)
+            raise SyncError(
+                f"Cloudflare Access is half configured: {have} is set but {missing} is not; "
+                "set both or neither"
+            )
+        return cls(validate_header_value(client_id, cls.ID_VAR),
+                   validate_header_value(client_secret, cls.SECRET_VAR))
+
+    def headers(self) -> dict[str, str]:
+        return {"CF-Access-Client-Id": self.client_id, "CF-Access-Client-Secret": self.client_secret}
+
+    def register(self, redactor: Redactor) -> None:
+        redactor.add(self.client_id)
+        redactor.add(self.client_secret)
+
+
 @dataclass
 class GitAuth:
-    """HTTP credentials for one URL prefix, handed to Git through the environment only."""
+    """HTTP credentials for one URL prefix, handed to Git through the environment only.
+
+    ``http.<prefix>.extraHeader`` is multi-valued: Git sends every value it collects, so the
+    Basic and Cloudflare headers are separate entries for the same key. ``GIT_CONFIG_*`` is
+    command-scope configuration, which outranks every config file and is never written to one.
+    Redirects are switched off for the prefix: curl drops ``Authorization`` on a cross-host
+    redirect but would replay the Cloudflare headers, and a redirect from Forgejo means the
+    request did not reach it anyway.
+    """
 
     url_prefix: str
     user: str
     token: str
+    cf_access: CloudflareAccess | None = None
+
+    def __repr__(self) -> str:
+        return f"GitAuth(url_prefix={self.url_prefix!r}, user={self.user!r}, token=***, cf_access=***)"
 
     def env(self) -> dict[str, str]:
         pair = base64.b64encode(f"{self.user}:{self.token}".encode("utf-8")).decode("ascii")
         prefix = self.url_prefix.rstrip("/") + "/"
-        return {
-            "GIT_CONFIG_COUNT": "1",
-            "GIT_CONFIG_KEY_0": f"http.{prefix}.extraHeader",
-            "GIT_CONFIG_VALUE_0": f"Authorization: Basic {pair}",
-        }
+        entries = [(f"http.{prefix}.extraHeader", f"Authorization: Basic {pair}")]
+        if self.cf_access is not None:
+            entries += [(f"http.{prefix}.extraHeader", f"{name}: {value}")
+                        for name, value in self.cf_access.headers().items()]
+        entries.append((f"http.{prefix}.followRedirects", "false"))
+        env = {"GIT_CONFIG_COUNT": str(len(entries))}
+        for i, (key, value) in enumerate(entries):
+            env[f"GIT_CONFIG_KEY_{i}"] = key
+            env[f"GIT_CONFIG_VALUE_{i}"] = value
+        return env
 
 
 @dataclass

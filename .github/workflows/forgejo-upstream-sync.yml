@@ -51,6 +51,9 @@ jobs:
           FORGEJO_REPO: ${{ vars.FORGEJO_REPO || 'sefr/pdfcraft' }}
           FORGEJO_USER: ${{ secrets.FORGEJO_USER }}
           FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          # Cloudflare Access service token: gets the runner past Access to git.ferrive.me.
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
           UPSTREAM_GIT_URL: https://github.com/storytold/pdfcraft.git
           UPSTREAM_BRANCH: main
           SYNC_OBJECT_CACHE: ${{ github.workspace }}/.git/objects

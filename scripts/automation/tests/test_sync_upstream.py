@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import base64
+import contextlib
+import io
+import os
 import subprocess
 import unittest
 
-from fakes import FORGEJO_TOKEN, SyncTestCase, git, no_proxy_opener, quiet_reporter
+from fakes import CF_ID, CF_SECRET, FORGEJO_TOKEN, Fault, SyncTestCase, git, no_proxy_opener, quiet_reporter
+
+import sync_upstream
 
 from common import GitError
 from forgejo_client import ForgejoClient
@@ -397,6 +403,89 @@ class MergeTreeHandling(UpstreamTestCase):
                     (tree + "\x00\x009\x00f\x00").encode()):
             with self.subTest(bad=bad), self.assertRaises(MergeExecutionError):
                 parse_merge_tree(bad)
+
+
+class MainEntryPoint(UpstreamTestCase):
+    """``sync_upstream.main()`` as the workflow runs it, with and without Cloudflare Access."""
+
+    def main_env(self, **extra) -> str:
+        summary = os.path.join(self.remotes.root, "summary.md")
+        os.environ.update({
+            "SYNC_TESTING": "1", "FORGEJO_URL": self.forgejo.url, "FORGEJO_GIT_URL": self.remotes.url("forgejo"),
+            "FORGEJO_USER": "pdfcraft-sync", "FORGEJO_TOKEN": FORGEJO_TOKEN,
+            "UPSTREAM_GIT_URL": self.remotes.url("upstream"), "SYNC_COMMITTER_EMAIL": "sync@example.invalid",
+            "GITHUB_ACTIONS": "true", "GITHUB_STEP_SUMMARY": summary,
+            "no_proxy": "127.0.0.1", "NO_PROXY": "127.0.0.1", **extra,
+        })
+        return summary
+
+    def run_main(self) -> tuple[int, str, str]:
+        sync_upstream.REDACTOR.__init__()
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = sync_upstream.main()
+        return code, out.getvalue(), err.getvalue()
+
+    def test_with_cloudflare_creates_the_pr_and_masks_first(self):
+        self.main_env(CF_ACCESS_CLIENT_ID=CF_ID, CF_ACCESS_CLIENT_SECRET=CF_SECRET)
+        self.forgejo.require_cf = (CF_ID, CF_SECRET)
+        code, stdout, _ = self.run_main()
+        self.assertEqual(code, 0, stdout)
+        self.assertEqual(len(self.forgejo.open_pulls()), 1)
+        for headers in self.forgejo.headers:
+            self.assertEqual(headers["cf-access-client-id"], CF_ID)
+            self.assertEqual(headers["authorization"], f"token {FORGEJO_TOKEN}")
+        lines = stdout.splitlines()
+        first_other = next(i for i, line in enumerate(lines) if not line.startswith("::add-mask::"))
+        masked = {line[len("::add-mask::"):] for line in lines[:first_other]}
+        b64 = base64.b64encode(f"pdfcraft-sync:{FORGEJO_TOKEN}".encode()).decode()
+        self.assertLessEqual({FORGEJO_TOKEN, b64, CF_ID, CF_SECRET}, masked)
+        self.main_is(self.f1)
+
+    def test_without_cloudflare_is_unchanged(self):
+        self.main_env()
+        code, stdout, _ = self.run_main()
+        self.assertEqual(code, 0, stdout)
+        self.assertEqual(len(self.forgejo.open_pulls()), 1)
+        self.assertNotIn("cf-access-client-id", self.forgejo.headers[0])
+
+    def test_half_configured_cloudflare_fails_before_any_request(self):
+        for name, value in (("CF_ACCESS_CLIENT_ID", CF_ID), ("CF_ACCESS_CLIENT_SECRET", CF_SECRET)):
+            with self.subTest(only=name):
+                os.environ.pop("CF_ACCESS_CLIENT_ID", None)
+                os.environ.pop("CF_ACCESS_CLIENT_SECRET", None)
+                self.main_env(**{name: value})
+                code, stdout, stderr = self.run_main()
+                self.assertEqual(code, 1)
+                self.assertIn("half configured", stdout)
+                self.assertNotIn(value, stdout + stderr)
+                self.assertEqual(self.forgejo.requests, [])
+                self.assertIsNone(self.head())
+
+    def test_failure_redacts_every_credential(self):
+        summary = self.main_env(CF_ACCESS_CLIENT_ID=CF_ID, CF_ACCESS_CLIENT_SECRET=CF_SECRET)
+        self.forgejo.require_cf = (CF_ID, CF_SECRET)
+        self.forgejo.faults.append(Fault("GET", r"/pulls$", 403, times=10, body={
+            "message": f"echo {FORGEJO_TOKEN} CF-Access-Client-Id: {CF_ID} {CF_SECRET}"}))
+        code, stdout, stderr = self.run_main()
+        self.assertEqual(code, 1)
+        with open(summary, encoding="utf-8") as handle:
+            summary_text = handle.read()
+        logged = "\n".join(line for line in stdout.splitlines() if not line.startswith("::add-mask::"))
+        b64 = base64.b64encode(f"pdfcraft-sync:{FORGEJO_TOKEN}".encode()).decode()
+        self.assertIn("HTTP 403", logged)
+        for text in (logged, stderr, summary_text):
+            for secret in (FORGEJO_TOKEN, b64, CF_ID, CF_SECRET):
+                self.assertNotIn(secret, text)
+
+    def test_cloudflare_rejection_reports_a_refused_redirect(self):
+        self.main_env(CF_ACCESS_CLIENT_ID=CF_ID, CF_ACCESS_CLIENT_SECRET="cf_rotated_secret_value")
+        self.forgejo.require_cf = (CF_ID, CF_SECRET)
+        code, stdout, _ = self.run_main()
+        self.assertEqual(code, 1)
+        self.assertIn("redirect refused", stdout)
+        self.assertNotIn("invalid JSON", stdout)
+        self.assertIsNone(self.head())
 
 
 if __name__ == "__main__":

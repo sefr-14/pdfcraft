@@ -2,11 +2,25 @@
 
 from __future__ import annotations
 
+import os
 import unittest
+from unittest import mock
 
-from fakes import FORGEJO_TOKEN, Fault, FakeForgejo, Remotes, no_proxy_opener
+from fakes import (
+    CF_ID,
+    CF_SECRET,
+    FORGEJO_TOKEN,
+    GITHUB_TOKEN,
+    Fault,
+    FakeForgejo,
+    FakeGitHub,
+    RecordingServer,
+    Remotes,
+    no_proxy_opener,
+)
 
-from common import Redactor
+from common import CloudflareAccess, Redactor
+from github_client import GitHubClient
 from forgejo_client import (
     REQUIRED_OPERATIONS,
     ApiError,
@@ -121,6 +135,70 @@ class ClientTests(unittest.TestCase):
         self.assertTrue(self.client().comment_once(index, "<!-- m -->", "hello"))
         self.assertFalse(self.client().comment_once(index, "<!-- m -->", "hello"))
         self.assertEqual(len(self.fake.comments[index]), 1)
+
+    # -- Cloudflare Access and redirects -----------------------------------------------------------
+
+    def test_cloudflare_headers_sent_with_the_forgejo_token(self):
+        self.fake.require_cf = (CF_ID, CF_SECRET)
+        client = self.client(cf_access=CloudflareAccess(CF_ID, CF_SECRET))
+        self.assertTrue(client.get_repo()["permissions"]["push"])
+        client.create_issue(title="t", body="b")
+        self.assertEqual(len(self.fake.headers), 2)
+        for headers in self.fake.headers:
+            self.assertEqual(headers["authorization"], f"token {FORGEJO_TOKEN}")
+            self.assertEqual(headers["cf-access-client-id"], CF_ID)
+            self.assertEqual(headers["cf-access-client-secret"], CF_SECRET)
+        self.assertNotIn(CF_SECRET, client.base_url)
+
+    def test_without_cloudflare_no_cloudflare_headers(self):
+        self.client().get_repo()
+        self.assertNotIn("cf-access-client-id", self.fake.headers[0])
+        self.assertNotIn("cf-access-client-secret", self.fake.headers[0])
+
+    def test_github_client_never_gets_cloudflare_headers(self):
+        github = FakeGitHub()
+        self.addCleanup(github.stop)
+        self.client(cf_access=CloudflareAccess(CF_ID, CF_SECRET)).get_repo()
+        client = GitHubClient(github.url, GITHUB_TOKEN, opener=no_proxy_opener(), sleep=lambda s: None)
+        with self.assertRaises(NotFoundError):
+            client.get_pull("sefr-14/pdfcraft", 1)
+        self.assertTrue(github.headers)
+        for headers in github.headers:
+            self.assertNotIn("cf-access-client-id", headers)
+            self.assertNotIn("cf-access-client-secret", headers)
+
+    def test_access_redirect_is_refused_and_nothing_reaches_the_redirect_host(self):
+        login = RecordingServer()
+        self.addCleanup(login.stop)
+        self.fake.require_cf = (CF_ID, CF_SECRET)
+        self.fake.access_redirect = login.url + "/cdn-cgi/access/login"
+        cases = (("no service token", None), ("wrong service token", CloudflareAccess(CF_ID, "wrong-secret-value")))
+        for name, cf in cases:
+            with self.subTest(name):
+                self.fake.requests.clear()
+                self.redactor.add("wrong-secret-value")
+                with self.assertRaises(ApiError) as ctx:
+                    self.client(cf_access=cf).list_pulls()
+                text = str(ctx.exception)
+                self.assertIn("HTTP 302", text)
+                self.assertIn("redirect refused", text)
+                self.assertNotIn("invalid JSON", text)
+                self.assertNotIn("Sign in", text)  # no body
+                self.assertNotIn(login.url, text)  # no location
+                self.assertNotIn(FORGEJO_TOKEN, text)
+                self.assertEqual(self.attempts("GET", "/pulls"), 1)  # not retried
+        # Before the fix urllib followed the 302 and replayed Authorization (and any CF header).
+        self.assertEqual(login.headers, [])
+
+    def test_redirect_refused_on_the_built_in_opener_too(self):
+        login = RecordingServer()
+        self.addCleanup(login.stop)
+        self.fake.faults.append(Fault("GET", r"/version$", 307, headers={"Location": login.url + "/x"}))
+        with mock.patch.dict(os.environ, {"no_proxy": "127.0.0.1", "NO_PROXY": "127.0.0.1"}):
+            client = ForgejoClient(self.fake.url, "sefr/pdfcraft", FORGEJO_TOKEN, sleep=self.sleeps.append)
+            with self.assertRaises(ApiError):
+                client.version()
+        self.assertEqual(login.headers, [])
 
     def test_required_operations_cover_the_client(self):
         self.assertIn(("post", "/repos/{owner}/{repo}/pulls"), REQUIRED_OPERATIONS)

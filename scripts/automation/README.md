@@ -1,7 +1,8 @@
 # GitHub → Forgejo synchronization (fork automation)
 
 Status: bootstrapped into `Main` (Forgejo PR #1). The bot token exists and its acceptance
-test is in progress; the workflows are not yet relied on. Last updated 2026-10-27.
+test is in progress; the workflows are not yet relied on. Cloudflare Access service-token
+authentication added 2026-10-27. Last updated 2026-10-27.
 
 This fork (`sefr-14/pdfcraft` on GitHub) is integrated on Forgejo (`sefr/pdfcraft` on
 `git.ferrive.me`). Forgejo `Main` is authoritative and push-mirrors `Main` to GitHub. Claude Code
@@ -49,11 +50,16 @@ never reach either real service.
 - **Credentials.**
   - The Forgejo token reaches Git only through `GIT_CONFIG_*` environment variables, as an
     `http.<forgejo>/.extraHeader` scoped to the Forgejo URL. It never appears in argv, a URL, a
-    remote or a config file.
+    remote or a config file. The Cloudflare Access service token travels the same way (see
+    [Cloudflare Access](#cloudflare-access)).
+  - Requests carrying credentials never follow a redirect: `http.<forgejo>/.followRedirects=false`
+    for Git, and the Forgejo API client refuses 3xx answers. Otherwise urllib would replay
+    `Authorization` and curl would replay the Cloudflare headers to whatever host a redirect names.
   - `GIT_TRACE*`, `GIT_CURL_VERBOSE` and `GIT_ASKPASS` are removed from Git's environment.
   - Every log line, annotation, exception message and job-summary line passes through
-    `Redactor`. It knows the token, `base64(user:token)`, `user:token`, Authorization headers,
-    URL credentials and GitHub token shapes.
+    `Redactor`. It knows the token, `base64(user:token)`, `user:token`, the Cloudflare client
+    id and secret, Authorization and `CF-Access-Client-*` headers, URL credentials and GitHub
+    token shapes.
   - Derived forms are registered with `::add-mask::`.
   - Uncaught errors print one redacted line, never a traceback.
 - **Permissions.**
@@ -191,6 +197,66 @@ Two open sync PRs are reported and neither is changed.
 
 A clean merge is not proof of compatibility.
 
+## Cloudflare Access
+
+`git.ferrive.me` sits behind a Cloudflare Access application. Requests from outside its bypass
+rule (GitHub-hosted runners included) are answered by Access, not Forgejo: an HTTP 302 to the
+`*.cloudflareaccess.com` login page. That is how the first bridge run failed (GitHub PR
+sefr-14/pdfcraft#19): the client followed the 302 and reported the HTML login page as
+`Forgejo GET /repos/sefr/pdfcraft/pulls: invalid JSON`. The fix is machine authentication with an
+Access **service token**, allowed by the application's Service Auth policy for these workflows.
+
+**Two credentials, two jobs.** Both are needed on every request to Forgejo:
+
+| Secret (environment `forgejo-sync`) | Checked by | Purpose |
+|---|---|---|
+| `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | Cloudflare's edge | Proves the request comes from this automation, so Access lets it through to Forgejo. Grants nothing inside Forgejo. |
+| `FORGEJO_USER`, `FORGEJO_TOKEN` | Forgejo | Authorizes the bot `pdfcraft-sync` (Write on `sefr/pdfcraft` only, no admin) |
+
+**Both API and Git traffic carry them.**
+- API: `ForgejoClient` sends `Authorization: token …`, `CF-Access-Client-Id` and
+  `CF-Access-Client-Secret`. The headers live on that client only; the GitHub client never has
+  them.
+- Git over HTTPS (fetch, `ls-remote` and push): `GitAuth` sets three `http.<forgejo>/.extraHeader`
+  entries (`Authorization: Basic …` and the two Cloudflare headers) in `GIT_CONFIG_COUNT` /
+  `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n`. `http.extraHeader` is multi-valued, so Git sends every
+  entry, and command-scope configuration from the environment is never written to `.git/config` or
+  a global file. The URL prefix limits the headers to Forgejo: GitHub and upstream fetches carry
+  none. `tests/test_git_http_auth.py` checks this with real Git against a local smart-HTTP
+  server.
+
+**Redirects are refused** in every mode, with or without Cloudflare: a redirect means the request
+never reached Forgejo. The run fails with `HTTP 302 redirect refused (Cloudflare Access or a proxy
+intercepted the request; check CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET)`. The page body
+and the redirect target are not reported.
+
+**Configuration rules** (checked before any network or Git call):
+- Both variables set: Cloudflare authentication is on.
+- Neither set, or both empty or whitespace-only: behaviour as before, for hosts inside an Access
+  bypass (the TrueNAS host running `forgejo_acceptance.py`) and for local use.
+- Exactly one set: the run stops with `Cloudflare Access is half configured: CF_ACCESS_CLIENT_ID is
+  set but CF_ACCESS_CLIENT_SECRET is not; set both or neither` (or the reverse).
+- Surrounding whitespace is stripped. A value with control characters, inner spaces or non-ASCII
+  is refused, naming the variable but never the value. The same check applies to `FORGEJO_TOKEN`.
+
+**Other tools.**
+- `forgejo_acceptance.py` reads the same two variables, optionally.
+- `forgejo_api_check.py` reads the public swagger without credentials. It is meant to run from a
+  host inside the Access bypass, and is not supported from GitHub-hosted runners.
+
+**Deployment.**
+1. Merge the change through one Forgejo PR into `Main`, then let the mirror carry it to GitHub.
+2. Check that GitHub `Main` equals Forgejo `Main`, and that both workflows pass the
+   `CF_ACCESS_*` secrets.
+3. Reconcile a single PR by hand (Actions › forgejo pr sync › Run workflow, with its number).
+   Check the job summary, `github-pr/<N>` and the Forgejo PR. Neither `Main` may move.
+4. Run the upstream sync once by hand, separately and only with approval.
+
+**Rollback.** Open a corrective Forgejo PR that reverts the change, and merge it. Never
+force-push or reset `Main`. Meanwhile, the kill switches above still apply: disable the workflows,
+or remove the `forgejo-sync` secrets. Do not disable Access or widen its bypass to work around a
+failure.
+
 ## Assumptions not verifiable from the development environment
 
 - **Forgejo 15 API.** `git.ferrive.me` was unreachable from the development container.
@@ -237,7 +303,8 @@ Every step that writes anything needs separate approval. In order:
    - Create a token with `write:repository` and `write:issue`.
    - On GitHub, create the environment `forgejo-sync` with deployments allowed from `Main` only.
      Add the secrets `FORGEJO_TOKEN` and `FORGEJO_USER`, and optionally the variables
-     `FORGEJO_URL` and `FORGEJO_REPO`.
+     `FORGEJO_URL` and `FORGEJO_REPO`. Where Cloudflare Access protects Forgejo, also add
+     `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` ([Cloudflare Access](#cloudflare-access)).
 3. **Acceptance test** (from a trusted local checkout):
    `FORGEJO_USER=pdfcraft-sync FORGEJO_TOKEN=… python3 -I scripts/automation/forgejo_acceptance.py`,
    then the same with `--confirm-writes`.
