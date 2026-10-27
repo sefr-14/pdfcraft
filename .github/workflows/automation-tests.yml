@@ -1,0 +1,40 @@
+# Fork-only workflow (sefr-14/pdfcraft): the synchronization scripts' own tests. No secrets and a
+# read-only token, so it is safe on pull_request; it never talks to Forgejo or GitHub (fake
+# servers and temporary Git repositories only).
+
+name: automation tests
+
+on:
+  pull_request:
+    paths:
+      - "scripts/automation/**"
+      - ".github/workflows/forgejo-pr-sync.yml"
+      - ".github/workflows/forgejo-upstream-sync.yml"
+      - ".github/workflows/automation-tests.yml"
+  push:
+    branches: [Main]
+    paths:
+      - "scripts/automation/**"
+      - ".github/workflows/forgejo-pr-sync.yml"
+      - ".github/workflows/forgejo-upstream-sync.yml"
+      - ".github/workflows/automation-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: automation-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Sync script tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Unit and integration tests
+        run: python3 -I -m unittest discover -s scripts/automation/tests -v
