@@ -467,7 +467,8 @@ mod tests {
         app.pick_override = Some(vec![out.to_string_lossy().into_owned()]);
         // Save As is still open on another tab when the optimizer finishes.
         app.pickers.showing.store(true, Ordering::SeqCst);
-        app.save_optimized(doc, crate::optimize_ui::OptimizeKind::Reduce, Ok((reduced.clone(), String::new())));
+        let generation = app.session.get(doc).unwrap().edit_generation();
+        app.save_optimized(doc, crate::optimize_ui::OptimizeKind::Reduce, generation, Ok((reduced.clone(), String::new())));
         app.pickers.deliver(None, vec![], Box::new(|_, _| {}));
         app.process_picked();
         app.process_picked();

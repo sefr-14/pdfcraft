@@ -117,10 +117,8 @@ fn reduce(name: &'static str, bytes: Vec<u8>, out: &std::path::Path) -> egui_kit
     h
 }
 
-#[test]
-fn reduce_file_size_writes_a_compact_copy() {
-    use egui_kittest::kittest::Queryable;
-    // A photo-like picture, stored losslessly: Reduce recompresses it as JPEG.
+/// A photo-like picture, stored losslessly: Reduce recompresses it as JPEG.
+fn photo() -> Vec<u8> {
     let (w, h) = (600u32, 400u32);
     let px: Vec<u8> = (0..w * h).flat_map(|i| [(i % w * 255 / w) as u8 ^ (i & 7) as u8, (i / w * 255 / h) as u8, 128]).collect();
     let mut photo = Vec::new();
@@ -130,13 +128,21 @@ fn reduce_file_size_writes_a_compact_copy() {
         enc.set_depth(png::BitDepth::Eight);
         enc.write_header().unwrap().write_image_data(&px).unwrap();
     }
+    photo
+}
+
+#[test]
+fn reduce_file_size_writes_a_compact_copy() {
+    use egui_kittest::kittest::Queryable;
     let dir = ReduceDir::new();
     let out = dir.0.join("reduced.pdf");
-    let h = reduce("photo.png", photo, &out);
+    let h = reduce("photo.png", photo(), &out);
     let bytes = std::fs::read(&out).unwrap();
     assert!(bytes.starts_with(b"%PDF-"));
-    assert!(bytes.len() < h.state().session.docs()[0].bytes.len(), "the copy is smaller");
-    assert!(h.state().session.docs()[0].dirty, "the open document is unchanged");
+    let doc = &h.state().session.docs()[0];
+    // This fork (COMPRESS.1): saved as Save As saves, so the tab is now the smaller file.
+    assert_eq!((doc.path.as_deref(), doc.name.as_str(), doc.dirty), (out.to_str(), "reduced.pdf", false));
+    assert_eq!(doc.bytes.as_slice(), bytes.as_slice(), "the tab shows what was written");
     h.get_by_label_contains("% smaller");
 }
 
@@ -149,6 +155,244 @@ fn reduce_file_size_saves_nothing_when_the_file_is_already_small() {
     let h = reduce("notes.txt", "lorem ipsum ".repeat(500).into_bytes(), &out);
     assert!(!out.exists(), "no copy was written");
     h.get_by_label_contains("This file is already as small as it can be made");
+    let doc = &h.state().session.docs()[0];
+    assert_eq!((doc.path.as_deref(), doc.name.as_str(), doc.dirty), (None, "notes.pdf", true), "the tab is as it was");
+}
+
+// ── This fork (COMPRESS.1): Reduce File Size and Optimize PDF save like Save As ──────────────
+
+/// A headless app that optimizes inline, with the photo open as `source` in `dir`, saved.
+fn saved_photo(dir: &ReduceDir, source: &str) -> PdfCraftApp {
+    let mut app = PdfCraftApp::new();
+    app.set_option("language", "en").unwrap();
+    app.session = std::mem::take(&mut app.session).with_clock(|| 1_700_000_000);
+    app.run_inline = true;
+    app.open_bytes("photo.png", None, photo()).unwrap();
+    app.save_override = Some(dir.0.join(source).to_string_lossy().into_owned());
+    assert!(app.save_active(pdfcraft_ui_egui::SaveTarget::As));
+    app
+}
+
+fn note(contents: &str) -> pdfcraft_engine::Edit {
+    let shape = pdfcraft_engine::Shape::Note { at: [150.0, 90.0], icon: pdfcraft_engine::NoteIcon::Comment };
+    pdfcraft_engine::Edit::AddAnnotation(pdfcraft_engine::NewAnnotation {
+        page: 0,
+        style: pdfcraft_engine::Style::default_for(&shape),
+        shape,
+        contents: contents.into(),
+        author: "Tester".into(),
+    })
+}
+
+/// The comments in document `id`, as it is open.
+fn notes_in(app: &PdfCraftApp, id: pdfcraft_engine::DocId) -> Vec<String> {
+    app.session.get(id).unwrap().info.annotations.iter().map(|a| a.contents.clone().unwrap_or_default()).collect()
+}
+
+/// The comments in the PDF at `path`, opened afresh.
+fn notes_on_disk(path: &std::path::Path) -> Vec<String> {
+    let mut app = PdfCraftApp::new();
+    app.open_bytes("check.pdf", None, std::fs::read(path).unwrap()).unwrap();
+    notes_in(&app, app.views[0].id)
+}
+
+fn toast(app: &PdfCraftApp) -> &str {
+    app.toast.as_ref().map_or("", |t| t.0.as_str())
+}
+
+#[test]
+fn reduce_file_size_makes_the_same_tab_the_smaller_file_with_its_unsaved_changes() {
+    use pdfcraft_ui_egui::fill_sign::TypeBox;
+    let dir = ReduceDir::new();
+    let mut app = saved_photo(&dir, "site plan.pdf");
+    let source = dir.0.join("site plan.pdf");
+    let original = std::fs::read(&source).unwrap();
+    let id = app.views[0].id;
+    // Unsaved: a comment, a bookmark and Fill & Sign text still being typed.
+    assert!(app.apply_edit(note("Check this wall")));
+    assert!(app.apply_edit(pdfcraft_engine::Edit::AddBookmark {
+        parent: vec![],
+        index: 0,
+        title: "Ground floor".into(),
+        page: 0,
+        left: None,
+        top: None
+    }));
+    app.views[0].fill_text = Some(TypeBox { page: 0, at: [40.0, 200.0], text: "Typed".into(), size: 10.0, focus: false });
+    assert!(app.session.get(id).unwrap().dirty);
+    let out = dir.0.join("site plan (reduced).pdf");
+    app.save_override = Some(out.to_string_lossy().into_owned());
+    assert!(app.execute("optimize.reduce"));
+
+    assert!(toast(&app).contains("% smaller"), "{}", toast(&app));
+    assert_eq!(app.views.len(), 1, "no new tab");
+    assert_eq!(app.views[0].id, id, "the same tab and document");
+    let doc = app.session.get(id).unwrap();
+    assert_eq!((doc.path.as_deref(), doc.name.as_str(), doc.dirty), (out.to_str(), "site plan (reduced).pdf", false));
+    assert_eq!(doc.display_name(), "site plan (reduced).pdf", "the tab title");
+    let written = std::fs::read(&out).unwrap();
+    assert_eq!(doc.bytes.as_slice(), written.as_slice(), "the tab shows the optimized file");
+    assert!(written.len() < original.len());
+    assert_eq!(std::fs::read(&source).unwrap(), original, "the original is untouched");
+    for notes in [notes_in(&app, id), notes_on_disk(&out)] {
+        assert!(notes.iter().any(|t| t == "Check this wall") && notes.iter().any(|t| t == "Typed"), "{notes:?}");
+    }
+    assert_eq!(doc.info.outline.first().map(|b| b.title.as_str()), Some("Ground floor"));
+}
+
+#[test]
+fn the_pdf_optimizer_also_saves_like_save_as() {
+    let dir = ReduceDir::new();
+    let mut app = saved_photo(&dir, "plan.pdf");
+    let id = app.views[0].id;
+    assert!(app.apply_edit(note("Revise")));
+    let out = dir.0.join("plan (optimized).pdf");
+    app.save_override = Some(out.to_string_lossy().into_owned());
+    app.optimize_with_draft();
+    assert!(toast(&app).starts_with("Saved "), "{}", toast(&app));
+    let doc = app.session.get(id).unwrap();
+    assert_eq!((app.views.len(), doc.path.as_deref(), doc.name.as_str(), doc.dirty), (1, out.to_str(), "plan (optimized).pdf", false));
+    assert_eq!(notes_on_disk(&out), ["Revise"]);
+}
+
+#[test]
+fn optimizing_an_encrypted_document_keeps_it_open_and_protected() {
+    let dir = ReduceDir::new();
+    let mut doc = pdfcraft_cos::Document::open(std::sync::Arc::new(saved_photo(&dir, "a.pdf").session.docs()[0].bytes.to_vec())).unwrap();
+    doc.set_encryption(&pdfcraft_cos::NewEncryption {
+        algorithm: pdfcraft_cos::Algorithm::Aes256,
+        user_password: "",
+        owner_password: "owner",
+        permissions: -1,
+        encrypt_metadata: true,
+        seed: [4; 32],
+    })
+    .unwrap();
+    let mut app = PdfCraftApp::new();
+    app.set_option("language", "en").unwrap();
+    app.run_inline = true;
+    app.open_bytes("secret.pdf", None, pdfcraft_cos::write_full(&doc, &Default::default()).unwrap()).unwrap();
+    let id = app.views[0].id;
+    assert!(app.apply_edit(note("Kept")));
+    let out = dir.0.join("secret (reduced).pdf");
+    app.save_override = Some(out.to_string_lossy().into_owned());
+    assert!(app.execute("optimize.reduce"));
+    assert!(toast(&app).contains("% smaller"), "{}", toast(&app));
+    let doc = app.session.get(id).unwrap();
+    assert_eq!((doc.path.as_deref(), doc.dirty), (out.to_str(), false));
+    assert_eq!(notes_in(&app, id), ["Kept"]);
+    assert!(doc.info.encrypted, "the optimized file is still protected");
+}
+
+#[test]
+fn a_failed_optimized_save_leaves_the_document_as_it_was() {
+    let dir = ReduceDir::new();
+    let mut app = saved_photo(&dir, "plan.pdf");
+    let id = app.views[0].id;
+    assert!(app.apply_edit(note("Unsaved")));
+    let out = dir.0.join("missing folder").join("plan (reduced).pdf");
+    app.save_override = Some(out.to_string_lossy().into_owned());
+    assert!(app.execute("optimize.reduce"));
+    assert!(toast(&app).starts_with("Couldn't save"), "{}", toast(&app));
+    let doc = app.session.get(id).unwrap();
+    assert_eq!((doc.path.as_deref(), doc.name.as_str(), doc.dirty), (dir.0.join("plan.pdf").to_str(), "plan.pdf", true));
+    assert_eq!(notes_in(&app, id), ["Unsaved"]);
+}
+
+#[test]
+fn optimizing_never_overwrites_another_open_document() {
+    let dir = ReduceDir::new();
+    let mut app = saved_photo(&dir, "plan.pdf");
+    let plan = app.views[0].id;
+    app.open_bytes("other.png", None, png()).unwrap();
+    app.save_override = Some(dir.0.join("other.pdf").to_string_lossy().into_owned());
+    assert!(app.save_active(pdfcraft_ui_egui::SaveTarget::As));
+    let other = app.views[1].id;
+    assert!(app.apply_edit(note("Other's change")));
+    let other_file = std::fs::read(dir.0.join("other.pdf")).unwrap();
+    // Back to the plan, and Reduce it onto the other document's file.
+    app.active = Some(0);
+    assert_eq!(app.active_ids().map(|(_, id)| id), Some(plan));
+    app.save_override = Some(dir.0.join("other.pdf").to_string_lossy().into_owned());
+    assert!(app.execute("optimize.reduce"));
+    assert_eq!(toast(&app), "other.pdf is open in another tab. Close it or choose another name.");
+    assert_eq!(std::fs::read(dir.0.join("other.pdf")).unwrap(), other_file, "nothing written");
+    let (p, o) = (app.session.get(plan).unwrap(), app.session.get(other).unwrap());
+    assert_eq!((p.name.as_str(), p.dirty, o.name.as_str(), o.dirty), ("plan.pdf", false, "other.pdf", true));
+    assert_eq!(notes_in(&app, other), ["Other's change"]);
+
+    // A third name works, and only the plan's tab changes.
+    app.save_override = Some(dir.0.join("plan (reduced).pdf").to_string_lossy().into_owned());
+    assert!(app.execute("optimize.reduce"));
+    let (p, o) = (app.session.get(plan).unwrap(), app.session.get(other).unwrap());
+    assert_eq!((p.name.as_str(), p.dirty, o.name.as_str(), o.dirty), ("plan (reduced).pdf", false, "other.pdf", true));
+    assert_eq!(app.views.len(), 2);
+}
+
+/// A harness that optimizes on its worker thread, with the photo open as `plan.pdf` in `dir`.
+fn optimizing_harness(dir: &ReduceDir, pick: Option<Vec<String>>) -> egui_kittest::Harness<'static, PdfCraftApp> {
+    let mut app = saved_photo(dir, "plan.pdf");
+    app.run_inline = false;
+    app.save_override = None;
+    app.pick_override = pick;
+    let mut app = Some(app);
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1200.0, 800.0)).build_eframe(move |_cc| app.take().unwrap());
+    h.run_steps(2);
+    h
+}
+
+fn finish_run(h: &mut egui_kittest::Harness<'static, PdfCraftApp>) {
+    let start = std::time::Instant::now();
+    while h.state().optimize_run.is_some() && start.elapsed() < std::time::Duration::from_secs(30) {
+        h.run_steps(1);
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    h.run_steps(3);
+    assert!(h.state().optimize_run.is_none(), "the run finished");
+}
+
+#[test]
+fn edits_made_while_optimizing_are_never_replaced() {
+    let dir = ReduceDir::new();
+    let out = dir.0.join("plan (reduced).pdf");
+    let mut h = optimizing_harness(&dir, Some(vec![out.to_string_lossy().into_owned()]));
+    let id = h.state().views[0].id;
+    assert!(h.state_mut().execute("optimize.reduce"));
+    // The worker has its snapshot; this edit comes after it.
+    assert!(h.state_mut().apply_edit(note("Made meanwhile")));
+    finish_run(&mut h);
+    assert_eq!(
+        toast(h.state()),
+        "The document changed while it was being optimized, so nothing was saved. Run it again to include your latest changes."
+    );
+    assert!(!out.exists(), "nothing written");
+    let doc = h.state().session.get(id).unwrap();
+    assert_eq!((doc.name.as_str(), doc.dirty), ("plan.pdf", true));
+    assert_eq!(notes_in(h.state(), id), ["Made meanwhile"]);
+}
+
+#[test]
+fn the_save_dialog_rebinds_the_tab_and_cancelling_it_changes_nothing() {
+    let dir = ReduceDir::new();
+    // Cancelled: the dialog answers with no file.
+    let mut h = optimizing_harness(&dir, Some(vec![]));
+    let id = h.state().views[0].id;
+    assert!(h.state_mut().apply_edit(note("Unsaved")));
+    assert!(h.state_mut().execute("optimize.reduce"));
+    finish_run(&mut h);
+    let doc = h.state().session.get(id).unwrap();
+    assert_eq!((doc.path.as_deref(), doc.name.as_str(), doc.dirty), (dir.0.join("plan.pdf").to_str(), "plan.pdf", true));
+    assert_eq!(notes_in(h.state(), id), ["Unsaved"]);
+    assert_eq!(std::fs::read_dir(&dir.0).unwrap().count(), 1, "only the original is on disk");
+
+    // Picked: the answer arrives on a later frame and the same tab becomes the file.
+    let out = dir.0.join("plan (reduced).pdf");
+    h.state_mut().pick_override = Some(vec![out.to_string_lossy().into_owned()]);
+    assert!(h.state_mut().execute("optimize.reduce"));
+    finish_run(&mut h);
+    let doc = h.state().session.get(id).unwrap();
+    assert_eq!((h.state().views.len(), doc.path.as_deref(), doc.dirty), (1, out.to_str(), false));
+    assert_eq!(notes_on_disk(&out), ["Unsaved"]);
 }
 
 #[test]
