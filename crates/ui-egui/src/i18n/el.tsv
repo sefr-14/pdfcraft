@@ -1,3 +1,4 @@
+# Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 # Greek (el) interface catalog. Columns: context <TAB> English source <TAB> Greek translation.
 # Partial, clean-room initial contribution. Entries not yet translated fall back to English.
 # Translate from English meanings; retain placeholders and trailing ellipses.

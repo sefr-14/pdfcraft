@@ -1,3 +1,4 @@
+# Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 # Traditional Chinese (zh-hant) catalog, in the vocabulary used in Taiwan. Format: see the header
 # of ja.tsv (context <TAB> source <TAB> translation; @id, @plural and other contexts; escapes
 # \n \t \\). Chinese has one plural form.

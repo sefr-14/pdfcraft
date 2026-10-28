@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Viewer conveniences: close all, revert, fit height, view history, select all, find options,
 //! cover page, a scroll position per tab.
 

@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! The UI control channel (M3.9): lets an agent see and drive the running app.
 //!
 //! **Opt-in only.** Nothing here runs unless the app is started with `--control <file>` (or a

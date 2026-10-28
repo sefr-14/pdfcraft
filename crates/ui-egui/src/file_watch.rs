@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Reload a document when its file changes on disk (#431): a LaTeX or Typst build rewriting the
 //! PDF that is open shows its new version without reopening it.
 //!

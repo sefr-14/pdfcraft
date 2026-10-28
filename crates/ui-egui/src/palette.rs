@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! ⌘K command palette: every registered command (with its shortcut) and every tool in the
 //! catalogue, with a fuzzy-ish substring match.
 

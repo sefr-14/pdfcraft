@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Measure objects: page-space clicks, live readings and persistent drawing scales.
 use std::collections::HashSet;
 use std::sync::{Arc, mpsc};

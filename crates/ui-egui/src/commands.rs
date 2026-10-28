@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! What each registered command does in this frontend (`pdfcraft_engine::commands` says
 //! what it is called, where it appears, which key runs it and when it is enabled).
 //!

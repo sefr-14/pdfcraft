@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Asks GitHub for this fork's latest available Windows build (Help ▸ Check for updates, OV8).
 //!
 //! The builds are artifacts of the manually run `overlay-windows.yml` workflow on `Main`, so a

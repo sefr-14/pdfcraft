@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Reopen the files from the last session (Preferences ▸ Documents and view, #442): which files
 //! were open when PdfCraft last closed, the page each showed and the active tab. Local only, like
 //! the recent-files list, and kept only while the preference is on.

@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Dependency layering rules (plan/architecture.md §3), enforced by `cargo xtask layers`.
 //!
 //! The rule engine works on a small, metadata-independent model so it can be unit-tested;

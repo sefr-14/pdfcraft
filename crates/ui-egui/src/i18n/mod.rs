@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! UI localisation. Strings in code stay English and are the default lookup keys; a per-language
 //! catalog (`*.tsv`, see `ja.tsv` for the format) maps them to display text at render time. Command
 //! ids, document text, file names, the control channel, the CLI and MCP never see translated text,

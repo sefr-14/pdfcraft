@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 use super::*;
 use pdfcraft_cos::{SaveOptions, write_full};
 use pdfcraft_testkit::Pdf;

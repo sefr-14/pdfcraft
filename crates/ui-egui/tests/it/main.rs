@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! The crate's integration tests, linked into one test binary. `perf.rs` keeps its own process:
 //! its frame-time budgets would charge each measurement for the other tests running beside it.
 

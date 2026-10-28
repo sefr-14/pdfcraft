@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! The document area: page layout, zoom, render scheduling, overlays (links, annotation hovers,
 //! form-field highlights), and the organize-pages grid.
 //!
