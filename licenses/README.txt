@@ -1,4 +1,4 @@
-PdfCraft Overlay: third-party licence texts for the Windows build
+PDF Overlay: third-party licence texts for the Windows build
 
 The Windows zip made by .github/workflows/overlay-windows.yml contains a licenses folder with:
 

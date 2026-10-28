@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Turn laid-out pages into PDF objects inside an open document: page dictionaries with content
 //! streams (standard-14 fonts, WinAnsi), image XObjects and AcroForm widgets. Widget appearance
 //! streams are left empty here; the forms layer regenerates them from the field dictionaries.
@@ -717,7 +718,7 @@ impl Emitter<'_> {
                         const PREFIX: &str = "some of the form's text has characters the standard fonts can't draw";
                         if !self.warnings.iter().any(|w| w.starts_with(PREFIX)) {
                             self.warnings.push(format!(
-                                "{PREFIX} (the first is \"{}\" (U+{:04X})); they are shown as ? until PdfCraft can embed fonts for them",
+                                "{PREFIX} (the first is \"{}\" (U+{:04X})); they are shown as ? until PDF Overlay can embed fonts for them",
                                 c.escape_debug(),
                                 u32::from(c)
                             ));
@@ -828,7 +829,7 @@ impl Emitter<'_> {
         }
         let Some(target) = link_target(href) else {
             if !self.warnings.iter().any(|w| w.starts_with(LINK_LEFT_OUT)) {
-                self.warnings.push(format!("{LINK_LEFT_OUT}: PdfCraft makes links only of web (http, https) and email (mailto) addresses"));
+                self.warnings.push(format!("{LINK_LEFT_OUT}: PDF Overlay makes links only of web (http, https) and email (mailto) addresses"));
             }
             return None;
         };

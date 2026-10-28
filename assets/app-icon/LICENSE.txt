@@ -1,7 +1,7 @@
-PdfCraft Overlay app icon (pdfcraft.svg and every file derived from it in this directory:
+PDF Overlay app icon (pdfcraft.svg and every file derived from it in this directory:
 pdfcraft-1024.png, pdfcraft.ico, hicolor/).
 
-Original geometric artwork ("Dimensioned Drawing") made for PdfCraft Overlay by the PdfCraft Overlay
+Original geometric artwork ("Dimensioned Drawing") made for PDF Overlay by the PDF Overlay
 contributors (LIC.2, 2026): hand-written SVG primitives, no fonts, no traced or third-party
 material. Licensed like the rest of PdfCraft, under either of
 

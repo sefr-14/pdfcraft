@@ -1,4 +1,5 @@
-//! The system's choice for Preferences ▸ "Reopen the files that were open when PdfCraft last closed".
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
+//! The system's choice for Preferences ▸ "Reopen the files that were open when PDF Overlay last closed".
 //!
 //! On macOS, System Settings ▸ Desktop & Dock ▸ Windows ▸ "Close windows when quitting an
 //! application" is on by default; turning it off stores `NSQuitAlwaysKeepsWindows = 1`, and apps

@@ -1,6 +1,6 @@
-# PdfCraft Overlay: what this fork changes
+# PDF Overlay: what this fork changes
 
-PdfCraft Overlay ([sefr-14/pdfcraft](https://github.com/sefr-14/pdfcraft)) is an unofficial fork of
+PDF Overlay ([sefr-14/pdfcraft](https://github.com/sefr-14/pdfcraft)) is an unofficial fork of
 [PdfCraft](https://github.com/storytold/pdfcraft) by the ArtCraft team, based on upstream release
 `v0.14.0` (`5a78b22`). This page summarizes what the fork adds and changes, by area. The Git history
 is the detailed record of every change, and upstream files the fork has changed say so in a line
@@ -28,7 +28,7 @@ notice requirement.
 
 | What changes | Where |
 |---|---|
-| The visible name is **PdfCraft Overlay**: window title, Home and About headings, Help › About, and the Windows version information of both executables. The app id, settings and data folders, and the portable data folder keep upstream's names. | `apps/pdfcraft`, `apps/pdfcraft-cli`, `crates/ui-egui`, `crates/engine/src/commands.rs` |
+| The visible name is **PDF Overlay** (PdfCraft Overlay until BRAND.1), in every language: window title, Home and About headings, Help › About, and the Windows version information of both executables. The app id, settings and data folders, and the portable data folder keep upstream's names. | `apps/pdfcraft`, `apps/pdfcraft-cli`, `crates/ui-egui`, `crates/engine/src/commands.rs` |
 | No Discord button. Help and About open this fork's issues and upstream's repository instead of the ArtCraft community, which does not support the fork. | `crates/engine/src/links.rs`, `crates/ui-egui/src/chrome.rs`, `crates/ui-egui/src/widgets.rs` |
 | The ArtCraft marks are removed from the app, the README, the screenshots and `docs/brand/`, as their licence requires for published modified versions. Upstream's credit stays, in plain text. | `docs/brand/`, `ATTRIBUTION.toml`, `README.md`, `NOTICE` |
 | The Windows build ships the full third-party licence texts in a `licenses` folder. | `licenses/`, `about.toml`, `.github/workflows/overlay-windows.yml` |

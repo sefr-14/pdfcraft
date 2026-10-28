@@ -217,7 +217,7 @@ pub(crate) fn show(
         }
         None => {}
     }
-    made.err().map(|()| tl!("This page already has as many guides as PdfCraft keeps."))
+    made.err().map(|()| tl!("This page already has as many guides as PDF Overlay keeps."))
 }
 
 /// A ruler's context menu: its unit, whether the rulers and guides show, and clearing guides

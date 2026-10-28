@@ -14,9 +14,9 @@ fn main() {
         return;
     }
     let mut res = winresource::WindowsResource::new();
-    // This fork's name (LIC.1); OriginalFilename and InternalName stay upstream's.
-    res.set("ProductName", "PdfCraft Overlay")
-        .set("FileDescription", "PdfCraft Overlay command-line tool")
+    // This fork's name (LIC.1, BRAND.1); OriginalFilename and InternalName stay upstream's.
+    res.set("ProductName", "PDF Overlay")
+        .set("FileDescription", "PDF Overlay command-line tool")
         .set("LegalCopyright", "Copyright (c) the PdfCraft contributors. MIT OR Apache-2.0.")
         .set("OriginalFilename", "pdfcraft-cli.exe")
         .set("InternalName", "pdfcraft-cli");

@@ -147,9 +147,9 @@
 	Use now	Utiliser
 	Open file	Ouvrir un fichier
 	Recent	Récents
-	Files you open in PdfCraft appear here. Drop a PDF anywhere to open it.	Les fichiers que vous ouvrez dans PdfCraft apparaissent ici. Déposez un PDF n'importe où pour l'ouvrir.
+	Files you open in PDF Overlay appear here. Drop a PDF anywhere to open it.	Les fichiers que vous ouvrez dans PDF Overlay apparaissent ici. Déposez un PDF n'importe où pour l'ouvrir.
 	Privacy	Confidentialité
-	PdfCraft works offline. No telemetry, no account, and no cloud processing unless you add a provider.	PdfCraft fonctionne hors ligne. Pas de télémétrie, pas de compte, et aucun traitement dans le cloud sauf si vous ajoutez un fournisseur.
+	PDF Overlay works offline. No telemetry, no account, and no cloud processing unless you add a provider.	PDF Overlay fonctionne hors ligne. Pas de télémétrie, pas de compte, et aucun traitement dans le cloud sauf si vous ajoutez un fournisseur.
 	Scripts run in a sandbox without file or network access. With JavaScript off, Acrobat's standard format, validate and calculate functions still work.	Les scripts s'exécutent dans un bac à sable, sans accès aux fichiers ni au réseau. Si JavaScript est désactivé, les fonctions standard de format, de validation et de calcul d'Acrobat continuent de fonctionner.
 	Back to all tools	Retour à tous les outils
 	Close panel	Fermer le panneau
@@ -906,8 +906,8 @@
 	No changes allowed	Aucune modification autorisée
 	Annotations, form fill-in, and digital signatures	Annotations, remplissage de formulaire et signatures numériques
 	Form fill-in and digital signatures	Remplissage de formulaire et signatures numériques
-	The key is in the macOS Keychain, which may ask to allow PdfCraft to use it.	La clé est dans le Trousseau de macOS, qui peut demander l'autorisation d'utilisation par PdfCraft.
-	The key is in the Windows certificate store, which may ask to allow PdfCraft to use it.	La clé est dans le magasin de certificats Windows, qui peut demander l'autorisation d'utilisation par PdfCraft.
+	The key is in the macOS Keychain, which may ask to allow PDF Overlay to use it.	La clé est dans le Trousseau de macOS, qui peut demander l'autorisation d'utilisation par PDF Overlay.
+	The key is in the Windows certificate store, which may ask to allow PDF Overlay to use it.	La clé est dans le magasin de certificats Windows, qui peut demander l'autorisation d'utilisation par PDF Overlay.
 	Digital ID password	Mot de passe de l'ID numérique
 	Back	Retour
 	Validate all	Tout valider
@@ -1275,7 +1275,7 @@
 	Downsample to	Sous-échantillonner à
 	Also recognize pages that already have text	Reconnaître aussi les pages qui contiennent déjà du texte
 	Pictures on those pages are recognized too; words already in the page's text are not added again	Les images de ces pages sont aussi reconnues ; les mots déjà présents dans le texte de la page ne sont pas ajoutés une seconde fois
-	Text recognition isn't installed: its model files are missing. Reinstall PdfCraft, or set PDFCRAFT_MODELS to the folder that holds them.	La reconnaissance de texte n'est pas installée : ses fichiers de modèles sont absents. Réinstallez PdfCraft, ou définissez PDFCRAFT_MODELS sur le dossier qui les contient.
+	Text recognition isn't installed: its model files are missing. Reinstall PDF Overlay, or set PDFCRAFT_MODELS to the folder that holds them.	La reconnaissance de texte n'est pas installée : ses fichiers de modèles sont absents. Réinstallez PDF Overlay, ou définissez PDFCRAFT_MODELS sur le dossier qui les contient.
 	Settings	Réglages
 	Optional	Facultatif
 	Planned · {m}	Prévu · {m}
@@ -1421,7 +1421,7 @@
 	Anyone opening the document will need this password. It's applied when you save.	Toute personne qui ouvre le document aura besoin de ce mot de passe. Il est appliqué à l'enregistrement.
 	The document opens without a password; this password is needed to change the restrictions. It's applied when you save.	Le document s'ouvre sans mot de passe ; ce mot de passe est nécessaire pour modifier les restrictions. Il est appliqué à l'enregistrement.
 	Recover unsaved documents?	Récupérer les documents non enregistrés ?
-	PdfCraft didn't shut down normally. These documents had changes that were autosaved:	PdfCraft ne s'est pas arrêté normalement. Ces documents avaient des modifications enregistrées automatiquement :
+	PDF Overlay didn't shut down normally. These documents had changes that were autosaved:	PDF Overlay ne s'est pas arrêté normalement. Ces documents avaient des modifications enregistrées automatiquement :
 	just now	à l'instant
 	{n} min ago	il y a {n} min
 	{n} h ago	il y a {n} h
@@ -1582,10 +1582,10 @@
 	On the web, open or drop an image to convert it	Sur le web, ouvrez ou déposez une image pour la convertir
 	Couldn't optimize the file: {e}	Impossible d'optimiser le fichier : {e}
 	Couldn't write {path}: {e}	Impossible d'écrire {path} : {e}
-	The form asks to be submitted to {u}; PdfCraft doesn't send form data. Save the document to keep your entries.	Le formulaire demande un envoi vers {u} ; PdfCraft n'envoie pas les données de formulaire. Enregistrez le document pour conserver vos saisies.
+	The form asks to be submitted to {u}; PDF Overlay doesn't send form data. Save the document to keep your entries.	Le formulaire demande un envoi vers {u} ; PDF Overlay n'envoie pas les données de formulaire. Enregistrez le document pour conserver vos saisies.
 	This PDF uses the unsupported {s} action.	Ce PDF utilise une action {s} non prise en charge.
 	{name}: the {other} action isn't supported yet	{name} : l'action {other} n'est pas encore prise en charge
-	{name} submits the form to {url}; PdfCraft doesn't send form data. Save the document to keep your entries.	{name} envoie le formulaire vers {url} ; PdfCraft n'envoie pas les données de formulaire. Enregistrez le document pour conserver vos saisies.
+	{name} submits the form to {url}; PDF Overlay doesn't send form data. Save the document to keep your entries.	{name} envoie le formulaire vers {url} ; PDF Overlay n'envoie pas les données de formulaire. Enregistrez le document pour conserver vos saisies.
 	Export stopped: {e}	Exportation interrompue : {e}
 	Exported 1 image	1 image exportée
 	Exported {n} images	{n} images exportées
@@ -1691,7 +1691,7 @@
 	Couldn't open {name}: {e}	Impossible d'ouvrir {name} : {e}
 	Couldn't read {name}: {e}	Impossible de lire {name} : {e}
 	Portable mode is off: {folder} can't be written ({error}). Settings are kept in your user folder instead.	Le mode portable est désactivé : impossible d'écrire dans {folder} ({error}). Les réglages sont conservés dans votre dossier utilisateur.
-	PdfCraft is drawing without a graphics processor, so it may be slow. Updating the graphics driver may help.	PdfCraft dessine sans processeur graphique et peut donc être lent. Mettre à jour le pilote graphique peut aider.
+	PDF Overlay is drawing without a graphics processor, so it may be slow. Updating the graphics driver may help.	PDF Overlay dessine sans processeur graphique et peut donc être lent. Mettre à jour le pilote graphique peut aider.
 	Couldn't save: {e}	Impossible d'enregistrer : {e}
 	Downloading attachments on the web arrives with M3.10 ({n} bytes ready)	Le téléchargement des pièces jointes sur le web arrivera avec M3.10 ({n} octets prêts)
 	`{command}` {when}	`{command}` {when}
@@ -1766,7 +1766,7 @@
 	Signed and all signatures are valid.	Signé et toutes les signatures sont valides.
 	At least one signature has problems.	Au moins une signature pose problème.
 	This document is secured. Some changes are restricted by its security settings.	Ce document est protégé. Sa protection restreint certaines modifications.
-	This is a dynamic XFA form, which PdfCraft can't display yet. What you see is the file's placeholder page.	Ceci est un formulaire XFA dynamique, que PdfCraft ne peut pas encore afficher. Ce que vous voyez est la page de substitution du fichier.
+	This is a dynamic XFA form, which PDF Overlay can't display yet. What you see is the file's placeholder page.	Ceci est un formulaire XFA dynamique, que PDF Overlay ne peut pas encore afficher. Ce que vous voyez est la page de substitution du fichier.
 	This form also contains XFA data, which PdfCraft doesn't read yet. You can fill its fields, but Acrobat may show the XFA values instead.	Ce formulaire contient aussi des données XFA, que PdfCraft ne lit pas encore. Vous pouvez remplir ses champs, mais Acrobat peut afficher les valeurs XFA à la place.
 	This document contains {n} interactive form fields.	Ce document contient {n} champs de formulaire interactifs.
 	This file was damaged and has been repaired. Saving keeps the repaired version.	Ce fichier était endommagé et a été réparé. L'enregistrement conserve la version réparée.
@@ -1816,7 +1816,7 @@
 	there are no pages to print	il n'y a aucune page à imprimer
 	the document has no tags	le document ne contient aucune balise
 	{0}: {1}	{0} : {1}
-	the text recognition models are not installed (reinstall PdfCraft, or set PDFCRAFT_MODELS to the folder that holds them)	les modèles de reconnaissance de texte ne sont pas installés (réinstallez PdfCraft, ou définissez PDFCRAFT_MODELS sur le dossier qui les contient)
+	the text recognition models are not installed (reinstall PDF Overlay, or set PDFCRAFT_MODELS to the folder that holds them)	les modèles de reconnaissance de texte ne sont pas installés (réinstallez PDF Overlay, ou définissez PDFCRAFT_MODELS sur le dossier qui les contient)
 	the image is empty	l'image est vide
 	this file isn't XFDF, FDF, XML or text form data	ce fichier n'est pas des données de formulaire XFDF, FDF, XML ou texte
 	nothing in the file matches this document	rien dans le fichier ne correspond à ce document
@@ -2046,7 +2046,7 @@
 	Default page display	Affichage des pages par défaut
 	Default zoom	Zoom par défaut
 	Used when a PDF doesn't ask for a layout or zoom. Continuous scrolling never snaps between pages.	Utilisé lorsqu'un PDF ne demande ni présentation ni zoom. Le défilement continu ne saute jamais d'une page à l'autre.
-	Reopen the files that were open when PdfCraft last closed	Rouvrir les fichiers qui étaient ouverts lors de la dernière fermeture de PdfCraft
+	Reopen the files that were open when PDF Overlay last closed	Rouvrir les fichiers qui étaient ouverts lors de la dernière fermeture de PDF Overlay
 	Restore the last view (page, zoom and page display) when a document is opened again	Rétablir la dernière vue (page, zoom et affichage des pages) à la réouverture d’un document
 	Reload documents when their files change on disk	Recharger les documents lorsque leurs fichiers sont modifiés sur le disque
 	Don't show again	Ne plus afficher
@@ -2189,8 +2189,8 @@
 	For page sizes and margins.	Pour les tailles de page et les marges.
 	The PDF text fonts can't draw “{c}” ({code}). Choose supported text.	Les polices de texte PDF ne peuvent pas afficher « {c} » ({code}). Choisissez un texte pris en charge.
 	The standard fonts can't draw “{c}” ({code}). Only Western European characters can be added as text for now.	Les polices standard ne peuvent pas afficher « {c} » ({code}). Pour l'instant, seuls les caractères d'Europe occidentale peuvent être ajoutés comme texte.
-	This field's font can't draw “{c}” ({code}), so PdfCraft shows ? in its place. The value is saved, and other PDF viewers redraw the field from it.	La police de ce champ ne peut pas afficher « {c} » ({code}) : PdfCraft affiche ? à sa place. La valeur est enregistrée, et les autres lecteurs PDF redessinent le champ à partir de celle-ci.
-	The fonts PdfCraft writes with can't draw “{c}” ({code}), so it shows as ? in every PDF viewer. The text is saved.	Les polices qu'utilise PdfCraft pour écrire ne peuvent pas afficher « {c} » ({code}) : il apparaît comme ? dans tous les lecteurs PDF. Le texte est enregistré.
+	This field's font can't draw “{c}” ({code}), so PDF Overlay shows ? in its place. The value is saved, and other PDF viewers redraw the field from it.	La police de ce champ ne peut pas afficher « {c} » ({code}) : PDF Overlay affiche ? à sa place. La valeur est enregistrée, et les autres lecteurs PDF redessinent le champ à partir de celle-ci.
+	The fonts PDF Overlay writes with can't draw “{c}” ({code}), so it shows as ? in every PDF viewer. The text is saved.	Les polices qu'utilise PDF Overlay pour écrire ne peuvent pas afficher « {c} » ({code}) : il apparaît comme ? dans tous les lecteurs PDF. Le texte est enregistré.
 	Larger pages	Pages plus grandes
 	Smaller pages	Pages plus petites
 	Reset page size	Rétablir la taille des pages
@@ -2248,8 +2248,8 @@
 	Undo {action}	Annuler {action}
 	Unlocked {n} of {m} files	{n} fichier(s) sur {m} déverrouillé(s)
 	Use {what}	Utiliser {what}
-	{who} in this document tried to open an address PdfCraft won't open: {e}.	{who} dans ce document a tenté d'ouvrir une adresse que PdfCraft n'ouvre pas : {e}.
-	{who} in this document tried to open an address PdfCraft won't open: {e}. Only web (http, https) and email (mailto) links open from documents.	{who} dans ce document a tenté d'ouvrir une adresse que PdfCraft n'ouvre pas : {e}. Seuls les liens web (http, https) et e-mail (mailto) s'ouvrent depuis les documents.
+	{who} in this document tried to open an address PDF Overlay won't open: {e}.	{who} dans ce document a tenté d'ouvrir une adresse que PDF Overlay n'ouvre pas : {e}.
+	{who} in this document tried to open an address PDF Overlay won't open: {e}. Only web (http, https) and email (mailto) links open from documents.	{who} dans ce document a tenté d'ouvrir une adresse que PDF Overlay n'ouvre pas : {e}. Seuls les liens web (http, https) et e-mail (mailto) s'ouvrent depuis les documents.
 action wizard	Start	Démarrer
 certificate	Subject	Titulaire
 comment menu	Edit	Modifier
@@ -2398,7 +2398,7 @@ animation effects	Off	Désactivés
 @plural	{n} more field calculates too early.|{n} more fields calculate too early.	{n} autre champ est calculé trop tôt.|{n} autres champs sont calculés trop tôt.
 @plural	{fields} is missing from the order saved in the PDF, so other PDF viewers may not calculate it.|{fields} are missing from the order saved in the PDF, so other PDF viewers may not calculate them.	{fields} manque dans l'ordre enregistré dans le PDF, donc d'autres lecteurs PDF risquent de ne pas le calculer.|{fields} manquent dans l'ordre enregistré dans le PDF, donc d'autres lecteurs PDF risquent de ne pas les calculer.
 	Scan	Numériser
-	Sign a sheet of white paper and take a photo of it in bright, even light (use the flash). Choose the photo or drop it here: PdfCraft finds the signature and removes the paper.	Signez une feuille de papier blanc et prenez-la en photo sous une lumière vive et uniforme (utilisez le flash). Choisissez la photo ou déposez-la ici : PdfCraft trouve la signature et retire le papier.
+	Sign a sheet of white paper and take a photo of it in bright, even light (use the flash). Choose the photo or drop it here: PDF Overlay finds the signature and removes the paper.	Signez une feuille de papier blanc et prenez-la en photo sous une lumière vive et uniforme (utilisez le flash). Choisissez la photo ou déposez-la ici : PDF Overlay trouve la signature et retire le papier.
 	Choose photo…	Choisir une photo…
 	No photo chosen	Aucune photo choisie
 	Photo	Photo
@@ -2608,7 +2608,7 @@ animation effects	Off	Désactivés
 	Panel layout could not be restored: {error}	Impossible de restaurer la disposition des panneaux : {error}
 	Panel move was not applied: {error}	Le déplacement du panneau n'a pas été appliqué : {error}
 	Paste	Coller
-	PdfCraft can't check this signature yet: {}.	PdfCraft ne peut pas encore contrôler cette signature : {}.
+	PDF Overlay can't check this signature yet: {}.	PDF Overlay ne peut pas encore contrôler cette signature : {}.
 	Previous	Précédent
 	Previous (⇧⌘G)	Précédent (⇧⌘G)
 	Print (⌘P)	Imprimer (⌘P)
@@ -2680,7 +2680,7 @@ animation effects	Off	Désactivés
 	The signed content is a constructed (segmented) OCTET STRING, as BER allows; it was read anyway.	Le contenu signé est une OCTET STRING construite (segmentée), comme le BER l'autorise ; il a tout de même été lu.
 	The signer's certificate does not allow digital signatures (its key usage has neither digital signature nor non-repudiation).	Le certificat du signataire n'autorise pas les signatures numériques (son usage de la clé ne comprend ni la signature numérique ni la non-répudiation).
 	The signer's certificate has been revoked ({}).	Le certificat du signataire a été révoqué ({}).
-	The signer's certificate has critical extensions PdfCraft does not recognize ({}).	Le certificat du signataire comporte des extensions critiques que PdfCraft ne reconnaît pas ({}).
+	The signer's certificate has critical extensions PDF Overlay does not recognize ({}).	Le certificat du signataire comporte des extensions critiques que PDF Overlay ne reconnaît pas ({}).
 	The signer's certificate is not in the signature.	Le certificat du signataire ne figure pas dans la signature.
 	The signer's certificate is not issued for signing documents (its extended key usage has no document-signing purpose).	Le certificat du signataire n'est pas émis pour signer des documents (son usage étendu de la clé n'inclut pas la signature de documents).
 	The signer's certificate was not valid at the time of signing.	Le certificat du signataire n'était pas valide au moment de la signature.
@@ -2841,7 +2841,7 @@ certificate	Version	Version
 	Snapping isn't available on this page: {reason}	L’accrochage n’est pas disponible sur cette page : {reason}
 	Reading the drawing for snapping…	Lecture du dessin pour l’accrochage…
 	This PDF doesn't allow comments, so measurements and scales can't be saved.	Ce PDF n’autorise pas les commentaires : les mesures et les échelles ne peuvent pas être enregistrées.
-	This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one.	Cette partie de la page a une échelle de dessin que PdfCraft ne sait pas lire : {reason}. Étalonnez pour en définir une.
+	This part of the page has a drawing scale PDF Overlay can't read: {reason}. Calibrate to set one.	Cette partie de la page a une échelle de dessin que PDF Overlay ne sait pas lire : {reason}. Étalonnez pour en définir une.
 	That is the point already placed. Click a different point.	C’est le point déjà placé. Cliquez sur un autre point.
 # This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
 	Inches (in)	Pouces (in)
@@ -2861,7 +2861,7 @@ certificate	Version	Version
 # This fork (sefr-14/pdfcraft): guides on the pages, Clear Guides on Page / Clear All Guides (OV11).
 	Clear Guides on Page	Effacer les repères de la page
 	Clear All Guides	Effacer tous les repères
-	This page already has as many guides as PdfCraft keeps.	Cette page a déjà autant de repères que PdfCraft en conserve.
+	This page already has as many guides as PDF Overlay keeps.	Cette page a déjà autant de repères que PDF Overlay en conserve.
 
 # Date picker: Today button (#4274) (AI-assisted, not separately native-reviewed)
 	Today	Aujourd'hui

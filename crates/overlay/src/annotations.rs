@@ -94,8 +94,8 @@ impl Exclusion {
             Exclusion::Popup => "a pop-up window".into(),
             Exclusion::Link => "a link (links and actions aren't carried)".into(),
             Exclusion::LayerOff => "its layer is off".into(),
-            Exclusion::NoAppearance => "it has no appearance for its state, and PdfCraft can't draw one for it".into(),
-            Exclusion::UnusableAppearance(why) => format!("its appearance can't be used ({why}), and PdfCraft can't draw one for it"),
+            Exclusion::NoAppearance => "it has no appearance for its state, and PDF Overlay can't draw one for it".into(),
+            Exclusion::UnusableAppearance(why) => format!("its appearance can't be used ({why}), and PDF Overlay can't draw one for it"),
             Exclusion::NoRect => "it has no usable rectangle, so viewers can't place it".into(),
             Exclusion::InvisibleUnknown => "an Invisible annotation of a kind viewers don't know".into(),
         }

@@ -75,7 +75,7 @@ pub(crate) fn note_text(note: &Note, name: &dyn Fn(pdfcraft_cos::ObjRef) -> Stri
             intents.join(", ")
         ),
         Note::UndefinedMarker => {
-            "some content is marked as a layer with a name the page doesn't define; that isn't a layer (ISO 32000-1 §8.11.3.2), so the content is shown, as PdfCraft and other viewers show it"
+            "some content is marked as a layer with a name the page doesn't define; that isn't a layer (ISO 32000-1 §8.11.3.2), so the content is shown, as PDF Overlay and other viewers show it"
                 .into()
         }
         Note::BaseStateOff => {
@@ -88,13 +88,13 @@ pub(crate) fn note_text(note: &Note, name: &dyn Fn(pdfcraft_cos::ObjRef) -> Stri
             let more = if more > 0 { format!(" and {more} more") } else { String::new() };
             if *configured {
                 format!(
-                    "{} layer(s) aren't declared in the document's layer list, which the standard requires; they are shown, as PdfCraft and other viewers show them (layers {}{more})",
+                    "{} layer(s) aren't declared in the document's layer list, which the standard requires; they are shown, as PDF Overlay and other viewers show them (layers {}{more})",
                     groups.len(),
                     names.join(", ")
                 )
             } else {
                 format!(
-                    "the document has no layer configuration, so its {} layer(s) have no effect on what shows (ISO 32000-1 §8.11.4.2); they are shown, as PdfCraft and other viewers show them (layers {}{more})",
+                    "the document has no layer configuration, so its {} layer(s) have no effect on what shows (ISO 32000-1 §8.11.4.2); they are shown, as PDF Overlay and other viewers show them (layers {}{more})",
                     groups.len(),
                     names.join(", ")
                 )

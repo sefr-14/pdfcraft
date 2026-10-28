@@ -1,5 +1,5 @@
 // Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
-//! Where PdfCraft Overlay and upstream PdfCraft live on the web. One table, so the Help menu, the
+//! Where PDF Overlay and upstream PdfCraft live on the web. One table, so the Help menu, the
 //! About dialog, the CLI and the README agree.
 //!
 //! This fork (sefr-14/pdfcraft) sends people to its own issue tracker, not to upstream's ArtCraft

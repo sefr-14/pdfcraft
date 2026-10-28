@@ -177,7 +177,7 @@ fn stdout_line(line: std::fmt::Arguments<'_>) -> Result<(), CliError> {
 
 fn version() -> Result<(), CliError> {
     stdout_line(format_args!("pdfcraft-cli {}", pdfcraft_engine::build_info::version()))?;
-    stdout_line(format_args!("PdfCraft Overlay, an unofficial fork of PdfCraft"))?;
+    stdout_line(format_args!("PDF Overlay, an unofficial fork of PdfCraft"))?;
     stdout_line(format_args!("Report problems: {}", pdfcraft_engine::links::ISSUES))?;
     stdout_line(format_args!("Source:          {}", pdfcraft_engine::links::FORK))?;
     stdout_line(format_args!("Upstream:        {}", pdfcraft_engine::links::GITHUB))?;
