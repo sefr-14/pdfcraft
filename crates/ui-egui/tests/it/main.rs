@@ -46,6 +46,8 @@ mod fill_sign;
 mod folders;
 mod fonts;
 mod forms;
+// This fork (HOME.1): Home's recommended tools.
+mod home_tools;
 mod identity;
 mod javascript;
 mod layer_actions;
