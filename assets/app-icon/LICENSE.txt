@@ -1,12 +1,18 @@
-PdfCraft app icon (pdfcraft.svg, pdfcraft-small.svg and every file derived from them in this
-directory: pdfcraft-1024.png, pdfcraft.icns, pdfcraft.ico, hicolor/).
+PdfCraft Overlay app icon (pdfcraft.svg and every file derived from it in this directory:
+pdfcraft-1024.png, pdfcraft.ico, hicolor/).
 
-Original artwork made for this project by the project owner, drawn in ArtCraft and vectorised for
-PdfCraft (no third-party material). Licensed like the rest of PdfCraft, under either of
+Original geometric artwork ("Dimensioned Drawing") made for PdfCraft Overlay by the PdfCraft Overlay
+contributors (LIC.2, 2026): hand-written SVG primitives, no fonts, no traced or third-party
+material. Licensed like the rest of PdfCraft, under either of
 
   * Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
   * MIT license (https://opensource.org/licenses/MIT)
 
 at your option.
+
+Legacy macOS assets, not used by this fork: pdfcraft.icns and packaging/macos/dmg/background.tiff
+still show upstream PdfCraft's lion icon, original artwork by the upstream
+project owner, under the same MIT OR Apache-2.0 terms. This fork builds no macOS packages, so they
+were not regenerated (packaging/icons.sh writes the .icns only on macOS).
 
 Regenerate the derived files with packaging/icons.sh.

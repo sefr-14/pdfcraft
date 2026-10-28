@@ -110,6 +110,7 @@ jobs:
           Copy-Item vendor\hayro-cmap\assets\LICENSE.txt "$lic\LICENSE-adobe-cmaps.txt"
           Copy-Item assets\app-icon\LICENSE.txt "$lic\LICENSE-app-icon.txt"
           Copy-Item licenses\epaint_default_fonts\*.txt "$lic\epaint_default_fonts"
+          Copy-Item assets\app-icon\pdfcraft-document-orange.ico $dir
           Compress-Archive -Path $dir -DestinationPath "dist\$env:PACKAGE.zip" -Force
           Get-Item "dist\$env:PACKAGE.zip" | Format-Table Name, Length
 

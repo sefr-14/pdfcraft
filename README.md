@@ -6,22 +6,22 @@
 > [About this fork](#about-this-fork); the rest of this README describes upstream PdfCraft.
 
 <p align="center">
-  <img src="assets/app-icon/hicolor/256x256/apps/ai.storyteller.pdfcraft.png" width="128" height="128" alt="PdfCraft icon: an engraved lion on a teal tile">
+  <img src="assets/app-icon/hicolor/256x256/apps/ai.storyteller.pdfcraft.png" width="128" height="128" alt="PdfCraft Overlay icon: a dimensioned drawing sheet with an offset revision outline on a blueprint-blue tile">
 </p>
 
-<h1 align="center">PdfCraft</h1>
+<h1 align="center">PdfCraft Overlay</h1>
 
 <p align="center">
-  <b>The PDF workbench; an open-source, modern PDF reader and editor, built in pure Rust.</b><br>
-  Read, organize, combine, split and secure PDFs in a fast, native app, written in Rust from the ground up.<br>
-  macOS · Windows · Linux · FreeBSD · the web
+  <b>Compare revisions of engineering drawings: overlay two PDF drawing sets in two colours, then measure and review them.</b><br>
+  An unofficial fork of the open-source PdfCraft PDF workbench, built in pure Rust, with everything PdfCraft does.<br>
+  Windows 11 x64 (this fork's builds) · upstream PdfCraft also runs on macOS, Linux, FreeBSD and the web
 </p>
 
 <p align="center">
-  <img alt="License: MIT OR Apache-2.0" src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-12a58a?style=flat-square">
-  <img alt="Written in Rust" src="https://img.shields.io/badge/written%20in-Rust-0a7563?style=flat-square">
-  <img alt="Platforms: macOS, Windows, Linux, FreeBSD, web" src="https://img.shields.io/badge/runs%20on-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux%20%C2%B7%20FreeBSD%20%C2%B7%20web-12a58a?style=flat-square">
-  <img alt="No account, no telemetry" src="https://img.shields.io/badge/no%20account-no%20telemetry-0a7563?style=flat-square">
+  <img alt="License: MIT OR Apache-2.0" src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-0F3D6E?style=flat-square">
+  <img alt="Written in Rust" src="https://img.shields.io/badge/written%20in-Rust-E8743B?style=flat-square">
+  <img alt="Builds: Windows 11 x64" src="https://img.shields.io/badge/builds-Windows%2011%20x64-0F3D6E?style=flat-square">
+  <img alt="No account, no telemetry" src="https://img.shields.io/badge/no%20account-no%20telemetry-E8743B?style=flat-square">
 </p>
 
 <p align="center">
@@ -32,9 +32,9 @@
 <br>
 
 <p align="center">
-  <img src="docs/images/pdfcraft-viewer.png" alt="PdfCraft with the PdfCraft Showcase cover page open, the All tools panel on the left and 20 threaded comments on the right" width="100%">
+  <img src="docs/images/pdfcraft-overlay.png" alt="PdfCraft Overlay showing an overlay of two revisions of a mounting-bracket drawing: unchanged lines in black, the old revision in red, the new one in cyan, with the Old and New layers in the Layers panel" width="100%">
   <br>
-  <sub>The PdfCraft Showcase, a 13-page specimen PDF, open with the All tools panel and threaded comments.</sub>
+  <sub>Overlay compare: two revisions of a (synthetic) drawing in one PDF, unchanged lines in black, Old in red, New in cyan, each its own layer.</sub>
 </p>
 
 <p align="center">
@@ -259,6 +259,13 @@ version, date, artifact name and a **View build on GitHub** link to its run.
   [this fork's issues](https://github.com/sefr-14/pdfcraft/issues) and upstream's repository
   instead of the ArtCraft community, which does not support the fork. Settings, app id and data
   folders are unchanged.
+- It has its own original app icon, "Dimensioned Drawing" (LIC.2): a drawing sheet with a dimension
+  line, a part and a title block, and an orange outline for the other revision, on a blueprint-blue
+  tile. Its PDF file icon is upstream's Lucide-based document icon recoloured with a blue badge; an
+  orange-badge variant, `pdfcraft-document-orange.ico`, ships beside `pdfcraft.exe` in the Windows
+  zip for anyone who prefers it. See
+  [assets/app-icon/README.md](assets/app-icon/README.md).
+- The README screenshots are taken from this fork's own build.
 - The Windows build carries the full licence texts of the third-party code, fonts and icons it
   contains, in a `licenses` folder (see [`licenses/README.txt`](licenses/README.txt)).
 - What the fork changes, by area, is summarized in [FORK-CHANGES.md](FORK-CHANGES.md).
@@ -274,6 +281,14 @@ version, date, artifact name and a **View build on GitHub** link to its run.
 The ArtCraft name and logos are trademarks of the ArtCraft Team and are not open source. They may be used only unmodified, and only as part of PdfCraft (see `docs/brand/LICENSE-brand.txt`). Forks and modified versions must remove them, so this fork has removed the logo files.
 
 ## Highlights
+
+Everything below is upstream PdfCraft, which PdfCraft Overlay includes in full.
+
+<p align="center">
+  <img src="docs/images/pdfcraft-viewer.png" alt="PdfCraft Overlay with the PdfCraft Showcase cover page open, the All tools panel on the left and threaded comments on the right" width="100%">
+  <br>
+  <sub>The PdfCraft Showcase, a 13-page specimen PDF, open with the All tools panel and threaded comments.</sub>
+</p>
 
 <table>
 <tr>
