@@ -231,6 +231,20 @@ version, date, artifact name and a **View build on GitHub** link to its run.
   workflow's page. When GitHub can't be reached (offline, a timeout, a rate limit, an unexpected
   answer) it says why and offers **Try again**; a failure is never reported as "no build".
 
+**Also: Reduce File Size and Optimize PDF save like Save As (COMPRESS.1).** File › Reduce File
+Size and the PDF Optimizer optimize the document as it is now, unsaved changes included (comments,
+measurements, edits, text still being typed), and save the result where you choose. The same tab
+then shows the optimized file, under its new name with nothing unsaved, exactly as after Save As;
+no second tab opens. The original file stays on disk as it was unless you choose to replace it.
+
+- Cancelling the dialog, a failed save, or a Reduce result that isn't smaller changes nothing: the
+  tab keeps its file, its name and its unsaved changes.
+- It never writes over a file another tab has open, nor over the document's own file when that
+  changed on disk since it was opened.
+- If the document is edited while it is being optimized, nothing is saved and you're asked to run
+  it again, so those edits are never replaced by the older optimized copy.
+- The web build still downloads the optimized copy and leaves the document as it is.
+
 **What else differs from upstream**
 
 - The ArtCraft marks are removed from this fork: from its builds, its README and screenshots, and

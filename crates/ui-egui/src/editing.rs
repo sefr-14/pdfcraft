@@ -636,7 +636,7 @@ impl PdfCraftApp {
 
     /// When the preference is on, bake Fill & Sign marks before the bytes are written.
     /// Returns false when the document is not allowed to change (nothing is written).
-    fn flatten_fill_sign_for_save(&mut self, id: pdfcraft_engine::DocId) -> bool {
+    pub(crate) fn flatten_fill_sign_for_save(&mut self, id: pdfcraft_engine::DocId) -> bool {
         if !self.flatten_fill_sign_on_save {
             return true;
         }
@@ -854,6 +854,19 @@ impl PdfCraftApp {
                 return false;
             }
         };
+        self.commit_saved_file(id, dest, bytes, true)
+    }
+
+    /// Write `bytes` to `dest` and make that file document `id`'s own: the tab shows and edits
+    /// what was written, under its new name, with nothing unsaved. The end of Save and Save As,
+    /// shared with Reduce File Size and Optimize PDF (this fork, COMPRESS.1), which save their
+    /// result the way Save As does. `announce` shows "Saved {name}". Returns `true` if written.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn commit_saved_file(&mut self, id: pdfcraft_engine::DocId, dest: &str, bytes: std::sync::Arc<Vec<u8>>, announce: bool) -> bool {
+        if self.session.get(id).is_none() {
+            self.notify_tr("The document was closed before it could be saved.");
+            return false;
+        }
         if let Err(e) = write_atomically(dest, &bytes) {
             self.notify_fmt("Couldn't save {name}: {e}", &[("name", dest), ("e", &e.to_string())]);
             return false;
@@ -876,7 +889,9 @@ impl PdfCraftApp {
                 for view in self.views.iter_mut().filter(|v| v.id == id) {
                     view.disk_changed = false;
                 }
-                self.notify_fmt("Saved {name}", &[("name", &short_name(dest))]);
+                if announce {
+                    self.notify_fmt("Saved {name}", &[("name", &short_name(dest))]);
+                }
                 #[cfg(target_os = "macos")]
                 crate::macos_association::repair(std::path::Path::new(dest));
                 true
@@ -1224,7 +1239,7 @@ fn write_atomically_syncing(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn short_name(path: &str) -> String {
+pub(crate) fn short_name(path: &str) -> String {
     std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.to_string())
 }
 

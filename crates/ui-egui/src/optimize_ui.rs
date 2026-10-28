@@ -72,6 +72,9 @@ pub struct OptimizeRun {
     pub doc: DocId,
     pub kind: OptimizeKind,
     pub progress: Arc<Mutex<OptimizeProgress>>,
+    /// The document's edit generation when the snapshot was taken (this fork, COMPRESS.1): the
+    /// result is saved as the document only while no edit has been made since.
+    pub generation: u64,
 }
 
 /// The notice's text for a stage.
@@ -351,18 +354,21 @@ impl PdfCraftApp {
     /// Run an optimization of the active document on a worker thread (inline in tests and on
     /// the web), showing its progress; the copy is saved when it is done.
     pub(crate) fn start_optimize(&mut self, kind: OptimizeKind, settings: &Settings, discard: &[Hidden]) {
-        // What's typed in a form field is part of the document (#166).
-        if !self.commit_form_typing() {
-            return;
-        }
         let Some((_, id)) = self.active_ids() else { return };
         if self.optimize_run.is_some() {
             self.notify_tr("Optimization is already running");
             return;
         }
+        // The result becomes the document, as with Save As (this fork, COMPRESS.1), so it is made
+        // from everything Save would write: what's typed in any of its tabs (#166), and Fill & Sign
+        // flattened when that preference is on.
+        if !self.commit_typing_in(id) || !self.flatten_fill_sign_for_save(id) {
+            return;
+        }
+        let Some(generation) = self.session.get(id).map(|d| d.edit_generation()) else { return };
         let job = match self.session.optimize_job(id, settings, discard) {
             Ok(job) => job,
-            Err(e) => return self.save_optimized(id, kind, Err(e)),
+            Err(e) => return self.save_optimized(id, kind, generation, Err(e)),
         };
         let progress = Arc::new(Mutex::new(OptimizeProgress::default()));
         let p = progress.clone();
@@ -387,7 +393,7 @@ impl PdfCraftApp {
         }
         #[cfg(target_arch = "wasm32")]
         work();
-        self.optimize_run = Some(OptimizeRun { doc: id, kind, progress });
+        self.optimize_run = Some(OptimizeRun { doc: id, kind, progress, generation });
         self.poll_optimize();
     }
 
@@ -403,7 +409,7 @@ impl PdfCraftApp {
     /// Show progress; save the copy once the worker is done.
     pub(crate) fn poll_optimize(&mut self) {
         let Some(run) = self.optimize_run.as_ref() else { return };
-        let (doc, kind, progress) = (run.doc, run.kind, run.progress.clone());
+        let (doc, kind, progress, generation) = (run.doc, run.kind, run.progress.clone(), run.generation);
         let Ok(mut s) = progress.lock() else {
             // The worker panicked while holding the lock: it will never report back.
             self.optimize_run = None;
@@ -432,7 +438,7 @@ impl PdfCraftApp {
                     let detail = if kind == OptimizeKind::Advanced { summary(&r) } else { String::new() };
                     (b, detail)
                 });
-                self.save_optimized(doc, kind, result);
+                self.save_optimized(doc, kind, generation, result);
             }
         }
     }
@@ -454,7 +460,7 @@ mod tests {
             app.set_option("language", "en").unwrap();
             app.open_bytes("notes.txt", None, b"hello".to_vec()).unwrap();
             let (_, doc) = app.active_ids().unwrap();
-            app.optimize_run = Some(OptimizeRun { doc, kind: OptimizeKind::Advanced, progress: p });
+            app.optimize_run = Some(OptimizeRun { doc, kind: OptimizeKind::Advanced, progress: p, generation: 0 });
             app.notify("Saved notes.pdf");
             app
         });
@@ -487,7 +493,7 @@ mod tests {
         app.set_option("language", "en").unwrap();
         app.open_bytes("notes.txt", None, b"hello".to_vec()).unwrap();
         let (_, doc) = app.active_ids().unwrap();
-        app.optimize_run = Some(OptimizeRun { doc, kind: OptimizeKind::Reduce, progress: Arc::default() });
+        app.optimize_run = Some(OptimizeRun { doc, kind: OptimizeKind::Reduce, progress: Arc::default(), generation: 0 });
         app.optimize_with_draft();
         assert_eq!(app.toast.as_ref().map(|t| t.0.as_str()), Some("Optimization is already running"));
     }

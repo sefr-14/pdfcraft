@@ -2924,6 +2924,10 @@ theme	Appearance	Aspecto
 	About PDF Overlay	Acerca de PDF Overlay
 	Report a problem	Informar de un problema
 	Upstream PdfCraft on GitHub	PdfCraft original en GitHub
+# This fork (sefr-14/pdfcraft): Reduce File Size and Optimize PDF save like Save As (COMPRESS.1).
+	The document changed while it was being optimized, so nothing was saved. Run it again to include your latest changes.	El documento cambió mientras se optimizaba, así que no se guardó nada. Vuelve a ejecutarlo para incluir tus últimos cambios.
+	{name} is open in another tab. Close it or choose another name.	{name} está abierto en otra pestaña. Ciérralo o elige otro nombre.
+	{name} changed on disk since it was opened, so nothing was saved. Choose another name to keep both.	{name} cambió en el disco desde que se abrió, así que no se guardó nada. Elige otro nombre para conservar ambos.
 
 # Date picker: Today button (#4274) (AI-assisted, not separately native-reviewed)
 	Today	Hoy

@@ -4,6 +4,8 @@
 use std::sync::Arc;
 
 use crate::PdfCraftApp;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::editing::short_name;
 use crate::widgets;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -80,6 +82,11 @@ pub(crate) fn png_from_rgba(width: usize, height: usize, rgba: &[u8]) -> Result<
     writer.finish().map_err(|e| e.to_string())?;
     Ok(out)
 }
+
+/// Why an optimized result wasn't saved (this fork, COMPRESS.1).
+#[cfg(not(target_arch = "wasm32"))]
+const EDITED_DURING_OPTIMIZE: &str =
+    "The document changed while it was being optimized, so nothing was saved. Run it again to include your latest changes.";
 
 fn stem(name: &str) -> &str {
     name.rsplit_once('.').map_or(name, |(s, _)| s)
@@ -233,12 +240,28 @@ impl PdfCraftApp {
         self.start_optimize(crate::optimize_ui::OptimizeKind::Reduce, &pdfcraft_engine::optimize::Settings::default(), &[]);
     }
 
-    /// Save an optimized copy (Reduce File Size, Optimize PDF) next to the original, reporting
-    /// the saving. A Reduce File Size copy that isn't smaller is not saved (#490).
+    /// Whether document `id` was edited since its edit generation was `generation` (this fork,
+    /// COMPRESS.1). A closed document counts as unchanged: saving then reports it as closed.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn edited_since(&self, id: pdfcraft_engine::DocId, generation: u64) -> bool {
+        self.session.get(id).is_some_and(|d| d.edit_generation() != generation)
+    }
+
+    /// Save the optimized document (Reduce File Size, Optimize PDF), reporting the saving. A
+    /// Reduce File Size result that isn't smaller is not saved (#490).
+    ///
+    /// This fork (COMPRESS.1): the result is saved the way Save As saves. The user picks where,
+    /// and the tab then shows that file: its name, the optimized content, nothing unsaved. The
+    /// original file stays on disk as it was. `generation` is the document's edit generation when
+    /// its snapshot was taken; if it was edited since (during the run or while the dialog was
+    /// open), nothing is saved, so those edits are never replaced by an older optimized state.
+    /// Nothing is written over another open document's file, nor over the document's own file
+    /// when that changed on disk.
     pub(crate) fn save_optimized(
         &mut self,
         id: pdfcraft_engine::DocId,
         kind: crate::optimize_ui::OptimizeKind,
+        generation: u64,
         result: Result<(Arc<Vec<u8>>, String), pdfcraft_engine::EditError>,
     ) {
         let Some(doc) = self.session.get(id) else { return };
@@ -278,9 +301,37 @@ impl PdfCraftApp {
         };
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let write = move |app: &mut Self, path: String| match crate::editing::write_atomically(&path, &bytes) {
-                Ok(()) => saved(app, path),
-                Err(e) => app.notify_fmt("Couldn't write {path}: {e}", &[("path", &path), ("e", &e.to_string())]),
+            if self.edited_since(id, generation) {
+                self.notify_tr(EDITED_DURING_OPTIMIZE);
+                return;
+            }
+            let write = move |app: &mut Self, path: String| {
+                // Edits made while the save dialog was open aren't in the result either.
+                if app.edited_since(id, generation) {
+                    app.notify_tr(EDITED_DURING_OPTIMIZE);
+                    return;
+                }
+                if let Some(other) = app.tab_showing(&path).and_then(|i| app.views.get(i)).map(|v| v.id).filter(|&other| other != id) {
+                    let name = app.session.get(other).map_or_else(|| short_name(&path), |d| d.name.clone());
+                    app.notify_fmt("{name} is open in another tab. Close it or choose another name.", &[("name", &name)]);
+                    return;
+                }
+                let own = app.session.get(id).and_then(|d| d.path.as_deref()).is_some_and(|p| crate::same_file(p, &path));
+                if own && app.watch.disk_differs(id, &path, app.session.get(id).map(|d| d.saved_bytes())) {
+                    app.notify_fmt(
+                        "{name} changed on disk since it was opened, so nothing was saved. Choose another name to keep both.",
+                        &[("name", &short_name(&path))],
+                    );
+                    return;
+                }
+                // As Save does (#1698): bytes that don't reopen as this document are not written.
+                if let Err(e) = app.session.check_save(id, &bytes) {
+                    app.notify_fmt("Couldn't save {name}: {e}", &[("name", &short_name(&path)), ("e", &e.to_string())]);
+                    return;
+                }
+                if app.commit_saved_file(id, &path, bytes, false) {
+                    saved(app, path);
+                }
             };
             match self.save_override.clone() {
                 Some(p) => write(self, p),
@@ -291,6 +342,9 @@ impl PdfCraftApp {
                 }
             }
         }
+        // The web build downloads the result; the document stays as it is.
+        #[cfg(target_arch = "wasm32")]
+        let _ = generation;
         #[cfg(target_arch = "wasm32")]
         match crate::editing::download(&name, &bytes) {
             Ok(()) => saved(self, name),
