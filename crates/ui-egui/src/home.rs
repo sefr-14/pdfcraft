@@ -8,7 +8,9 @@ use pdfcraft_engine::catalog;
 use crate::theme::{self, Tokens};
 use crate::{PdfCraftApp, icons, panels::human_size, widgets};
 
-const RECOMMENDED: [&str; 5] = ["organize", "comment", "form", "edit", "protect"];
+// This fork (HOME.1): combining and comparing drawing sets come first; comments and forms stay in
+// All tools.
+const RECOMMENDED: [&str; 5] = ["organize", "combine", "compare", "edit", "protect"];
 
 /// A soft shadow that rises on hover and settles when the card is pressed.
 pub(crate) fn card_lift(ui: &egui::Ui, t: &Tokens, rect: Rect, press: theme::Press) {
@@ -209,17 +211,6 @@ mod tests {
         let ctx = egui::Context::default();
         ctx.set_fonts(theme::font_definitions());
         let mut app = PdfCraftApp::new();
-        let blurb = catalog::group("form")
-            .unwrap()
-            .sections
-            .first()
-            .unwrap()
-            .items
-            .iter()
-            .take(3)
-            .map(|item| crate::i18n::tr(de, item.label))
-            .collect::<Vec<_>>()
-            .join(" · ");
         let output = ctx
             .run_ui(egui::RawInput { screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(1440.0, 900.0))), ..Default::default() }, |ui| {
                 show(&mut app, ui)
@@ -227,16 +218,31 @@ mod tests {
         crate::i18n::set_current(crate::i18n::Lang::EN);
         let text_shapes: Vec<_> =
             output.shapes.iter().filter_map(|shape| if let egui::Shape::Text(text) = &shape.shape { Some(text) } else { None }).collect();
-        let description = text_shapes.iter().find(|text| text.galley.job.text == blurb).unwrap();
-        let action = text_shapes
-            .iter()
-            .find(|text| text.galley.job.text == crate::i18n::tr(de, "Use now") && (text.pos.x - description.pos.x).abs() < 0.1)
-            .unwrap();
-        assert!(description.galley.rows.len() <= 2);
-        assert!(
-            description.pos.y + description.galley.size().y + 4.0 <= action.pos.y,
-            "the translated description must leave a visible gap before its action"
-        );
+        // Every recommended card (this fork, HOME.1: they no longer include Prepare a form, whose
+        // German description this test used to measure).
+        for id in RECOMMENDED {
+            let blurb = catalog::group(id)
+                .unwrap()
+                .sections
+                .first()
+                .unwrap()
+                .items
+                .iter()
+                .take(3)
+                .map(|item| crate::i18n::tr(de, item.label))
+                .collect::<Vec<_>>()
+                .join(" · ");
+            let description = text_shapes.iter().find(|text| text.galley.job.text == blurb).unwrap_or_else(|| panic!("{id}: {blurb}"));
+            let action = text_shapes
+                .iter()
+                .find(|text| text.galley.job.text == crate::i18n::tr(de, "Use now") && (text.pos.x - description.pos.x).abs() < 0.1)
+                .unwrap();
+            assert!(description.galley.rows.len() <= 2, "{id}");
+            assert!(
+                description.pos.y + description.galley.size().y + 4.0 <= action.pos.y,
+                "{id}: the translated description must leave a visible gap before its action"
+            );
+        }
         output.drop_without_applying_deltas();
     }
 }
