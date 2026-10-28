@@ -2903,7 +2903,7 @@ fn registration_readout(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, key: (usi
 
 fn preview_step(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
     heading(ui, tx("5. Preview"));
-    muted(ui, t, tx("The page Generate would write, drawn by PdfCraft's own renderer. Scroll to zoom, drag to pan."));
+    muted(ui, t, tx("The page Generate would write, drawn by PDF Overlay's own renderer. Scroll to zoom, drag to pan."));
     ui.add_space(6.0);
     let n = w.pairs.len();
     ui.horizontal(|ui| {

@@ -159,7 +159,7 @@ impl Rule {
             Rule::HiddenClippingText => "hidden text may clip what is drawn after it",
             Rule::AmbiguousResources => "a drawing without its own resources is used in places with different resources",
             Rule::InResources => "layers are referenced from data the page carries but doesn't draw",
-            Rule::AnnotationUndrawnText => "an annotation's appearance shows ? in place of characters PdfCraft's fonts couldn't draw",
+            Rule::AnnotationUndrawnText => "an annotation's appearance shows ? in place of characters PDF Overlay's fonts couldn't draw",
             Rule::AnnotationUndrawableText => "an annotation has text the fonts can't draw, so its appearance would show ?",
             Rule::AnnotationNotDrawn => "an annotation of a kind the overlay doesn't draw (3D, media, sound) has a visible appearance",
             Rule::AnnotationPlacement => "the page's content doesn't end in its initial graphics state, so its annotations can't be placed reliably",

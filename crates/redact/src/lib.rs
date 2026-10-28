@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Redaction (architecture §11.2, execution plan M8.5–M8.7). Layer L4.
 //!
 //! Content is marked for redaction with Redact annotations (§12.5.6.23); `pdfcraft-annot`
@@ -52,7 +53,7 @@ pub enum RedactError {
     #[error("{0}")]
     Undrawable(String),
     #[error(
-        "page {0} has vertical-writing text while a redaction mark is pending, and PdfCraft cannot tell whether that text lies under the mark yet, so nothing was changed"
+        "page {0} has vertical-writing text while a redaction mark is pending, and PDF Overlay cannot tell whether that text lies under the mark yet, so nothing was changed"
     )]
     VerticalText(usize),
     #[error(

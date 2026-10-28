@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! pdfcraft-annot — comments (annotations), ISO 32000-2 §12.5, execution plan M5.1–M5.3.
 //!
 //! Builders for the comment types Acrobat's commenting tools create (sticky note, highlight,
@@ -1415,7 +1416,7 @@ fn refuse_foreign_text(doc: &Document, d: &Dict) -> Result<(), AnnotError> {
         d.get(b"AP").is_some_and(|ap| doc.resolve(ap).as_dict().is_some_and(|ap| ap.contains(b"N"))) && pdfcraft_fonts::undrawn_mark(d).is_none();
     if drawn_elsewhere && let Some((what, c)) = appearance::undrawable_text(d) {
         return Err(AnnotError::Undrawable(format!(
-            "PdfCraft can't redraw this comment: the standard fonts can't draw \"{}\" (U+{:04X}) in {what}, which would then show as ? (the comment was left as it is)",
+            "PDF Overlay can't redraw this comment: the standard fonts can't draw \"{}\" (U+{:04X}) in {what}, which would then show as ? (the comment was left as it is)",
             c.escape_debug(),
             u32::from(c)
         )));

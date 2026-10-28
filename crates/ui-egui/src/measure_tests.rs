@@ -234,7 +234,7 @@ fn a_drawing_scale_that_cant_be_read_is_explained_and_feet_and_inches_are_read()
         tool(&mut h, Tool::Distance);
         click_at(&mut h, 0, 100.0, 100.0);
         assert_eq!((kept(&h, id), h.state().views[0].measure.points.len()), (0, 0), "{name}");
-        assert!(says(&h, "drawing scale PdfCraft can't read"), "{name}: nothing said");
+        assert!(says(&h, "drawing scale PDF Overlay can't read"), "{name}: nothing said");
         // Calibrating sets a scale: it isn't stopped by the one it replaces.
         tool(&mut h, Tool::Calibrate);
         click_at(&mut h, 0, 100.0, 100.0);

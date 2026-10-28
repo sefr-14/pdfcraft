@@ -1,4 +1,4 @@
-PdfCraft Overlay PDF document icons: pdfcraft-document.svg and pdfcraft-document.ico (blue badge,
+PDF Overlay PDF document icons: pdfcraft-document.svg and pdfcraft-document.ico (blue badge,
 embedded in pdfcraft.exe) and pdfcraft-document-orange.svg and pdfcraft-document-orange.ico (orange
 badge, an alternative shipped beside it). Both are recolourings of upstream PdfCraft's document icon.
 SPDX-License-Identifier: ISC AND (MIT OR Apache-2.0)
@@ -29,7 +29,7 @@ Licensed under either the MIT License or the Apache License, Version 2.0,
 at your option. Full texts are LICENSE-MIT and LICENSE-APACHE at the
 repository root, and beside this file in Windows distributions.
 
-The PdfCraft Overlay colourways (blue and orange badges and outlines) are by the PdfCraft
+The PDF Overlay colourways (blue and orange badges and outlines) are by the PdfCraft
 Overlay contributors (LIC.2, 2026), under the same MIT OR Apache-2.0 terms.
 
 The icon uses no typeface or external image. Regenerate the ICO with

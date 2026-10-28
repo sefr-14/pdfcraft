@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Native file pickers never block the frame. A blocking picker ran a nested run loop inside
 //! winit's event handler on macOS, which crashed the app when the user clicked File ▸ Open (or
 //! any other open, save or folder picker). Commands now return at once, and the chosen files are
@@ -629,7 +630,7 @@ fn a_late_startup_url_preserves_home_even_after_all_other_tabs_are_closed() {
         deliver_startup(&h, "late.pdf", fixture(1));
         h.run_steps(2);
         assert_eq!(h.state().active, None, "Home stays selected (closed tabs: {close})");
-        h.get_by_label_contains("Welcome to PdfCraft");
+        h.get_by_label_contains("Welcome to PDF Overlay");
         h.get_by_label("late.pdf").click();
         h.run_steps(2);
         assert!(h.state().active.is_some());

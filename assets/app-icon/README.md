@@ -1,7 +1,7 @@
 <!-- Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history. -->
-# PdfCraft Overlay app icon
+# PDF Overlay app icon
 
-<img src="pdfcraft.svg" alt="PdfCraft Overlay app icon: a dimensioned drawing sheet with an offset revision outline on a blueprint-blue tile" width="128">
+<img src="pdfcraft.svg" alt="PDF Overlay app icon: a dimensioned drawing sheet with an offset revision outline on a blueprint-blue tile" width="128">
 
 **Design:** "Dimensioned Drawing" (LIC.2). A white drawing sheet carries a part outline with a hole, an orange dimension
 line with extension ticks and arrowheads, and a solid title block. An orange outline offset behind the sheet is the
@@ -19,7 +19,7 @@ sheet still reads at 16–24 px, because one vector serves every size.
 **Tile:** `viewBox="0 0 512 512"`, a rounded square with `rx=112` that clips everything; Windows and Linux icons use
 the full-bleed tile.
 
-**Provenance:** original geometric artwork by the PdfCraft Overlay contributors, written by hand as SVG primitives
+**Provenance:** original geometric artwork by the PDF Overlay contributors, written by hand as SVG primitives
 (rectangles, a circle, lines and two triangles). It uses no fonts and no traced or third-party material. Licence:
 [LICENSE.txt](LICENSE.txt) (`MIT OR Apache-2.0`, like the repo). It replaces upstream PdfCraft's lion icon, which
 this fork keeps only in its legacy macOS assets (below).
@@ -41,7 +41,7 @@ this fork keeps only in its legacy macOS assets (below).
 Where it shows: `apps/pdfcraft/src/main.rs` sets the window icon (taskbar, Alt-Tab, launcher) and the Wayland app id
 `ai.storyteller.pdfcraft` (unchanged); `packaging/linux/ai.storyteller.pdfcraft.desktop` names the hicolor icon.
 
-Windows PDF files use resource 2 (`"pdfcraft.exe",-2`) when PdfCraft Overlay is chosen as the default reader; the app
+Windows PDF files use resource 2 (`"pdfcraft.exe",-2`) when PDF Overlay is chosen as the default reader; the app
 keeps resource 1. The document outline is adapted from Lucide `file-text` 1.49.0 (ISC); its badge, outlined lettering
 and colours are original (`MIT OR Apache-2.0`), covered by [LICENSE-document.txt](LICENSE-document.txt). To use the
 orange variant instead, point the file type at `pdfcraft-document-orange.ico` with a Windows file-type tool; the app has

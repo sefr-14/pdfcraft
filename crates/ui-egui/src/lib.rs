@@ -2446,9 +2446,9 @@ impl PdfCraftApp {
             Err(e) => {
                 use pdfcraft_engine::links::BlockedLink;
                 let template = if matches!(e, BlockedLink::MailFile | BlockedLink::MailEncodedWord) {
-                    "{who} in this document tried to open an address PdfCraft won't open: {e}."
+                    "{who} in this document tried to open an address PDF Overlay won't open: {e}."
                 } else {
-                    "{who} in this document tried to open an address PdfCraft won't open: {e}. Only web (http, https) and email (mailto) links open from documents."
+                    "{who} in this document tried to open an address PDF Overlay won't open: {e}. Only web (http, https) and email (mailto) links open from documents."
                 };
                 self.notify_fmt(template, &[("who", tl!(origin.noun())), ("e", &e.to_string())]);
             }
@@ -3863,7 +3863,7 @@ impl eframe::App for PdfCraftApp {
             .active
             .and_then(|i| crate::canvas::tab_label(self, i))
             .or_else(|| self.combine_showing().then(|| tl!("Combine files").to_owned()))
-            .map_or_else(|| "PdfCraft".to_owned(), |name| format!("{name} — PdfCraft"));
+            .map_or_else(|| "PDF Overlay".to_owned(), |name| format!("{name} — PDF Overlay"));
         if title != self.window_title {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
             self.window_title = title;

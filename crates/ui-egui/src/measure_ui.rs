@@ -651,7 +651,7 @@ fn place(state: &mut MeasureView, pending: &mut Option<Edit>, doc: &Document, cl
                 state.notice = Some((
                     page,
                     crate::i18n::fmt(
-                        tl!("This part of the page has a drawing scale PdfCraft can't read: {reason}. Calibrate to set one."),
+                        tl!("This part of the page has a drawing scale PDF Overlay can't read: {reason}. Calibrate to set one."),
                         &[("reason", &e)],
                     ),
                 ));

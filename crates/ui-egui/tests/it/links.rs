@@ -1,7 +1,7 @@
 // Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Links and identity (LIC.1): this fork has no Discord button and no community card, its Help menu
 //! and About dialog open its own issue tracker and upstream's repository, and it calls itself
-//! PdfCraft Overlay. The About dialog credits upstream in plain text and says what the fork adds.
+//! PDF Overlay. The About dialog credits upstream in plain text and says what the fork adds.
 
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -30,7 +30,7 @@ fn the_top_bar_has_no_discord_button() {
 #[test]
 fn home_screen_names_the_fork_and_has_no_community_card() {
     let h = harness(|_| {});
-    h.get_by_label("Welcome to PdfCraft Overlay");
+    h.get_by_label("Welcome to PDF Overlay");
     assert!(h.query_by_label("Join the ArtCraft community").is_none(), "community card on the home screen");
     for l in links::LINKS {
         assert!(h.query_by_label(l.label).is_none(), "{} on the home screen", l.label);
@@ -47,7 +47,7 @@ fn about_dialog_names_the_fork_credits_upstream_and_shows_the_links() {
             app.open_bytes("one.pdf", None, pdf.to_vec()).unwrap();
             app.dialog = Some(Dialog::About);
         });
-        h.get_by_label("PdfCraft Overlay");
+        h.get_by_label("PDF Overlay");
         // This fork leaves the ArtCraft marks out (their licence requires it for published
         // modified versions), credits upstream in plain text and says what the fork adds.
         assert_eq!(h.query_all_by_label("ArtCraft").count(), 0, "no ArtCraft mark or wordmark (alt text)");
@@ -120,4 +120,12 @@ fn the_artcraft_logo_files_stay_removed() {
     assert_eq!(names, ["LICENSE-brand.txt"], "files in {}", dir.display());
     let manifest = std::fs::read_to_string(dir.join("../../ATTRIBUTION.toml")).unwrap();
     assert!(!manifest.contains("licence = \"LicenseRef-Storyteller-Trademark\""), "a brand asset is listed in ATTRIBUTION.toml");
+}
+
+/// BRAND.1: with no document open the window is called PDF Overlay. The title is rebuilt every
+/// frame, which used to put upstream's name back over the one set at startup.
+#[test]
+fn the_window_is_called_pdf_overlay() {
+    let h = harness(|_| {});
+    assert_eq!(h.state().window_title, "PDF Overlay");
 }

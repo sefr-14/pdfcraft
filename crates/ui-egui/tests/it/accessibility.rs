@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Prepare for accessibility ▸ Check for accessibility in the real shell (egui_kittest): the
 //! options dialog, the results panel, Fix, Skip Rule and the report.
 
@@ -91,7 +92,7 @@ fn checking_fixing_skipping_and_reporting() {
     assert_eq!(status(&h, Rule::Title), Status::Passed);
     assert_eq!(h.state().a11y.previous.as_ref().unwrap().1.result(Rule::Title).unwrap().status, Status::Failed);
     assert!(matches!(h.state().dialog, Some(Dialog::Properties(_))));
-    assert_eq!(h.state().window_title, "notes — PdfCraft");
+    assert_eq!(h.state().window_title, "notes — PDF Overlay");
     h.state_mut().dialog = None;
     h.run_steps(2);
     h.get_by_label("Compare");

@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Signing identities in the Windows Current User Personal ("My") certificate store.
 //! Private keys remain in CNG; Windows may ask permission to use a key.
 //!
@@ -135,7 +136,7 @@ fn entries() -> Result<Entries, SignError> {
         // P-521, brainpool and Ed25519 certificates parse (to verify with) but aren't signed with.
         let Some(want) = certificate.public_key.store_signing_key() else {
             let what = certificate.public_key.describe();
-            skip(certificate.display_name(), format!("its {what} key can't sign through PdfCraft yet (RSA, P-256 and P-384 only)"), false);
+            skip(certificate.display_name(), format!("its {what} key can't sign through PDF Overlay yet (RSA, P-256 and P-384 only)"), false);
             continue;
         };
         // Enumeration must not open permission or PIN dialogs. Signing may prompt later.

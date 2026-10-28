@@ -27,7 +27,7 @@ const MAX_BODY: u64 = 1 << 20;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// The whole check gives up after this, however many requests are left.
 const CHECK_BUDGET: Duration = Duration::from_secs(30);
-const UNEXPECTED: &str = "GitHub gave an answer PdfCraft didn't expect";
+const UNEXPECTED: &str = "GitHub gave an answer PDF Overlay didn't expect";
 
 /// What came back for one request: its status, the rate-limit headers and (for a success) the
 /// body.
