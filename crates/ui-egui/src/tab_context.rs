@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! PDF-tab actions. Closed history contains paths only, never bytes or passwords.
 use pdfcraft_engine::DocId;
 

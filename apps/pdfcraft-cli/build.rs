@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Windows only: embed version info (VERSIONINFO) into `pdfcraft-cli.exe`, so Explorer's
 //! Details tab, `(Get-Item pdfcraft-cli.exe).VersionInfo` and inventory tools can read the version
 //! and publisher, as they can for `pdfcraft.exe` (`apps/pdfcraft/build.rs`).
@@ -13,8 +14,9 @@ fn main() {
         return;
     }
     let mut res = winresource::WindowsResource::new();
-    res.set("ProductName", "PdfCraft")
-        .set("FileDescription", "PdfCraft command-line tool")
+    // This fork's name (LIC.1); OriginalFilename and InternalName stay upstream's.
+    res.set("ProductName", "PdfCraft Overlay")
+        .set("FileDescription", "PdfCraft Overlay command-line tool")
         .set("LegalCopyright", "Copyright (c) the PdfCraft contributors. MIT OR Apache-2.0.")
         .set("OriginalFilename", "pdfcraft-cli.exe")
         .set("InternalName", "pdfcraft-cli");

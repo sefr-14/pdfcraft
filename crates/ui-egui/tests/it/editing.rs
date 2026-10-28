@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Headless UI tests for editing and saving: the organize toolbar, selection, undo/redo keys,
 //! save/save-as, the unsaved-changes prompt and editable document properties.
 

@@ -1,15 +1,21 @@
-//! Where PdfCraft and the ArtCraft community live on the web. One table, so the Help menu, the
-//! About dialog, the home screen, the CLI and the README agree.
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
+//! Where PdfCraft Overlay and upstream PdfCraft live on the web. One table, so the Help menu, the
+//! About dialog, the CLI and the README agree.
+//!
+//! This fork (sefr-14/pdfcraft) sends people to its own issue tracker, not to upstream's ArtCraft
+//! community, which does not support the fork (LIC.1). It keeps a factual link to upstream.
 
 use icu_properties::props::Script;
 use std::path::{Path, PathBuf};
 
-/// The app's name in ArtCraft URLs (`getartcraft.com/apps/{APP}`, `github.com/storytold/{APP}`).
+/// The app's name in its repository URLs (`github.com/storytold/{APP}`, `github.com/sefr-14/{APP}`).
 pub const APP: &str = "pdfcraft";
 
-pub const DISCORD: &str = "https://discord.gg/artcraft";
-pub const WEBSITE: &str = "https://getartcraft.com";
-pub const APP_PAGE: &str = "https://getartcraft.com/apps/pdfcraft";
+/// This fork's repository.
+pub const FORK: &str = "https://github.com/sefr-14/pdfcraft";
+/// Where to report a problem with this fork.
+pub const ISSUES: &str = "https://github.com/sefr-14/pdfcraft/issues";
+/// Upstream PdfCraft, which this fork is based on.
 pub const GITHUB: &str = "https://github.com/storytold/pdfcraft";
 
 /// A link and the registry command that opens it.
@@ -22,12 +28,10 @@ pub struct Link {
     pub icon: &'static str,
 }
 
-/// In the order they are shown. Discord comes first: it is where people get help fastest.
+/// In the order they are shown. Reporting a problem comes first: it is where fork users get help.
 pub const LINKS: &[Link] = &[
-    Link { command: "help.discord", label: "Join the ArtCraft Discord", url: DISCORD, icon: "messages-square" },
-    Link { command: "help.app_page", label: "PdfCraft web page", url: APP_PAGE, icon: "globe" },
-    Link { command: "help.github", label: "PdfCraft on GitHub", url: GITHUB, icon: "code-xml" },
-    Link { command: "help.website", label: "ArtCraft website", url: WEBSITE, icon: "external-link" },
+    Link { command: "help.report_issue", label: "Report a problem", url: ISSUES, icon: "messages-square" },
+    Link { command: "help.github", label: "Upstream PdfCraft on GitHub", url: GITHUB, icon: "code-xml" },
 ];
 
 pub fn for_command(id: &str) -> Option<&'static Link> {
@@ -560,9 +564,14 @@ mod tests {
     }
 
     #[test]
-    fn urls_follow_the_artcraft_scheme() {
-        assert_eq!(super::APP_PAGE, format!("{}/apps/{}", super::WEBSITE, super::APP));
+    fn urls_name_the_fork_and_upstream_repositories() {
         assert_eq!(super::GITHUB, format!("https://github.com/storytold/{}", super::APP));
+        assert_eq!(super::FORK, format!("https://github.com/sefr-14/{}", super::APP));
+        assert_eq!(super::ISSUES, format!("{}/issues", super::FORK));
+        // LIC.1: no link sends fork users to upstream's ArtCraft community for support.
+        for l in super::LINKS {
+            assert!(!l.url.contains("artcraft"), "{}", l.url);
+        }
         for l in super::LINKS {
             assert!(l.url.starts_with("https://"), "{}", l.url);
             assert!(crate::commands::command(l.command).is_some(), "{} is a registered command", l.command);

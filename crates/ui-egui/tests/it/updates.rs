@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Help ▸ Check for updates (OV8): the latest available Windows build of this fork, with
 //! stand-in sources (no network).
 

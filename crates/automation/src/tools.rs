@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! The tool table: names, descriptions and JSON Schemas for every automation tool.
 //!
 //! Tool names use `[a-z_]` only (MCP clients reject dots). `command` links a tool to the

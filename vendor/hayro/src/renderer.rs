@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 use crate::{ColorReplacement, RenderCache, derive_settings};
 use hayro_interpret::color::Color;
 use hayro_interpret::encode::EncodedShadingPattern;

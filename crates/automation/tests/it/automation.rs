@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! End-to-end tests of the automation tools and the MCP server, on synthetic PDFs.
 
 use std::path::{Path, PathBuf};

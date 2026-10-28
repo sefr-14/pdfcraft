@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Commenting in the real shell (egui_kittest): tools, gestures, selection, the composer and
 //! the Comments panel.
 

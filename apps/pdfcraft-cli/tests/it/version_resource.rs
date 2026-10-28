@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! `pdfcraft-cli.exe` carries a Windows version resource (`build.rs`), so Explorer, PowerShell's
 //! `VersionInfo` and inventory tools see its version and publisher, as they do for `pdfcraft.exe`.
 
@@ -33,8 +34,8 @@ fn the_exe_has_version_info_with_the_package_version() {
     let start = find(&exe, &utf16("VS_VERSION_INFO")).expect("no version resource");
     let resource = &exe[start..];
     for (key, value) in [
-        ("ProductName", "PdfCraft"),
-        ("FileDescription", "PdfCraft command-line tool"),
+        ("ProductName", "PdfCraft Overlay"),
+        ("FileDescription", "PdfCraft Overlay command-line tool"),
         ("LegalCopyright", "Copyright (c) the PdfCraft contributors. MIT OR Apache-2.0."),
         ("OriginalFilename", "pdfcraft-cli.exe"),
         ("InternalName", "pdfcraft-cli"),

@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! pdfcraft-engine — the façade every frontend talks to (architecture §4).
 //!
 //! Holds open documents, their edit history and the tool catalogue. Frontends never touch the

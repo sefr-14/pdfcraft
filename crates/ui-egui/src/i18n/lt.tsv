@@ -1,3 +1,4 @@
+# Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 # Lithuanian (lt) catalog. Columns, separated by a TAB: context <TAB> source <TAB> translation
 #
 # Clean-room translations from English source labels. Use standard Lithuanian computing terms;

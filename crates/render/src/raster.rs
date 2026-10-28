@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Background page rasterization.
 //!
 //! A `RenderPool` parses lazily once and shares that immutable parser between workers. Render

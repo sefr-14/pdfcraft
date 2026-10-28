@@ -1,3 +1,4 @@
+# Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 # Vietnamese (vi) catalog. Columns, separated by a TAB: context <TAB> source <TAB> translation
 #
 # Clean-room translations from PdfCraft's English UI labels. Reviewed by a native

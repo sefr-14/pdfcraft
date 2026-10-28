@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Filling in forms on the page (execution plan M6; Acrobat fills fields in every viewing mode).
 //!
 //! Text fields open an in-place editor over the widget (Enter or clicking away commits, Escape

@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Measurement tools share the engine's PDF user-space geometry and scale semantics.
 use crate::{Args, Automation, Result, ToolError, failed};
 use pdfcraft_engine::{

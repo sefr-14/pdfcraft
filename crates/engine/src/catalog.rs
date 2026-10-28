@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! The tool catalogue: Acrobat's "All tools" information architecture, as data.
 //!
 //! Every UI (the egui shell today, anything tomorrow) builds its tool panel, palette and menus

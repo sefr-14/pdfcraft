@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Combine files, in its own tab: the files to combine, in order, each with the pages to take
 //! (all, or a range such as "1-3, 6"), its size, when it was modified and anything that stops it
 //! being combined. Rows are selected like files in a file manager (click, Ctrl/⌘+click,

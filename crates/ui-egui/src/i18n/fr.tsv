@@ -1,3 +1,4 @@
+# Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 # French (fr) catalog. Format: see the header of ja.tsv
 # (context <TAB> source <TAB> translation; @id, @plural and other contexts; escapes \n \t \\).
 # Plural forms (see `plural_fr` in i18n/mod.rs): one (0 and 1) | other.

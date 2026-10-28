@@ -1,3 +1,4 @@
+# Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 # Slovene (sl) catalog. Format: see the header of ja.tsv
 # (context <TAB> source <TAB> translation; @id, @plural and other contexts; escapes \n \t \\).
 # Plural forms (see `plural_sl` in i18n/mod.rs): one (1, 101 ...) | two (2, 102 ...) | few (3, 4, 103 ...) | other.

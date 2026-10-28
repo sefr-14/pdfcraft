@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Small custom widgets built on the design tokens.
 
 use egui::{Align2, Color32, CornerRadius, Rect, Response, Sense, Stroke, vec2};
@@ -518,8 +519,8 @@ pub fn progress_notice(app: &PdfCraftApp, ctx: &egui::Context) -> bool {
 pub const UPSTREAM_CREDIT: &str = "Based on PdfCraft by the ArtCraft team.";
 
 /// Shown under [`UPSTREAM_CREDIT`], so nobody takes this build for ArtCraft's or asks ArtCraft
-/// about the overlay. Kept in English, like the credit.
-pub const FORK_NOTICE: &str = "This fork only adds overlay comparison.";
+/// about the fork's features. Kept in English, like the credit.
+pub const FORK_NOTICE: &str = "An unofficial fork that adds overlay comparison and drawing-review tools.";
 
 /// Upstream draws the ArtCraft wordmark here. This fork shows [`UPSTREAM_CREDIT`] and
 /// [`FORK_NOTICE`] as two lines of muted text about `height` points tall.
@@ -537,14 +538,14 @@ pub fn artcraft_mark(ui: &mut egui::Ui, _size: f32) -> Response {
     ui.allocate_response(vec2(0.0, 0.0), Sense::hover())
 }
 
-/// Buttons for every community link (`pdfcraft_engine::links`), Discord first and prominent.
+/// Buttons for every link (`pdfcraft_engine::links`), Report a problem first and prominent.
 /// Returns the registry command of the one clicked.
 pub fn community_links(ui: &mut egui::Ui) -> Option<&'static str> {
     let mut clicked = None;
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = vec2(8.0, 8.0);
         for (i, l) in pdfcraft_engine::links::LINKS.iter().enumerate() {
-            let resp = if i == 0 { icon_pill(ui, l.icon, tl!("Join our Discord"), true) } else { icon_pill(ui, l.icon, tl!(l.label), false) };
+            let resp = icon_pill(ui, l.icon, tl!(l.label), i == 0);
             if resp.on_hover_text(l.url).clicked() {
                 clicked = Some(l.command);
             }

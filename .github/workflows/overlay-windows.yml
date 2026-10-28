@@ -11,6 +11,7 @@
 #   Nothing compiled is ever committed to git.
 # - The ArtCraft marks are left out of this build (crates/ui-egui/src/widgets.rs), as the
 #   ArtCraft brand licence (docs/brand/LICENSE-brand.txt) requires for published modified versions.
+# - The zip carries the third-party licence texts in a licenses folder (LIC.1; licenses/README.txt).
 
 name: overlay windows build
 
@@ -98,6 +99,17 @@ jobs:
           # Licences and notices the binaries need.
           foreach ($f in 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE', 'README.md') { Copy-Item $f $dir }
           Copy-Item assets\app-icon\LICENSE-document.txt $dir
+          # Third-party licence texts for everything compiled into the binaries (licenses/README.txt).
+          $lic = "$dir\licenses"
+          New-Item -ItemType Directory -Force -Path "$lic\epaint_default_fonts" | Out-Null
+          foreach ($f in 'licenses\README.txt', 'licenses\THIRD-PARTY-CRATES.txt', 'ATTRIBUTION.md',
+                         'assets\icons\LICENSE-lucide.txt', 'assets\fonts\OFL-Inter.txt',
+                         'assets\fonts\OFL-JetBrainsMono.txt', 'assets\fonts\OFL-DancingScript.txt',
+                         'vendor\hayro-interpret\assets\LICENSE_FOXIT',
+                         'vendor\hayro-interpret\assets\CGATS_LICENSE.txt') { Copy-Item $f $lic }
+          Copy-Item vendor\hayro-cmap\assets\LICENSE.txt "$lic\LICENSE-adobe-cmaps.txt"
+          Copy-Item assets\app-icon\LICENSE.txt "$lic\LICENSE-app-icon.txt"
+          Copy-Item licenses\epaint_default_fonts\*.txt "$lic\epaint_default_fonts"
           Compress-Archive -Path $dir -DestinationPath "dist\$env:PACKAGE.zip" -Force
           Get-Item "dist\$env:PACKAGE.zip" | Format-Table Name, Length
 

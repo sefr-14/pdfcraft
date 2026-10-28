@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Scan & OCR ▸ Recognize text: the Recognize Text dialog (pages, language, output, resolution)
 //! and the background run with its progress. Recognition happens on a worker thread; the result
 //! is applied as one undoable edit when it is done.

@@ -1,3 +1,4 @@
+<!-- Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history. -->
 # Vendored crates
 
 Permissively licensed crates we carry small patches for. Each directory keeps the upstream

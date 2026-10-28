@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Calibrated 2D measurements in PDF user space (ISO 32000-2 §12.9, measurement properties).
 //! Viewports and annotations carry standard rectilinear /Measure dictionaries; the
 //! annotations use the measurement intents of line, polygon and polyline annotations (§12.5.6).

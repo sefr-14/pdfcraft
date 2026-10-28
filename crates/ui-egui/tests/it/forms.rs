@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Filling in a form in the real shell (egui_kittest): typing, Tab, check boxes, radios, choices.
 
 use egui_kittest::Harness;

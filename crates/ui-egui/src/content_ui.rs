@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Edit a PDF ▸ Add content: the Text tool (click on the page and type), Image (pick a file;
 //! it lands in the middle of the page), and editing what was added: select, move, resize
 //! (images keep their proportions), double-click text to retype it, format it from the panel,

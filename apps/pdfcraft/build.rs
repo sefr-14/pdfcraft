@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Windows only: embed the app icon and version info (VERSIONINFO) into `pdfcraft.exe`, so it
 //! shows in Explorer, the taskbar, the Start menu and Alt-Tab. A separate PDF document icon
 //! uses resource ID 2; the installer references it as `pdfcraft.exe,-2`.
@@ -22,8 +23,9 @@ fn main() {
     res.set_icon("../../assets/app-icon/pdfcraft.ico")
         .set_icon_with_id("../../assets/app-icon/pdfcraft-document.ico", "2")
         .set_manifest(windows_manifest::WINDOWS_MANIFEST)
-        .set("ProductName", "PdfCraft")
-        .set("FileDescription", "PdfCraft PDF workbench")
+        // This fork's name (LIC.1); OriginalFilename, InternalName and the app id stay upstream's.
+        .set("ProductName", "PdfCraft Overlay")
+        .set("FileDescription", "PdfCraft Overlay PDF workbench (unofficial fork)")
         .set("LegalCopyright", "Copyright (c) the PdfCraft contributors. MIT OR Apache-2.0.")
         .set("OriginalFilename", "pdfcraft.exe")
         .set("InternalName", "pdfcraft");
