@@ -311,9 +311,7 @@ impl PdfCraftApp {
                     app.notify_tr(EDITED_DURING_OPTIMIZE);
                     return;
                 }
-                if let Some(other) = app.tab_showing(&path).and_then(|i| app.views.get(i)).map(|v| v.id).filter(|&other| other != id) {
-                    let name = app.session.get(other).map_or_else(|| short_name(&path), |d| d.name.clone());
-                    app.notify_fmt("{name} is open in another tab. Close it or choose another name.", &[("name", &name)]);
+                if app.refuse_open_destination(id, &path) {
                     return;
                 }
                 let own = app.session.get(id).and_then(|d| d.path.as_deref()).is_some_and(|p| crate::same_file(p, &path));

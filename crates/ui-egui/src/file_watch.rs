@@ -667,4 +667,172 @@ mod tests {
         assert_eq!(d.info.pages.len(), 2, "the old file's version was not applied to the new one");
         assert!(d.can_undo().is_some() && !d.dirty, "the saved document and its history stay");
     }
+
+    // ── This fork (SAVEAS.1): never save over another open document's file ──────────────────
+
+    /// A (`thesis.pdf`, 2 pages) and B (`other.pdf`, 3 pages) open from `dir`, A active.
+    fn two_open(test: &str) -> (TempDir, String, String, Harness<'static, PdfCraftApp>) {
+        let (dir, a) = TempDir::new(test, &fixture(2));
+        let b = dir.0.join("other.pdf").to_string_lossy().into_owned();
+        std::fs::write(&b, fixture(3)).unwrap();
+        let mut h = harness(&a);
+        h.state_mut().open_path(&b);
+        h.state_mut().active = Some(0);
+        h.run_steps(2);
+        (dir, a, b, h)
+    }
+
+    fn rotate(app: &mut PdfCraftApp, tab: usize) {
+        let id = app.views[tab].id;
+        app.session.apply(id, pdfcraft_engine::Edit::RotatePages { pages: vec![0], degrees: 90 }).unwrap();
+    }
+
+    fn state(app: &PdfCraftApp, tab: usize) -> (Option<String>, String, bool, usize) {
+        let d = app.session.get(app.views[tab].id).unwrap();
+        (d.path.clone(), d.name.clone(), d.dirty, d.info.pages.len())
+    }
+
+    const REFUSED: &str = "other.pdf is open in another tab. Close it or choose another name.";
+
+    fn toast(app: &PdfCraftApp) -> &str {
+        app.toast.as_ref().map_or("", |t| t.0.as_str())
+    }
+
+    #[test]
+    fn save_as_never_writes_over_another_open_documents_file() {
+        for b_unsaved in [false, true] {
+            let (_dir, a, b, mut h) = two_open(if b_unsaved { "save-as-onto-unsaved" } else { "save-as-onto-clean" });
+            let app = h.state_mut();
+            rotate(app, 0);
+            if b_unsaved {
+                rotate(app, 1);
+            }
+            let (before_a, before_b) = (state(app, 0), state(app, 1));
+            app.save_override = Some(b.clone());
+            assert!(!app.save_active(SaveTarget::As), "refused");
+            assert_eq!(toast(app), REFUSED);
+            h.run_steps(3);
+            let app = h.state();
+            assert_eq!(std::fs::read(&b).unwrap(), fixture(3), "nothing written over B");
+            assert_eq!(std::fs::read(&a).unwrap(), fixture(2));
+            assert_eq!((state(app, 0), state(app, 1)), (before_a, before_b), "A, and B with its unsaved changes, as they were");
+            assert_eq!(state(app, 1).2, b_unsaved);
+        }
+    }
+
+    #[test]
+    fn the_save_as_dialog_answer_is_refused_the_same_way() {
+        let (_dir, a, b, mut h) = two_open("save-as-dialog");
+        let app = h.state_mut();
+        rotate(app, 0);
+        app.pick_override = Some(vec![b.clone()]);
+        assert!(!app.save_active(SaveTarget::As), "asks where first");
+        h.run_steps(3);
+        let app = h.state();
+        assert_eq!(toast(app), REFUSED);
+        assert_eq!(std::fs::read(&b).unwrap(), fixture(3));
+        assert_eq!(state(app, 0), (Some(a), "thesis.pdf".into(), true, 2));
+    }
+
+    #[test]
+    fn closing_with_save_onto_another_open_file_keeps_the_tab_open() {
+        let (_dir, _a, b, mut h) = two_open("close-save");
+        let app = h.state_mut();
+        // A new document: Save asks where, and the answer is B's file.
+        app.open_bytes("new.pdf", None, fixture(1)).unwrap();
+        let new = app.views.len() - 1;
+        rotate(app, new);
+        app.save_override = Some(b.clone());
+        app.request_close_tab(new);
+        assert!(app.close_request.is_some(), "asks to save first");
+        app.resolve_close(&egui::Context::default(), Some(true));
+        assert_eq!(toast(app), REFUSED);
+        assert_eq!(app.views.len(), 3, "the tab stays open");
+        assert_eq!(state(app, new), (None, "new.pdf".into(), true, 1), "with its unsaved changes");
+        assert_eq!(std::fs::read(&b).unwrap(), fixture(3));
+    }
+
+    /// The same file under another name: a symlink, or (Windows, macOS) other letter case.
+    #[cfg(any(unix, windows))]
+    fn alias_of(dir: &TempDir, path: &str) -> String {
+        #[cfg(any(windows, target_os = "macos"))]
+        {
+            let _ = dir;
+            path.replace("other.pdf", "OTHER.pdf").replace("thesis.pdf", "THESIS.pdf")
+        }
+        #[cfg(all(unix, not(target_os = "macos")))]
+        {
+            let link = dir.0.join(format!("link-{}", std::path::Path::new(path).file_name().unwrap().to_string_lossy()));
+            std::os::unix::fs::symlink(path, &link).unwrap();
+            link.to_string_lossy().into_owned()
+        }
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn another_name_for_an_open_file_is_refused_too() {
+        let (dir, _a, b, mut h) = two_open("alias");
+        let alias = alias_of(&dir, &b);
+        let app = h.state_mut();
+        rotate(app, 0);
+        app.save_override = Some(alias);
+        assert!(!app.save_active(SaveTarget::As));
+        assert_eq!(toast(app), REFUSED);
+        assert_eq!(std::fs::read(&b).unwrap(), fixture(3));
+    }
+
+    /// Save anyway writes straight away: B, opened under another name for the same file while
+    /// that dialog was up, must stop it there.
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn save_anyway_never_writes_over_another_open_document() {
+        let (dir, a) = TempDir::new("save-anyway-alias", &fixture(2));
+        let mut h = harness(&a);
+        let app = h.state_mut();
+        rotate(app, 0);
+        rebuild(&a, &fixture(4));
+        assert!(!app.save_active(SaveTarget::InPlace));
+        assert!(matches!(app.dialog, Some(crate::Dialog::OverwriteChanged)), "asks first");
+        let alias = alias_of(&dir, &a);
+        app.open_path(&alias);
+        assert_eq!(app.views.len(), 2, "opened as a second document");
+        rotate(app, 1);
+        let before_b = state(app, 1);
+        app.overwrite_changed_file();
+        assert_eq!(toast(app).split(" is open").next(), Some(before_b.1.as_str()), "{}", toast(app));
+        assert!(toast(app).ends_with(" is open in another tab. Close it or choose another name."));
+        assert_eq!(std::fs::read(&a).unwrap(), fixture(4), "nothing written");
+        assert_eq!(state(app, 1), before_b, "B and its unsaved changes untouched");
+        assert!(state(app, 0).2, "A keeps its unsaved changes");
+    }
+
+    #[test]
+    fn saving_still_works_where_no_other_document_is_hurt() {
+        let (dir, a, b, mut h) = two_open("still-works");
+        let app = h.state_mut();
+        // Ctrl+S on its own file.
+        rotate(app, 0);
+        assert!(app.save_active(SaveTarget::InPlace));
+        assert!(!state(app, 0).2);
+        // Its own file again, from a Duplicate Tab.
+        let dup = app.duplicate_view(0).unwrap();
+        app.active = Some(dup);
+        rotate(app, dup);
+        app.save_override = Some(a.clone());
+        assert!(app.save_active(SaveTarget::As), "a duplicate is the same document");
+        // A new name.
+        rotate(app, dup);
+        let copy = dir.0.join("copy.pdf").to_string_lossy().into_owned();
+        app.save_override = Some(copy.clone());
+        assert!(app.save_active(SaveTarget::As));
+        assert_eq!(state(app, dup).0, Some(copy));
+        // B's file once B is closed.
+        let b_tab = (0..app.views.len()).find(|&i| state(app, i).1 == "other.pdf").unwrap();
+        app.close_tab(b_tab);
+        app.active = Some(0);
+        rotate(app, 0);
+        app.save_override = Some(b.clone());
+        assert!(app.save_active(SaveTarget::As));
+        assert_eq!(state(app, 0).0, Some(b));
+    }
 }
