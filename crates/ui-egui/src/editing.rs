@@ -794,6 +794,10 @@ impl PdfCraftApp {
     /// Returns `true` if written now.
     #[cfg(not(target_arch = "wasm32"))]
     fn save_doc_to_then(&mut self, id: pdfcraft_engine::DocId, dest: &str, target: SaveTarget, after: Box<dyn FnOnce(&mut Self) + Send>) -> bool {
+        // Before asking about a changed file: a save that is refused anyway asks nothing.
+        if self.refuse_open_destination(id, dest) {
+            return false;
+        }
         let own = self.session.get(id).and_then(|d| d.path.as_deref()).is_some_and(|p| crate::same_file(p, dest));
         if own && self.watch.disk_differs(id, dest, self.session.get(id).map(|d| d.saved_bytes())) {
             self.pending_overwrite = Some(PendingOverwrite { id, dest: dest.to_string(), target, after });
@@ -828,6 +832,11 @@ impl PdfCraftApp {
     /// Write document `id` to `dest` and make it the document's file. Returns `true` if written.
     #[cfg(not(target_arch = "wasm32"))]
     fn save_doc_to(&mut self, id: pdfcraft_engine::DocId, dest: &str, target: SaveTarget) -> bool {
+        // Again here, the one place every save writes from: Save anyway comes straight here, and
+        // the other document may have been opened while that dialog was up (this fork, SAVEAS.1).
+        if self.refuse_open_destination(id, dest) {
+            return false;
+        }
         // Save As answers on a later frame: commit what was typed meanwhile, too (#166), even
         // if another tab is active by then.
         if !self.commit_typing_in(id) || !self.flatten_fill_sign_for_save(id) {
@@ -855,6 +864,27 @@ impl PdfCraftApp {
             }
         };
         self.commit_saved_file(id, dest, bytes, true)
+    }
+
+    /// The name of another open document whose file is `dest`, if any (this fork, SAVEAS.1).
+    /// Document `id` itself is not "another", so a Duplicate Tab of it never counts. Paths are
+    /// the same file when [`crate::same_file`] says so, or when both exist and resolve to one
+    /// file: a different letter case on Windows and macOS, a symlink or a junction.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn open_in_another_document(&self, id: pdfcraft_engine::DocId, dest: &str) -> Option<String> {
+        let resolved = std::fs::canonicalize(dest).ok();
+        let same = |path: &str| crate::same_file(path, dest) || resolved.as_ref().is_some_and(|r| std::fs::canonicalize(path).is_ok_and(|p| &p == r));
+        self.session.docs().iter().find(|d| d.id != id && d.path.as_deref().is_some_and(same)).map(|d| d.name.clone())
+    }
+
+    /// Refuse to write document `id` over another open document's file: that file would change
+    /// under its tab, which reloads it (losing what it showed) or keeps unsaved changes that a
+    /// later save would write back over this one. Returns `true` if refused, with a notice.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn refuse_open_destination(&mut self, id: pdfcraft_engine::DocId, dest: &str) -> bool {
+        let Some(name) = self.open_in_another_document(id, dest) else { return false };
+        self.notify_fmt("{name} is open in another tab. Close it or choose another name.", &[("name", &name)]);
+        true
     }
 
     /// Write `bytes` to `dest` and make that file document `id`'s own: the tab shows and edits

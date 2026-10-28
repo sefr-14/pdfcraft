@@ -22,6 +22,7 @@ notice requirement.
 | Rulers and guides | Rulers along the page view and guides on the pages, remembered per PDF | `crates/ui-egui` |
 | Drawing and Find (OV12) | Shift keeps drawn lines level or plumb; Find's Next/Previous centre the match | `crates/ui-egui` |
 | Reduce File Size and Optimize PDF | Save the result like Save As: the same tab becomes the optimized file, unsaved changes included; never over another open document, nor over edits made during the run (COMPRESS.1) | `crates/ui-egui/src/create_ui.rs`, `optimize_ui.rs`, `editing.rs` |
+| Save and Save As | Never write over a file another tab has open, including the same file under another name (symlink, letter case); a Duplicate Tab is the same document (SAVEAS.1) | `crates/ui-egui/src/editing.rs` |
 | Check for updates | Help › Check for updates finds this fork's latest Windows build (an Actions artifact), not upstream releases | `crates/ui-egui/src/updates.rs`, `apps/pdfcraft/src/updates.rs` |
 | Translations | The fork's own labels are in English and Spanish only | `crates/ui-egui/src/i18n/es.tsv` ("This fork" sections) |
 

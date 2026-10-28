@@ -245,6 +245,15 @@ no second tab opens. The original file stays on disk as it was unless you choose
   it again, so those edits are never replaced by the older optimized copy.
 - The web build still downloads the optimized copy and leaves the document as it is.
 
+**Also: Save never writes over another open document (SAVEAS.1).** Save, Save As, and Save in
+the dialogs asked when closing or quitting refuse a file that another tab has open, saying which
+one, instead of replacing it. Upstream would write over it: the other tab then reloaded the new
+content, or kept unsaved changes that a later save wrote back over this one. That includes the
+same file reached under another name: a symlink or junction, or other letter case on Windows and
+macOS. A Duplicate Tab of the same document is not "another" document, and once the other tab is
+closed its file can be saved over as usual. A refused save leaves the document, its file and its
+unsaved changes as they were, and a close or quit that was waiting on it does not go ahead.
+
 **What else differs from upstream**
 
 - The ArtCraft marks are removed from this fork: from its builds, its README and screenshots, and
