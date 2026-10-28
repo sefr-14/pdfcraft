@@ -1,3 +1,4 @@
+# Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 # Spanish (es) catalog. Format: see the header of ja.tsv
 # (context <TAB> source <TAB> translation; @id, @plural and other contexts; escapes \n \t \\).
 # Plural forms (see `plural_one_other` in i18n/mod.rs): one (1) | other.
@@ -2918,6 +2919,11 @@ theme	Appearance	Aspecto
 	Clear Guides on Page	Borrar guías de la página
 	Clear All Guides	Borrar todas las guías
 	This page already has as many guides as PdfCraft keeps.	Esta página ya tiene tantas guías como guarda PdfCraft.
+# This fork (sefr-14/pdfcraft): its own name and links, not upstream's ArtCraft community (LIC.1).
+	Welcome to PdfCraft Overlay	Te damos la bienvenida a PdfCraft Overlay
+	About PdfCraft Overlay	Acerca de PdfCraft Overlay
+	Report a problem	Informar de un problema
+	Upstream PdfCraft on GitHub	PdfCraft original en GitHub
 
 # Date picker: Today button (#4274) (AI-assisted, not separately native-reviewed)
 	Today	Hoy

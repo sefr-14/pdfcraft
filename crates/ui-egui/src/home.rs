@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Home tab: recommended tools, open card, pinned folders and recent files (local only, never
 //! another app's list).
 
@@ -22,7 +23,7 @@ pub fn show(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         egui::Frame::NONE.inner_margin(egui::Margin { left: 36, right: 36, top: 28, bottom: 28 }).show(ui, |ui| {
-            ui.label(egui::RichText::new(tl!("Welcome to PdfCraft")).font(theme::semibold(24.0)));
+            ui.label(egui::RichText::new(tl!("Welcome to PdfCraft Overlay")).font(theme::semibold(24.0)));
             ui.label(
                 egui::RichText::new(tl!("An open-source PDF workbench — local, private, and scriptable."))
                     .color(t.text_muted)
@@ -30,7 +31,7 @@ pub fn show(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
             );
             // This fork has no "Join the ArtCraft community" card here: the home screen of a
             // modified build shouldn't invite people to ArtCraft's community as if it were theirs.
-            // The About dialog credits upstream and keeps the links (widgets::artcraft_logo).
+            // The About dialog credits upstream (widgets::artcraft_logo) and links to this fork's issues.
             ui.add_space(14.0);
 
             egui::Frame::NONE
