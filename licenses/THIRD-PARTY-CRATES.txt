@@ -10,10 +10,10 @@ licence text without a copyright line. The pdfcraft-* crates are PdfCraft's own 
 LICENSE-APACHE, NOTICE).
 
 Overview
-  MIT License (MIT): 411
+  MIT License (MIT): 418
   ISC License (ISC): 26
-  Unicode License v3 (Unicode-3.0): 19
-  Apache License 2.0 (Apache-2.0): 18
+  Unicode License v3 (Unicode-3.0): 26
+  Apache License 2.0 (Apache-2.0): 19
   BSD 3-Clause "New" or "Revised" License (BSD-3-Clause): 12
   Boost Software License 1.0 (BSL-1.0): 2
   BSD 2-Clause "Simplified" License (BSD-2-Clause): 1
@@ -1366,6 +1366,8 @@ Apache License 2.0 (Apache-2.0)
 Used by:
   - winit 0.30.13 <https://github.com/rust-windowing/winit>
     authors: The winit contributors; Pierre Krieger <pierre.krieger1708@gmail.com>
+  - winit 0.30.13 <https://github.com/rust-windowing/winit>
+    authors: The winit contributors; Pierre Krieger <pierre.krieger1708@gmail.com>
   - dpi 0.1.2 <https://github.com/rust-windowing/winit>
 
 Apache License
@@ -1574,9 +1576,9 @@ Apache License
 Apache License 2.0 (Apache-2.0)
 
 Used by:
-  - accesskit_winit 0.32.2 <https://github.com/AccessKit/accesskit>
+  - accesskit_winit 0.34.1 <https://github.com/AccessKit/accesskit>
     authors: The AccessKit contributors
-  - aws-lc-sys 0.45.0 <https://github.com/aws/aws-lc-rs>
+  - aws-lc-sys 0.46.0 <https://github.com/aws/aws-lc-rs>
     authors: AWS-LC
   - flatbuffers 24.12.23 <https://github.com/google/flatbuffers>
     authors: Robert Winslow <hello@rwinslow.com>; FlatBuffers Maintainers
@@ -1978,7 +1980,7 @@ BSD 3-Clause "New" or "Revised" License (BSD-3-Clause)
 Used by:
   - alloc-stdlib 0.2.4 <https://github.com/dropbox/rust-alloc-no-stdlib>
     authors: Daniel Reiter Horn <danielrh@dropbox.com>
-  - aws-lc-sys 0.45.0 <https://github.com/aws/aws-lc-rs>
+  - aws-lc-sys 0.46.0 <https://github.com/aws/aws-lc-rs>
     authors: AWS-LC
 
 Copyright (c) <year> <owner>. 
@@ -2852,9 +2854,9 @@ third-party/chromium/LICENSE.
 ISC License (ISC)
 
 Used by:
-  - aws-lc-rs 1.18.1 <https://github.com/aws/aws-lc-rs>
+  - aws-lc-rs 1.18.2 <https://github.com/aws/aws-lc-rs>
     authors: AWS-LibCrypto
-  - aws-lc-sys 0.45.0 <https://github.com/aws/aws-lc-rs>
+  - aws-lc-sys 0.46.0 <https://github.com/aws/aws-lc-rs>
     authors: AWS-LC
 
 ISC License
@@ -3508,6 +3510,34 @@ DEALINGS IN THE SOFTWARE.
 MIT License (MIT)
 
 Used by:
+  - cobs 0.3.0 <https://github.com/jamesmunns/cobs.rs>
+    authors: Allen Welkie <>; James Munns <james@onevariable.com>
+
+Copyright (c) 2015 The cobs.rs Developers
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+================================================================================
+MIT License (MIT)
+
+Used by:
   - quick-error 2.0.1 <http://github.com/tailhook/quick-error>
     authors: Paul Colomiets <paul@colomiets.name>; Colin Kiegel <kiegel@gmx.de>
 
@@ -3761,7 +3791,7 @@ DEALINGS IN THE SOFTWARE.
 MIT License (MIT)
 
 Used by:
-  - rustls-native-certs 0.8.4 <https://github.com/rustls/rustls-native-certs>
+  - rustls-native-certs 0.8.5 <https://github.com/rustls/rustls-native-certs>
   - rustls 0.23.46 <https://github.com/rustls/rustls>
 
 Copyright (c) 2016 Joseph Birr-Pixton <jpixton@gmail.com>
@@ -3971,7 +4001,7 @@ Used by:
     authors: RustCrypto Developers
   - sha1 0.11.0 <https://github.com/RustCrypto/hashes>
     authors: RustCrypto Developers
-  - sha2 0.11.0 <https://github.com/RustCrypto/hashes>
+  - sha2 0.11.1 <https://github.com/RustCrypto/hashes>
     authors: RustCrypto Developers
 
 Copyright (c) 2016-2026 The RustCrypto Project Developers
@@ -4541,40 +4571,6 @@ THE SOFTWARE.
 MIT License (MIT)
 
 Used by:
-  - egui-wgpu 0.36.2 <https://github.com/emilk/egui/tree/main/crates/egui-wgpu>
-    authors: Nils Hasenbanck <nils@hasenbanck.de>; embotech <opensource@embotech.com>; Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
-
-Copyright (c) 2018-2021 Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-
-================================================================================
-MIT License (MIT)
-
-Used by:
   - cbc 0.2.1 <https://github.com/RustCrypto/block-modes>
     authors: RustCrypto Developers
 
@@ -4686,41 +4682,6 @@ Used by:
     authors: RustCrypto Developers
 
 Copyright (c) 2018-2025 The RustCrypto Project Developers
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-
-================================================================================
-MIT License (MIT)
-
-Used by:
-  - getrandom 0.3.4 <https://github.com/rust-random/getrandom>
-    authors: The Rand Project Developers
-
-Copyright (c) 2018-2025 The rust-random Project Developers
-Copyright (c) 2014 The Rust Project Developers
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -4866,6 +4827,40 @@ Used by:
 
 Copyright (c) 2018-2026 The rust-random Project Developers
 Copyright (c) 2014 The Rust Project Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+
+================================================================================
+MIT License (MIT)
+
+Used by:
+  - postcard 1.1.3 <https://github.com/jamesmunns/postcard>
+    authors: James Munns <james@onevariable.com>
+
+Copyright (c) 2019 Anthony James Munns
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -6367,9 +6362,9 @@ MIT License (MIT)
 
 Used by:
   - vello_common 0.0.8 <https://github.com/linebender/vello>
-  - vello_common 0.1.0 <https://github.com/linebender/vello>
+  - vello_common 0.2.0 <https://github.com/linebender/vello>
   - vello_cpu 0.0.8 <https://github.com/linebender/vello>
-  - vello_cpu 0.1.0 <https://github.com/linebender/vello>
+  - vello_cpu 0.2.0 <https://github.com/linebender/vello>
 
 Copyright 2020 the Vello Authors
 
@@ -6402,7 +6397,7 @@ DEALINGS IN THE SOFTWARE.
 MIT License (MIT)
 
 Used by:
-  - ureq-proto 0.6.4 <https://github.com/algesten/ureq-proto>
+  - ureq-proto 0.6.5 <https://github.com/algesten/ureq-proto>
     authors: Martin Algesten <martin@algesten.se>
 
 Copyright 2022 Martin Algesten
@@ -6553,7 +6548,7 @@ SOFTWARE.
 MIT License (MIT)
 
 Used by:
-  - epaint_default_fonts 0.36.2 <https://github.com/emilk/egui/tree/main/crates/epaint_default_fonts>
+  - epaint_default_fonts 0.37.0 <https://github.com/emilk/egui/tree/main/crates/epaint_default_fonts>
     authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
 
 MIT License
@@ -6801,7 +6796,7 @@ SOFTWARE.
 MIT License (MIT)
 
 Used by:
-  - ureq 3.4.2 <https://github.com/algesten/ureq>
+  - ureq 3.5.0 <https://github.com/algesten/ureq>
     authors: Martin Algesten <martin@algesten.se>; Jacob Hoffman-Andrews <ureq@hoffman-andrews.com>
 
 MIT License
@@ -7045,7 +7040,7 @@ SOFTWARE.
 MIT License (MIT)
 
 Used by:
-  - arboard 3.6.1 <https://github.com/1Password/arboard>
+  - arboard 3.7.0 <https://github.com/1Password/arboard>
 
 MIT License
 
@@ -7239,47 +7234,98 @@ SOFTWARE.
 MIT License (MIT)
 
 Used by:
-  - craft-ui 0.1.0 <https://github.com/storytold/craft-libs>
-  - craft-print 0.1.0 <https://github.com/storytold/craft-libs>
+  - craft-winprint-gdi 0.1.0
+
+MIT License
+
+Copyright (c) 2026 ArtCraft Team and the PhotoCraft contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+================================================================================
+MIT License (MIT)
+
+Used by:
   - craft-docpath 0.1.0 <https://github.com/storytold/craft-libs>
+  - craft-fonts-build 0.1.0 <https://github.com/storytold/craft-libs>
+  - craft-i18n 0.1.0 <https://github.com/storytold/craft-libs>
+  - craft-keymap 0.1.0 <https://github.com/storytold/craft-libs>
+  - craft-menu 0.1.0 <https://github.com/storytold/craft-libs>
+  - craft-print 0.1.0 <https://github.com/storytold/craft-libs>
   - craft-quit 0.1.0 <https://github.com/storytold/craft-libs>
-  - pdfcraft 0.14.0
-  - pdfcraft-a11y 0.14.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-annot 0.14.0
-  - pdfcraft-audit 0.14.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-compare 0.14.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-content 0.14.0
-  - pdfcraft-cos 0.14.0
-  - pdfcraft-create 0.14.0
-  - pdfcraft-crypt 0.14.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-edit 0.14.0
-  - pdfcraft-engine 0.14.0
-  - pdfcraft-export 0.14.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-filters 0.14.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-fonts 0.14.0
-  - pdfcraft-forms 0.14.0
-  - pdfcraft-geom 0.14.0
-  - pdfcraft-js 0.14.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-measure 0.14.0
-  - pdfcraft-model 0.14.0
-  - pdfcraft-ocr 0.14.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-optimize 0.14.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-organize 0.14.0
-  - pdfcraft-overlay 0.14.0
-  - pdfcraft-platform 0.14.0
-  - pdfcraft-preflight 0.14.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-print 0.14.0
-  - pdfcraft-redact 0.14.0
-  - pdfcraft-render 0.14.0
-  - pdfcraft-sign 0.14.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-ui-egui 0.14.0
-  - pdfcraft-xfa 0.14.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-xfdf 0.14.0
-  - accesskit 0.24.1 <https://github.com/AccessKit/accesskit>
+  - craft-ui 0.1.0 <https://github.com/storytold/craft-libs>
+  - ecolor 0.37.0 <https://github.com/emilk/egui>
+    authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>; Andreas Reich <reichandreas@gmx.de>
+  - eframe 0.37.0 <https://github.com/emilk/egui/tree/main/crates/eframe>
+    authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
+  - egui-wgpu 0.37.0 <https://github.com/emilk/egui/tree/main/crates/egui-wgpu>
+    authors: Nils Hasenbanck <nils@hasenbanck.de>; embotech <opensource@embotech.com>; Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
+  - egui-winit 0.37.0 <https://github.com/emilk/egui/tree/main/crates/egui-winit>
+    authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
+  - egui 0.37.0 <https://github.com/emilk/egui>
+    authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
+  - egui_extras 0.37.0 <https://github.com/emilk/egui>
+    authors: Dominik Rössler <dominik@freshx.de>; Emil Ernerfeldt <emil.ernerfeldt@gmail.com>; René Rössler <rene@freshx.de>
+  - egui_glow 0.37.0 <https://github.com/emilk/egui/tree/main/crates/egui_glow>
+    authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
+  - emath 0.37.0 <https://github.com/emilk/egui/tree/main/crates/emath>
+    authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
+  - epaint 0.37.0 <https://github.com/emilk/egui/tree/main/crates/epaint>
+    authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
+  - pdfcraft 0.15.0
+  - pdfcraft-a11y 0.15.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-annot 0.15.0
+  - pdfcraft-audit 0.15.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-compare 0.15.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-content 0.15.0
+  - pdfcraft-cos 0.15.0
+  - pdfcraft-create 0.15.0
+  - pdfcraft-crypt 0.15.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-edit 0.15.0
+  - pdfcraft-engine 0.15.0
+  - pdfcraft-export 0.15.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-filters 0.15.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-fonts 0.15.0
+  - pdfcraft-forms 0.15.0
+  - pdfcraft-geom 0.15.0
+  - pdfcraft-js 0.15.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-measure 0.15.0
+  - pdfcraft-model 0.15.0
+  - pdfcraft-ocr 0.15.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-optimize 0.15.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-organize 0.15.0
+  - pdfcraft-overlay 0.15.0
+  - pdfcraft-platform 0.15.0
+  - pdfcraft-preflight 0.15.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-print 0.15.0
+  - pdfcraft-redact 0.15.0
+  - pdfcraft-render 0.15.0
+  - pdfcraft-sign 0.15.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-ui-egui 0.15.0
+  - pdfcraft-xfa 0.15.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-xfdf 0.15.0
+  - accesskit 0.25.1 <https://github.com/AccessKit/accesskit>
     authors: The AccessKit contributors
-  - accesskit_consumer 0.35.0 <https://github.com/AccessKit/accesskit>
+  - accesskit_consumer 0.39.1 <https://github.com/AccessKit/accesskit>
     authors: The AccessKit contributors
-  - accesskit_windows 0.32.1 <https://github.com/AccessKit/accesskit>
+  - accesskit_windows 0.35.1 <https://github.com/AccessKit/accesskit>
     authors: The AccessKit contributors
   - boa_ast 0.22.0 <https://github.com/boa-dev/boa>
     authors: boa-dev
@@ -7299,22 +7345,6 @@ Used by:
     authors: Daniel Reiter Horn <danielrh@dropbox.com>; The Brotli Authors
   - chrono 0.4.45 <https://github.com/chronotope/chrono>
   - dpi 0.1.2 <https://github.com/rust-windowing/winit>
-  - ecolor 0.36.2 <https://github.com/emilk/egui>
-    authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>; Andreas Reich <reichandreas@gmx.de>
-  - eframe 0.36.2 <https://github.com/emilk/egui/tree/main/crates/eframe>
-    authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
-  - egui-winit 0.36.2 <https://github.com/emilk/egui/tree/main/crates/egui-winit>
-    authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
-  - egui 0.36.2 <https://github.com/emilk/egui>
-    authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
-  - egui_extras 0.36.2 <https://github.com/emilk/egui>
-    authors: Dominik Rössler <dominik@freshx.de>; Emil Ernerfeldt <emil.ernerfeldt@gmail.com>; René Rössler <rene@freshx.de>
-  - egui_glow 0.36.2 <https://github.com/emilk/egui/tree/main/crates/egui_glow>
-    authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
-  - emath 0.36.2 <https://github.com/emilk/egui/tree/main/crates/emath>
-    authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
-  - epaint 0.36.2 <https://github.com/emilk/egui/tree/main/crates/epaint>
-    authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
   - fmt-derive-proc 0.1.2 <https://github.com/danielschemmel/fmt-derive>
     authors: Daniel Schemmel <daniel@schemmel.net>
   - fmt-derive 0.1.2 <https://github.com/danielschemmel/fmt-derive>
@@ -7332,6 +7362,8 @@ Used by:
   - rten-imageproc 0.26.0 <https://github.com/robertknight/rten>
     authors: Robert Knight
   - rten-model-file 0.26.0 <https://github.com/robertknight/rten>
+    authors: Robert Knight
+  - rten-onnx 0.26.0 <https://github.com/robertknight/rten>
     authors: Robert Knight
   - rten-parallel 0.26.0 <https://github.com/robertknight/rten>
     authors: Robert Knight
@@ -7360,21 +7392,20 @@ Used by:
   - windows-interface 0.59.3 <https://github.com/microsoft/windows-rs>
   - windows-link 0.2.1 <https://github.com/microsoft/windows-rs>
   - windows-numerics 0.3.1 <https://github.com/microsoft/windows-rs>
+  - windows-registry 0.6.1 <https://github.com/microsoft/windows-rs>
   - windows-result 0.4.1 <https://github.com/microsoft/windows-rs>
   - windows-strings 0.5.1 <https://github.com/microsoft/windows-rs>
   - windows-sys 0.52.0 <https://github.com/microsoft/windows-rs>
     authors: Microsoft
-  - windows-sys 0.60.2 <https://github.com/microsoft/windows-rs>
+  - windows-sys 0.59.0 <https://github.com/microsoft/windows-rs>
     authors: Microsoft
   - windows-sys 0.61.2 <https://github.com/microsoft/windows-rs>
   - windows-targets 0.52.6 <https://github.com/microsoft/windows-rs>
     authors: Microsoft
-  - windows-targets 0.53.5 <https://github.com/microsoft/windows-rs>
   - windows-threading 0.2.1 <https://github.com/microsoft/windows-rs>
   - windows 0.62.2 <https://github.com/microsoft/windows-rs>
   - windows_x86_64_msvc 0.52.6 <https://github.com/microsoft/windows-rs>
     authors: Microsoft
-  - windows_x86_64_msvc 0.53.1 <https://github.com/microsoft/windows-rs>
 
 MIT License
 
@@ -7400,10 +7431,10 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 MIT License (MIT)
 
 Used by:
-  - enum-map-derive 0.17.0 <https://codeberg.org/xfix/enum-map>
-    authors: Kamila Borowska <kamila@borowska.pw>
-  - enum-map 2.7.3 <https://codeberg.org/xfix/enum-map>
-    authors: Kamila Borowska <kamila@borowska.pw>
+  - enum-map-derive 1.0.1 <https://codeberg.org/sugar700/enum-map>
+    authors: Luna Borowska <luna@borowska.pw>
+  - enum-map 3.1.0 <https://codeberg.org/sugar700/enum-map>
+    authors: Luna Borowska <luna@borowska.pw>
 
 MIT License
 
@@ -7799,8 +7830,7 @@ Used by:
     authors: Erick Tryzelaar <erick.tryzelaar@gmail.com>; David Tolnay <dtolnay@gmail.com>
   - serde_derive 1.0.229 <https://github.com/serde-rs/serde>
     authors: Erick Tryzelaar <erick.tryzelaar@gmail.com>; David Tolnay <dtolnay@gmail.com>
-  - serde_json 1.0.151 <https://github.com/serde-rs/json>
-    authors: Erick Tryzelaar <erick.tryzelaar@gmail.com>; David Tolnay <dtolnay@gmail.com>
+  - serde_json 1.0.154 <https://github.com/serde-rs/json>
   - smol_str 0.2.2 <https://github.com/rust-analyzer/smol_str>
     authors: Aleksey Kladov <aleksey.kladov@gmail.com>
   - syn 1.0.109 <https://github.com/dtolnay/syn>
@@ -8232,7 +8262,7 @@ SOFTWARE.
 MIT License (MIT)
 
 Used by:
-  - aws-lc-sys 0.45.0 <https://github.com/aws/aws-lc-rs>
+  - aws-lc-sys 0.46.0 <https://github.com/aws/aws-lc-rs>
     authors: AWS-LC
 
 The MIT License (MIT)
@@ -8389,6 +8419,8 @@ MIT License (MIT)
 
 Used by:
   - roxmltree 0.20.0 <https://github.com/RazrFalcon/roxmltree>
+    authors: Yevhenii Reizner <razrfalcon@gmail.com>
+  - roxmltree 0.21.2 <https://github.com/RazrFalcon/roxmltree>
     authors: Yevhenii Reizner <razrfalcon@gmail.com>
 
 The MIT License (MIT)
@@ -8637,7 +8669,7 @@ SOFTWARE.
 SIL Open Font License 1.1 (OFL-1.1)
 
 Used by:
-  - epaint_default_fonts 0.36.2 <https://github.com/emilk/egui/tree/main/crates/epaint_default_fonts>
+  - epaint_default_fonts 0.37.0 <https://github.com/emilk/egui/tree/main/crates/epaint_default_fonts>
     authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
 
 This Font Software is licensed under the SIL Open Font License,
@@ -8738,7 +8770,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 Ubuntu Font Licence v1.0 (Ubuntu-font-1.0)
 
 Used by:
-  - epaint_default_fonts 0.36.2 <https://github.com/emilk/egui/tree/main/crates/epaint_default_fonts>
+  - epaint_default_fonts 0.37.0 <https://github.com/emilk/egui/tree/main/crates/epaint_default_fonts>
     authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
 
 -------------------------------
@@ -8891,19 +8923,33 @@ authorization of the copyright holder.
 Unicode License v3 (Unicode-3.0)
 
 Used by:
+  - fixed_decimal 0.7.3 <https://github.com/unicode-org/icu4x>
+    authors: The ICU4X Project Developers
   - icu_collections 2.3.0 <https://github.com/unicode-org/icu4x>
     authors: The ICU4X Project Developers
+  - icu_decimal 2.3.0 <https://github.com/unicode-org/icu4x>
+    authors: The ICU4X Project Developers
   - icu_locale_core 2.3.0 <https://github.com/unicode-org/icu4x>
+    authors: The ICU4X Project Developers
+  - icu_locale_fallback 2.3.0 <https://github.com/unicode-org/icu4x>
+    authors: The ICU4X Project Developers
+  - icu_locale_fallback_data 2.3.0 <https://github.com/unicode-org/icu4x>
     authors: The ICU4X Project Developers
   - icu_normalizer 2.3.0 <https://github.com/unicode-org/icu4x>
     authors: The ICU4X Project Developers
   - icu_normalizer_data 2.3.0 <https://github.com/unicode-org/icu4x>
+    authors: The ICU4X Project Developers
+  - icu_plurals 2.3.0 <https://github.com/unicode-org/icu4x>
     authors: The ICU4X Project Developers
   - icu_properties 2.3.0 <https://github.com/unicode-org/icu4x>
     authors: The ICU4X Project Developers
   - icu_properties_data 2.3.0 <https://github.com/unicode-org/icu4x>
     authors: The ICU4X Project Developers
   - icu_provider 2.3.1 <https://github.com/unicode-org/icu4x>
+    authors: The ICU4X Project Developers
+  - icu_provider_adapters 2.3.0 <https://github.com/unicode-org/icu4x>
+    authors: The ICU4X Project Developers
+  - icu_provider_blob 2.3.0 <https://github.com/unicode-org/icu4x>
     authors: The ICU4X Project Developers
   - litemap 0.8.3 <https://github.com/unicode-org/icu4x>
     authors: The ICU4X Project Developers

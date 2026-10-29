@@ -1419,7 +1419,7 @@ milestone = "M3"
 status = "shipped"
 commands = ["edit.find"]
 tools = []
-evidence = ["crates/ui-egui/tests/it/ui.rs::find_counts_matches_across_pages", "crates/ui-egui/tests/it/viewer.rs::find_steps_centre_the_match_without_changing_zoom", "crates/ui-egui/tests/it/viewer.rs::a_find_step_moves_only_its_own_view", "crates/ui-egui/src/canvas.rs::a_pending_find_step_falls_back_or_is_dropped"]
+evidence = ["crates/ui-egui/tests/it/ui.rs::find_counts_matches_across_pages", "crates/ui-egui/tests/it/viewer.rs::find_steps_centre_the_match_without_changing_zoom", "crates/ui-egui/tests/it/viewer.rs::a_find_step_moves_only_its_own_view", "crates/ui-egui/src/canvas/tests.rs::a_pending_find_step_falls_back_or_is_dropped"]
 notes = "This fork (OV12): Next, Previous and a Search panel result bring the match near the middle of the page view at the same zoom, in every layout and view turn, unless it is already in the middle half; the search's own first pick still shows it near the top. Per view (Duplicate Tab, Tile View); in Compare the other half follows only when the half under the pointer steps."
 
 [[feature]]
@@ -1647,7 +1647,7 @@ milestone = "M12"
 status = "partial"
 commands = ["view.thin_lines"]
 tools = ["view_thin_lines"]
-evidence = ["crates/render/src/raster.rs::thin_lines_draw_document_strokes_one_pixel_wide_and_nothing_else", "crates/render/src/raster.rs::print_previews_ignore_thin_lines", "crates/ui-egui/src/thin_lines_tests.rs::thin_lines_reach_every_view_of_every_document_and_change_no_file", "crates/ui-egui/src/thin_lines_tests.rs::thin_lines_are_remembered_and_apply_to_documents_opened_later", "crates/automation/tests/it/automation.rs::thin_lines_through_tools"]
+evidence = ["crates/render/src/raster/tests.rs::thin_lines_draw_document_strokes_one_pixel_wide_and_nothing_else", "crates/render/src/raster/tests.rs::print_previews_ignore_thin_lines", "crates/ui-egui/src/thin_lines_tests.rs::thin_lines_reach_every_view_of_every_document_and_change_no_file", "crates/ui-egui/src/thin_lines_tests.rs::thin_lines_are_remembered_and_apply_to_documents_opened_later", "crates/automation/tests/it/automation.rs::thin_lines_through_tools"]
 notes = "this fork (OV9), modelled on Revit's Thin Lines: View > Page display > Thin lines draws every open document's strokes one device pixel wide (line weights hidden); off on first start, remembered across restarts. Display only: the file, printing, print previews, the Snapshot tool and the Overlay wizard keep the real widths. Comments and other annotations keep theirs too (the owner's choice), as do stroked text, Type 3 glyphs and mask content. Not per document in the UI, and no separate weight scaling"
 
 [[feature]]
