@@ -545,12 +545,10 @@ fn open_paths(ops: &[Op]) -> Vec<bool> {
         .collect()
 }
 
-/// Plan the hidden block from `s` (its `BDC`) to `e` (its `EMC`).
-fn hide(ops: &[Op], s: usize, e: usize, text_open: &[bool], path_open: &[bool], text_may_clip: bool, plan: &mut Plan) {
+/// Whether the block from `s` to `e` leaves a save, a text object or a path open, or closes one
+/// it didn't open: hiding it would then change what is drawn around it.
+fn crosses_structure(ops: &[Op], s: usize, e: usize, in_text: bool, path_open: &[bool]) -> bool {
     let inside = |i: usize| ops.get(i).map(|o| o.op.as_slice()).unwrap_or_default();
-    let in_text = text_open.get(s).copied().unwrap_or(false);
-
-    // Structure: saves and restores, text objects and paths must stay inside the block.
     let mut depth: i64 = 0;
     let mut text = in_text;
     let mut crosses = path_open.get(s).copied().unwrap_or(false) || path_open.get(e).copied().unwrap_or(false);
@@ -578,37 +576,48 @@ fn hide(ops: &[Op], s: usize, e: usize, text_open: &[bool], path_open: &[bool], 
             _ => {}
         }
     }
-    if depth != 0 || text != in_text {
-        crosses = true;
+    crosses || depth != 0 || text != in_text
+}
+
+/// Whether the hidden block from `s` to `e`, inside a text object, shows or positions text that
+/// the visible text after it (`after`, up to `ET`) continues from.
+fn moves_visible_text(ops: &[Op], s: usize, e: usize, after: &[Op]) -> bool {
+    let inside = |i: usize| ops.get(i).map(|o| o.op.as_slice()).unwrap_or_default();
+    let block_shows = (s..e).any(|i| is_text_showing(inside(i)));
+    let block_moves = (s..e).any(|i| is_text_positioning(inside(i)) || matches!(inside(i), b"'" | b"\""));
+    let mut continues_line = false;
+    let mut continues_object = false;
+    for op in after {
+        let o = op.op.as_slice();
+        if o == b"ET" {
+            break;
+        }
+        if matches!(o, b"Tj" | b"TJ") && !continues_object {
+            continues_line = true;
+        }
+        if is_text_showing(o) || is_text_positioning(o) {
+            continues_object = true;
+        }
     }
-    if crosses {
+    (block_shows && continues_line) || (block_moves && continues_object)
+}
+
+/// Plan the hidden block from `s` (its `BDC`) to `e` (its `EMC`).
+fn hide(ops: &[Op], s: usize, e: usize, text_open: &[bool], path_open: &[bool], text_may_clip: bool, plan: &mut Plan) {
+    let inside = |i: usize| ops.get(i).map(|o| o.op.as_slice()).unwrap_or_default();
+    let in_text = text_open.get(s).copied().unwrap_or(false);
+
+    // Structure: saves and restores, text objects and paths must stay inside the block.
+    if crosses_structure(ops, s, e, in_text, path_open) {
         plan.issues.push(Rule::HiddenBlockCrossesStructure);
         return;
     }
     let after = ops.get(e.saturating_add(1)..).unwrap_or_default();
 
     // Hidden text inside a text object that continues with visible text.
-    if in_text {
-        let block_shows = (s..e).any(|i| is_text_showing(inside(i)));
-        let block_moves = (s..e).any(|i| is_text_positioning(inside(i)) || matches!(inside(i), b"'" | b"\""));
-        let mut continues_line = false;
-        let mut continues_object = false;
-        for op in after {
-            let o = op.op.as_slice();
-            if o == b"ET" {
-                break;
-            }
-            if matches!(o, b"Tj" | b"TJ") && !continues_object {
-                continues_line = true;
-            }
-            if is_text_showing(o) || is_text_positioning(o) {
-                continues_object = true;
-            }
-        }
-        if (block_shows && continues_line) || (block_moves && continues_object) {
-            plan.issues.push(Rule::HiddenTextMovesVisibleText);
-            return;
-        }
+    if in_text && moves_visible_text(ops, s, e, after) {
+        plan.issues.push(Rule::HiddenTextMovesVisibleText);
+        return;
     }
 
     // The block's top-level operators: state changes are candidates; everything else goes.

@@ -672,7 +672,7 @@ fn escape_in_a_measure_panel_field_only_leaves_the_field() {
     tool(&mut h, Tool::Perimeter);
     click_at(&mut h, 0, 100.0, 100.0);
     click_at(&mut h, 0, 300.0, 200.0);
-    let label = egui::Id::new("measure-label");
+    let label = egui::Id::unique("measure-label");
     h.ctx.memory_mut(|mem| mem.request_focus(label));
     h.run_steps(2);
     assert_eq!(h.ctx.memory(|mem| mem.focused()), Some(label));

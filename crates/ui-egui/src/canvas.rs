@@ -2979,6 +2979,63 @@ fn refine_goto_point(mut scroll: egui::ScrollArea, view: &mut DocView, geometry:
     scroll
 }
 
+/// This fork (OV11): the page area, less the rulers' strips when the document's rulers are shown.
+fn page_area(prefs: &crate::doc_prefs::DocPrefs, id: DocId, full: Rect) -> Rect {
+    if prefs.state(id).is_some_and(|s| s.prefs.rulers) { crate::rulers::inner(full) } else { full }
+}
+
+/// Where the rulers go (this fork, OV11): the whole area, the pages' part of it, whether they take
+/// input (the active view, nothing over it), and whether the Hand tool takes guides.
+#[derive(Clone, Copy)]
+struct RulerArea {
+    full: Rect,
+    pages: Rect,
+    active: bool,
+    hand: bool,
+}
+
+/// The rulers, from where this frame put the pages, and the guide cursor for the Hand tool. Why a
+/// guide couldn't be made, if one couldn't.
+fn draw_rulers(
+    ui: &mut egui::Ui,
+    view: &mut DocView,
+    info: &DocInfo,
+    prefs: &mut crate::doc_prefs::DocPrefs,
+    id: DocId,
+    area: RulerArea,
+) -> Option<&'static str> {
+    let refused = crate::rulers::show(ui, view, info, prefs, id, crate::rulers::Area { full: area.full, inner: area.pages, input: area.active });
+    if area.hand {
+        crate::guides::hover_cursor(ui, view, info, prefs, id, area.pages);
+    }
+    refused
+}
+
+/// Guide input before the pages are laid out (this fork, OV11): the page area, whether the Hand
+/// tool takes guides, and the pages drawn this frame.
+struct GuideInput<'a> {
+    area: Rect,
+    hand: bool,
+    pages: &'a [usize],
+}
+
+/// The Hand tool takes a guide before the page view pans, from where the pages were last frame:
+/// whether it holds one (the view doesn't pan then), and the guides of the pages drawn this frame
+/// when the document's guides are shown, copied so the rulers can change them while the frame is
+/// drawn.
+fn guides_before_pages(
+    ui: &egui::Ui,
+    view: &mut DocView,
+    info: &DocInfo,
+    prefs: &mut crate::doc_prefs::DocPrefs,
+    id: DocId,
+    input: GuideInput<'_>,
+) -> (bool, Vec<(usize, crate::doc_prefs::PageGuides)>) {
+    let held = crate::guides::press(ui, view, info, prefs, id, input.area, input.hand);
+    let Some(state) = prefs.state(id).filter(|s| s.prefs.guides_shown) else { return (held, Vec::new()) };
+    (held, input.pages.iter().filter_map(|&i| Some((i, state.page(i)?.clone()))).collect())
+}
+
 /// How a view drawn by [`document_area_with`] takes pointer input (OV7.3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Interaction {
@@ -3028,6 +3085,15 @@ fn reveal_find_match(
 /// scroll area with this frame's zoom, scrolling, tool input, overlays and render requests.
 pub fn document_area(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui) {
     document_area_with(app, index, ui, Interaction::Full);
+}
+
+/// The tool a view's pages take the pointer with: a navigation-only view (another tile) treats it
+/// as the Hand tool's, so nothing on its pages changes (OV7.3).
+fn view_tool(interaction: Interaction, tool: QuickTool) -> QuickTool {
+    match interaction {
+        Interaction::Full => tool,
+        Interaction::NavigateOnly => QuickTool::Hand,
+    }
 }
 
 /// [`document_area`] for a view that may not be the active one (Tile View).
@@ -3101,8 +3167,7 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
 
     // This fork (OV11): the rulers take their strips off the page area's top and left.
     let full = ui.available_rect_before_wrap();
-    let ruled = app.doc_prefs.state(doc.id).is_some_and(|s| s.prefs.rulers);
-    let avail = if ruled { crate::rulers::inner(full) } else { full };
+    let avail = page_area(&app.doc_prefs, doc.id, full);
     view.viewport_w = avail.width();
     view.viewport_h = avail.height();
     let old_zoom = view.zoom;
@@ -3160,13 +3225,8 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
     // This fork (OV11): the Hand tool takes a guide before the page view pans, from where the
     // pages were last frame. A held guide doesn't pan.
     let hand_guides = tools && unobstructed && app.quick_tool == QuickTool::Hand && !middle_gesture;
-    let held = crate::guides::press(ui, view, info, &mut app.doc_prefs, doc.id, avail, hand_guides);
-    let marks: Vec<(usize, crate::doc_prefs::PageGuides)> = app
-        .doc_prefs
-        .state(doc.id)
-        .filter(|s| s.prefs.guides_shown)
-        .map(|s| visible_pages.iter().filter_map(|&i| Some((i, s.page(i)?.clone()))).collect())
-        .unwrap_or_default();
+    let (held, marks) =
+        guides_before_pages(ui, view, info, &mut app.doc_prefs, doc.id, GuideInput { area: avail, hand: hand_guides, pages: &visible_pages });
     let (mut scroll, moved_this_frame) = page_scroll_area(
         ui,
         view,
@@ -3183,8 +3243,7 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
     let sharp_held = hold_sharp_renders(ui, view, scale);
     view.current_scale_tag = tag;
     let hand = app.quick_tool == QuickTool::Hand;
-    // A navigation-only view treats the pointer as the Hand tool's: nothing on its pages changes.
-    let tool = if tools { app.quick_tool } else { QuickTool::Hand };
+    let tool = view_tool(interaction, app.quick_tool);
     // Text selection runs for the Select tool and for the markup tools (highlight…).
     let selects_text = tool_selects_text(tool, preparing);
     let prefs = &app.comment_prefs;
@@ -3329,11 +3388,9 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
     view.viewport_screen = out.inner_rect;
     view.auto_scroll.paint(ui, avail);
     // This fork (OV11): the rulers, from where this frame put the pages.
-    if let Some(why) = crate::rulers::show(ui, view, info, &mut app.doc_prefs, doc.id, full, avail, tools && unobstructed) {
+    let rulers = RulerArea { full, pages: avail, active: tools && unobstructed, hand: hand_guides };
+    if let Some(why) = draw_rulers(ui, view, info, &mut app.doc_prefs, doc.id, rulers) {
         refused = Some(why.to_string());
-    }
-    if hand_guides {
-        crate::guides::hover_cursor(ui, view, info, &app.doc_prefs, doc.id, avail);
     }
     if unobstructed && matches!(tool, QuickTool::Select | QuickTool::ColumnSelect) {
         copy_selected |= selection_actions(ui, avail, view, info, prefs, allowed && !comments_hidden, can_copy);

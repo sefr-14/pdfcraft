@@ -124,20 +124,21 @@ enum Pick {
     ClearAll,
 }
 
-/// Draw the rulers in the strips `full` has beyond `inner`, from this frame's page positions,
-/// and take their input when `input` (the active view, nothing over the page): their menu, and
-/// guides pulled out of them or made by double-clicking them. Returns why a guide wasn't made.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn show(
-    ui: &mut egui::Ui,
-    view: &mut DocView,
-    info: &DocInfo,
-    prefs: &mut DocPrefs,
-    id: DocId,
-    full: Rect,
-    inner: Rect,
-    input: bool,
-) -> Option<&'static str> {
+/// Where the rulers go: the whole page area (`full`), the pages' part of it (`inner`, which the
+/// strips are taken off), and whether they take input (`input`: the active view, nothing over
+/// the page).
+#[derive(Clone, Copy)]
+pub(crate) struct Area {
+    pub(crate) full: Rect,
+    pub(crate) inner: Rect,
+    pub(crate) input: bool,
+}
+
+/// Draw the rulers in the strips `area.full` has beyond `area.inner`, from this frame's page
+/// positions, and take their input when `area.input`: their menu, and guides pulled out of them or
+/// made by double-clicking them. Returns why a guide wasn't made.
+pub(crate) fn show(ui: &mut egui::Ui, view: &mut DocView, info: &DocInfo, prefs: &mut DocPrefs, id: DocId, area: Area) -> Option<&'static str> {
+    let Area { full, inner, input } = area;
     let state = prefs.state(id)?;
     let current = state.prefs;
     let aligned = aligned_page(view, None).map(|(i, _)| i);
@@ -162,7 +163,7 @@ pub(crate) fn show(
         if !input {
             continue;
         }
-        let resp = ui.interact(rect, ui.id().with(("ruler", view.key, horizontal)), Sense::click_and_drag());
+        let resp = ui.interact(rect, ui.scope_id().with(("ruler", view.key, horizontal)), Sense::click_and_drag());
         let pull = if horizontal { Pull::Horizontal } else { Pull::Vertical };
         if resp.drag_started_by(egui::PointerButton::Primary) {
             view.guides.pulling = Some(pull);

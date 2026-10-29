@@ -201,12 +201,7 @@ impl Session {
         }
         doc.dirty = true;
         doc.generation += 1;
-        // A measurement viewport (/VP) is read where it is needed and never changes what the
-        // page draws. Its undo and redo know only the scope and count as a change: one extra
-        // read of the lines, never a stale one.
-        if touches_content(scope) && !matches!(edit, Edit::SetMeasurementScale { .. }) {
-            doc.content_generation += 1;
-        }
+        note_content_change(doc, scope, &edit);
         doc.edit_notices = notices;
         if !cx.xfa_removed.is_empty() {
             let removed: Vec<String> = cx.xfa_removed.iter().map(|n| format!("{XFA_REMOVED_PREFIX}{n}")).collect();
@@ -537,5 +532,15 @@ impl Session {
         doc.renderer = RenderPool::new(doc.display.clone(), render_threads(), doc.config.clone());
         doc.bytes = bytes;
         Ok(())
+    }
+}
+
+/// Bump the content generation when an applied edit can change what page content draws (this
+/// fork, OV10). A measurement viewport (/VP) is read where it is needed and never changes what the
+/// page draws. Its undo and redo know only the scope and count as a change: one extra read of the
+/// lines, never a stale one.
+fn note_content_change(doc: &mut Document, scope: Scope, edit: &Edit) {
+    if touches_content(scope) && !matches!(edit, Edit::SetMeasurementScale { .. }) {
+        doc.content_generation += 1;
     }
 }

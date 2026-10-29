@@ -435,15 +435,16 @@ fn read_lines(ctx: &egui::Context, doc: &Document, page: usize) -> mpsc::Receive
 
 /// A message at the pointer: why a click placed or kept nothing, or that snapping is loading.
 fn notice(ui: &egui::Ui, at: Pos2, text: &str) {
-    egui::Area::new(ui.id().with("measure-notice")).order(egui::Order::Tooltip).interactable(false).fixed_pos(at + egui::vec2(14.0, 30.0)).show(
-        ui.ctx(),
-        |ui| {
+    egui::Area::new(ui.scope_id().with("measure-notice"))
+        .order(egui::Order::Tooltip)
+        .interactable(false)
+        .fixed_pos(at + egui::vec2(14.0, 30.0))
+        .show(ui.ctx(), |ui| {
             egui::Frame::popup(ui.style()).show(ui, |ui| {
                 ui.set_max_width(320.0);
                 ui.label(text);
             });
-        },
-    );
+        });
 }
 pub(crate) fn page_input(
     ui: &egui::Ui,
@@ -503,29 +504,13 @@ pub(crate) fn page_input(
             let pixels_per_unit = f64::from((xf.rect.width() / xf.pw).max(1e-6));
             // A point `sensitivity` pixels from the pointer: the snapping reach, in any frame.
             let reach = doc.measurement_to_user(page, [f64::from(vx) + state.sensitivity / pixels_per_unit, f64::from(vy)]).unwrap_or(point);
-            let (snaps, ctx) = (state.snaps, ui.ctx().clone());
-            let mut error = None;
-            #[cfg(not(target_arch = "wasm32"))]
-            if placed && matches!(state.snapping(&ctx, doc, page), Snapping::Loading) {
-                state.wait_for_lines(doc, page);
-            }
-            match state.snapping(&ctx, doc, page) {
-                Snapping::Loading => loading = true,
-                Snapping::Failed(e) => error = Some(crate::i18n::fmt(tl!("Snapping isn't available on this page: {reason}"), &[("reason", e)])),
-                Snapping::Ready(s) => {
-                    if s.lines.truncated {
-                        error = Some(tl!("This drawing exceeds the snapping limit; only the first paths are used.").to_string());
-                    } else if s.lines.unreadable > 0 {
-                        error = Some(tl!("Some page content couldn't be read; snapping uses the rest.").to_string());
-                    }
-                    if let Some((p, kind)) = s.snap(point, reach, snaps) {
-                        point = p;
-                        snap = Some(kind);
-                    }
+            match snap_to_lines(state, ui.ctx(), doc, page, Reach { point, reach, placed }) {
+                Some(Some((p, kind))) => {
+                    point = p;
+                    snap = Some(kind);
                 }
-            }
-            if error.is_some() {
-                state.error = error;
+                Some(None) => {}
+                None => loading = true,
             }
         }
         if ui.input(|i| i.modifiers.shift)
@@ -570,7 +555,7 @@ pub(crate) fn page_input(
                     SnapKind::Path => "Path",
                 });
                 // A label (not painted text), so assistive technology and tests read it too.
-                egui::Area::new(ui.id().with("measure-snap"))
+                egui::Area::new(ui.scope_id().with("measure-snap"))
                     .order(egui::Order::Tooltip)
                     .interactable(false)
                     .pivot(egui::Align2::LEFT_BOTTOM)
@@ -621,6 +606,46 @@ pub(crate) fn page_input(
         }
     }
 }
+/// A point to snap: where the pointer is (user space), a point `sensitivity` pixels from it (the
+/// reach), and whether a point is placed there this frame.
+struct Reach {
+    point: Point,
+    reach: Point,
+    placed: bool,
+}
+
+/// Snap `at` to the page's drawn lines (this fork, OV10.2: read on a worker, as the Overlay
+/// wizard snaps), noting in `state.error` why snapping is limited. `None` while the lines are
+/// still loading; a point being placed waits for them first (up to `CLICK_WAIT`).
+fn snap_to_lines(state: &mut MeasureView, ctx: &egui::Context, doc: &Document, page: usize, at: Reach) -> Option<Option<(Point, SnapKind)>> {
+    let Reach { point, reach, placed } = at;
+    let snaps = state.snaps;
+    #[cfg(not(target_arch = "wasm32"))]
+    if placed && matches!(state.snapping(ctx, doc, page), Snapping::Loading) {
+        state.wait_for_lines(doc, page);
+    }
+    #[cfg(target_arch = "wasm32")]
+    let _ = placed;
+    let (hit, error) = match state.snapping(ctx, doc, page) {
+        Snapping::Loading => return None,
+        Snapping::Failed(e) => (None, Some(crate::i18n::fmt(tl!("Snapping isn't available on this page: {reason}"), &[("reason", e)]))),
+        Snapping::Ready(s) => {
+            let error = if s.lines.truncated {
+                Some(tl!("This drawing exceeds the snapping limit; only the first paths are used.").to_string())
+            } else if s.lines.unreadable > 0 {
+                Some(tl!("Some page content couldn't be read; snapping uses the rest.").to_string())
+            } else {
+                None
+            };
+            (s.snap(point, reach, snaps), error)
+        }
+    };
+    if error.is_some() {
+        state.error = error;
+    }
+    Some(hit)
+}
+
 /// A click (or release) on the page, where it snapped to.
 struct Click {
     page: usize,
@@ -790,7 +815,8 @@ fn panel_body(app: &mut PdfCraftApp, ui: &mut egui::Ui, _t: &Tokens) {
     }
     ui.horizontal(|ui| {
         let label = ui.label(tl!("Label"));
-        ui.add(crate::widgets::line(&mut state.label).id(egui::Id::new("measure-label")).desired_width(130.0).char_limit(128)).labelled_by(label.id);
+        ui.add(crate::widgets::line(&mut state.label).id(egui::Id::unique("measure-label")).desired_width(130.0).char_limit(128))
+            .labelled_by(label.id);
     });
     ui.separator();
     ui.add(widgets::checkbox(&mut state.snap_enabled, tl!("Snap to drawing")));
@@ -1006,7 +1032,7 @@ fn scale_rows(ui: &mut egui::Ui, state: &mut MeasureView, units: crate::units::U
     ui.horizontal(|ui| {
         let unit_label = ui.label(tl!("Unit"));
         // Tall enough for all seven entries without scrolling.
-        egui::ComboBox::from_id_salt("measure-unit").selected_text(unit_name(choice)).height(400.0).show_ui(ui, |ui| {
+        craft_ui::ComboBox::from_id_salt("measure-unit").selected_text(unit_name(choice)).height(400.0).show_ui(ui, |ui| {
             for unit in LengthUnit::ALL.into_iter().map(Some).chain([None]) {
                 if ui.selectable_label(choice == unit, unit_name(unit)).clicked() && choice != unit {
                     picked = Some(unit);
