@@ -678,7 +678,7 @@ fn image_view(ui: &mut egui::Ui, label: &str, view: &mut View, image: Option<&Pa
     let t = Tokens::get(ui.ctx());
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click_and_drag());
     // Until its image arrives the view is named by its placeholder ("Rendering…").
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, ui.is_enabled(), if image.is_some() { label } else { placeholder }));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, ui.is_enabled(), if image.is_some() { label } else { placeholder }));
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 4.0, t.pasteboard);
     let Some(img) = image else {
@@ -2232,7 +2232,7 @@ fn pages(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
                     });
                     let name = crate::i18n::fmt(tx("Compare output page {n} as"), &[("n", &(i + 1).to_string())]);
                     combo.response.widget_info(|| {
-                        let mut info = egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, &name);
+                        let mut info = egui::WidgetInfo::labeled(egui::Role::ComboBox, true, &name);
                         info.current_text_value = Some(value.clone());
                         info
                     });
@@ -2251,7 +2251,7 @@ fn pages(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
                                 .fill(t.card)
                                 .stroke(Stroke::new(1.0, t.border));
                             let r = ui.add_enabled(can.is_ok(), button);
-                            r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, can.is_ok(), &label));
+                            r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, can.is_ok(), &label));
                             let r = match &can {
                                 Err(e) => r.on_disabled_hover_text(e.to_string()),
                                 Ok(_) => r.on_hover_text(&label),
@@ -2427,7 +2427,7 @@ fn sheet_alignment(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
                 }
             });
             combo.response.widget_info(|| {
-                let mut info = egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, tx("Page pair"));
+                let mut info = egui::WidgetInfo::labeled(egui::Role::ComboBox, true, tx("Page pair"));
                 info.current_text_value = Some(value.clone());
                 info
             });

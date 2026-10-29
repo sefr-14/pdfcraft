@@ -61,6 +61,7 @@ fn wheel(h: &mut Harness<'static, PdfCraftApp>, dy: f32) {
         delta: vec2(0.0, dy),
         phase: egui::TouchPhase::Move,
         modifiers: egui::Modifiers::NONE,
+        source: egui::MouseWheelSource::Unknown,
     });
     h.run_steps(8);
 }

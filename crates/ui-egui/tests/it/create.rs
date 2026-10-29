@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Create a PDF and Reduce File Size in the real shell.
 
 use pdfcraft_ui_egui::PdfCraftApp;

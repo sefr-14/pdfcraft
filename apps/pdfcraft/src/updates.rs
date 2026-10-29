@@ -527,10 +527,22 @@ mod tests {
         // The code, not these tests (one of which feeds in a run from upstream to refuse it).
         let code = |src: &'static str| src.split("#[cfg(test)]").next().unwrap_or(src);
         for (file, src) in
-            [("updates.rs", include_str!("updates.rs")), ("ui-egui updates.rs", include_str!("../../../crates/ui-egui/src/updates.rs"))]
+            [("updates.rs", include_str!("updates.rs")), ("ui-egui updates.rs", include_str!("../../../crates/ui-egui/src/platform/updates.rs"))]
         {
             assert!(!code(src).contains(concat!("story", "told")), "{file} names upstream");
             assert!(!code(src).contains("/releases"), "{file} asks for releases");
+        }
+        // SYNC.13 (D1): upstream's self-updater (craft-update: a check at start, a download that
+        // replaces the program, the `--finish-update` helper) is not built into this fork at all.
+        let updater = concat!("craft", "_update");
+        for (file, src) in [("main.rs", include_str!("main.rs")), ("Cargo.toml", include_str!("../Cargo.toml"))] {
+            assert!(!src.contains(updater) && !src.contains(concat!("craft", "-update")), "{file} uses upstream's updater");
+            assert!(!src.contains(concat!("--finish", "-update")), "{file} has the self-update helper");
+        }
+        for (file, src) in
+            [("ui-egui Cargo.toml", include_str!("../../../crates/ui-egui/Cargo.toml")), ("Cargo.toml", include_str!("../../../Cargo.toml"))]
+        {
+            assert!(!src.contains(concat!("craft", "-update")), "{file} depends on upstream's updater");
         }
         assert!(RUNS.starts_with("https://api.github.com/repos/sefr-14/pdfcraft/"));
     }

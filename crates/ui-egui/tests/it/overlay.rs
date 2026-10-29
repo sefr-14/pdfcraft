@@ -894,7 +894,13 @@ fn wheel(h: &mut Harness<'static, PdfCraftApp>, pos: egui::Pos2, delta: egui::Ve
     h.event(egui::Event::ModifiersChanged(modifiers));
     h.event(egui::Event::PointerMoved(pos));
     h.run_steps(1);
-    h.event(egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta, phase: egui::TouchPhase::Move, modifiers });
+    h.event(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta,
+        phase: egui::TouchPhase::Move,
+        modifiers,
+        source: egui::MouseWheelSource::Unknown,
+    });
     h.run_steps(8);
     h.event(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
     h.run_steps(1);

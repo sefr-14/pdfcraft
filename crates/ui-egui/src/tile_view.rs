@@ -171,7 +171,7 @@ fn draw_caption(app: &PdfCraftApp, ui: &mut egui::Ui, i: usize, key: ViewKey, re
     // Named for assistive technology; a press here picks the tile like one on its page.
     let label = if dirty { format!("{name} (edited)") } else { name.clone() };
     let resp = ui.interact(rect, ui.id().with(("tile-caption", key)), egui::Sense::hover());
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, &label));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &label));
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, if active { t.selected } else { t.panel });
     let ink = if active { t.text } else { t.text_muted };
@@ -180,5 +180,5 @@ fn draw_caption(app: &PdfCraftApp, ui: &mut egui::Ui, i: usize, key: ViewKey, re
         painter.circle_filled(pos2(x + 3.0, rect.center().y), 3.5, ink);
         x += 12.0;
     }
-    painter.text(pos2(x, rect.center().y), Align2::LEFT_CENTER, crate::bidi::visual(&name), theme::medium(12.0), ink);
+    painter.text(pos2(x, rect.center().y), Align2::LEFT_CENTER, name, theme::medium(12.0), ink);
 }
