@@ -18,12 +18,13 @@ notice requirement.
 | Duplicate Tab | A second tab on the same document, navigated independently | `crates/ui-egui` |
 | Tab View and Tile View | All open tabs side by side; navigation follows the pointer | `crates/ui-egui` |
 | Thin lines | View › Page display › Thin lines (also Page display in the view menu) draws every stroke one device pixel wide | `vendor/hayro` (patch), `crates/render`, `crates/ui-egui` |
-| Measuring drawings | Engineering units (feet and inches), calibration and known distance, snapping, measurements kept as annotations | `crates/measure`, `crates/automation`, `crates/ui-egui/src/tools/measure_ui.rs` |
+| Measuring drawings | Engineering units (feet and inches), calibration, snapping, measurements kept as annotations; the drawing scale as one equation (Drawing distance = Actual distance), with Metric (1:1 to 1:5000) and Imperial (12" = 1'-0" to 1" = 400'-0") common scales saved as a plan writes them (MEASURE.1, MEASURE.2) | `crates/measure`, `crates/automation`, `crates/ui-egui/src/tools/measure_ui.rs` |
 | Rulers and guides | Rulers along the page view and guides on the pages, remembered per PDF; View › Page display › Rulers and Guides | `crates/ui-egui/src/rulers.rs`, `guides.rs` |
 | Drawing and Find (OV12) | Shift keeps drawn lines level or plumb; Find's Next/Previous centre the match | `crates/ui-egui` |
 | Reduce File Size and Optimize PDF | Save the result like Save As: the same tab becomes the optimized file, unsaved changes included; never over another open document, nor over edits made during the run (COMPRESS.1) | `crates/ui-egui/src/workflows/create_ui.rs`, `workflows/optimize_ui.rs`, `editing/save.rs` |
 | Save and Save As | Never write over a file another tab has open, including the same file under another name (symlink, letter case); a Duplicate Tab is the same document (SAVEAS.1) | `crates/ui-egui/src/editing/save.rs` |
 | Check for updates | Help › Check for updates finds this fork's latest Windows build (an Actions artifact), not upstream releases. Upstream's `craft-update` (a check at startup, then installing PdfCraft over the app, and `--finish-update` on Windows) is left out (SYNC.13) | `crates/ui-egui/src/platform/updates.rs`, `apps/pdfcraft/src/updates.rs` |
+| Tool keys | H Highlight, P Hand (was H), V Select, and the pairs D I distance, D L line, R C revision cloud, typed one after the other; never while typing (KEY.1) | `crates/ui-egui/src/tool_keys.rs` |
 | Menus | File › Overlay compare next to Combine; Window › Duplicate tab, Tab view and Tile view; Help lists Keyboard shortcuts, Report a problem, Upstream PdfCraft on GitHub, Check for updates and About | `crates/ui-egui/src/menus.rs` |
 | Translations | The fork's own labels are in English and Spanish only | `crates/ui-egui/src/i18n/es.tsv` ("This fork" sections) |
 
