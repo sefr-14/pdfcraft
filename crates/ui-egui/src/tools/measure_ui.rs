@@ -863,19 +863,23 @@ fn panel_body(app: &mut PdfCraftApp, ui: &mut egui::Ui, _t: &Tokens) {
     if let Some((_, notice)) = state.notice.as_ref().filter(|(_, n)| n != restricted) {
         ui.colored_label(notice_color, notice);
     }
-    if state.snap_enabled && state.snapping_loading() {
-        ui.horizontal(|ui| {
-            ui.spinner();
-            ui.label(tl!("Reading the drawing for snapping…"));
-        });
-    }
     ui.horizontal(|ui| {
         let label = ui.label(tl!("Label"));
         ui.add(crate::widgets::line(&mut state.label).id(egui::Id::unique("measure-label")).desired_width(130.0).char_limit(128))
             .labelled_by(label.id);
     });
     ui.separator();
-    ui.add(widgets::checkbox(&mut state.snap_enabled, tl!("Snap to drawing")));
+    // While the drawing is read for snapping, it says so on this row: a row of its own would come
+    // and go and move everything below it under the pointer (FIX.1).
+    let loading = state.snap_enabled && state.snapping_loading();
+    ui.horizontal(|ui| {
+        ui.add(widgets::checkbox(&mut state.snap_enabled, tl!("Snap to drawing")));
+        if loading {
+            ui.spinner();
+            // One line, cut short in a narrow panel: the full text shows on hover.
+            ui.add(egui::Label::new(tl!("Reading the drawing for snapping…")).truncate());
+        }
+    });
     if state.snap_enabled {
         ui.horizontal(|ui| {
             ui.add(widgets::checkbox(&mut state.snaps.endpoints, tl!("Endpoints")));

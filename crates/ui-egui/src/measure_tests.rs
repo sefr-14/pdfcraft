@@ -468,8 +468,17 @@ fn type_feet(h: &mut Harness<'static, PdfCraftApp>, text: &str) {
 }
 
 fn pick_unit(h: &mut Harness<'static, PdfCraftApp>, from: &str, to: &str) {
+    // Nothing read in the background changes the panel between finding the list and clicking it.
+    for _ in 0..500 {
+        if h.state_mut().views.iter_mut().all(|v| !v.measure.snapping_loading()) {
+            break;
+        }
+        h.run_steps(1);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
     h.get_by_value(from).click();
     h.run_steps(2);
+    assert!(h.query_by_label(to).is_some(), "the unit list didn't open from {from:?}");
     h.get_by_label(to).click();
     h.run_steps(2);
 }
@@ -979,4 +988,28 @@ fn an_imperial_scale_applies_at_once_as_a_plan_writes_it() {
     let reading = pdfcraft_engine::measure::reading(pdfcraft_engine::measure::Kind::Distance, &[[0.0, 0.0], [72.0, 0.0]], &scale).unwrap();
     assert_eq!(reading.label, "8'-0\"");
     assert_eq!(h.state().views[0].measure.ratio_text, "1:96");
+}
+
+/// The drawing's lines arriving for snapping don't move the panel (FIX.1): the Windows build
+/// clicked the unit list in one frame and, the "Reading the drawing" row gone by the next, landed
+/// a row below it. A person clicking as the lines arrive would too.
+#[test]
+fn the_snapping_notice_doesnt_move_the_panel() {
+    let (mut h, id) = harness(plain());
+    tool(&mut h, Tool::Calibrate);
+    let tx = {
+        let app = h.state_mut();
+        let doc = app.session.get(id).unwrap();
+        app.views[0].measure.hold_snapping(doc, 0)
+    };
+    h.run_steps(2);
+    assert!(h.state_mut().views[0].measure.snapping_loading());
+    assert!(says(&h, "Reading the drawing for snapping"));
+    let unit = |h: &Harness<'static, PdfCraftApp>| h.get_by_value("Inches (in)").rect();
+    let before = unit(&h);
+    let bytes = h.state().session.get(id).unwrap().bytes.clone();
+    tx.send(Snapper::read(bytes, None, 0, &HashSet::new())).unwrap();
+    h.run_steps(2);
+    assert!(!h.state_mut().views[0].measure.snapping_loading());
+    assert_eq!(unit(&h), before, "the unit list stays where it was");
 }
