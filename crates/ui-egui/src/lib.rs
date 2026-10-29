@@ -93,6 +93,10 @@ mod measure_tests;
 #[cfg(not(target_arch = "wasm32"))]
 mod rulers_tests;
 
+#[cfg(test)]
+#[cfg(not(target_arch = "wasm32"))]
+mod logic_pass_tests;
+
 mod app;
 mod hooks;
 mod persist;

@@ -433,6 +433,39 @@ fn the_hand_tool_moves_selects_and_deletes_guides_and_escape_puts_one_back() {
     untouched(&mut h, id, &bytes);
 }
 
+/// D4 (SYNC.13): the Hand tool takes guides through the pages' own pointer (`PagePointer`), so a
+/// press on a guide under something drawn over the page (the find bar) leaves the guide alone,
+/// while the same guide beside it is taken as before.
+#[test]
+fn a_guide_under_the_find_bar_is_not_taken() {
+    let file = plans("under.pdf");
+    let mut h = harness(1600.0, move |app| open(app, &file));
+    let id = h.state().views[0].id;
+    h.state_mut().quick_tool = QuickTool::Hand;
+    h.state_mut().views[0].open_find();
+    h.run_steps(4);
+    let bar = h.ctx.memory(|m| m.area_rect(egui::Id::unique("find-bar"))).expect("the find bar is drawn");
+    let under = bar.center();
+    let (page, xf) = {
+        let app = h.state();
+        let v = &app.views[0];
+        (app.session.get(v.id).unwrap().info.pages[0].clone(), v.page_xform(0).expect("page 1 on screen"))
+    };
+    assert!(xf.rect.contains(under), "the find bar {bar:?} is over page 1 {:?}", xf.rect);
+    let [_, y] = guides::to_user(&page, &xf, under);
+    let guide = h.state_mut().doc_prefs.add_guide(id, 0, Axis::Y, y).unwrap();
+    h.run_steps(2);
+
+    drag(&mut h, under, under + egui::vec2(0.0, 60.0), 6, false);
+    assert_eq!(guides_of(&h, 0, 0).y, vec![guide.at], "the guide under the find bar stays where it is");
+    assert_eq!(h.state().views[0].guides.selected, None, "and isn't selected");
+
+    let beside = guides::to_screen(&page, &xf, 60.0, guide.at);
+    assert!(!bar.contains(beside));
+    click(&mut h, beside);
+    assert_eq!(h.state().views[0].guides.selected, Some(guide), "beside the find bar the press takes it");
+}
+
 #[test]
 fn clearing_guides_and_two_tabs_of_one_pdf() {
     let file = plans("tabs.pdf");

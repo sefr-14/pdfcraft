@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 use super::*;
 use egui::{Context, Modifiers, Sense, TouchDeviceId, TouchId, TouchPhase, pos2, vec2};
 
@@ -150,7 +151,7 @@ fn edges_are_primary_finite_in_order_and_capped() {
 }
 
 /// The page modules: the per-page chain in `canvas::document_area` and what it calls.
-const PAGE_MODULES: [&str; 35] = [
+const PAGE_MODULES: [&str; 37] = [
     "canvas.rs",
     "canvas/area.rs",
     "canvas/bars.rs",
@@ -186,6 +187,9 @@ const PAGE_MODULES: [&str; 35] = [
     "canvas/image_pick.rs",
     "canvas/signature_drag.rs",
     "tools/calc_order_ui.rs",
+    // This fork (OV11): guides on the pages, and the rulers beside them.
+    "guides.rs",
+    "rulers.rs",
 ];
 
 /// egui's raw pointer state: where the pointer is, and which buttons are down or went down.
@@ -216,7 +220,7 @@ const RAW_READS: [&str; 21] = [
 
 /// Functions in the page modules that are not page input and read egui's pointer state
 /// themselves: (file, function, why).
-const NOT_PAGE_INPUT: [(&str, &str, &str); 11] = [
+const NOT_PAGE_INPUT: [(&str, &str, &str); 12] = [
     ("canvas/area.rs", "zoom_anchor", "a pinch zooms the whole view, and is read before the pages' widget exists"),
     ("canvas/area.rs", "drawing_edge_pointer", "scrolls the view at its edges, read before the pages' widget exists"),
     ("canvas/area.rs", "glide_interrupted", "a press anywhere stops the touchpad's glide"),
@@ -228,6 +232,7 @@ const NOT_PAGE_INPUT: [(&str, &str, &str); 11] = [
     ("tools/content_ui.rs", "editor", "the added-text editor is an Area of its own over the page"),
     ("tools/edit_text_ui.rs", "overlay", "the paragraph editor is an Area of its own over the page"),
     ("tools/fill_sign/scan.rs", "scan_tab", "the signature dialog's Scan tab"),
+    ("rulers.rs", "strip_pointer", "this fork's ruler strips lie beside the page view, never over a page"),
 ];
 
 /// The function a `fn` line declares, laid out as rustfmt does (`pub`, `const` and the like

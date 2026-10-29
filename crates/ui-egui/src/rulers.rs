@@ -154,21 +154,27 @@ pub(crate) fn show(ui: &mut egui::Ui, view: &mut DocView, info: &DocInfo, prefs:
     let top = Rect::from_min_max(Pos2::new(inner.left(), full.top()), Pos2::new(full.right(), inner.top()));
     let left = Rect::from_min_max(Pos2::new(full.left(), inner.top()), Pos2::new(inner.left(), full.bottom()));
     let corner = Rect::from_min_max(full.min, inner.min);
-    let pointer = ui.input(|i| i.pointer.hover_pos());
-    let page = aligned_page(view, pointer.filter(|p| inner.contains(*p)));
+    let strips = [(top, true), (left, false)];
+    let resps = strips
+        .map(|(rect, horizontal)| input.then(|| ui.interact(rect, ui.scope_id().with(("ruler", view.key, horizontal)), Sense::click_and_drag())));
+    // Where a guide being pulled out is: the pointer of the ruler holding the drag.
+    let pulled_to = resps.iter().flatten().find(|r| r.dragged_by(egui::PointerButton::Primary)).and_then(egui::Response::interact_pointer_pos);
+    // Over the pages, the pointer the pages read (`PagePointer`, kept by `guides::pointer_input`)
+    // or a guide being pulled out over them; over the ruler strips beside them, the strips' own.
+    let over_pages = view.guides.pointer.or(pulled_to).filter(|p| inner.contains(*p));
+    let pointer = over_pages.or_else(|| strip_pointer(ui, [top, left]));
+    let page = aligned_page(view, over_pages);
     let mut pick = None;
     let mut made = Ok(None);
-    for (rect, horizontal) in [(top, true), (left, false)] {
+    for ((rect, horizontal), resp) in strips.into_iter().zip(resps) {
         paint(ui, rect, horizontal, page, current.unit, pointer, &t);
-        if !input {
-            continue;
-        }
-        let resp = ui.interact(rect, ui.scope_id().with(("ruler", view.key, horizontal)), Sense::click_and_drag());
+        let Some(resp) = resp else { continue };
         let pull = if horizontal { Pull::Horizontal } else { Pull::Vertical };
         if resp.drag_started_by(egui::PointerButton::Primary) {
             view.guides.pulling = Some(pull);
         }
-        let at = ui.input(|i| i.pointer.latest_pos());
+        // The ruler's own pointer while it holds a press, and on the frame of its release or click.
+        let at = resp.interact_pointer_pos();
         if resp.drag_stopped_by(egui::PointerButton::Primary)
             && view.guides.pulling.take() == Some(pull)
             && let Some(p) = at.filter(|p| inner.contains(*p))
@@ -191,11 +197,12 @@ pub(crate) fn show(ui: &mut egui::Ui, view: &mut DocView, info: &DocInfo, prefs:
             }
         });
     }
-    if !ui.input(|i| i.pointer.primary_down()) {
+    // A pull lasts only while a ruler's drag does.
+    if pulled_to.is_none() {
         view.guides.pulling = None;
     }
     // The guide being pulled out, across the page view at the pointer.
-    if let (Some(pull), Some(p)) = (view.guides.pulling, pointer.filter(|p| inner.contains(*p))) {
+    if let (Some(pull), Some(p)) = (view.guides.pulling, pulled_to.filter(|p| inner.contains(*p))) {
         let line = match pull {
             Pull::Horizontal => [Pos2::new(inner.left(), p.y), Pos2::new(inner.right(), p.y)],
             Pull::Vertical => [Pos2::new(p.x, inner.top()), Pos2::new(p.x, inner.bottom())],
@@ -219,6 +226,12 @@ pub(crate) fn show(ui: &mut egui::Ui, view: &mut DocView, info: &DocInfo, prefs:
         None => {}
     }
     made.err().map(|()| tl!("This page already has as many guides as PDF Overlay keeps."))
+}
+
+/// Where the pointer is over the ruler `strips`, which lie beside the page view and never over a
+/// page: the pointer egui has there (the pages' own pointer is `PagePointer`'s).
+fn strip_pointer(ui: &egui::Ui, strips: [Rect; 2]) -> Option<Pos2> {
+    ui.input(|i| i.pointer.hover_pos()).filter(|p| strips.iter().any(|r| r.contains(*p)))
 }
 
 /// A ruler's context menu: its unit, whether the rulers and guides show, and clearing guides

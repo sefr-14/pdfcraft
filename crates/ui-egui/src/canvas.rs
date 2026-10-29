@@ -1940,6 +1940,7 @@ fn draw_pages(
     env: &PageEnv<'_>,
     out: &mut PageOut,
     signature_preview: &mut Option<(crate::fill_sign::SavedSig, egui::TextureHandle)>,
+    guides: &mut crate::guides::GuideFrame<'_>,
 ) -> PageRenders {
     let PageEnv {
         allowed,
@@ -2009,11 +2010,16 @@ fn draw_pages(
     }
     let origin = resp_rect.min - vec2(0.0, y_shift);
     let visible = viewport.translate(resp_rect.min.to_vec2());
-    view.screen_rects.clear();
-    view.screen_xforms.clear();
     // The pointer as the pages see it: nothing over them (a dialog from the frame it opens),
     // or a press they hold. The page modules read it rather than egui's raw pointer state.
     let ptr = PagePointer::read(ui, &resp, modal);
+    // This fork (OV11): the Hand tool takes, moves and lets go of guides, against where the pages
+    // were last frame; then the document's guides of the pages drawn now, to paint over them.
+    crate::guides::pointer_input(ui, view, env.info, &ptr, guides);
+    let marks = crate::guides::shown(guides.prefs, guides.id, env.visible_pages);
+    let env = &PageEnv { marks: &marks, ..*env };
+    view.screen_rects.clear();
+    view.screen_xforms.clear();
     let pointer = ptr.pos;
     // A press on a page makes it the current one (as in Acrobat), so a page command with
     // no selection (Rotate, Delete) acts on the page the reader pointed at, not on a page
@@ -2984,58 +2990,6 @@ fn page_area(prefs: &crate::doc_prefs::DocPrefs, id: DocId, full: Rect) -> Rect 
     if prefs.state(id).is_some_and(|s| s.prefs.rulers) { crate::rulers::inner(full) } else { full }
 }
 
-/// Where the rulers go (this fork, OV11): the whole area, the pages' part of it, whether they take
-/// input (the active view, nothing over it), and whether the Hand tool takes guides.
-#[derive(Clone, Copy)]
-struct RulerArea {
-    full: Rect,
-    pages: Rect,
-    active: bool,
-    hand: bool,
-}
-
-/// The rulers, from where this frame put the pages, and the guide cursor for the Hand tool. Why a
-/// guide couldn't be made, if one couldn't.
-fn draw_rulers(
-    ui: &mut egui::Ui,
-    view: &mut DocView,
-    info: &DocInfo,
-    prefs: &mut crate::doc_prefs::DocPrefs,
-    id: DocId,
-    area: RulerArea,
-) -> Option<&'static str> {
-    let refused = crate::rulers::show(ui, view, info, prefs, id, crate::rulers::Area { full: area.full, inner: area.pages, input: area.active });
-    if area.hand {
-        crate::guides::hover_cursor(ui, view, info, prefs, id, area.pages);
-    }
-    refused
-}
-
-/// Guide input before the pages are laid out (this fork, OV11): the page area, whether the Hand
-/// tool takes guides, and the pages drawn this frame.
-struct GuideInput<'a> {
-    area: Rect,
-    hand: bool,
-    pages: &'a [usize],
-}
-
-/// The Hand tool takes a guide before the page view pans, from where the pages were last frame:
-/// whether it holds one (the view doesn't pan then), and the guides of the pages drawn this frame
-/// when the document's guides are shown, copied so the rulers can change them while the frame is
-/// drawn.
-fn guides_before_pages(
-    ui: &egui::Ui,
-    view: &mut DocView,
-    info: &DocInfo,
-    prefs: &mut crate::doc_prefs::DocPrefs,
-    id: DocId,
-    input: GuideInput<'_>,
-) -> (bool, Vec<(usize, crate::doc_prefs::PageGuides)>) {
-    let held = crate::guides::press(ui, view, info, prefs, id, input.area, input.hand);
-    let Some(state) = prefs.state(id).filter(|s| s.prefs.guides_shown) else { return (held, Vec::new()) };
-    (held, input.pages.iter().filter_map(|&i| Some((i, state.page(i)?.clone()))).collect())
-}
-
 /// How a view drawn by [`document_area_with`] takes pointer input (OV7.3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Interaction {
@@ -3222,11 +3176,10 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
         }
     };
 
-    // This fork (OV11): the Hand tool takes a guide before the page view pans, from where the
-    // pages were last frame. A held guide doesn't pan.
+    // This fork (OV11): with the Hand tool a guide the pages' pointer took (`guides::pointer_input`)
+    // holds the press, and the page view doesn't pan.
     let hand_guides = tools && unobstructed && app.quick_tool == QuickTool::Hand && !middle_gesture;
-    let (held, marks) =
-        guides_before_pages(ui, view, info, &mut app.doc_prefs, doc.id, GuideInput { area: avail, hand: hand_guides, pages: &visible_pages });
+    let held = crate::guides::before_pages(view, &app.doc_prefs, doc.id, hand_guides);
     let (mut scroll, moved_this_frame) = page_scroll_area(
         ui,
         view,
@@ -3353,11 +3306,12 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
         fill_text_size: app.fill_text_size,
         today,
         tools,
-        marks: &marks,
+        marks: &[],
     };
     let mut page_out = PageOut::default();
+    let mut guides = crate::guides::GuideFrame { prefs: &mut app.doc_prefs, id: doc.id, area: avail, hand: hand_guides };
     let out = page_scroll(ui, scroll, egui::Id::unique(("page-view-scope", view.key)), avail, |ui, viewport| {
-        draw_pages(ui, viewport, view, &env, &mut page_out, &mut app.signature_preview)
+        draw_pages(ui, viewport, view, &env, &mut page_out, &mut app.signature_preview, &mut guides)
     });
     let PageOut {
         badge_hover: _,
@@ -3388,8 +3342,8 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
     view.viewport_screen = out.inner_rect;
     view.auto_scroll.paint(ui, avail);
     // This fork (OV11): the rulers, from where this frame put the pages.
-    let rulers = RulerArea { full, pages: avail, active: tools && unobstructed, hand: hand_guides };
-    if let Some(why) = draw_rulers(ui, view, info, &mut app.doc_prefs, doc.id, rulers) {
+    let rulers = crate::rulers::Area { full, inner: avail, input: tools && unobstructed };
+    if let Some(why) = crate::rulers::show(ui, view, info, &mut app.doc_prefs, doc.id, rulers) {
         refused = Some(why.to_string());
     }
     if unobstructed && matches!(tool, QuickTool::Select | QuickTool::ColumnSelect) {

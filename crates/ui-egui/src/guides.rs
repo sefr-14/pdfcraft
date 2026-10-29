@@ -11,6 +11,7 @@ use pdfcraft_render::{DocInfo, PageInfo};
 
 use crate::canvas::{DocView, PageXform};
 use crate::doc_prefs::{Axis, DocPrefs, GuideRef, PageGuides};
+use crate::page_pointer::PagePointer;
 
 /// How near (points) the pointer must be to a guide to take it.
 pub(crate) const REACH: f32 = 4.0;
@@ -24,6 +25,8 @@ pub struct GuideView {
     pub drag: Option<GuideDrag>,
     /// A guide being pulled out of a ruler: from the top one (a horizontal guide) or the left.
     pub pulling: Option<Pull>,
+    /// Where the pages' pointer (`PagePointer`) was this frame, for the rulers' marks.
+    pub pointer: Option<Pos2>,
 }
 
 /// A guide held by the pointer: where it was when taken. Escape puts it back and lets go of it
@@ -136,11 +139,11 @@ pub(crate) fn hit(view: &DocView, info: &DocInfo, prefs: &DocPrefs, id: DocId, p
     best.map(|(_, g, h)| (g, h))
 }
 
-/// The Hand tool's press on a guide, before the page view decides to pan: take the guide (and
-/// select it), move one already taken, let go on release. `hand` is the Hand tool in the active
-/// view with nothing over the page. Returns whether a guide holds the pointer, so the press
-/// doesn't also pan.
-pub(crate) fn press(ui: &egui::Ui, view: &mut DocView, info: &DocInfo, prefs: &mut DocPrefs, id: DocId, area: Rect, hand: bool) -> bool {
+/// The guides' part of the page view before the pages are laid out: with the Hand tool (`hand`:
+/// the active view, nothing over the page) whether a guide holds the pointer, so the press
+/// doesn't also pan. Without it nothing is selected or held. Reads no input: the pointer is the
+/// pages' own, read where they are drawn ([`pointer_input`]).
+pub(crate) fn before_pages(view: &mut DocView, prefs: &DocPrefs, id: DocId, hand: bool) -> bool {
     if !hand {
         view.guides.selected = None;
         view.guides.drag = None;
@@ -150,14 +153,35 @@ pub(crate) fn press(ui: &egui::Ui, view: &mut DocView, info: &DocInfo, prefs: &m
     if view.guides.selected.is_some_and(|g| prefs.state(id).is_none_or(|s| !s.has(g) || !s.prefs.guides_shown)) {
         view.guides.selected = None;
     }
-    let (pointer, pressed, down) = ui.input(|i| (i.pointer.hover_pos(), i.pointer.primary_pressed(), i.pointer.primary_down()));
+    view.guides.drag.is_some()
+}
+
+/// What the guides' pointer input acts on: the document's guides (`prefs`, `id`), the page view's
+/// area on screen, and whether the Hand tool takes guides (see [`before_pages`]).
+pub(crate) struct GuideFrame<'a> {
+    pub(crate) prefs: &'a mut DocPrefs,
+    pub(crate) id: DocId,
+    pub(crate) area: Rect,
+    pub(crate) hand: bool,
+}
+
+/// The Hand tool on the guides, from the pages' pointer (`ptr`, [`PagePointer`]) and where the
+/// pages were last frame: a press on a guide takes it (and selects it), a drag moves the guide
+/// taken, a release lets go, and a press elsewhere deselects. The pointer over a guide it can take
+/// shows that it moves. What is drawn over the pages (a dialog, a menu, the quick bar) keeps all of
+/// this from happening through it, as `PagePointer` knows.
+pub(crate) fn pointer_input(ui: &egui::Ui, view: &mut DocView, info: &DocInfo, ptr: &PagePointer, frame: &mut GuideFrame<'_>) {
+    let GuideFrame { prefs, id, area, hand } = frame;
+    let (prefs, id, area) = (&mut **prefs, *id, *area);
+    view.guides.pointer = ptr.pos;
+    if !*hand {
+        return;
+    }
     if let Some(drag) = view.guides.drag {
-        if !down {
+        if !ptr.primary_down {
             view.guides.drag = None;
-            return false;
-        }
-        if drag.live
-            && let Some(p) = pointer
+        } else if drag.live
+            && let Some(p) = ptr.pos
             && let Some((page, xf)) =
                 info.pages.get(drag.guide.page).zip(view.screen_xforms.iter().find(|(i, _)| *i == drag.guide.page).map(|(_, xf)| *xf))
         {
@@ -179,23 +203,23 @@ pub(crate) fn press(ui: &egui::Ui, view: &mut DocView, info: &DocInfo, prefs: &m
                 None => view.guides.drag = None,
             }
         }
-        return view.guides.drag.is_some();
-    }
-    if !pressed {
-        return false;
-    }
-    let Some(p) = pointer.filter(|p| area.contains(*p) && ui.ctx().layer_id_at(*p) == Some(ui.layer_id())) else { return false };
-    match hit(view, info, prefs, id, p) {
-        Some((guide, _)) => {
-            view.guides.selected = Some(guide);
-            view.guides.drag = Some(GuideDrag { guide, from: guide.at, live: true });
-            true
-        }
-        None => {
-            view.guides.selected = None;
-            false
+    } else if let Some(p) = ptr.pressed().filter(|p| area.contains(*p)) {
+        match hit(view, info, prefs, id, p) {
+            Some((guide, _)) => {
+                view.guides.selected = Some(guide);
+                view.guides.drag = Some(GuideDrag { guide, from: guide.at, live: true });
+            }
+            None => view.guides.selected = None,
         }
     }
+    hover_cursor(ui, view, info, prefs, id, ptr.within(area));
+}
+
+/// The guides of `pages` when the document's guides are shown, copied so the rulers can change them
+/// while the pages are drawn.
+pub(crate) fn shown(prefs: &DocPrefs, id: DocId, pages: &[usize]) -> Vec<(usize, PageGuides)> {
+    let Some(state) = prefs.state(id).filter(|s| s.prefs.guides_shown) else { return Vec::new() };
+    pages.iter().filter_map(|&i| Some((i, state.page(i)?.clone()))).collect()
 }
 
 /// Escape on a guide held by the pointer: back where it was, and let go of. Returns whether one
@@ -234,8 +258,9 @@ pub(crate) fn paint(
     }
 }
 
-/// The pointer is over a guide the Hand tool can take: show that it moves.
-pub(crate) fn hover_cursor(ui: &egui::Ui, view: &DocView, info: &DocInfo, prefs: &DocPrefs, id: DocId, area: Rect) {
+/// The pointer (`pointer`, from [`PagePointer`]) is over a guide the Hand tool can take, or one is
+/// held: show that it moves.
+fn hover_cursor(ui: &egui::Ui, view: &DocView, info: &DocInfo, prefs: &DocPrefs, id: DocId, pointer: Option<Pos2>) {
     let dragging = view.guides.drag.filter(|d| d.live);
     let shown = match dragging {
         Some(d) => info
@@ -243,7 +268,7 @@ pub(crate) fn hover_cursor(ui: &egui::Ui, view: &DocView, info: &DocInfo, prefs:
             .get(d.guide.page)
             .zip(view.screen_xforms.iter().find(|(i, _)| *i == d.guide.page))
             .map(|(page, (_, xf))| horizontal(segment(page, xf, d.guide.axis, d.guide.at))),
-        None => ui.input(|i| i.pointer.hover_pos()).filter(|p| area.contains(*p)).and_then(|p| hit(view, info, prefs, id, p)).map(|(_, h)| h),
+        None => pointer.and_then(|p| hit(view, info, prefs, id, p)).map(|(_, h)| h),
     };
     if let Some(h) = shown {
         ui.ctx().set_cursor_icon(if h { egui::CursorIcon::ResizeVertical } else { egui::CursorIcon::ResizeHorizontal });
