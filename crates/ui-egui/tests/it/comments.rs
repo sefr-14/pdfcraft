@@ -308,7 +308,7 @@ fn highlight_text(h: &mut Harness<'static, PdfCraftApp>, from: usize, to: usize)
 #[test]
 fn clicking_the_page_gives_the_keyboard_back_from_a_highlight_note() {
     // #2669: the note editor took the keyboard back on every frame, so after a click on the
-    // page V and H were typed into the note instead of picking a tool.
+    // page V and H were typed into the note instead of picking a tool (Hand is P since KEY.1).
     let mut h = harness(|app| {
         app.set_option("quick", "highlight").unwrap();
         app.set_option("panel", "comments").unwrap();
@@ -323,9 +323,9 @@ fn clicking_the_page_gives_the_keyboard_back_from_a_highlight_note() {
     type_key(&mut h, egui::Key::V, "v");
     assert_eq!(h.state().quick_tool, QuickTool::Select, "V picks the Select tool");
     assert_eq!(note(&h).as_deref(), Some("Note"), "V is not typed into the note");
-    type_key(&mut h, egui::Key::H, "h");
-    assert_eq!(h.state().quick_tool, QuickTool::Hand, "H picks the Hand tool");
-    assert_eq!(note(&h).as_deref(), Some("Note"), "nor is H");
+    type_key(&mut h, egui::Key::P, "p");
+    assert_eq!(h.state().quick_tool, QuickTool::Hand, "P picks the Hand tool (KEY.1)");
+    assert_eq!(note(&h).as_deref(), Some("Note"), "nor is P");
     // Clicking back into the note types into it again, and the letters are text there.
     note_editor(&h).click();
     h.run_steps(2);
@@ -351,8 +351,8 @@ fn drawing_another_comment_takes_the_keyboard_from_a_highlight_note() {
     drag_pt(&mut h, (40.0, 100.0), (140.0, 40.0));
     assert_eq!(comments(&h).len(), 2);
     assert_eq!(h.state().views[0].comments.editing, None, "the empty note closed");
-    type_key(&mut h, egui::Key::H, "h");
-    assert_eq!(h.state().quick_tool, QuickTool::Hand, "H picks the Hand tool");
+    type_key(&mut h, egui::Key::P, "p");
+    assert_eq!(h.state().quick_tool, QuickTool::Hand, "P picks the Hand tool (KEY.1)");
     // A note with text in it stays open with its text, but lets the keyboard go.
     h.state_mut().quick_tool = QuickTool::Comment(CommentTool::Highlight);
     drag_pt(&mut h, (160.0, 100.0), (260.0, 40.0));
@@ -365,9 +365,9 @@ fn drawing_another_comment_takes_the_keyboard_from_a_highlight_note() {
     drag_pt(&mut h, (40.0, 30.0), (260.0, 8.0));
     assert_eq!(comments(&h).len(), 4);
     assert_eq!(h.state().views[0].comments.editing, Some((0, 2, "Note".into())), "a note with text stays open");
-    type_key(&mut h, egui::Key::H, "h");
-    assert_eq!(h.state().quick_tool, QuickTool::Hand, "H picks the Hand tool");
-    assert_eq!(note(&h).as_deref(), Some("Note"), "H is not typed into the note");
+    type_key(&mut h, egui::Key::P, "p");
+    assert_eq!(h.state().quick_tool, QuickTool::Hand, "P picks the Hand tool (KEY.1)");
+    assert_eq!(note(&h).as_deref(), Some("Note"), "P is not typed into the note");
 }
 
 #[test]

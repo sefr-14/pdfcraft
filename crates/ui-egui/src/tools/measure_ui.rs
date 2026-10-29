@@ -10,6 +10,7 @@ use pdfcraft_engine::{
     Document, Edit, Style,
     measure::{
         self, Kind, NewMeasurement, PageUnit, Point, Reading, Scale,
+        presets::{IMPERIAL, Imperial, METRIC, RATIO_RANGE, format_ratio, parse_ratio},
         snap::SnapKind,
         units::{self, EIGHTHS, LengthUnit},
     },
@@ -79,6 +80,11 @@ pub struct MeasureView {
     pub page_unit: Option<PageUnit>,
     /// The "1:N" field of the drawing scale, as typed.
     pub ratio_text: String,
+    /// Which common scales the list offers (this fork, MEASURE.2). Picking it changes no field.
+    pub system: UnitSystem,
+    /// How a plan writes the scale typed or picked last ("1:50", `1/4" = 1'-0"`), saved as its
+    /// ratio text; `None` once the fields are edited by hand or calibrated (this fork, MEASURE.2).
+    pub ratio_label: Option<String>,
     /// The "1:N" field was edited and not yet applied.
     ratio_dirty: bool,
     pub precision: u8,
@@ -127,6 +133,8 @@ impl Default for MeasureView {
             known_field: None,
             page_unit: None,
             ratio_text: String::new(),
+            system: UnitSystem::Imperial,
+            ratio_label: None,
             ratio_dirty: false,
             precision: 2,
             name: "Drawing scale".into(),
@@ -154,6 +162,7 @@ pub struct CalibrationBefore {
     custom_unit: bool,
     known_text: String,
     page_unit: Option<PageUnit>,
+    ratio_label: Option<String>,
 }
 
 /// The unit of the page side of a drawing scale: the one picked, else the real-world unit when it
@@ -161,34 +170,29 @@ pub struct CalibrationBefore {
 pub(crate) fn page_unit_of(picked: Option<PageUnit>, unit: &str, display: crate::units::Unit) -> PageUnit {
     picked.or_else(|| PageUnit::from_label(unit)).or_else(|| PageUnit::from_label(display.label())).unwrap_or(PageUnit::Pt)
 }
-/// Drawing scales an architect's rule offers, as the N of 1:N.
-pub(crate) const RATIOS: [f64; 10] = [1.0, 5.0, 10.0, 20.0, 25.0, 50.0, 100.0, 200.0, 500.0, 1000.0];
-/// "1:200", "1/200", "1 : 200" or a bare "200" (a comma works as the decimal mark), as the N of 1:N.
-/// `None` for anything else, for zero, negative or absurd values.
-pub(crate) fn parse_ratio(text: &str) -> Option<f64> {
-    let text = text.trim().replace(',', ".");
-    let n = match text.split_once([':', '/']) {
-        Some((one, n)) => n.trim().parse::<f64>().ok()? / one.trim().parse::<f64>().ok()?,
-        None => text.parse::<f64>().ok()?,
-    };
-    RATIO_RANGE.contains(&n).then_some(n)
+/// Which common scales the list offers (this fork, MEASURE.2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UnitSystem {
+    Metric,
+    Imperial,
 }
-/// The N of 1:N this panel accepts. The lower bound keeps the real distance (N / 1000 m) within the
-/// minimum of its field.
-const RATIO_RANGE: std::ops::RangeInclusive<f64> = 1e-3..=1e9;
-/// "1:200", or "1:2.5" for a ratio that isn't a whole number: the number as it is, so the field shows exactly what applies.
-pub(crate) fn format_ratio(n: f64) -> String {
-    format!("1:{n}")
+/// `a` and `b` are the same ratio, but for float noise.
+fn same_ratio(a: f64, b: f64) -> bool {
+    (a - b).abs() <= 1e-9 * b.abs()
 }
-/// The N of 1:N the scale fields stand for, when they are a plain drawing scale (real distance in m or mm).
+/// The system a unit belongs to; `None` for a typed (Custom) one.
+fn system_of(unit: Option<LengthUnit>) -> Option<UnitSystem> {
+    match unit? {
+        LengthUnit::Inches | LengthUnit::Feet | LengthUnit::FeetInches => Some(UnitSystem::Imperial),
+        LengthUnit::Millimeters | LengthUnit::Centimeters | LengthUnit::Meters => Some(UnitSystem::Metric),
+    }
+}
+/// The N of 1:N the scale fields stand for, in any listed unit (this fork, MEASURE.2: inches, feet
+/// and feet and inches too). `None` for a Custom unit or a scale that isn't a clean ratio.
 fn ratio_of_fields(state: &MeasureView, display: crate::units::Unit) -> Option<f64> {
-    let real_mm = match state.unit.trim() {
-        "m" => state.real_distance * 1000.0,
-        "mm" => state.real_distance,
-        _ => return None,
-    };
-    let paper_mm = state.drawing_points * page_unit_of(state.page_unit, &state.unit, display).points() * 25.4 / 72.0;
-    let n = real_mm / paper_mm;
+    let real_in = state.real_distance * unit_choice(state)?.inches();
+    let paper_in = state.drawing_points * page_unit_of(state.page_unit, &state.unit, display).points() / 72.0;
+    let n = real_in / paper_in;
     // Float noise from the unit conversions is rounded away; anything that isn't a clean ratio isn't one.
     let clean = (n * 1e6).round() / 1e6;
     (RATIO_RANGE.contains(&clean) && (clean - n).abs() <= 1e-9 * n).then_some(clean)
@@ -202,20 +206,65 @@ fn sync_ratio_text(state: &mut MeasureView, display: crate::units::Unit) {
 fn scale_fields(state: &MeasureView) -> (f64, f64, String, Option<PageUnit>) {
     (state.drawing_points, state.real_distance, state.unit.clone(), state.page_unit)
 }
-/// Fill the scale fields for 1:N: 1 mm on the page is N mm, shown in metres. Returns `false`, changing nothing, when `n` is not a usable ratio.
+/// Show the actual distance in `unit` from the list (the known feet-and-inches text too).
+fn use_unit(state: &mut MeasureView, unit: LengthUnit) {
+    state.unit = unit.label().into();
+    state.feet_inches = unit == LengthUnit::FeetInches;
+    state.custom_unit = false;
+}
+/// Fill the scale fields for a typed 1:N, keeping the unit system (this fork, MEASURE.2): one
+/// inch on the page is N inches in an imperial unit, one millimetre is N millimetres in a metric
+/// one, and a Custom unit becomes metres. Returns `false`, changing nothing, when `n` is not a
+/// usable ratio.
 pub(crate) fn set_ratio(state: &mut MeasureView, n: f64) -> bool {
     if !RATIO_RANGE.contains(&n) {
         return false;
     }
-    state.unit = "m".into();
-    // Metres from the unit list (this fork, OV10): not feet and inches, nor a Custom label.
-    state.feet_inches = false;
-    state.custom_unit = false;
-    state.page_unit = Some(PageUnit::Mm);
+    let (unit, page_unit, from) = match unit_choice(state) {
+        Some(unit) if system_of(Some(unit)) == Some(UnitSystem::Imperial) => (unit, PageUnit::In, LengthUnit::Inches),
+        Some(unit) => (unit, PageUnit::Mm, LengthUnit::Millimeters),
+        None => (LengthUnit::Meters, PageUnit::Mm, LengthUnit::Millimeters),
+    };
+    use_unit(state, unit);
+    state.page_unit = Some(page_unit);
     state.drawing_points = 1.0;
-    state.real_distance = n / 1000.0;
+    state.real_distance = unit.convert(n, from);
+    state.known_text = units::feet_inches(state.real_distance, EIGHTHS);
     state.ratio_text = format_ratio(n);
+    state.ratio_label = Some(format_ratio(n));
     true
+}
+/// Fill the scale fields for a metric common scale 1:N: in the metric unit shown, else in metres.
+pub(crate) fn set_metric(state: &mut MeasureView, n: f64) -> bool {
+    if !RATIO_RANGE.contains(&n) {
+        return false;
+    }
+    if system_of(unit_choice(state)) != Some(UnitSystem::Metric) {
+        use_unit(state, LengthUnit::Meters);
+    }
+    set_ratio(state, n)
+}
+/// Fill the scale fields for an imperial common scale, as it is written (`1/4"` on the page is
+/// `1'-0"`): in the imperial unit shown, else in feet and inches. Never switches to SI units.
+pub(crate) fn set_imperial(state: &mut MeasureView, preset: Imperial) {
+    let unit = match unit_choice(state) {
+        Some(unit) if system_of(Some(unit)) == Some(UnitSystem::Imperial) => unit,
+        _ => LengthUnit::FeetInches,
+    };
+    use_unit(state, unit);
+    state.page_unit = Some(PageUnit::In);
+    state.drawing_points = preset.paper;
+    state.real_distance = unit.convert(preset.real, LengthUnit::Feet);
+    state.known_text = units::feet_inches(state.real_distance, EIGHTHS);
+    state.ratio_text = format_ratio(preset.ratio());
+    state.ratio_label = Some(preset.label.to_owned());
+}
+/// A scale typed or picked in the panel, applied at once.
+#[derive(Clone, Copy, Debug)]
+enum Chosen {
+    Typed(f64),
+    Metric(f64),
+    Imperial(Imperial),
 }
 impl MeasureView {
     /// Drop the measurement in progress and what it shows: points, live reading, the notice at
@@ -247,6 +296,7 @@ impl MeasureView {
         self.custom_unit = before.custom_unit;
         self.known_text = before.known_text;
         self.page_unit = before.page_unit;
+        self.ratio_label = before.ratio_label;
         self.focus_known = false;
         true
     }
@@ -260,6 +310,7 @@ impl MeasureView {
             custom_unit: self.custom_unit,
             known_text: self.known_text.clone(),
             page_unit: self.page_unit,
+            ratio_label: self.ratio_label.clone(),
         }
     }
 
@@ -706,6 +757,7 @@ fn finish(state: &mut MeasureView, pending: &mut Option<Edit>, doc: &Document, p
                     state.pending_calibration = Some(state.calibration_before());
                 }
                 state.drawing_points = measure::distance(a, b) / page_unit_of(state.page_unit, &state.unit, units).points();
+                state.ratio_label = None;
                 state.focus_known = true;
             }
         }
@@ -774,14 +826,18 @@ fn panel_body(app: &mut PdfCraftApp, ui: &mut egui::Ui, _t: &Tokens) {
         {
             state.drawing_points = 1.0;
             state.real_distance = reading.value;
+            // The page side keeps its own unit, so picking another actual unit never changes the
+            // scale (this fork, MEASURE.1).
+            state.page_unit = Some(page_unit_of(None, &scale.unit, units));
             state.unit = scale.unit;
-            state.page_unit = None;
             state.precision = scale.precision;
             state.feet_inches = scale.feet_inches.is_some();
             state.custom_unit = !state.feet_inches && LengthUnit::from_label(&state.unit).is_none();
             state.known_text = units::feet_inches(state.real_distance, EIGHTHS);
             state.pending_calibration = None;
+            state.ratio_label = None;
         }
+        state.system = system_of(unit_choice(state)).unwrap_or(state.system);
         sync_ratio_text(state, units);
     }
     ui.label(tl!("Click vertices. Enter or double-click finishes a perimeter or area. Click the first point to close an area."));
@@ -832,35 +888,28 @@ fn panel_body(app: &mut PdfCraftApp, ui: &mut egui::Ui, _t: &Tokens) {
         ui.add(egui::Slider::new(&mut state.sensitivity, 1.0..=20.0).text(tl!("Sensitivity")));
     }
     ui.separator();
-    // "1:N" fills the fields below and applies at once, as does picking a common scale.
+    // The drawing scale as one equation (this fork, MEASURE.1); "1:N" or a common scale fills it
+    // and applies at once.
     let mut chosen = None;
     let fields = scale_fields(state);
-    ui.horizontal(|ui| {
-        ui.label(tl!("Drawing scale")).on_hover_text(tl!("Applying a scale switches units to m / mm."));
-        let typed = ui.add(crate::widgets::line(&mut state.ratio_text).hint_text("1:100").desired_width(56.0).char_limit(16));
-        typed.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, tl!("Scale")));
-        state.ratio_dirty |= typed.changed();
-        if typed.lost_focus() && std::mem::take(&mut state.ratio_dirty) {
-            match parse_ratio(&state.ratio_text) {
-                Some(n) => chosen = Some(n),
-                None => state.error = Some(tl!("Enter a scale such as 1:50.").into()),
-            }
-        }
-        craft_ui::ComboBox::from_id_salt("measure-common-scales").selected_text(tl!("Common scales")).width(20.0).show_ui(ui, |ui| {
-            for n in RATIOS {
-                if ui.selectable_label(state.ratio_text == format_ratio(n), format_ratio(n)).clicked() {
-                    chosen = Some(n);
-                }
-            }
-        });
-    });
+    scale_header(ui, state, units, &mut chosen);
     scale_rows(ui, state, units);
     // A hand edit of the fields leaves the 1:N field showing the old ratio: say the new one.
     if scale_fields(state) != fields {
         sync_ratio_text(state, units);
+        state.ratio_label = None;
     }
-    if ui.button(tl!("Calibrate from two points")).clicked() {
-        tool = Some(Tool::Calibrate);
+    // Two-point calibration is its own step: two clicks on the page, then the actual distance.
+    ui.horizontal_wrapped(|ui| {
+        ui.label(egui::RichText::new(tl!("Two-point calibration")).strong());
+        if ui.button(tl!("Calibrate from two points")).clicked() {
+            tool = Some(Tool::Calibrate);
+        }
+    });
+    if state.calibrating() {
+        egui::Frame::group(ui.style()).show(ui, |ui| {
+            ui.label(egui::RichText::new(tl!("Type the real distance between the two points.")).strong());
+        });
     }
     ui.add(widgets::checkbox(&mut state.whole_page, tl!("Entire page")));
     if !state.whole_page {
@@ -904,9 +953,16 @@ fn panel_body(app: &mut PdfCraftApp, ui: &mut egui::Ui, _t: &Tokens) {
         }
     }
     let export = ui.button(tl!("Export measurements as CSV")).clicked();
-    if let Some(n) = chosen
-        && set_ratio(state, n)
-    {
+    let filled = match chosen {
+        Some(Chosen::Typed(n)) => set_ratio(state, n),
+        Some(Chosen::Metric(n)) => set_metric(state, n),
+        Some(Chosen::Imperial(preset)) => {
+            set_imperial(state, preset);
+            true
+        }
+        None => false,
+    };
+    if filled {
         state.error = None;
     }
     // Apply scale, or a 1:N typed or picked: the fields are applied to the document at once.
@@ -924,7 +980,13 @@ fn panel_body(app: &mut PdfCraftApp, ui: &mut egui::Ui, _t: &Tokens) {
                 let page_unit = page_unit_of(state.page_unit, &state.unit, units);
                 let scale = Scale::ratio(a, b, state.drawing_points, page_unit, state.real_distance, &state.unit, state.precision);
                 // Feet and inches to 1/8 inch (this fork, OV10).
-                scale.and_then(|s| if state.feet_inches { s.in_feet_inches(EIGHTHS) } else { Ok(s) }).map_err(|e| e.to_string())
+                let scale = scale.and_then(|s| if state.feet_inches { s.in_feet_inches(EIGHTHS) } else { Ok(s) });
+                // A drawing scale is written as plans write it, "1:50" or `1/4" = 1'-0"` (this fork, MEASURE.2).
+                match &state.ratio_label {
+                    Some(label) => scale.and_then(|s| s.with_ratio_text(label)),
+                    None => scale,
+                }
+                .map_err(|e| e.to_string())
             });
         match result {
             Ok(scale) => {
@@ -985,73 +1047,99 @@ fn known_feet(text: &str) -> Option<f64> {
     units::parse_feet_inches(text).filter(|v| *v > 0.0)
 }
 
-/// Drawing scale: the drawing distance, the known distance and its unit (this fork, OV10: a
-/// list of units, feet and inches typed as `12'-5 3/8"`, Custom for any other label). Picking
-/// another unit converts the known distance, so the scale stays the same.
-fn scale_rows(ui: &mut egui::Ui, state: &mut MeasureView, units: crate::units::Unit) {
-    // The page side in a page unit, upstream's ratio ("1 mm = 50 mm" at 1:50).
-    ui.horizontal(|ui| {
-        ui.add(egui::DragValue::new(&mut state.drawing_points).range(0.000001..=1e9));
-        let page_unit = page_unit_of(state.page_unit, &state.unit, units);
-        craft_ui::ComboBox::from_id_salt("measure-page-unit").selected_text(page_unit.label()).width(44.0).show_ui(ui, |ui| {
-            for u in PageUnit::ALL {
-                if ui.selectable_label(u == page_unit, u.label()).clicked() {
-                    state.page_unit = Some(u);
-                }
+/// The drawing scale's title, the Metric/Imperial choice of common scales, the "1:N" field and the
+/// common scales of the system picked (this fork, MEASURE.2). Picking a system changes no field.
+fn scale_header(ui: &mut egui::Ui, state: &mut MeasureView, units: crate::units::Unit, chosen: &mut Option<Chosen>) {
+    ui.horizontal_wrapped(|ui| {
+        let title = ui.label(egui::RichText::new(tl!("Drawing scale")).strong());
+        for (system, label) in [(UnitSystem::Metric, tl!("Metric")), (UnitSystem::Imperial, tl!("Imperial"))] {
+            if ui.selectable_label(state.system == system, label).clicked() {
+                state.system = system;
             }
-        });
-        ui.label("=");
+        }
+        let typed = ui.add(crate::widgets::line(&mut state.ratio_text).hint_text("1:100").desired_width(64.0).char_limit(16));
+        typed.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, tl!("Scale")));
+        state.ratio_dirty |= typed.changed();
+        if typed.lost_focus() && std::mem::take(&mut state.ratio_dirty) {
+            match parse_ratio(&state.ratio_text) {
+                Some(n) => *chosen = Some(Chosen::Typed(n)),
+                None => state.error = Some(tl!("Enter a scale such as 1:50.").into()),
+            }
+        }
+        let current = ratio_of_fields(state, units);
+        let applies = |n: f64| current.is_some_and(|c| same_ratio(c, n));
+        craft_ui::ComboBox::from_id_salt("measure-common-scales")
+            .selected_text(tl!("Common scales"))
+            .width(20.0)
+            .height(400.0)
+            .show_ui(ui, |ui| match state.system {
+                UnitSystem::Metric => {
+                    for n in METRIC {
+                        if ui.selectable_label(applies(n), format_ratio(n)).clicked() {
+                            *chosen = Some(Chosen::Metric(n));
+                        }
+                    }
+                }
+                UnitSystem::Imperial => {
+                    for preset in IMPERIAL {
+                        let text = format!("{}   ({})", preset.label, format_ratio(preset.ratio()));
+                        if ui.selectable_label(applies(preset.ratio()), text).clicked() {
+                            *chosen = Some(Chosen::Imperial(preset));
+                        }
+                    }
+                }
+            })
+            .response
+            .labelled_by(title.id);
     });
-    if state.calibrating() {
-        ui.label(egui::RichText::new(tl!("Type the real distance between the two points.")).strong());
+}
+
+/// The narrowest panel that shows the scale equation on one line: the drawing side, "=" and the
+/// actual side, with their units (this fork, MEASURE.1).
+fn equation_width(ui: &egui::Ui, state: &MeasureView) -> f32 {
+    let gap = ui.spacing().item_spacing.x;
+    let actual = if state.feet_inches { 110.0 } else { 80.0 };
+    let custom = if state.custom_unit { 64.0 + gap } else { 0.0 };
+    // Drawing value, page unit, "=", actual value, the unit list (its longest name) and gaps.
+    70.0 + 52.0 + 12.0 + actual + 170.0 + custom + 5.0 * gap
+}
+
+/// The drawing scale as one equation, each value labelled above it: "Drawing distance [1] [mm]
+/// = Actual distance [50] [Meters (m)]", on two rows when the panel is narrow (this fork,
+/// MEASURE.1). Feet and inches are typed as `12'-5 3/8"`, Custom takes any other label (OV10).
+/// Picking another unit converts the value on its side only, so the scale stays the same.
+fn scale_rows(ui: &mut egui::Ui, state: &mut MeasureView, units: crate::units::Unit) {
+    // The page side keeps the unit it is shown in, whatever the actual unit becomes.
+    if state.page_unit.is_none() {
+        state.page_unit = Some(page_unit_of(None, &state.unit, units));
     }
     let focus = std::mem::take(&mut state.focus_known);
-    ui.horizontal(|ui| {
-        ui.label(tl!("Known distance"));
-        let known = if state.feet_inches {
-            let resp = ui.add(crate::widgets::line(&mut state.known_text).desired_width(110.0).char_limit(32).hint_text("12'-5 3/8\""));
-            if resp.changed()
-                && let Some(feet) = known_feet(&state.known_text)
-            {
-                state.real_distance = feet;
-            }
-            resp
-        } else {
-            ui.add(egui::DragValue::new(&mut state.real_distance).range(0.000001..=1e12))
-        };
-        if focus {
-            known.request_focus();
-        }
-        state.known_field = Some(known.id);
-    });
+    let mut picked = None;
+    if ui.available_width() >= equation_width(ui, state) {
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| drawing_side(ui, state, units));
+            ui.vertical(|ui| {
+                ui.label(" ");
+                ui.label("=");
+            });
+            ui.vertical(|ui| actual_side(ui, state, focus, false, &mut picked));
+        });
+    } else {
+        drawing_side(ui, state, units);
+        actual_side(ui, state, focus, true, &mut picked);
+    }
     if state.feet_inches && known_feet(&state.known_text).is_none() {
         ui.colored_label(Color32::from_rgb(190, 50, 50), tl!("Type a length such as 12'-5 3/8\" or 12.5'."));
     }
     let choice = unit_choice(state);
-    let mut picked = None;
-    ui.horizontal(|ui| {
-        let unit_label = ui.label(tl!("Unit"));
-        // Tall enough for all seven entries without scrolling.
-        craft_ui::ComboBox::from_id_salt("measure-unit").selected_text(unit_name(choice)).height(400.0).show_ui(ui, |ui| {
-            for unit in LengthUnit::ALL.into_iter().map(Some).chain([None]) {
-                if ui.selectable_label(choice == unit, unit_name(unit)).clicked() && choice != unit {
-                    picked = Some(unit);
-                }
-            }
-        });
-        if state.custom_unit {
-            ui.add(crate::widgets::line(&mut state.unit).desired_width(64.0).char_limit(12)).labelled_by(unit_label.id);
-        }
-    });
     match picked {
         Some(Some(unit)) => {
             if let Some(from) = choice {
                 state.real_distance = unit.convert(state.real_distance, from);
             }
-            state.unit = unit.label().into();
-            state.feet_inches = unit == LengthUnit::FeetInches;
-            state.custom_unit = false;
+            use_unit(state, unit);
             state.known_text = units::feet_inches(state.real_distance, EIGHTHS);
+            state.system = system_of(Some(unit)).unwrap_or(state.system);
         }
         Some(None) => {
             state.custom_unit = true;
@@ -1064,6 +1152,78 @@ fn scale_rows(ui: &mut egui::Ui, state: &mut MeasureView, units: crate::units::U
     } else {
         ui.add(egui::DragValue::new(&mut state.precision).range(0..=6).prefix(format!("{} ", tl!("Decimals"))));
     }
+}
+
+/// "Drawing distance" above the page side of the scale and its page unit.
+fn drawing_side(ui: &mut egui::Ui, state: &mut MeasureView, units: crate::units::Unit) {
+    let label = ui.label(tl!("Drawing distance"));
+    ui.horizontal(|ui| {
+        ui.add(egui::DragValue::new(&mut state.drawing_points).range(0.000001..=1e9)).labelled_by(label.id);
+        let page_unit = page_unit_of(state.page_unit, &state.unit, units);
+        let mut changed = None;
+        craft_ui::ComboBox::from_id_salt("measure-page-unit")
+            .selected_text(page_unit.label())
+            .width(44.0)
+            .show_ui(ui, |ui| {
+                for u in PageUnit::ALL {
+                    if ui.selectable_label(u == page_unit, u.label()).clicked() && u != page_unit {
+                        changed = Some(u);
+                    }
+                }
+            })
+            .response
+            .labelled_by(label.id);
+        // Another page unit converts the drawing distance, so the scale stays the same.
+        if let Some(u) = changed {
+            state.drawing_points = state.drawing_points * page_unit.points() / u.points();
+            state.page_unit = Some(u);
+        }
+    });
+}
+
+/// "Actual distance" above the real-world side of the scale and its unit; `equals` leads the
+/// values with "=" when the equation takes two rows. The unit picked is returned in `picked`
+/// (`Some(None)` for Custom).
+fn actual_side(ui: &mut egui::Ui, state: &mut MeasureView, focus: bool, equals: bool, picked: &mut Option<Option<LengthUnit>>) {
+    let label = ui.label(tl!("Actual distance"));
+    let choice = unit_choice(state);
+    ui.horizontal(|ui| {
+        if equals {
+            ui.label("=");
+        }
+        let known = if state.feet_inches {
+            let resp = ui.add(crate::widgets::line(&mut state.known_text).desired_width(110.0).char_limit(32).hint_text("12'-5 3/8\""));
+            if resp.changed()
+                && let Some(feet) = known_feet(&state.known_text)
+            {
+                state.real_distance = feet;
+            }
+            resp
+        } else {
+            ui.add(egui::DragValue::new(&mut state.real_distance).range(0.000001..=1e12))
+        };
+        let known = known.labelled_by(label.id);
+        if focus {
+            known.request_focus();
+        }
+        state.known_field = Some(known.id);
+        // Tall enough for all seven entries without scrolling.
+        craft_ui::ComboBox::from_id_salt("measure-unit")
+            .selected_text(unit_name(choice))
+            .height(400.0)
+            .show_ui(ui, |ui| {
+                for unit in LengthUnit::ALL.into_iter().map(Some).chain([None]) {
+                    if ui.selectable_label(choice == unit, unit_name(unit)).clicked() && choice != unit {
+                        *picked = Some(unit);
+                    }
+                }
+            })
+            .response
+            .labelled_by(label.id);
+        if state.custom_unit {
+            ui.add(crate::widgets::line(&mut state.unit).desired_width(64.0).char_limit(12)).labelled_by(label.id);
+        }
+    });
 }
 
 /// A measuring tool is picked in `view`: nothing in progress, and no comment left selected from
@@ -1165,21 +1325,23 @@ mod tests {
         assert_eq!(format_ratio(1.234), "1:1.234");
         assert_eq!(format_ratio(0.001), "1:0.001");
         assert_eq!(parse_ratio(&format_ratio(333.333333)), Some(333.333333));
-        for n in RATIOS {
+        for n in METRIC {
             assert_eq!(parse_ratio(&format_ratio(n)), Some(n));
         }
     }
 
+    /// A metric common scale keeps a metric unit and turns any other into metres (this fork,
+    /// MEASURE.2; upstream switched every unit to metres).
     #[test]
-    fn every_offered_ratio_reads_paper_length_times_n_in_metres_whatever_the_unit_was() {
-        for unit in ["mm", "cm", "m", "km", "in", "ft"] {
-            for n in RATIOS {
-                let mut state = MeasureView { unit: unit.into(), ..Default::default() };
-                assert!(set_ratio(&mut state, n));
-                assert_eq!(state.unit, "m");
-                // 72 pt is one inch of paper: 25.4 mm x N, shown in metres.
+    fn every_metric_preset_reads_paper_length_times_n_in_a_metric_unit() {
+        for (unit, shown) in [("mm", "mm"), ("cm", "cm"), ("m", "m"), ("km", "m"), ("in", "m"), ("ft", "m")] {
+            for n in METRIC {
+                let mut state = MeasureView { unit: unit.into(), custom_unit: unit == "km", ..Default::default() };
+                assert!(set_metric(&mut state, n));
+                assert_eq!(state.unit, shown);
+                // 72 pt is one inch of paper: 25.4 mm x N, in the unit shown.
                 let v = measured(&state, [0.0, 0.0], [0.0, 72.0]);
-                let expected = 25.4 * n / 1000.0;
+                let expected = LengthUnit::from_label(shown).expect("unit").convert(25.4 * n, LengthUnit::Millimeters);
                 assert!((v - expected).abs() < 1e-9 * expected.max(1.0), "1:{n} in {unit} gave {v}, wanted {expected}");
             }
         }
@@ -1207,7 +1369,7 @@ mod tests {
     #[test]
     fn the_ratio_field_follows_the_scale_fields() {
         let display = crate::units::Unit::Points;
-        let mut state = MeasureView::default();
+        let mut state = MeasureView { unit: "m".into(), ..Default::default() };
         for n in [50.0, 2.5, 1.234, 0.001, 1e9] {
             assert!(set_ratio(&mut state, n));
             sync_ratio_text(&mut state, display);
@@ -1222,10 +1384,15 @@ mod tests {
         state.real_distance = 0.1;
         sync_ratio_text(&mut state, display);
         assert_eq!(state.ratio_text, "1:100");
-        // One that isn't (another unit, or no ratio at all) empties it.
+        // Any listed unit has a ratio (this fork, MEASURE.2): 0.1 ft on 1 mm is 1:30.48.
         state.unit = "ft".into();
         sync_ratio_text(&mut state, display);
+        assert_eq!(state.ratio_text, "1:30.48");
+        // One that isn't (a Custom unit, or no ratio at all) empties it.
+        state.custom_unit = true;
+        sync_ratio_text(&mut state, display);
         assert_eq!(state.ratio_text, "");
+        state.custom_unit = false;
         state.unit = "m".into();
         state.real_distance = 0.1 / 3.0;
         sync_ratio_text(&mut state, display);
@@ -1233,6 +1400,65 @@ mod tests {
         state.drawing_points = 0.0;
         sync_ratio_text(&mut state, display);
         assert_eq!(state.ratio_text, "");
+    }
+
+    /// An imperial common scale is applied in the imperial unit shown, else in feet and inches:
+    /// never in SI units (this fork, MEASURE.2). One inch of paper measures N inches.
+    #[test]
+    fn every_imperial_preset_applies_its_ratio_in_an_imperial_unit() {
+        let display = crate::units::Unit::Points;
+        for (unit, custom, shown, feet_inches) in [
+            ("in", false, "in", false),
+            ("ft", false, "ft", false),
+            ("m", false, "ft", true),
+            ("mm", false, "ft", true),
+            ("yards?", true, "ft", true),
+        ] {
+            for preset in IMPERIAL {
+                let mut state = MeasureView { unit: unit.into(), custom_unit: custom, ..Default::default() };
+                set_imperial(&mut state, preset);
+                assert_eq!((state.unit.as_str(), state.feet_inches, state.custom_unit), (shown, feet_inches, false), "{} from {unit}", preset.label);
+                assert_eq!(ratio_of_fields(&state, display), Some(preset.ratio()), "{} from {unit}", preset.label);
+                assert_eq!(state.ratio_text, format_ratio(preset.ratio()));
+                assert_eq!(state.ratio_label.as_deref(), Some(preset.label));
+                let v = measured(&state, [0.0, 0.0], [72.0, 0.0]);
+                let expected = LengthUnit::from_label(shown).expect("unit").convert(preset.ratio(), LengthUnit::Inches);
+                assert!((v - expected).abs() < 1e-9 * expected, "{} from {unit}: {v}, wanted {expected}", preset.label);
+            }
+        }
+        // Feet and inches also feet-and-inches text the panel shows.
+        let mut state = MeasureView { unit: "ft".into(), feet_inches: true, ..Default::default() };
+        set_imperial(&mut state, IMPERIAL[8]);
+        assert_eq!(state.known_text, "1'-0\"");
+    }
+
+    /// 1/4" = 1'-0" is 1:48 and 1/8" = 1'-0" is 1:96: an inch of paper is 4 ft and 8 ft.
+    #[test]
+    fn quarter_and_eighth_inch_scales_measure_an_inch_of_paper_as_4_and_8_feet() {
+        for (label, feet, n) in [("1/4\" = 1'-0\"", 4.0, 48.0), ("1/8\" = 1'-0\"", 8.0, 96.0)] {
+            let preset = measure::presets::imperial_named(label).expect("preset");
+            let mut state = MeasureView { unit: "ft".into(), feet_inches: true, ..Default::default() };
+            set_imperial(&mut state, preset);
+            assert_eq!(ratio_of_fields(&state, crate::units::Unit::Points), Some(n));
+            assert!((measured(&state, [0.0, 0.0], [0.0, 72.0]) - feet).abs() < 1e-12, "{label}");
+        }
+    }
+
+    /// The label of a scale typed or picked is what Apply saves, until a hand edit or a
+    /// calibration; Escape on a calibration gives it back with the fields.
+    #[test]
+    fn a_picked_scale_keeps_its_label_through_an_escaped_calibration() {
+        let mut state = MeasureView { unit: "ft".into(), ..Default::default() };
+        set_imperial(&mut state, IMPERIAL[8]);
+        assert_eq!(state.ratio_label.as_deref(), Some("1/4\" = 1'-0\""));
+        state.pending_calibration = Some(state.calibration_before());
+        state.drawing_points = 3.0;
+        state.ratio_label = None;
+        assert!(state.cancel_calibration());
+        assert_eq!(state.ratio_label.as_deref(), Some("1/4\" = 1'-0\""));
+        assert_eq!(state.drawing_points, 0.25);
+        assert!(set_metric(&mut state, 50.0));
+        assert_eq!((state.unit.as_str(), state.ratio_label.as_deref()), ("m", Some("1:50")));
     }
 
     #[test]

@@ -453,7 +453,7 @@ fn read_mode_closes_the_panes_and_leaving_it_brings_them_back() {
 fn read_mode_hides_the_quick_toolbar() {
     use pdfcraft_ui_egui::{Mode, QuickTool};
     let mut h = harness(|app| app.open_bytes("fixture.pdf", None, FIXTURE.to_vec()).expect("fixture opens"));
-    h.get_by_label("Hand (H)").click();
+    h.get_by_label("Hand (P)").click();
     h.run_steps(2);
     assert_eq!(h.state().quick_tool, QuickTool::Hand);
     h.state_mut().run_command("view.read_mode");

@@ -2916,10 +2916,15 @@ theme	Appearance	Aspecto
 	Centimeters (cm)	Centímetros (cm)
 	Millimeters (mm)	Milímetros (mm)
 	Meters (m)	Metros (m)
-	Known distance	Distancia conocida
 	Nearest 1/8 inch	Al 1/8 de pulgada más cercano
 	Type a length such as 12'-5 3/8" or 12.5'.	Escriba una longitud como 12'-5 3/8" o 12.5'.
 	Type the real distance between the two points.	Escriba la distancia real entre los dos puntos.
+# This fork (sefr-14/pdfcraft): Measure panel drawing scale equation and common scales (MEASURE.1, MEASURE.2).
+	Drawing distance	Distancia en el dibujo
+	Actual distance	Distancia real
+	Two-point calibration	Calibración con dos puntos
+	Metric	Métrico
+	Imperial	Imperial
 # This fork (sefr-14/pdfcraft): View > Page display > Rulers and Guides, the ruler units (OV11).
 	Rulers	Reglas
 	Guides	Guías
@@ -2949,3 +2954,7 @@ theme	Appearance	Aspecto
 	Rotate the selected pages clockwise	Girar las páginas seleccionadas en sentido horario
 	Extract the selected pages…	Extraer las páginas seleccionadas…
 	Delete the selected pages	Eliminar las páginas seleccionadas
+# This fork (sefr-14/pdfcraft): tool keys H, P and the pairs D I, D L, R C (KEY.1).
+	Hand (P)	Mano (P)
+	P / Space (hold)	P / Espacio (mantener)
+	{a}, then {b}	{a}, luego {b}

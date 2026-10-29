@@ -1458,13 +1458,13 @@ fn dialog_shortcuts(ui: &mut egui::Ui) -> bool {
         (pair(ROTATE_CW, ROTATE_CCW), tl!("Rotate view").to_string()),
         (format!("{} / {}", crate::i18n::key_name("Home"), crate::i18n::key_name("End")), tl!("First / last page").to_string()),
         (format!("← / →, {}", pair(PAGE_PREV, PAGE_NEXT)), tl!("Previous / next page").to_string()),
-        (named("V"), tl!("Select (V)").to_string()),
-        (named("H / Space (hold)"), tl!("Hand (H)").to_string()),
         (crate::i18n::key_name("Delete").to_string(), tl!("Delete selected pages (Organize)").to_string()),
         (key(SELECT_ALL), tl!("Select all pages (Organize)").to_string()),
     ] {
         rows.push((k, v));
     }
+    // The tool keys: V, P, H and the pairs (this fork, KEY.1).
+    rows.extend(crate::tool_keys::dialog_rows());
     egui::ScrollArea::vertical().max_height(460.0).show(ui, |ui| {
         egui::Grid::new("keys").num_columns(2).spacing([24.0, 6.0]).show(ui, |ui| {
             for (k, v) in &rows {

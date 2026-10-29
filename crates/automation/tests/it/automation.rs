@@ -7331,6 +7331,52 @@ fn measurements_calibrate_draw_save_reopen_and_export() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// This fork (MEASURE.2): a drawing scale as a plan writes it, an imperial architect's scale or
+/// "1:N", in the unit asked for; it is saved as written and survives a reopen.
+#[test]
+fn measurement_scale_takes_a_plan_ratio() {
+    let dir = workdir("measurement-plan-ratio");
+    let mut a = auto(&dir);
+    let doc = ok(&mut a, "doc_open", json!({"path":"a.pdf"}))["doc"].as_u64().unwrap();
+    // One inch of paper.
+    let line = json!([[20.0, 30.0], [92.0, 30.0]]);
+    let read = |a: &mut Automation, doc: u64| {
+        let r = ok(a, "measure_info", json!({"doc":doc,"page":1,"points":line}))["reading"].clone();
+        (r["value"].as_f64().unwrap(), r["label"].as_str().unwrap_or_default().to_string())
+    };
+    for (ratio, unit, value, label) in [
+        ("1/4\" = 1'-0\"", "ft-in", 4.0, "4'-0\""),
+        ("1/8\" = 1'-0\"", "ft", 8.0, "8.00 ft"),
+        ("1\" = 10'-0\"", "in", 120.0, "120.00 in"),
+        ("1:48", "ft-in", 4.0, "4'-0\""),
+        ("1:50", "mm", 25.4 * 50.0, "1270.00 mm"),
+        ("1:100", "m", 2.54, "2.54 m"),
+    ] {
+        let set = ok(&mut a, "measure_scale", json!({"doc":doc,"page":1,"ratio":ratio,"unit":unit}));
+        assert_eq!(set["scale"]["ratio"], ratio, "{ratio}");
+        let (v, l) = read(&mut a, doc);
+        assert!((v - value).abs() < 1e-9, "{ratio} in {unit}: {v}");
+        assert_eq!(l, label, "{ratio} in {unit}");
+    }
+    ok(&mut a, "measure_scale", json!({"doc":doc,"page":1,"ratio":"1/4\" = 1'-0\"","unit":"ft-in"}));
+    ok(&mut a, "doc_save", json!({"doc":doc,"path":"plan-ratio.pdf"}));
+    let reopened = ok(&mut a, "doc_open", json!({"path":"plan-ratio.pdf"}))["doc"].as_u64().unwrap();
+    assert_eq!(read(&mut a, reopened).1, "4'-0\"");
+    assert_eq!(ok(&mut a, "measure_scale", json!({"doc":reopened,"page":1,"at":[20,30]}))["scale"]["ratio"], "1/4\" = 1'-0\"");
+    let before = ok(&mut a, "doc_list", json!({}));
+    for args in [
+        json!({"doc":doc,"page":1,"ratio":"1:48","distance":4,"unit":"ft"}),
+        json!({"doc":doc,"page":1,"ratio":"1:48","page_distance":1,"unit":"ft"}),
+        json!({"doc":doc,"page":1,"ratio":"1:48","unit":"yards"}),
+        json!({"doc":doc,"page":1,"ratio":"quarter inch","unit":"ft"}),
+        json!({"doc":doc,"page":1,"ratio":"1:0","unit":"ft"}),
+    ] {
+        assert!(a.call("measure_scale", &args).is_err(), "{args}");
+        assert_eq!(ok(&mut a, "doc_list", json!({})), before);
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 #[test]
 fn measurement_scale_ratio_takes_the_page_side_in_a_unit() {
     // #2752: a plan drawn at 1:50 is "1 mm = 50 mm", so a line 10 mm long on the page is 500 mm.

@@ -185,6 +185,10 @@ fn the_second_click_keeps_a_distance_that_undo_delete_and_save_handle() {
     assert_eq!(again.measurements, saved.measurements);
 
     // Select it in the panel's list, then Delete.
+    // The panel scrolls, and the list sits below the drawing scale (MEASURE.1): bring it into
+    // view, letting the scroll animation finish.
+    h.get_by_label("Export measurements as CSV").scroll_to_me();
+    h.run_steps(6);
     h.get_by_label(&format!("Page 1: {} ", m.reading.label)).click();
     h.run_steps(3);
     assert_eq!(h.state().quick_tool, QuickTool::Select);
@@ -867,18 +871,112 @@ fn a_centimetre_ratio_calibrated_in_feet_and_inches_escape_then_apply() {
     assert_eq!(listing(&h, id).measurements[0].reading.label, "50'-0\"");
 }
 
-/// Upstream's 1:N field (v0.14.0) switches the scale to metres. After feet and inches or a
-/// Custom unit were picked (this fork, OV10) it must leave those too, or the next Apply would
-/// still read the known distance as feet and inches (SYNC.11).
+/// A typed 1:N keeps the unit system (this fork, MEASURE.2; upstream's field switched to metres):
+/// in feet and inches one inch of paper is N inches, written in feet and inches. A Custom unit has
+/// no system and still becomes metres, or the next Apply would read its label as the unit (SYNC.11).
 #[test]
-fn a_typed_ratio_after_feet_and_inches_or_a_custom_unit_is_metres() {
-    for (feet_inches, custom_unit) in [(true, false), (false, true)] {
-        let mut m = crate::measure_ui::MeasureView::default();
-        (m.feet_inches, m.custom_unit, m.unit) = (feet_inches, custom_unit, "ft".into());
-        assert!(crate::measure_ui::set_ratio(&mut m, 50.0));
-        assert!(!m.feet_inches && !m.custom_unit, "{feet_inches} {custom_unit}");
-        assert_eq!((m.unit.as_str(), m.page_unit, m.drawing_points), ("m", Some(PageUnit::Mm), 1.0));
-        assert!((m.real_distance - 0.05).abs() < 1e-12, "{}", m.real_distance);
-        assert_eq!(m.ratio_text, "1:50");
+fn a_typed_ratio_keeps_imperial_units_and_a_custom_unit_becomes_metres() {
+    let mut m = crate::measure_ui::MeasureView::default();
+    (m.feet_inches, m.unit) = (true, "ft".into());
+    assert!(crate::measure_ui::set_ratio(&mut m, 48.0));
+    assert!(m.feet_inches && !m.custom_unit);
+    assert_eq!((m.unit.as_str(), m.page_unit, m.drawing_points), ("ft", Some(PageUnit::In), 1.0));
+    assert!((m.real_distance - 4.0).abs() < 1e-12, "{}", m.real_distance);
+    assert_eq!((m.known_text.as_str(), m.ratio_text.as_str()), ("4'-0\"", "1:48"));
+
+    let mut m = crate::measure_ui::MeasureView::default();
+    (m.custom_unit, m.unit) = (true, "ft".into());
+    assert!(crate::measure_ui::set_ratio(&mut m, 50.0));
+    assert!(!m.feet_inches && !m.custom_unit);
+    assert_eq!((m.unit.as_str(), m.page_unit, m.drawing_points), ("m", Some(PageUnit::Mm), 1.0));
+    assert!((m.real_distance - 0.05).abs() < 1e-12, "{}", m.real_distance);
+    assert_eq!(m.ratio_text, "1:50");
+}
+
+/// The drawing scale reads as one equation, each side labelled above its value (MEASURE.1), on
+/// two rows in a panel too narrow for one.
+#[test]
+fn the_scale_equation_labels_both_sides() {
+    let (mut h, _) = harness(plain());
+    tool(&mut h, Tool::Distance);
+    // Each value is named by its label (screen readers say "Drawing distance, 1"), and the label
+    // is drawn above it.
+    let (drawing, drawing_value) = (
+        h.query_all_by_value("Drawing distance").map(|n| n.rect()).reduce(|a, b| a.union(b)).expect("Drawing distance"),
+        h.get_by_role_and_label(egui::accesskit::Role::SpinButton, "Drawing distance").rect(),
+    );
+    let (actual, actual_value) = (
+        h.query_all_by_value("Actual distance").map(|n| n.rect()).reduce(|a, b| a.union(b)).expect("Actual distance"),
+        h.get_by_role_and_label(egui::accesskit::Role::SpinButton, "Actual distance").rect(),
+    );
+    assert!(drawing_value.min.y >= drawing.max.y - 1.0, "{drawing:?} above {drawing_value:?}");
+    assert!(actual_value.min.y >= actual.max.y - 1.0, "{actual:?} above {actual_value:?}");
+    let panel = h.state().views[0].viewport_rect().left();
+    if panel - drawing.min.x < 420.0 {
+        assert!(actual.min.y >= drawing_value.max.y - 1.0, "two rows in a narrow panel: {drawing_value:?} {actual:?}");
+    } else {
+        assert!((actual.min.y - drawing.min.y).abs() < 1.0, "one row in a wide panel");
     }
+}
+
+/// Picking another actual unit converts the actual distance only: the scale stays the same
+/// (MEASURE.1; the page side used to follow the unit, so 1 in = 1 in became 1 mm = 25.4 mm).
+#[test]
+fn switching_the_actual_unit_keeps_the_physical_scale() {
+    let (mut h, _) = harness(plain());
+    tool(&mut h, Tool::Distance);
+    assert_eq!(h.state().views[0].measure.ratio_text, "1:1");
+    for (from, to) in [("Inches (in)", "Millimeters (mm)"), ("Millimeters (mm)", "Centimeters (cm)"), ("Centimeters (cm)", "Meters (m)")] {
+        pick_unit(&mut h, from, to);
+        assert_eq!(h.state().views[0].measure.ratio_text, "1:1", "{from} to {to}");
+    }
+    let m = &h.state().views[0].measure;
+    assert_eq!((m.page_unit, m.drawing_points, m.unit.as_str()), (Some(PageUnit::In), 1.0, "m"));
+    assert!((m.real_distance - 0.0254).abs() < 1e-12, "{}", m.real_distance);
+}
+
+/// Metric or Imperial picks which common scales are listed and changes no field (MEASURE.2).
+#[test]
+fn the_unit_system_only_changes_the_list() {
+    let (mut h, _) = harness(plain());
+    tool(&mut h, Tool::Distance);
+    let fields = |h: &Harness<'static, PdfCraftApp>| {
+        let m = &h.state().views[0].measure;
+        (m.drawing_points, m.real_distance, m.unit.clone(), m.page_unit, m.ratio_text.clone())
+    };
+    let before = fields(&h);
+    let open = |h: &mut Harness<'static, PdfCraftApp>| {
+        h.get_by(|n| n.role() == egui::accesskit::Role::ComboBox && n.value().is_some_and(|v| v == "Common scales")).click();
+        h.run_steps(2);
+    };
+    for (system, listed, not_listed) in [("Metric", "1:50", "1/4\" = 1'-0\"   (1:48)"), ("Imperial", "1/4\" = 1'-0\"   (1:48)", "1:50")] {
+        h.get_by_label(system).click();
+        h.run_steps(2);
+        assert_eq!(fields(&h), before, "{system}");
+        open(&mut h);
+        assert!(says(&h, listed), "{system} lists {listed}");
+        assert!(h.query_by_label(not_listed).is_none(), "{system} doesn't list {not_listed}");
+        h.key_press(egui::Key::Escape);
+        h.run_steps(2);
+    }
+}
+
+/// An imperial common scale applies at once, in the imperial unit shown, and is saved as a plan
+/// writes it (MEASURE.2).
+#[test]
+fn an_imperial_scale_applies_at_once_as_a_plan_writes_it() {
+    let (mut h, id) = harness(plain());
+    tool(&mut h, Tool::Distance);
+    pick_unit(&mut h, "Inches (in)", "Feet and inches (ft-in)");
+    h.get_by_label("Imperial").click();
+    h.run_steps(2);
+    h.get_by(|n| n.role() == egui::accesskit::Role::ComboBox && n.value().is_some_and(|v| v == "Common scales")).click();
+    h.run_steps(2);
+    h.get_by_label("1/8\" = 1'-0\"   (1:96)").click_accesskit();
+    h.run_steps(3);
+    let scale = h.state().session.get(id).unwrap().measurement_scale(0, [100.0, 100.0]).unwrap();
+    assert_eq!((scale.ratio.as_str(), scale.unit.as_str(), scale.feet_inches), ("1/8\" = 1'-0\"", "ft", Some(8)));
+    let reading = pdfcraft_engine::measure::reading(pdfcraft_engine::measure::Kind::Distance, &[[0.0, 0.0], [72.0, 0.0]], &scale).unwrap();
+    assert_eq!(reading.label, "8'-0\"");
+    assert_eq!(h.state().views[0].measure.ratio_text, "1:96");
 }
