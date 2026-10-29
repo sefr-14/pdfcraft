@@ -82,8 +82,11 @@ impl Automation {
         // This fork (OV10): `ft-in` is a scale in feet shown as feet and inches to 1/8 inch.
         let feet_inches = unit == "ft-in";
         let unit = if feet_inches { "ft" } else { unit };
-        if ["points", "units_per_point", "page_distance"].iter().filter(|k| a.get(k).is_some()).count() > 1 {
-            return Err(failed("pass one of calibration points, units_per_point or page_distance"));
+        if ["points", "units_per_point", "page_distance", "ratio"].iter().filter(|k| a.get(k).is_some()).count() > 1 {
+            return Err(failed("pass one of calibration points, units_per_point, page_distance or ratio"));
+        }
+        if a.get("ratio").is_some() && a.get("distance").is_some() {
+            return Err(failed("a ratio sets the real-world distance; leave out distance"));
         }
         if a.get("page_unit").is_some() && a.get("page_distance").is_none() {
             return Err(failed("page_unit is the unit of page_distance; pass page_distance too"));
@@ -106,6 +109,12 @@ impl Automation {
             let from = self.doc(a)?.measurement_to_user(page, [0.0, 0.0]).map_err(failed)?;
             let to = self.doc(a)?.measurement_to_user(page, [1.0, 0.0]).map_err(failed)?;
             Scale::ratio(from, to, page_distance, page_unit, length, unit, precision).map_err(failed)?
+        } else if let Some(text) = a.opt_str("ratio")? {
+            // This fork (MEASURE.2): a drawing scale as a plan writes it, "1:50" or `1/4" = 1'-0"`.
+            let (page_unit, page_distance, length, label) = ratio_sides(text, unit, feet_inches)?;
+            let from = self.doc(a)?.measurement_to_user(page, [0.0, 0.0]).map_err(failed)?;
+            let to = self.doc(a)?.measurement_to_user(page, [1.0, 0.0]).map_err(failed)?;
+            Scale::ratio(from, to, page_distance, page_unit, length, unit, precision).and_then(|s| s.with_ratio_text(&label)).map_err(failed)?
         } else if let Some(factor) = a.opt_num("units_per_point")? {
             {
                 let from = self.doc(a)?.measurement_to_user(page, [0.0, 0.0]).map_err(failed)?;
@@ -162,4 +171,21 @@ impl Automation {
         crate::write_atomic(&target, csv.as_bytes())?;
         Ok(json!({"path":target,"count":all.measurements.len(),"unsupported":all.unsupported.len(),"truncated":all.truncated}))
     }
+}
+
+/// The page side, its unit, the real-world distance in `unit` and the ratio text of a drawing
+/// scale written `text` (this fork, MEASURE.2): an imperial scale of the list (`1/4" = 1'-0"` is
+/// 1/4 in = 1 ft), or "1:N" — one inch is N inches in an imperial unit, one millimetre N
+/// millimetres in a metric one.
+fn ratio_sides(text: &str, unit: &str, feet_inches: bool) -> Result<(PageUnit, f64, f64, String)> {
+    use measure::{presets, units::LengthUnit};
+    let real = if feet_inches { Some(LengthUnit::Feet) } else { LengthUnit::from_label(unit) };
+    let real = real.ok_or_else(|| failed("a ratio needs unit in, ft, ft-in, mm, cm or m"))?;
+    if let Some(p) = presets::imperial_named(text) {
+        return Ok((PageUnit::In, p.paper, real.convert(p.real, LengthUnit::Feet), p.label.to_owned()));
+    }
+    let n = presets::parse_ratio(text).ok_or_else(|| failed("ratio must be 1:N or an imperial scale such as 1/4\" = 1'-0\""))?;
+    let imperial = matches!(real, LengthUnit::Inches | LengthUnit::Feet | LengthUnit::FeetInches);
+    let (page_unit, from) = if imperial { (PageUnit::In, LengthUnit::Inches) } else { (PageUnit::Mm, LengthUnit::Millimeters) };
+    Ok((page_unit, 1.0, real.convert(n, from), presets::format_ratio(n)))
 }

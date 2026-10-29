@@ -1501,6 +1501,13 @@ fn control_default_workspace_and_session_override() {
     assert_eq!(ok(&mut h, &c, "ui.state", json!({}))["mode"], "Read");
 }
 
+/// Apply scale, brought into view first: the Measure panel scrolls below the drawing scale.
+fn apply_scale(h: &mut Harness<'static, PdfCraftApp>) {
+    h.get_by_label("Export measurements as CSV").scroll_to_me();
+    h.run_steps(6);
+    h.get_by_label("Apply scale").click();
+}
+
 #[test]
 fn measurement_tools_draw_live_calibrate_save_and_export() {
     let (mut h, c) = harness_pages(1);
@@ -1512,7 +1519,7 @@ fn measurement_tools_draw_live_calibrate_save_and_export() {
     h.state_mut().views[0].measure.page_unit = Some(pdfcraft_engine::measure::PageUnit::Pt);
     h.state_mut().views[0].measure.real_distance = 1.0;
     h.state_mut().views[0].measure.unit = "m".into();
-    h.get_by_label("Apply scale").click();
+    apply_scale(&mut h);
     h.run_steps(3);
     let scale = h.state().session.get(doc).unwrap().measurement_scale(0, [20.0, 20.0]).unwrap();
     assert!((scale.x - 0.1).abs() < 1e-10);
@@ -1569,8 +1576,9 @@ fn a_1_to_50_scale_in_millimetres_measures_a_10_mm_line_as_500_mm() {
     ok(&mut h, &c, "ui.command", json!({"id":"measure.scale"}));
     h.run_steps(3);
     let m = &mut h.state_mut().views[0].measure;
-    (m.drawing_points, m.real_distance, m.unit) = (1.0, 50.0, "mm".into());
-    h.get_by_label("Apply scale").click();
+    // The page side keeps its own unit (this fork, MEASURE.1): 1 mm, as the panel shows it.
+    (m.drawing_points, m.page_unit, m.real_distance, m.unit) = (1.0, Some(pdfcraft_engine::measure::PageUnit::Mm), 50.0, "mm".into());
+    apply_scale(&mut h);
     h.run_steps(3);
     let mm = 72.0 / 25.4;
     let line = [[20.0, 30.0], [20.0 + 10.0 * mm, 30.0]];
@@ -1616,12 +1624,15 @@ fn a_plan_scale_picked_or_typed_applies_at_once() {
         let scale = h.state().session.get(doc).unwrap().measurement_scale(0, line[0]).unwrap();
         (measure::reading(Kind::Distance, &line, &scale).unwrap().label, scale.ratio)
     };
-    // Picked from the common scales: no Apply click.
+    // Picked from the metric common scales (this fork, MEASURE.2): no Apply click, saved as a
+    // plan writes it.
+    h.get_by_label("Metric").click();
+    h.run_steps(2);
     h.get_by(|n| n.role() == egui::accesskit::Role::ComboBox && n.value().is_some_and(|v| v == "Common scales")).click();
     h.run_steps(2);
     h.get_by_label("1:200").click_accesskit();
     h.run_steps(3);
-    assert_eq!(read(&h), ("12.00 m".to_string(), "1 mm = 0.2 m".to_string()));
+    assert_eq!(read(&h), ("12.00 m".to_string(), "1:200".to_string()));
     // Typed, in the other notations; leaving the field applies.
     fn field<'a>(h: &'a Harness<'static, PdfCraftApp>) -> egui_kittest::Node<'a> {
         h.get_by_role_and_label(egui::accesskit::Role::TextInput, "Scale")

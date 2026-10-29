@@ -4,6 +4,7 @@
 //! annotations use the measurement intents of line, polygon and polyline annotations (§12.5.6).
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+pub mod presets;
 pub mod snap;
 pub mod units;
 use pdfcraft_annot::{Meta, NewAnnotation, Shape, Style};
@@ -138,6 +139,13 @@ impl Scale {
         out.ratio = format!("{} {} = {} {unit}", ratio_number(page), page_unit.label(), ratio_number(real));
         out.validate()?;
         Ok(out)
+    }
+    /// This scale with `text` as its ratio (`/R`), as a plan writes it: "1:50", `1/4" = 1'-0"`
+    /// (this fork, MEASURE.2). The factors are unchanged.
+    pub fn with_ratio_text(mut self, text: &str) -> Result<Self> {
+        self.ratio = text.to_owned();
+        self.validate()?;
+        Ok(self)
     }
     pub fn validate(&self) -> Result<()> {
         for f in [self.x, self.y, self.distance_factor, self.area_factor] {
