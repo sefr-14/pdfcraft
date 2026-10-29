@@ -474,6 +474,52 @@ struct Draw {
 }
 
 impl Walker<'_> {
+    /// Decide each of the page's annotations: drawn (its placement, in the order the page lists
+    /// them), omitted or left unresolved, and record the outcome in `t`.
+    fn annotation_draws(&mut self, annots: &[Object], resources: &Dict, rotate: i64, t: &mut Tally, uses: &mut Uses) -> Vec<(usize, Draw)> {
+        let src = self.src;
+        let mut draws: Vec<(usize, Draw)> = Vec::new();
+        for (k, entry) in annots.iter().enumerate() {
+            let r = entry.as_ref();
+            let Some(d) = src.dict(entry) else {
+                t.annotations.push(AnnotationEntry {
+                    index: k,
+                    object: r,
+                    subtype: String::new(),
+                    outcome: Outcome::Excluded(Exclusion::UnusableAppearance("it isn't a dictionary".into())),
+                });
+                continue;
+            };
+            let subtype = String::from_utf8_lossy(d.name(b"Subtype").unwrap_or_default()).into_owned();
+            let label = format!("{} annotation {}", if subtype.is_empty() { "an untyped" } else { subtype.as_str() }, k.saturating_add(1));
+            let decided = self.annotation(r, &d, resources, rotate, t, uses);
+            let omitted = r.is_some_and(|r| self.omit.contains(&r));
+            let outcome = match decided {
+                Ok(draw) if omitted => {
+                    let _ = draw;
+                    Outcome::Omitted(None)
+                }
+                Ok(draw) => {
+                    let source = draw.source;
+                    draws.push((t.annotations.len(), draw));
+                    Outcome::Drawn(source)
+                }
+                Err(Outcome::Unresolved(rule)) if omitted && is_annotation_rule(rule) => Outcome::Omitted(Some(rule)),
+                Err(Outcome::Unresolved(rule)) => {
+                    if is_annotation_rule(rule) {
+                        let detail = self.pending_detail.take();
+                        t.annotation_items.push((rule, r, label, detail));
+                    }
+                    Outcome::Unresolved(rule)
+                }
+                Err(other) => other,
+            };
+            self.pending_detail = None;
+            t.annotations.push(AnnotationEntry { index: k, object: r, subtype, outcome });
+        }
+        draws
+    }
+
     fn page(&mut self, obj: ObjRef, dict: &Dict, t: &mut Tally) {
         let src = self.src;
         let resources = dict.get(b"Resources").and_then(|r| src.dict(r)).unwrap_or_default();
@@ -501,45 +547,7 @@ impl Walker<'_> {
         // Annotations, drawn after the content.
         let annots: Vec<Object> = dict.get(b"Annots").map(|a| src.resolve(a)).and_then(|a| a.as_array().cloned()).unwrap_or_default();
         let rotate = dict.get(b"Rotate").and_then(|r| src.resolve(r).as_int()).unwrap_or(0);
-        let mut draws: Vec<(usize, Draw)> = Vec::new();
-        for (k, entry) in annots.iter().enumerate() {
-            let r = entry.as_ref();
-            let Some(d) = src.dict(entry) else {
-                t.annotations.push(AnnotationEntry {
-                    index: k,
-                    object: r,
-                    subtype: String::new(),
-                    outcome: Outcome::Excluded(Exclusion::UnusableAppearance("it isn't a dictionary".into())),
-                });
-                continue;
-            };
-            let subtype = String::from_utf8_lossy(d.name(b"Subtype").unwrap_or_default()).into_owned();
-            let label = format!("{} annotation {}", if subtype.is_empty() { "an untyped" } else { subtype.as_str() }, k.saturating_add(1));
-            let decided = self.annotation(r, &d, &resources, rotate, t, &mut uses);
-            let omitted = r.is_some_and(|r| self.omit.contains(&r));
-            let outcome = match decided {
-                Ok(draw) if omitted => {
-                    let _ = draw;
-                    Outcome::Omitted(None)
-                }
-                Ok(draw) => {
-                    let source = draw.source;
-                    draws.push((t.annotations.len(), draw));
-                    Outcome::Drawn(source)
-                }
-                Err(Outcome::Unresolved(rule)) if omitted && is_annotation_rule(rule) => Outcome::Omitted(Some(rule)),
-                Err(Outcome::Unresolved(rule)) => {
-                    if is_annotation_rule(rule) {
-                        let detail = self.pending_detail.take();
-                        t.annotation_items.push((rule, r, label, detail));
-                    }
-                    Outcome::Unresolved(rule)
-                }
-                Err(other) => other,
-            };
-            self.pending_detail = None;
-            t.annotations.push(AnnotationEntry { index: k, object: r, subtype, outcome });
-        }
+        let mut draws = self.annotation_draws(&annots, &resources, rotate, t, &mut uses);
 
         // The content must end in its initial graphics state for the annotations to be placed as
         // viewers place them: close what it leaves open, or refuse if it restores too much.

@@ -64,7 +64,13 @@ fn viewport(h: &Harness<'static, PdfCraftApp>, tab: usize) -> Rect {
 fn wheel_at(h: &mut Harness<'static, PdfCraftApp>, p: Pos2, dy: f32, modifiers: egui::Modifiers) {
     h.hover_at(p);
     h.run_steps(1);
-    h.event(egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: vec2(0.0, dy), phase: egui::TouchPhase::Move, modifiers });
+    h.event(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: vec2(0.0, dy),
+        phase: egui::TouchPhase::Move,
+        modifiers,
+        source: egui::MouseWheelSource::Unknown,
+    });
     h.run_steps(8);
 }
 
@@ -277,6 +283,7 @@ fn a_touchpad_swipe_stays_in_its_own_tile() {
             delta: vec2(0.0, -60.0),
             phase: egui::TouchPhase::Move,
             modifiers: egui::Modifiers::NONE,
+            source: egui::MouseWheelSource::Unknown,
         });
         h.run_steps(1);
     }

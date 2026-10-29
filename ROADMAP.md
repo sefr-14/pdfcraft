@@ -3,7 +3,8 @@
 
 **Stage: alpha** · next: beta, ~25% (ready for real work 50% → 75%) and ~400–700 h away
 
-> **Last reviewed:** 2026-10-23 | **Last updated:** 2026-10-23 | **Change:** minor (M8, #3205 follow-up: labelled Italian international phone numbers with a slash match whole; estimates unchanged)
+> **Last reviewed:** 2026-10-27 | **Last updated:** 2026-10-27 | **Change:** minor (M10: OCR model downloads use verified ONNX pairs with legacy discovery fallback; estimates unchanged)
+> **Last reviewed:** 2026-10-25 | **Last updated:** 2026-10-25 | **Change:** minor (M14 localization current state: Arabic logical catalog, explicit RTL label direction and mirrored stock chrome; native/browser RTL workflows unqualified. Native release Hans face via LXGW WenKai Lite; estimates unchanged)
 > **Last reviewed:** 2026-10-23 · **Last updated:** 2026-10-23 · **Change:** minor (M7, #2636 partial: pasting added text boxes and images in the engine and through `content_copy`; estimates unchanged)
 > **Last reviewed:** 2026-10-23 · **Last updated:** 2026-10-23 · **Change:** minor (M11: image optimization accounts for page-local UserUnit; estimates unchanged)
 > **Last reviewed:** 2026-10-23 | **Last updated:** 2026-10-23 | **Change:** minor (M10: Word table cells use the widths of their own grid columns; estimates unchanged)
@@ -166,10 +167,10 @@ Portuguese and Spanish vs the current union). Detail and script notes: [localiza
 | Language | Code | Strings | Status |
 |---|---|---|---|
 | English | `en` | 100% | full |
-| Simplified Chinese | `zh-hans` | 97.4% | partial (no Hans UI face in releases, #826) |
+| Simplified Chinese | `zh-hans` | 97.4% | partial (native LXGW WenKai Lite; no Hans face in the web build, #826) |
 | Spanish | `es` | 100% of current union | partial (dialogs / tooltips; no help) |
 | Hindi | `hi` | 0% | none |
-| Arabic | `ar` | 100% | partial (layout not mirrored) |
+| Arabic | `ar` | 100% | partial (logical catalog, explicit RTL labels, mirrored stock chrome; native/browser/IME workflows unqualified) |
 | French | `fr` | 99.3% | partial |
 | Portuguese (Brazil) | `pt-br` | 100% of current union | partial |
 | Indonesian | `id` | 0% | none |
@@ -189,7 +190,7 @@ Ranked; detail and the full milestone table in [docs/roadmap.md](docs/roadmap.md
 | Rank | Milestone | Estimate (h) |
 |---|---|---|
 | 0 | Convert and share: Create PDF from Office, Word export that keeps layout (#773) | 32–55 |
-| 1 | Backlog and platform: crash and wrong-result reports, Chinese UI face (#826) | 50–90 |
+| 1 | Backlog and platform: crash and wrong-result reports, Chinese web UI face (#826) | 50–90 |
 | 2 | Fidelity harness against Acrobat and the renderer decision (M2; owner decision on #841) | 110–190 |
 | 3 | Editing existing content (M7) | 100–180 |
 | 4 | OCR languages and Office export/import (M10) | 95–175 |
@@ -200,6 +201,9 @@ Ranked; detail and the full milestone table in [docs/roadmap.md](docs/roadmap.md
 
 ## Progress log
 
+- **2026-10-27 (M10, OCR models):** Model staging downloads and verifies the ONNX pair after the upstream RTEN URL brownout; runtime discovery prefers complete ONNX pairs per directory, retains complete RTEN fallback and preserves directory precedence.
+- **2026-10-24 (M10, #4158 partial):** Word, HTML, RTF and PowerPoint export keep a block that continues another on its line (an italic case name, a link, a superscript) as a run in its own style inside that paragraph, with the source's word space, instead of a paragraph of its own. Style changes that wrap onto the next line still split paragraphs (the reading blocks keep style boundaries). Estimates unchanged.
+- **2026-10-24 (M3, window move on Wayland, #3970 follow-up):** After a move or resize by PdfCraft's own title bar or edges, the button release given back to egui goes before the pointer leaving the window, so hover no longer sticks at the old place until the pointer moves. Found by CodeRabbit in review of #3970; a unit test covers it. Estimates unchanged.
 - **2026-10-24 (M14, #4253):** The annotation quick bar remembers Keep tool selected across restarts, including unpinning. Old and malformed settings keep safe defaults; the opt-in UI control channel reads and changes the same preference. Estimates unchanged.
 
 - **2026-10-23 (M7, #4280):** Edit text names each standard stand-in font after its face (`PCEdTimesBold`, ...) instead of one shared `PCEdHelv`. Rewriting a bold paragraph whose subset lacks an accent no longer repoints the paragraphs set earlier in a regular stand-in at Times-Bold, and the editor's frame stays on the paragraph being edited. Pages saved by older builds keep their shared name and are not repaired. Estimates unchanged.
@@ -272,6 +276,7 @@ Ranked; detail and the full milestone table in [docs/roadmap.md](docs/roadmap.md
 - **2026-10-28 (this fork, LIC.2):** Original app icon. "Dimensioned Drawing" (a drawing sheet with a dimension line, a part and a title block, an orange outline for the other revision, on blueprint blue) replaces upstream's lion in `assets/app-icon/pdfcraft.svg` and every file `packaging/icons.sh` renders from it: the hicolor PNGs, the 1024 PNG and `pdfcraft.ico`. The `.pdf` document icon keeps its Lucide outline and PDF lettering with a blue badge (embedded, resource 2); an orange-badge `pdfcraft-document-orange.ico` ships beside `pdfcraft.exe` (one Copy-Item line in `overlay-windows.yml`, authorized). `pdfcraft.icns` and the DMG background stay upstream's lion as legacy, unused macOS assets. App id, settings and data paths are unchanged. README: the new icon, the heading "PdfCraft Overlay", a tagline about comparing drawing revisions, an overlay-compare hero shot of two synthetic drawing revisions, and every other screenshot retaken from the fork's build (the showcase cover's stale "PrintCraft" title fixed). The Windows build, once authorized, verifies LIC.1 and LIC.2 together.
 - **2026-10-28 (this fork, LIC.1):** Licence and trademark compliance. The eight ArtCraft logo files in `docs/brand/` and the mark in the `pdfcraft-tools` screenshot are removed, as the brand licence requires for published modified versions; only `docs/brand/LICENSE-brand.txt` stays, and a test keeps the logos out. The app calls itself PdfCraft Overlay (window title, Home, About, Help › About, Windows version information) with app id, settings and data folders unchanged; the Discord button and the ArtCraft Discord, website and app-page links are gone, and Help, About and `pdfcraft-cli --version` point to this fork's issues and upstream's repository. NOTICE gains a fork section; upstream files the fork changed carry a one-line modification notice; FORK-CHANGES.md summarizes the fork. The Windows zip gains a `licenses` folder: cargo-about's report of every crate in the Windows graph (`about.toml`, `licenses/THIRD-PARTY-CRATES.txt`), egui's font licences, and the asset licences. Sync policy from now on: upstream's `docs/brand/` logos stay deleted; the fork's links and name are re-applied over upstream changes; new upstream assets get a manifest and licence check; `licenses/THIRD-PARTY-CRATES.txt` is regenerated; newly fork-modified upstream files get the notice line (keep it when resolving conflicts); upstream's unused packaging (`packaging/linux`, `packaging/macos`, `packaging/windows/*.wxs`) still names getartcraft.com and must be rebranded before the fork uses it. The marks remain in published Git history (no rewrite, by decision). The new original icon is LIC.2.
 - **2026-10-28 (this fork, SYNC.12):** Upstream's latest release is still v0.14.0 (in since SYNC.11); its unreleased main (20eebc1c: egui 0.37, craft-menu/keymap/update/ui, the ui-egui and engine file moves) waits for the next release. Backported from it with `cherry-pick -x`: XFA image hashes reject non-hex characters (#4630), AFNumber no longer prints "inf" (#4592), FormCalc `url` Decode rejects `+` as a hex digit (#4586), FormCalc Round stays finite (#4508), saved files keep their Windows hidden and system attributes (#4647), resizing an image under a shared clip scales its clip (#4639), and redaction drops clipped vector paths (F-008, #4577) and unlinks unused Type 3 glyph programs and fonts (F-011). Fork features untouched; no version change. No release.
+- **2026-10-29 (this fork, SYNC.13):** Upstream v0.15.0 (`75360d1d`) merged (a true merge; 48 conflicts: 38 content, 1 add/add, 9 modify/delete). It brings egui 0.37 (with its `logic`/`ui` split) and winit from pinned storytold forks, the craft-libs pins (craft-menu, craft-keymap), the ui-egui and engine file moves, strict Clippy lints, and Persian. The fork's features move to upstream's new files. Upstream's `craft-update` (a check at startup, self-install, `--finish-update`) is left out, and Help › Check for updates still finds only this fork's builds. In craft-menu: File › Overlay; Window › Duplicate Tab, Tab View, Tile View; View › Page display › Thin lines, Rulers, Guides; Help without the ArtCraft destinations. Rulers and guides read the page through PagePointer, except for the ruler strips beside the page. New regression tests: repeated `logic` passes, deferred commands, Escape steps and duplicate-tab refreshes. Thin lines now also survives Reload. The fork's code meets the new lints by refactoring, not `allow`. ATTRIBUTION.md and the third-party licences were regenerated. Upstream's MSI work is not used, and the Windows zip is unchanged. No build, release or tag.
 
 - **2026-10-20 (M5, arrow keys move comments):** With a comment selected, the arrow keys move it a screen pixel and ⌘/Ctrl or Shift and an arrow ten, instead of scrolling the view or turning the page; up is up on screen at any zoom and rotation, and each press is one undo step. Text markup and locked comments stay put. Estimates unchanged.
 
@@ -690,10 +695,13 @@ Newest first: the date, what moved, and the new overall estimate.
 
 ## Revision history
 
+**2026-10-25 · minor:** M14 localization current state: Arabic catalogs stay logical, Arabic/Kurdish labels take an explicit RTL direction, and stock chrome mirrors; native/browser RTL input, IME and complex workflows remain unqualified. Native Simplified Chinese uses LXGW WenKai Lite; the web build has no Hans face. Estimates unchanged.
+
 **2026-10-15 · minor:** M14/#2383 candidate: GPU device requests clamp unsupported limits while retaining the adapter texture extent. Synthetic V3D/downlevel regressions and Windows GPU-required tests pass; Raspberry Pi hardware remains unverified. Estimates unchanged.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-27 | minor | M10: OCR stages SHA-256-verified ONNX models after the upstream RTEN URL brownout; discovery prefers a complete ONNX pair per directory, falls back to a complete RTEN pair, and never mixes formats or directories; language/web limits and estimates unchanged. |
 | 2026-10-23 | minor | M8, #3205 follow-up: phone-pattern redaction includes the +39 country code on labelled Italian geographic numbers with a slash; dates, protocol identifiers and whole-run guards remain. Estimates unchanged. |
 | 2026-10-23 | minor | M11: image downsampling measures physical resolution after page-local UserUnit scaling, including shared nested forms; synthetic measurement and optimization regressions. Estimates unchanged. |
 | 2026-10-23 | minor | M10: Word table cells use the grid columns they span, including cells after a merged cell; synthetic export regression and CLI reproduction. Estimates unchanged. |

@@ -2,6 +2,7 @@
 //! Commenting in the real shell (egui_kittest): tools, gestures, selection, the composer and
 //! the Comments panel.
 
+use egui::accesskit::Role;
 use egui::{Pos2, pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -543,7 +544,7 @@ fn selected_text_replace_action_opens_replacement_composer() {
     h.run_steps(3);
     h.get_by_label("Replace text").click();
     h.run_steps(2);
-    h.get_by_label("Replacement text");
+    h.get_by_role_and_label(Role::MultilineTextInput, "Replacement text");
     assert!(h.state().views[0].selected_text().is_none());
 }
 
@@ -1218,7 +1219,7 @@ fn the_panel_posts_comments_and_replies() {
 
 /// The side panel's width as egui keeps it from one frame to the next.
 fn panel_width(h: &Harness<'static, PdfCraftApp>) -> f32 {
-    h.ctx.data(|data| data.get_temp::<egui::Rect>(egui::Id::new("pdfcraft-inspector-body"))).expect("the inspector body is shown").width()
+    h.ctx.data(|data| data.get_temp::<egui::Rect>(egui::Id::unique("pdfcraft-inspector-body"))).expect("the inspector body is shown").width()
 }
 
 #[test]

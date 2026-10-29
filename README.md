@@ -1,7 +1,7 @@
 <!-- Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history. -->
 > [!IMPORTANT]
 > **This is PDF Overlay, an unofficial fork of [PdfCraft](https://github.com/storytold/pdfcraft), originally developed by the ArtCraft team.**
-> It is based on PdfCraft 0.14.0 (upstream tag `v0.14.0`, 5a78b22) and adds an overlay compare for revisions of drawing sets,
+> It is based on PdfCraft 0.15.0 (upstream tag `v0.15.0`, 75360d1) and adds an overlay compare for revisions of drawing sets,
 > plus tools for reviewing engineering drawings. It is not made, endorsed or supported by the ArtCraft team or the PdfCraft
 > project. See [About this fork](#about-this-fork).
 

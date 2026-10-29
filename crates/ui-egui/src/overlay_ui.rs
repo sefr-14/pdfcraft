@@ -678,7 +678,7 @@ fn image_view(ui: &mut egui::Ui, label: &str, view: &mut View, image: Option<&Pa
     let t = Tokens::get(ui.ctx());
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click_and_drag());
     // Until its image arrives the view is named by its placeholder ("Rendering…").
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, ui.is_enabled(), if image.is_some() { label } else { placeholder }));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, ui.is_enabled(), if image.is_some() { label } else { placeholder }));
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 4.0, t.pasteboard);
     let Some(img) = image else {
@@ -1712,7 +1712,7 @@ pub(crate) fn show(app: &mut PdfCraftApp, ctx: &egui::Context) {
 
 /// The wizard's window (and its layer's id).
 pub(crate) fn wizard_id() -> egui::Id {
-    egui::Id::new("overlay-wizard")
+    egui::Id::unique("overlay-wizard")
 }
 
 fn window(app: &mut PdfCraftApp, w: &mut Wizard, ctx: &egui::Context) {
@@ -1904,7 +1904,7 @@ fn documents(app: &mut PdfCraftApp, w: &mut Wizard, ui: &mut egui::Ui, t: &Token
         ui.label(tx("Document B:"));
         let shown = w.b.as_ref().map_or_else(|| tx("Choose a document").to_string(), |b| b.name.clone());
         let mut choice = w.b.as_ref().map(|b| b.id);
-        egui::ComboBox::from_id_salt("overlay-b").selected_text(shown).width(320.0).show_ui(ui, |ui| {
+        craft_ui::ComboBox::from_id_salt("overlay-b").selected_text(shown).width(320.0).show_ui(ui, |ui| {
             for (id, n) in &others {
                 let same = w.a.as_ref().is_some_and(|a| a.id == *id);
                 let label = if same { format!("{n} ({})", tx("same as A")) } else { n.clone() };
@@ -2182,7 +2182,7 @@ fn pages(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
                             Slot::Blank => RichText::new(tx("blank")).italics().color(t.text_muted),
                             Slot::Unplaced => RichText::new(tx("— no partner —")).color(Color32::from_rgb(200, 110, 20)),
                         };
-                        egui::ComboBox::from_id_salt(("overlay-cell", i, side.index())).selected_text(shown).width(widths[k] - 10.0).show_ui(
+                        craft_ui::ComboBox::from_id_salt(("overlay-cell", i, side.index())).selected_text(shown).width(widths[k] - 10.0).show_ui(
                             ui,
                             |ui| {
                                 for &q in &range_pages[side.index()] {
@@ -2213,26 +2213,27 @@ fn pages(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
                         None => RichText::new(tx("No partner yet")).color(Color32::from_rgb(200, 110, 20)),
                     };
                     let value = shown.text().to_string();
-                    let combo = egui::ComboBox::from_id_salt(("overlay-compare", i)).selected_text(shown).width(widths[5] - 12.0).show_ui(ui, |ui| {
-                        ui.set_min_width(widths[5]);
-                        // Worked out only while the list is open: each choice is tried on a copy.
-                        for (to, text) in choices {
-                            let selected = now == Some(to);
-                            let mut probe = w.pairing.clone();
-                            let tried = if selected { Ok(Vec::new()) } else { probe.set_compare(i, to) };
-                            let r = ui.add_enabled(tried.is_ok(), egui::Button::selectable(selected, text));
-                            let r = match &tried {
-                                Err(e) => r.on_disabled_hover_text(e.to_string()),
-                                Ok(_) => r,
-                            };
-                            if r.clicked() && !selected {
-                                op = Some(PairOp::Compare(i, to));
+                    let combo =
+                        craft_ui::ComboBox::from_id_salt(("overlay-compare", i)).selected_text(shown).width(widths[5] - 12.0).show_ui(ui, |ui| {
+                            ui.set_min_width(widths[5]);
+                            // Worked out only while the list is open: each choice is tried on a copy.
+                            for (to, text) in choices {
+                                let selected = now == Some(to);
+                                let mut probe = w.pairing.clone();
+                                let tried = if selected { Ok(Vec::new()) } else { probe.set_compare(i, to) };
+                                let r = ui.add_enabled(tried.is_ok(), egui::Button::selectable(selected, text));
+                                let r = match &tried {
+                                    Err(e) => r.on_disabled_hover_text(e.to_string()),
+                                    Ok(_) => r,
+                                };
+                                if r.clicked() && !selected {
+                                    op = Some(PairOp::Compare(i, to));
+                                }
                             }
-                        }
-                    });
+                        });
                     let name = crate::i18n::fmt(tx("Compare output page {n} as"), &[("n", &(i + 1).to_string())]);
                     combo.response.widget_info(|| {
-                        let mut info = egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, &name);
+                        let mut info = egui::WidgetInfo::labeled(egui::Role::ComboBox, true, &name);
                         info.current_text_value = Some(value.clone());
                         info
                     });
@@ -2251,7 +2252,7 @@ fn pages(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
                                 .fill(t.card)
                                 .stroke(Stroke::new(1.0, t.border));
                             let r = ui.add_enabled(can.is_ok(), button);
-                            r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, can.is_ok(), &label));
+                            r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, can.is_ok(), &label));
                             let r = match &can {
                                 Err(e) => r.on_disabled_hover_text(e.to_string()),
                                 Ok(_) => r.on_hover_text(&label),
@@ -2418,7 +2419,7 @@ fn sheet_alignment(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
         ui.horizontal(|ui| {
             ui.label(tx("Pair"));
             let value = shown.clone();
-            let combo = egui::ComboBox::from_id_salt("overlay-align-pair").selected_text(shown).width(340.0).show_ui(ui, |ui| {
+            let combo = craft_ui::ComboBox::from_id_salt("overlay-align-pair").selected_text(shown).width(340.0).show_ui(ui, |ui| {
                 // Only while the list is open.
                 for (i, k) in &pairs {
                     if ui.selectable_label(*i == current, name(w, *i, *k)).clicked() {
@@ -2427,7 +2428,7 @@ fn sheet_alignment(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
                 }
             });
             combo.response.widget_info(|| {
-                let mut info = egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, tx("Page pair"));
+                let mut info = egui::WidgetInfo::labeled(egui::Role::ComboBox, true, tx("Page pair"));
                 info.current_text_value = Some(value.clone());
                 info
             });

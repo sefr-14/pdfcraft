@@ -7,7 +7,7 @@ mod common;
 use common::Rng;
 use common::synth::{self, Page, Res};
 use pdfcraft_content::{Matrix, parse};
-use pdfcraft_cos::{Dict, Document, Object};
+use pdfcraft_cos::{Dict, Document, ObjRef, Object};
 use pdfcraft_overlay::{
     CYAN, OverlayError, Placement, Point, RED, Settings, SheetMatch, Source, Style, compose, frame_of_page, light_tone, place, transfer_function,
 };
@@ -58,6 +58,45 @@ fn two_pages() -> (Document, Document) {
     (src(Page::new(612.0, 792.0, "0 g 72 72 144 144 re f")), src(Page::new(612.0, 792.0, "0 g 100 100 144 144 re f")))
 }
 
+/// One layer's graphics state on the composed page: Multiply, full opacity, and a luminosity soft
+/// mask whose isolated group draws `source` under `matrix`. Returns the mask's transfer function.
+fn assert_layer_state(out: &Document, states: &Dict, name: &[u8], source: &Document, matrix: Matrix, p: &Placement) -> ObjRef {
+    let gs = dict(out, states.get(name).expect("graphics state"));
+    assert_eq!(gs.name(b"BM"), Some(&b"Multiply"[..]));
+    assert_eq!(out.resolve(gs.get(b"CA").expect("CA")).as_f64(), Some(1.0));
+    assert_eq!(out.resolve(gs.get(b"ca").expect("ca")).as_f64(), Some(1.0));
+    let mask = dict(out, gs.get(b"SMask").expect("soft mask"));
+    assert_eq!(mask.name(b"Type"), Some(&b"Mask"[..]));
+    assert_eq!(mask.name(b"S"), Some(&b"Luminosity"[..]));
+    assert_eq!(nums(out, mask.get(b"BC").expect("backdrop")), vec![1.0, 1.0, 1.0]);
+
+    // The mask's group: isolated, DeviceRGB, the page box, drawing the source under the placement.
+    let g = mask.get(b"G").expect("group");
+    let gd = dict(out, g);
+    assert_eq!(gd.name(b"Subtype"), Some(&b"Form"[..]));
+    assert_eq!(nums(out, gd.get(b"BBox").expect("bbox")), p.page_box().to_vec());
+    let gg = dict(out, gd.get(b"Group").expect("group attributes"));
+    assert_eq!((gg.name(b"S"), gg.name(b"CS")), (Some(&b"Transparency"[..]), Some(&b"DeviceRGB"[..])));
+    assert_eq!(out.resolve(gg.get(b"I").expect("isolated")).as_ref(), &Object::Bool(true));
+    assert!(gg.get(b"K").is_none());
+    let content = parse(&data(out, g));
+    let names: Vec<String> = content.ops.iter().map(|o| String::from_utf8_lossy(&o.op).into_owned()).collect();
+    assert_eq!(names, ["q", "cm", "Do", "Q"]);
+    let cm: Vec<f64> = content.ops[1].operands.iter().map(|o| o.as_f64().expect("number")).collect();
+    assert_eq!(cm, matrix.0.to_vec());
+    assert_eq!(content.ops[2].operands, vec![Object::name("S")]);
+
+    // The source form: OV2's visible box, identity matrix, the page's content unchanged.
+    let form = dict(out, gd.get(b"Resources").expect("group resources")).get(b"XObject").map(|x| dict(out, x)).expect("xobjects");
+    let s = form.get(b"S").expect("source form");
+    let sd = dict(out, s);
+    let (frame, _) = frame_of_page(source, 0).expect("frame");
+    assert_eq!(nums(out, sd.get(b"BBox").expect("form bbox")), frame.visible.to_vec());
+    assert_eq!(nums(out, sd.get(b"Matrix").expect("form matrix")), vec![1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+    assert_eq!(data(out, s), synth::page_content(source, 0));
+    mask.reference(b"TR").expect("the transfer function is an object")
+}
+
 /// The page, its graphics states, soft masks, groups and source forms are exactly the overlay
 /// PRD's structure (Compositing, Structure of an output page).
 #[test]
@@ -77,40 +116,7 @@ fn the_page_has_the_approved_structure() {
     let states = dict(&out, dict(&out, page.get(b"Resources").expect("resources")).get(b"ExtGState").expect("states"));
     let mut transfer = Vec::new();
     for (name, source, matrix) in [(&b"GA"[..], &a, p.a), (&b"GB"[..], &b, p.b)] {
-        let gs = dict(&out, states.get(name).expect("graphics state"));
-        assert_eq!(gs.name(b"BM"), Some(&b"Multiply"[..]));
-        assert_eq!(out.resolve(gs.get(b"CA").expect("CA")).as_f64(), Some(1.0));
-        assert_eq!(out.resolve(gs.get(b"ca").expect("ca")).as_f64(), Some(1.0));
-        let mask = dict(&out, gs.get(b"SMask").expect("soft mask"));
-        assert_eq!(mask.name(b"Type"), Some(&b"Mask"[..]));
-        assert_eq!(mask.name(b"S"), Some(&b"Luminosity"[..]));
-        assert_eq!(nums(&out, mask.get(b"BC").expect("backdrop")), vec![1.0, 1.0, 1.0]);
-        transfer.push(mask.reference(b"TR").expect("the transfer function is an object"));
-
-        // The mask's group: isolated, DeviceRGB, the page box, drawing the source under the placement.
-        let g = mask.get(b"G").expect("group");
-        let gd = dict(&out, g);
-        assert_eq!(gd.name(b"Subtype"), Some(&b"Form"[..]));
-        assert_eq!(nums(&out, gd.get(b"BBox").expect("bbox")), p.page_box().to_vec());
-        let gg = dict(&out, gd.get(b"Group").expect("group attributes"));
-        assert_eq!((gg.name(b"S"), gg.name(b"CS")), (Some(&b"Transparency"[..]), Some(&b"DeviceRGB"[..])));
-        assert_eq!(out.resolve(gg.get(b"I").expect("isolated")).as_ref(), &Object::Bool(true));
-        assert!(gg.get(b"K").is_none());
-        let content = parse(&data(&out, g));
-        let names: Vec<String> = content.ops.iter().map(|o| String::from_utf8_lossy(&o.op).into_owned()).collect();
-        assert_eq!(names, ["q", "cm", "Do", "Q"]);
-        let cm: Vec<f64> = content.ops[1].operands.iter().map(|o| o.as_f64().expect("number")).collect();
-        assert_eq!(cm, matrix.0.to_vec());
-        assert_eq!(content.ops[2].operands, vec![Object::name("S")]);
-
-        // The source form: OV2's visible box, identity matrix, the page's content unchanged.
-        let form = dict(&out, gd.get(b"Resources").expect("group resources")).get(b"XObject").map(|x| dict(&out, x)).expect("xobjects");
-        let s = form.get(b"S").expect("source form");
-        let sd = dict(&out, s);
-        let (frame, _) = frame_of_page(source, 0).expect("frame");
-        assert_eq!(nums(&out, sd.get(b"BBox").expect("form bbox")), frame.visible.to_vec());
-        assert_eq!(nums(&out, sd.get(b"Matrix").expect("form matrix")), vec![1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
-        assert_eq!(data(&out, s), synth::page_content(source, 0));
+        transfer.push(assert_layer_state(&out, &states, name, source, matrix, &p));
     }
     assert_eq!(transfer[0], transfer[1], "both documents share one transfer function");
     let f = dict(&out, &Object::Ref(transfer[0]));

@@ -649,51 +649,41 @@ fn fmt3(v: [f64; 3]) -> String {
     format!("{:.1}, {:.1}, {:.1}", v[0], v[1], v[2])
 }
 
-fn main() -> ExitCode {
-    let args = match args() {
-        Ok(a) => a,
-        Err(e) => {
-            eprintln!("{e}");
-            return ExitCode::from(2);
-        }
-    };
-    if let Err(e) = sha256_self_test() {
-        eprintln!("{e}");
-        return ExitCode::from(1);
-    }
-    let started = Instant::now();
-    let out = args.out.clone();
-    let tmp = out.join("tmp");
-    std::fs::create_dir_all(&tmp).expect("output directory");
+/// One row per criterion: (criterion, verdict, measured).
+type Summary = Vec<(&'static str, String, String)>;
+/// Patch checks by criterion: checks, failures, the worst error and where it was.
+type Crit = BTreeMap<String, (usize, usize, f64, String)>;
+/// A line condition: renderer, dpi, pair, angle and width in hundredths of a millimetre.
+type Key = (&'static str, u32, &'static str, i64, i64);
+/// One render, for the timing table: case, renderer, dpi, ms, width and height in pixels.
+type Timing = (String, Renderer, f64, u128, usize, usize);
 
-    // Generate twice: the suite must be byte-identical (criterion 13).
-    let mut sets = families::all();
-    let again = families::all();
-    let mut determinism = Vec::new();
-    for (s, t) in sets.iter().zip(&again) {
-        determinism.push((s.name, s.a == t.a && s.b == t.b && s.overlay == t.overlay));
-    }
-    drop(again);
-    if let Some(only) = &args.only {
-        sets.retain(|s| only.iter().any(|o| o == s.name));
-    }
-    for s in &sets {
-        write(&out.join(format!("sources/{}-A.pdf", s.name)), &s.a);
-        write(&out.join(format!("sources/{}-B.pdf", s.name)), &s.b);
-        write(&out.join(format!("overlays/{}.pdf", s.name)), &s.overlay);
-    }
-    let show = showcase(&sets);
-    write(&out.join("showcase.pdf"), &show);
+fn verdict(ok: bool) -> String {
+    if ok { "pass".to_string() } else { "FAIL".to_string() }
+}
 
-    let versions: Vec<(String, String)> = vec![
-        ("pdftoppm".into(), run(Command::new("pdftoppm").arg("-v")).unwrap_or_else(|e| e).lines().next().unwrap_or_default().to_string()),
-        ("pdfium".into(), run(Command::new("python3").args(["-m", "pypdfium2_cli", "--version"])).unwrap_or_else(|e| e).trim().replace('\n', "; ")),
-        (
-            "pdfcraft".into(),
-            run(Command::new("git").args(["describe", "--always", "--dirty", "--abbrev=7"])).unwrap_or_else(|e| e).trim().to_string(),
-        ),
-    ];
+/// A criterion this run measured nothing for (a partial run with --only) is "not run", not a failure.
+fn judged(measured: bool, ok: bool) -> String {
+    if measured { verdict(ok) } else { "not run".to_string() }
+}
 
+fn crit_row(crit: &Crit, k: &str) -> (usize, usize, f64, String) {
+    crit.get(k).cloned().unwrap_or((0, 0, 0.0, String::new()))
+}
+
+/// Everything measured on the renders.
+struct Measured {
+    patches: Vec<PatchRow>,
+    controls: Vec<PatchRow>,
+    no_control: Vec<String>,
+    targets: Vec<TargetRow>,
+    lines: Vec<LineRow>,
+    render_notes: Vec<String>,
+    timings: Vec<Timing>,
+}
+
+/// Render every case of every set with every renderer, and measure the renders.
+fn render_suite(args: &Args, sets: &[Set], out: &Path, tmp: &Path) -> Measured {
     let mut patches = Vec::new();
     let mut controls: Vec<PatchRow> = Vec::new();
     let mut no_control: Vec<String> = Vec::new();
@@ -701,13 +691,13 @@ fn main() -> ExitCode {
     let mut lines = Vec::new();
     let mut render_notes = Vec::new();
     let mut timings = Vec::new();
-    for set in &sets {
+    for set in sets {
         let path = out.join(format!("overlays/{}.pdf", set.name));
         for case in &set.cases {
             for &dpi in &case.dpis {
                 let mut kept: Vec<(Renderer, Image)> = Vec::new();
                 for &renderer in &args.renderers {
-                    let r = match render(renderer, &set.overlay, &path, case.page, dpi, case, &tmp) {
+                    let r = match render(renderer, &set.overlay, &path, case.page, dpi, case, tmp) {
                         Ok(r) => r,
                         Err(e) => {
                             render_notes.push(format!("{} p{} {} at {dpi} dpi: render failed: {e}", set.name, case.page + 1, renderer.name()));
@@ -739,7 +729,7 @@ fn main() -> ExitCode {
                     timings.push((case.id.clone(), renderer, dpi, r.millis, r.img.width, r.img.height));
                     measure_patches(set.name, case, &r, renderer, &mut patches);
                     if !case.patches.is_empty() {
-                        match evaluate::control(set, case, renderer, &r, &out, &tmp) {
+                        match evaluate::control(set, case, renderer, &r, out, tmp) {
                             Some(c) => measure_patches(set.name, case, &c, renderer, &mut controls),
                             None => no_control.push(format!("{} ({} at {dpi} dpi)", case.id, renderer.name())),
                         }
@@ -760,27 +750,14 @@ fn main() -> ExitCode {
             }
         }
     }
+    Measured { patches, controls, no_control, targets, lines, render_notes, timings }
+}
 
-    // ── Results ──
-    let mut head = String::new();
-    let _ = writeln!(head, "# Step 3 compositing proof: results\n");
-    let _ = writeln!(head, "Generated by `cargo run -p pdfcraft-overlay --example ov3_proof` in {:.0} s.\n", started.elapsed().as_secs_f64());
-    for (k, v) in &versions {
-        let _ = writeln!(head, "- {k}: {v}");
-    }
-    let renderer_names: Vec<&str> = args.renderers.iter().map(|r| r.name()).collect();
-    let _ = writeln!(head, "- renderers: {}", renderer_names.join(", "));
-    let _ = writeln!(head);
-    // One row per criterion: (criterion, verdict, measured).
-    let mut summary: Vec<(&str, String, String)> = Vec::new();
-    let verdict = |ok: bool| if ok { "pass".to_string() } else { "FAIL".to_string() };
-    // A criterion this run measured nothing for (a partial run with --only) is "not run", not a failure.
-    let judged = |measured: bool, ok: bool| if measured { verdict(ok) } else { "not run".to_string() };
-    let mut md = String::new();
-
+/// Criteria 1, 2 and 6, and the report-only patches.
+fn report_patches(md: &mut String, summary: &mut Summary, patches: &[PatchRow], args: &Args, renderer_names: &[&str]) -> Crit {
     // Criterion table.
     let mut crit: BTreeMap<String, (usize, usize, f64, String)> = BTreeMap::new();
-    for p in &patches {
+    for p in patches {
         if let Some(ok) = p.pass {
             let key = p.criterion.split_whitespace().next().unwrap_or("").to_string();
             let e = crit.entry(key).or_insert((0, 0, 0.0, String::new()));
@@ -798,7 +775,7 @@ fn main() -> ExitCode {
     for (k, (n, f, w, where_)) in &crit {
         let _ = writeln!(md, "| {k} | {n} | {f} | {w:.2} | {where_} |");
     }
-    let crit_row = |k: &str| crit.get(k).cloned().unwrap_or((0, 0, 0.0, String::new()));
+    let crit_row = |k: &str| crit_row(&crit, k);
 
     // Light tones (criterion 6): agreement between renderers too.
     let _ = writeln!(
@@ -861,7 +838,11 @@ fn main() -> ExitCode {
             .fold(0.0, f64::max);
         let _ = writeln!(md, "| {case} | {patch} | {dpi} | {} | {spread:.1} |", cells.join(" | "));
     }
+    crit
+}
 
+/// Criterion 8.
+fn report_geometry(md: &mut String, summary: &mut Summary, targets: &[TargetRow], sets: &[Set]) {
     // Geometry (criterion 8).
     let tol_pt = 0.5 * 72.0 / 300.0;
     let on: Vec<&TargetRow> = targets.iter().filter(|t| t.on_page).collect();
@@ -935,15 +916,23 @@ fn main() -> ExitCode {
     for ((case, r, dpi), (e, d)) in &per_case {
         let _ = writeln!(md, "| {case} | {r} | {dpi} | {e:.4} | {d:.4} |");
     }
+}
 
+/// The line study's worst conditions, for the zoomed side by sides.
+struct LineStudy {
+    worst_d: Vec<(f64, Key)>,
+    non_monotonic: Vec<String>,
+}
+
+/// Criteria 3 to 5.
+fn report_lines(md: &mut String, summary: &mut Summary, lines: &[LineRow], args: &Args, out: &Path) -> LineStudy {
     // Lines: criteria 3, 4 and the displacement table (5).
     let mut vis_fail = Vec::new();
     let mut zero_hits = (0usize, 0usize, 0usize);
     let mut zero_old = 0usize;
-    type Key = (&'static str, u32, &'static str, i64, i64);
     let key = |l: &LineRow| -> Key { (l.renderer.name(), l.dpi as u32, l.pair, l.orientation as i64, (l.width_mm * 100.0).round() as i64) };
     let mut groups: BTreeMap<Key, Vec<&LineRow>> = BTreeMap::new();
-    for l in &lines {
+    for l in lines {
         groups.entry(key(l)).or_default().push(l);
     }
     let mut non_monotonic: Vec<String> = Vec::new();
@@ -1048,7 +1037,12 @@ fn main() -> ExitCode {
         format!("reported for {} of {expected_conditions} conditions; {} non-monotonic under D1 (listed)", groups.len(), non_monotonic.len()),
     ));
     let _ = writeln!(md, "\n### Minimum distinguishable displacement (criterion 5)\n\n{md_table}");
+    LineStudy { worst_d, non_monotonic }
+}
 
+/// Zoomed side by sides of the line study's worst conditions.
+fn report_zooms(md: &mut String, study: &LineStudy, args: &Args, sets: &[Set], out: &Path, tmp: &Path, renderer_names: &[&str]) {
+    let LineStudy { worst_d, non_monotonic } = study;
     // Zoomed side by sides of the worst conditions: the largest minimum overall, the largest for
     // each renderer and dpi, and every non-monotonic condition.
     let overall = worst_d.iter().map(|(v, _)| *v).fold(0.0, f64::max);
@@ -1062,7 +1056,7 @@ fn main() -> ExitCode {
             }
         }
     }
-    for n in &non_monotonic {
+    for n in non_monotonic {
         if let Some((_, k)) =
             worst_d.iter().find(|(_, k)| n.starts_with(&format!("{} {} dpi, {}, {}°, {:.2} mm", k.0, k.1, k.2, k.3, k.4 as f64 / 100.0)))
         {
@@ -1085,7 +1079,7 @@ fn main() -> ExitCode {
             let renders: Vec<(Renderer, Render)> = args
                 .renderers
                 .iter()
-                .filter_map(|r| render(*r, &set.overlay, &path, case.page, f64::from(*dpi), case, &tmp).ok().map(|x| (*r, x)))
+                .filter_map(|r| render(*r, &set.overlay, &path, case.page, f64::from(*dpi), case, tmp).ok().map(|x| (*r, x)))
                 .collect();
             let width_mm = *w as f64 / 100.0;
             if let Some(img) = zoom_mosaic(case, width_mm, &renders) {
@@ -1104,11 +1098,14 @@ fn main() -> ExitCode {
     for z in &zoom_list {
         let _ = writeln!(md, "- {z}");
     }
+}
 
+/// Facts checked without rendering: criteria 7 and 9 to 15.
+fn report_checks(md: &mut String, summary: &mut Summary, sets: &[Set], out: &Path, determinism: &[(&str, bool)], crit: &Crit) {
     // Facts checked without rendering.
     let _ = writeln!(md, "\n## Checks on the files\n");
     let mut checks_fail = 0;
-    for set in &sets {
+    for set in sets {
         for case in &set.cases {
             for (what, ok, detail) in &case.checks {
                 if !ok {
@@ -1122,7 +1119,7 @@ fn main() -> ExitCode {
     let _ = writeln!(md, "- {n_checks} checks (page box and unit equal the placement's, criterion 9a), {checks_fail} failed.");
     let mut tr_ok = true;
     let mut tr_md = String::new();
-    for set in &sets {
+    for set in sets {
         let (ok, text) = transfer_check(set);
         tr_ok &= ok;
         let _ = writeln!(tr_md, "  {text}");
@@ -1130,7 +1127,7 @@ fn main() -> ExitCode {
     let _ = writeln!(md, "- Transfer function (criterion 7): {}.\n{tr_md}", if tr_ok { "pass" } else { "FAIL" });
     let mut vec_md = String::from("# Vector check (criterion 10)\n\n");
     let mut vec_ok = true;
-    for set in &sets {
+    for set in sets {
         let (ok, text) = vector_check(set);
         vec_ok &= ok;
         vec_md.push_str(&text);
@@ -1139,8 +1136,8 @@ fn main() -> ExitCode {
     let _ = writeln!(md, "- Vector check (criterion 10): {}. See vector-check.md.", if vec_ok { "pass" } else { "FAIL" });
     let mut src_ok = true;
     let mut src_md = String::new();
-    for set in &sets {
-        let (ok, text) = sources_unchanged(set, &out);
+    for set in sets {
+        let (ok, text) = sources_unchanged(set, out);
         src_ok &= ok;
         let _ = writeln!(src_md, "{text}");
     }
@@ -1153,7 +1150,7 @@ fn main() -> ExitCode {
         "one Type 2 function per page with C1 = 1 − 1/t exactly, read back from every overlay file; the preview is PdfCraft's render of the same file".into(),
     ));
     {
-        let (n, f, w, where_) = crit_row("9b");
+        let (n, f, w, where_) = crit_row(crit, "9b");
         summary.push((
             "9a Expansion and clipping",
             judged(n_checks > 0, checks_fail == 0),
@@ -1175,7 +1172,11 @@ fn main() -> ExitCode {
     summary.push(("13 Reproducible", verdict(det_ok), "two generations byte-identical; seeds and versions in run.md".into()));
     summary.push(("14 No regressions", "see cargo test".into(), "not measured by this run: the OV2 tests and API".into()));
     summary.push(("15 Gates", "see the gate log".into(), "not measured by this run".into()));
+}
 
+/// The compositing control (diagnostic).
+fn report_control(md: &mut String, summary: &mut Summary, measured: &Measured, args: &Args) {
+    let Measured { patches, controls, no_control, .. } = measured;
     // The compositing control: the overlay against the model applied to each renderer's own
     // render of the sources.
     let _ = writeln!(md, "\n## Compositing control (diagnostic, not a criterion)\n");
@@ -1209,14 +1210,21 @@ fn main() -> ExitCode {
     if !no_control.is_empty() {
         let _ = writeln!(md, "\nNo control (placement not the identity, unit not 1, or renders not aligned): {}.", no_control.join(", "));
     }
+}
 
+/// Render notes and renderer incompatibilities.
+fn report_notes_and_incompatibilities(md: &mut String, measured: &Measured, out: &Path) {
+    let Measured { patches, controls, render_notes, .. } = measured;
     // Renders that hit a limit or a /UserUnit question.
     let _ = writeln!(md, "\n## Render notes\n");
-    for n in &render_notes {
+    for n in render_notes {
         let _ = writeln!(md, "- {n}");
     }
 
     // Incompatibilities: patch cases where renderers disagree beyond the tolerance.
+    let ctl_key = |p: &PatchRow| (p.case.clone(), p.patch.clone(), p.renderer, p.dpi as u32);
+    let ctl: BTreeMap<_, &PatchRow> = controls.iter().map(|c| (ctl_key(c), c)).collect();
+    let diff = |p: &PatchRow| ctl.get(&ctl_key(p)).map(|c| (0..3).map(|i| (p.value[i] - c.value[i]).abs()).fold(0.0, f64::max));
     let mut inc = String::from(
         "# Renderer incompatibilities\n\nPatches where at least one renderer misses the expected value. \"All fail\" means no renderer meets it. The control column is each renderer's own render of the sources put through the model (see results.md, Compositing control): when the overlay matches its control but not the expected value, the renderer draws the source differently from the expected value, before any compositing.\n\n| Case | Patch | dpi | Expected | Values | Errors, levels | Control | Overlay − control, levels |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n",
     );
@@ -1252,11 +1260,15 @@ fn main() -> ExitCode {
     }
     write(&out.join("incompatibilities.md"), inc.as_bytes());
     let _ = writeln!(md, "\nPatch cases with a failure: {n_inc}. See incompatibilities.md.");
+}
 
+/// The per-probe CSVs and the case map.
+fn write_csvs(out: &Path, measured: &Measured, sets: &[Set]) {
+    let Measured { patches, targets, lines, .. } = measured;
     // CSVs.
     let mut csv =
         String::from("set,case,patch,criterion,renderer,dpi,r,g,b,expected_r,expected_g,expected_b,mask,expected_mask,tolerance,error,pass\n");
-    for p in &patches {
+    for p in patches {
         let e = p.expected.unwrap_or([f64::NAN; 3]);
         let (m, me) = p.mask.unwrap_or((f64::NAN, f64::NAN));
         let _ = writeln!(
@@ -1283,7 +1295,7 @@ fn main() -> ExitCode {
     }
     write(&out.join("patches.csv"), csv.as_bytes());
     let mut tcsv = String::from("set,case,target,side,renderer,dpi,expected_x,expected_y,measured_x,measured_y,error_pt,on_page\n");
-    for t in &targets {
+    for t in targets {
         let m = t.measured.unwrap_or((f64::NAN, f64::NAN));
         let _ = writeln!(
             tcsv,
@@ -1306,7 +1318,7 @@ fn main() -> ExitCode {
     let mut lcsv = String::from(
         "renderer,dpi,pair,orientation_deg,width_mm,kind,offset,d1_a,d1_b,d1_shared,d1_paper,d1_near,d1_under,d1_unexplained,nearest_a,nearest_b,nearest_shared,nearest_paper\n",
     );
-    for l in &lines {
+    for l in lines {
         let _ = writeln!(
             lcsv,
             "{},{},{},{},{},{:?},{},{},{},{},{},{},{},{},{},{},{},{}",
@@ -1331,13 +1343,16 @@ fn main() -> ExitCode {
         );
     }
     write(&out.join("lines.csv"), lcsv.as_bytes());
-    let (map_csv, map_md) = case_map(&sets);
+    let (map_csv, map_md) = case_map(sets);
     write(&out.join("cases.csv"), map_csv.as_bytes());
     write(&out.join("cases.md"), map_md.as_bytes());
+}
 
+/// The run record: versions, seeds, commands, memory and timings.
+fn write_run_record(out: &Path, versions: &[(String, String)], timings: &[Timing]) {
     // Run record.
     let mut run_md = String::from("# Run record\n\n");
-    for (k, v) in &versions {
+    for (k, v) in versions {
         let _ = writeln!(run_md, "- {k}: {v}");
     }
     let _ = writeln!(run_md, "- seeds: SplitMix64 0x5CA0_0003 (scan image); the rest of the suite is fixed geometry");
@@ -1351,12 +1366,84 @@ fn main() -> ExitCode {
         let _ = writeln!(run_md, "- peak memory of this process (PdfCraft renders in process): {}", l.trim_start_matches("VmHWM:").trim());
     }
     let _ = writeln!(run_md, "\n| Case | Renderer | dpi | Time, ms | Pixels |\n| --- | --- | --- | --- | --- |");
-    for (case, r, dpi, ms, w, h) in &timings {
+    for (case, r, dpi, ms, w, h) in timings {
         if case.contains("arch") || case.contains("lines") {
             let _ = writeln!(run_md, "| {case} | {} | {dpi} | {ms} | {w} × {h} |", r.name());
         }
     }
     write(&out.join("run.md"), run_md.as_bytes());
+}
+
+fn main() -> ExitCode {
+    let args = match args() {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::from(2);
+        }
+    };
+    if let Err(e) = sha256_self_test() {
+        eprintln!("{e}");
+        return ExitCode::from(1);
+    }
+    let started = Instant::now();
+    let out = args.out.clone();
+    let tmp = out.join("tmp");
+    std::fs::create_dir_all(&tmp).expect("output directory");
+
+    // Generate twice: the suite must be byte-identical (criterion 13).
+    let mut sets = families::all();
+    let again = families::all();
+    let mut determinism = Vec::new();
+    for (s, t) in sets.iter().zip(&again) {
+        determinism.push((s.name, s.a == t.a && s.b == t.b && s.overlay == t.overlay));
+    }
+    drop(again);
+    if let Some(only) = &args.only {
+        sets.retain(|s| only.iter().any(|o| o == s.name));
+    }
+    for s in &sets {
+        write(&out.join(format!("sources/{}-A.pdf", s.name)), &s.a);
+        write(&out.join(format!("sources/{}-B.pdf", s.name)), &s.b);
+        write(&out.join(format!("overlays/{}.pdf", s.name)), &s.overlay);
+    }
+    let show = showcase(&sets);
+    write(&out.join("showcase.pdf"), &show);
+
+    let versions: Vec<(String, String)> = vec![
+        ("pdftoppm".into(), run(Command::new("pdftoppm").arg("-v")).unwrap_or_else(|e| e).lines().next().unwrap_or_default().to_string()),
+        ("pdfium".into(), run(Command::new("python3").args(["-m", "pypdfium2_cli", "--version"])).unwrap_or_else(|e| e).trim().replace('\n', "; ")),
+        (
+            "pdfcraft".into(),
+            run(Command::new("git").args(["describe", "--always", "--dirty", "--abbrev=7"])).unwrap_or_else(|e| e).trim().to_string(),
+        ),
+    ];
+
+    let measured = render_suite(&args, &sets, &out, &tmp);
+
+    // ── Results ──
+    let mut head = String::new();
+    let _ = writeln!(head, "# Step 3 compositing proof: results\n");
+    let _ = writeln!(head, "Generated by `cargo run -p pdfcraft-overlay --example ov3_proof` in {:.0} s.\n", started.elapsed().as_secs_f64());
+    for (k, v) in &versions {
+        let _ = writeln!(head, "- {k}: {v}");
+    }
+    let renderer_names: Vec<&str> = args.renderers.iter().map(|r| r.name()).collect();
+    let _ = writeln!(head, "- renderers: {}", renderer_names.join(", "));
+    let _ = writeln!(head);
+    // One row per criterion: (criterion, verdict, measured).
+    let mut summary: Summary = Vec::new();
+    let mut md = String::new();
+
+    let crit = report_patches(&mut md, &mut summary, &measured.patches, &args, &renderer_names);
+    report_geometry(&mut md, &mut summary, &measured.targets, &sets);
+    let study = report_lines(&mut md, &mut summary, &measured.lines, &args, &out);
+    report_zooms(&mut md, &study, &args, &sets, &out, &tmp, &renderer_names);
+    report_checks(&mut md, &mut summary, &sets, &out, &determinism, &crit);
+    report_control(&mut md, &mut summary, &measured, &args);
+    report_notes_and_incompatibilities(&mut md, &measured, &out);
+    write_csvs(&out, &measured, &sets);
+    write_run_record(&out, &versions, &measured.timings);
     // Criteria 2 and 6 keep their original verdicts and measurements. Where they fail, the row says
     // that the failure is an accepted, documented renderer-dependent exception (12 Oct), not a pass.
     for (c, v, _) in &mut summary {
