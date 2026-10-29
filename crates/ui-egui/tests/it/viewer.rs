@@ -1366,8 +1366,8 @@ fn up_and_down_turn_pages_in_single_page_view() {
 }
 
 #[test]
-fn v_h_and_space_pick_the_quick_tools() {
-    // The toolbar's tooltips promise "Select (V)" and "Hand (H)", but the keys did nothing.
+fn v_p_and_space_pick_the_quick_tools() {
+    // The toolbar's tooltips promise "Select (V)" and "Hand (P)" (this fork, KEY.1: H is Highlight).
     use egui::{Key, Modifiers};
     use pdfcraft_ui_egui::QuickTool;
     let mut h = harness();
@@ -1378,7 +1378,7 @@ fn v_h_and_space_pick_the_quick_tools() {
         h.run_steps(2);
         h.state().quick_tool
     };
-    assert_eq!(press(&mut h, Key::H), QuickTool::Hand);
+    assert_eq!(press(&mut h, Key::P), QuickTool::Hand);
     assert_eq!(press(&mut h, Key::V), QuickTool::Select);
     // V leaves any other tool too, as the toolbar button does.
     h.state_mut().quick_tool = QuickTool::Crop;
@@ -1392,7 +1392,7 @@ fn v_h_and_space_pick_the_quick_tools() {
     h.run_steps(2);
     assert_eq!(h.state().quick_tool, QuickTool::Crop, "Space released");
     // With a modifier the letters are someone else's shortcut.
-    h.key_press_modifiers(Modifiers::SHIFT, Key::H);
+    h.key_press_modifiers(Modifiers::SHIFT, Key::P);
     h.run_steps(2);
     assert_eq!(h.state().quick_tool, QuickTool::Crop);
     // They are letters to a text field: typing in the find bar keeps the tool.

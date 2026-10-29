@@ -8,7 +8,8 @@
 //!    command palette, the Combine preview, or the Overlay wizard window under the pointer.
 //!    A text field that belongs to a step below is that step: Escape in the find field closes
 //!    the find bar, and in a pending calibration's known-distance field cancels the calibration.
-//! 2. A guide being pulled out of a ruler or moved (it goes back), else the selected guide.
+//! 2. The first key of a tool-key pair waiting for its second (KEY.1). Else a guide being pulled
+//!    out of a ruler or moved (it goes back), else the selected guide.
 //!    With a measuring tool: the points of a measurement in progress, else a calibration waiting
 //!    for its known distance (fields back as they were), else the selected measurement or comment.
 //! 3. The view's own state: a camera snapshot, else the text selection, else the find bar.
@@ -51,6 +52,11 @@ impl PdfCraftApp {
         let wizard = ctx.pointer_hover_pos().and_then(|p| ctx.layer_id_at(p)).is_some_and(|l| l.id == crate::overlay_ui::wizard_id());
         if self.palette_shown() || egui::Popup::is_any_open(ctx) || self.combine_tab.preview.is_some() || wizard {
             self.escape_reserved = true;
+            return;
+        }
+        // A tool-key pair half typed (D, R) is dropped, and that is all this press does (KEY.1).
+        if self.pending_keys.take().is_some() {
+            take(ctx);
             return;
         }
         let Some(i) = active else { return };

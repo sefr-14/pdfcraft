@@ -58,6 +58,7 @@ impl PdfCraftApp {
             right_panel_closed: false,
             quick_tool: QuickTool::Select,
             space_hand: None,
+            pending_keys: None,
             full_screen_tool: None,
             comment_prefs: Default::default(),
             theme: ThemeKind::Light,
@@ -624,6 +625,7 @@ impl eframe::App for PdfCraftApp {
             // Notices too: a refused field value or a failed save must be seen in full screen.
             self.show_progress(&ctx);
             widgets::toast(self, &ctx);
+            self.show_pending_keys(&ctx);
             self.escape_late(&ctx);
             self.finish_render_frame(&ctx);
             if let Some(mut control) = self.control.take() {
@@ -665,6 +667,7 @@ impl eframe::App for PdfCraftApp {
         overlay_ui::show(self, &ctx);
         self.show_progress(&ctx);
         widgets::toast(self, &ctx);
+        self.show_pending_keys(&ctx);
         self.escape_late(&ctx);
         self.finish_render_frame(&ctx);
         // Screenshots are issued only after a settled pass that really drew the window.

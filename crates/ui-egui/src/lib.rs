@@ -38,6 +38,7 @@ mod guides;
 mod rulers;
 // This fork: Tab View and Tile View (OV7.2).
 mod tile_view;
+mod tool_keys;
 pub use combine_grid::ThumbState as CombineThumb;
 pub use combine_ui::{Columns as CombineColumns, CombineView, Lock as CombineLock, SortKey};
 mod commands;
@@ -96,6 +97,9 @@ mod rulers_tests;
 #[cfg(test)]
 #[cfg(not(target_arch = "wasm32"))]
 mod logic_pass_tests;
+#[cfg(test)]
+#[cfg(not(target_arch = "wasm32"))]
+mod tool_keys_tests;
 
 mod app;
 mod hooks;
@@ -311,6 +315,8 @@ pub struct PdfCraftApp {
     pub quick_tool: QuickTool,
     /// The tool to go back to when Space, held for a temporary Hand, is released.
     space_hand: Option<QuickTool>,
+    /// The first key of a tool-key pair, waiting for the second (this fork, KEY.1).
+    pending_keys: Option<tool_keys::Pending>,
     /// The tool before full screen, given back on leaving it (see [`Self::apply_full_screen`]).
     full_screen_tool: Option<QuickTool>,
     /// Comment author, per-tool colours and widths, pin.

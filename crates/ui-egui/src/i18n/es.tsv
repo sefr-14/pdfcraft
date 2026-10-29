@@ -2954,3 +2954,7 @@ theme	Appearance	Aspecto
 	Rotate the selected pages clockwise	Girar las páginas seleccionadas en sentido horario
 	Extract the selected pages…	Extraer las páginas seleccionadas…
 	Delete the selected pages	Eliminar las páginas seleccionadas
+# This fork (sefr-14/pdfcraft): tool keys H, P and the pairs D I, D L, R C (KEY.1).
+	Hand (P)	Mano (P)
+	P / Space (hold)	P / Espacio (mantener)
+	{a}, then {b}	{a}, luego {b}
