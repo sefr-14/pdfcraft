@@ -234,10 +234,10 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("view.tab_view", "Tab view", VIEW, None, Document, "app-window"),
     c("view.tile_view", "Tile view", VIEW, None, Document, "columns-3"),
     // This fork (OV9): every document's strokes one device pixel wide, as Revit's Thin Lines (View ▸ Page display).
-    c("view.thin_lines", "Thin lines", None, None, Nothing, "minus"),
+    c("view.thin_lines", "Thin lines", VIEW, None, Nothing, "minus"),
     // This fork (OV11): rulers and guides, per PDF, in PdfCraft's settings (View ▸ Page display).
-    c("view.rulers", "Rulers", None, Some(Shortcut::cmd("R")), Document, "ruler"),
-    c("view.guides", "Guides", None, None, Document, "hash"),
+    c("view.rulers", "Rulers", VIEW, Some(Shortcut::cmd("R")), Document, "ruler"),
+    c("view.guides", "Guides", VIEW, None, Document, "hash"),
     c("view.clear_guides_page", "Clear Guides on Page", None, None, Document, "eraser"),
     c("view.clear_guides", "Clear All Guides", None, None, Document, "trash-2"),
     // View-local history also appears in the Page navigation section; don't duplicate its menu.
@@ -301,7 +301,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("actions.optimize_scans", "Optimize scanned documents…", None, None, Nothing, "scan-text"),
     c("doc.compare", "Compare files…", None, None, Document, "git-compare"),
     // This fork: overlay two revisions in two colours (crates/overlay, the wizard in ui-egui).
-    c("doc.overlay", "Overlay compare…", None, None, Document, "blend"),
+    c("doc.overlay", "Overlay compare…", FILE, None, Document, "blend"),
     c("form.detect", "Detect form fields", None, None, Modification, "scan"),
     c("form.merge_data", "Merge data files into spreadsheet…", None, None, Nothing, "file-spreadsheet"),
     c("form.flatten", "Flatten form fields", None, None, HasFields, "layers"),

@@ -22,7 +22,7 @@ use crate::{PdfCraftApp, RightPanel};
 pub(super) mod tab_context;
 
 /// The app's name in the menus the layouts write (About, Hide, Quit).
-pub(crate) const APP_NAME: &str = "PdfCraft";
+pub(crate) const APP_NAME: &str = "PDF Overlay";
 
 /// The top bar's width after the menus: the mode tabs, the search box and the buttons.
 const ROW_AFTER_MENUS: f32 = 720.0;
@@ -114,6 +114,8 @@ const FILE: &[&str] = &[
     "file.pin_folder",
     SEP,
     "page.combine",
+    // This fork: Overlay compare, beside Combine (D6).
+    "doc.overlay",
     SEP,
     "file.save",
     "file.save_as",
@@ -167,6 +169,11 @@ const DISPLAY: &[&str] = &[
     SEP,
     "view.fit_width_scrolling",
     "view.fit_one_page",
+    // This fork: Thin lines (OV9), and the document's rulers and guides (OV11).
+    SEP,
+    "view.thin_lines",
+    "view.rulers",
+    "view.guides",
 ];
 const THEMES: &[&str] = &["view.theme.system", "view.theme.light", "view.theme.dark"];
 const PANES: &[&str] = &["view.side_panel", "view.tools_pane"];
@@ -221,7 +228,8 @@ const SIGN: &[&str] = &[
     "sign.validate",
     "sign.panel",
 ];
-const WINDOW: &[&str] = &["view.next_tab", "view.previous_tab"];
+// This fork: Duplicate tab (OV7), and Tab view or Tile view (OV7.2), beside the tab keys.
+const WINDOW: &[&str] = &["view.next_tab", "view.previous_tab", SEP, "view.duplicate_tab", SEP, "view.tab_view", "view.tile_view"];
 // This fork (LIC.1): its own issue tracker and a factual link to upstream, nothing of ArtCraft's.
 const HELP: &[&str] = &["help.shortcuts", SEP, "help.report_issue", "help.github", SEP, "help.check_updates", SEP, "help.about"];
 
@@ -283,8 +291,8 @@ impl PdfCraftApp {
         let file = {
             let mut nodes = Vec::new();
             for node in list(FILE, &mut used) {
-                // Open Recent is the live recent list; Create, Export and Protect follow Combine,
-                // Optimize and Close.
+                // Open Recent is the live recent list; Create, Export and Protect follow Combine
+                // (and this fork's Overlay compare beside it), Optimize and Close.
                 let recent = matches!(&node, Node::Item(it) if it.command.id == "file.open_recent");
                 if recent {
                     nodes.push(self.recent_menu());
@@ -296,7 +304,7 @@ impl PdfCraftApp {
                 };
                 nodes.push(node);
                 match after.as_str() {
-                    "page.combine" => nodes.push(Node::submenu(tl!("Create"), list(CREATE, &mut used))),
+                    "doc.overlay" => nodes.push(Node::submenu(tl!("Create"), list(CREATE, &mut used))),
                     "optimize.advanced" => {
                         nodes.push(Node::submenu(tl!("Export"), list(EXPORT, &mut used)));
                         nodes.push(Node::Separator);
@@ -326,7 +334,7 @@ impl PdfCraftApp {
                 .collect(),
         )];
         sign.extend(list(SIGN, &mut used));
-        let window = list(WINDOW, &mut used);
+        let window = craft_menu::tidy(list(WINDOW, &mut used));
         let help = list(HELP, &mut used);
         let mut view = vec![
             Node::submenu(tl!("Zoom"), list(ZOOM, &mut used)),
@@ -387,7 +395,7 @@ impl PdfCraftApp {
         if let Some(c) = shortcut.and_then(chord) {
             item = item.shortcut(c);
         }
-        if matches!(id, "view.layout.single" | "view.layout.two_up") || THEMES.contains(&id) {
+        if matches!(id, "view.layout.single" | "view.layout.two_up" | "view.tab_view" | "view.tile_view") || THEMES.contains(&id) {
             item = item.radio(false);
         }
         item.into()
@@ -496,6 +504,12 @@ impl PdfCraftApp {
             "view.theme.light" => Some(self.theme_preference == ThemePreference::Light),
             "view.theme.dark" => Some(self.theme_preference == ThemePreference::Dark),
             PANEL => Some(panel(command).is_some_and(|p| self.right == Some(p))),
+            // This fork: Thin lines is app-wide (OV9); rulers and guides are the active PDF's (OV11).
+            "view.thin_lines" => Some(self.thin_lines),
+            "view.rulers" => Some(view.and_then(|v| self.doc_prefs.state(v.id)).is_some_and(|s| s.prefs.rulers)),
+            "view.guides" => Some(view.and_then(|v| self.doc_prefs.state(v.id)).is_some_and(|s| s.prefs.guides_shown)),
+            "view.tab_view" => Some(self.layout_mode == crate::ViewLayout::Tabs),
+            "view.tile_view" => Some(self.layout_mode == crate::ViewLayout::Tiles),
             _ => None,
         };
         ItemState { enabled, checked }
@@ -683,6 +697,74 @@ mod tests {
                 "{id} runs something"
             );
         }
+    }
+
+    /// The ids of a menu's items, submenus searched too, in order.
+    fn ids(nodes: &[Node]) -> Vec<String> {
+        let mut out = Vec::new();
+        for n in nodes {
+            match n {
+                Node::Item(it) => out.push(it.command.id.clone()),
+                Node::Submenu { children, .. } => out.extend(ids(children)),
+                Node::Separator | Node::Standard { .. } => {}
+            }
+        }
+        out
+    }
+
+    /// This fork (SYNC.13, D6): Overlay compare beside Combine in File; Duplicate tab, Tab view
+    /// and Tile view in Window; Thin lines, Rulers and Guides in View ▸ Page display, checked as
+    /// the app is; Help with the fork's own destinations and nothing of ArtCraft's.
+    #[test]
+    fn the_forks_commands_have_their_places_and_states() {
+        let (mut app, ctx) = app(&["a.pdf"]);
+        let bar = linux(&app, &ctx);
+        let menu = |role: MenuRole| ids(&bar.menu(role).unwrap_or_else(|| panic!("{role:?} menu")).children);
+        let file = menu(MenuRole::File);
+        let combine = file.iter().position(|id| id == "page.combine").expect("Combine in File");
+        assert_eq!(file.get(combine + 1).map(String::as_str), Some("doc.overlay"), "Overlay compare follows Combine: {file:?}");
+        let window = menu(MenuRole::Window);
+        for id in ["view.duplicate_tab", "view.tab_view", "view.tile_view"] {
+            assert!(window.iter().any(|w| w == id), "{id} in Window: {window:?}");
+        }
+        let display = bar
+            .menu(MenuRole::View)
+            .and_then(|v| {
+                v.children.iter().find_map(|n| match n {
+                    Node::Submenu { label, children, .. } if label == "Page display" => Some(ids(children)),
+                    _ => None,
+                })
+            })
+            .expect("View ▸ Page display");
+        for id in ["view.thin_lines", "view.rulers", "view.guides"] {
+            assert!(display.iter().any(|d| d == id), "{id} in View ▸ Page display: {display:?}");
+        }
+        let help = menu(MenuRole::Help);
+        for id in ["help.report_issue", "help.github", "help.check_updates", "help.about"] {
+            assert!(help.iter().any(|h| h == id), "{id} in Help: {help:?}");
+        }
+        for gone in ["help.discord", "help.website", "help.app_page"] {
+            assert!(bar.find(&CommandRef::new(gone)).is_none(), "{gone} is not in the menus");
+        }
+        assert_eq!(APP_NAME, "PDF Overlay");
+
+        let kind = |app: &PdfCraftApp, id: &str| item(&linux(app, &ctx), &CommandRef::new(id)).kind;
+        assert_eq!(kind(&app, "view.thin_lines"), ItemKind::Check(false));
+        assert_eq!(kind(&app, "view.tab_view"), ItemKind::Radio(true));
+        assert_eq!(kind(&app, "view.tile_view"), ItemKind::Radio(false));
+        let rulers = app.doc_prefs.state(app.views[0].id).is_some_and(|s| s.prefs.rulers);
+        assert_eq!(kind(&app, "view.rulers"), ItemKind::Check(rulers));
+        app.run_menu_command(&ctx, &CommandRef::new("view.thin_lines"));
+        app.run_menu_command(&ctx, &CommandRef::new("view.tile_view"));
+        app.sync_doc_prefs();
+        app.run_menu_command(&ctx, &CommandRef::new("view.rulers"));
+        assert!(app.thin_lines && app.layout_mode == crate::ViewLayout::Tiles);
+        assert_eq!(kind(&app, "view.thin_lines"), ItemKind::Check(true));
+        assert_eq!(kind(&app, "view.tab_view"), ItemKind::Radio(false));
+        assert_eq!(kind(&app, "view.tile_view"), ItemKind::Radio(true));
+        assert_eq!(kind(&app, "view.rulers"), ItemKind::Check(!rulers), "Rulers follows the active PDF's setting");
+        app.run_menu_command(&ctx, &CommandRef::new("view.duplicate_tab"));
+        assert_eq!(app.views.len(), 2, "Duplicate tab runs from the Window menu");
     }
 
     #[test]
