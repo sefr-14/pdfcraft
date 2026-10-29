@@ -24,6 +24,11 @@ pub(super) mod tab_context;
 /// The app's name in the menus the layouts write (About, Hide, Quit).
 pub(crate) const APP_NAME: &str = "PDF Overlay";
 
+/// The label of a "more" menu: craft-menu's overflow menu, the Overlay wizard's row menus. Not
+/// craft-menu's "⋯" (U+22EF): no face this fork embeds has it, and its Windows build embeds no
+/// craft-fonts, so Windows drew a box there (and kittest's missing-glyph check panicked).
+pub(crate) const MORE: &str = "…";
+
 /// The top bar's width after the menus: the mode tabs, the search box and the buttons.
 const ROW_AFTER_MENUS: f32 = 720.0;
 /// The narrowest the menu bar gets: one "Menu" title.
@@ -263,6 +268,9 @@ fn english(labeled: Labeled<'_>) -> Option<String> {
 }
 
 fn translate(english: &'static str) -> String {
+    if english == "⋯" {
+        return MORE.to_owned();
+    }
     tl!(english).to_owned()
 }
 
@@ -715,6 +723,20 @@ mod tests {
     /// This fork (SYNC.13, D6): Overlay compare beside Combine in File; Duplicate tab, Tab view
     /// and Tile view in Window; Thin lines, Rulers and Guides in View ▸ Page display, checked as
     /// the app is; Help with the fork's own destinations and nothing of ArtCraft's.
+    /// The "more" menus' title draws with the faces every build embeds, without craft-fonts or
+    /// an installed face (this fork's Windows zip): craft-menu's own "⋯" has no glyph there.
+    #[test]
+    fn the_more_menus_title_draws_with_the_embedded_fonts() {
+        let ctx = egui::Context::default();
+        ctx.set_fonts(crate::theme::font_definitions_for(false));
+        let mut output = ctx.run_ui(egui::RawInput::default(), |_| {});
+        output.textures_delta.clear();
+        let drawable = |text: &str| ctx.fonts_mut(|f| f.has_glyphs(&egui::FontId::proportional(13.0), text));
+        assert!(!drawable("⋯"), "the embedded faces still lack U+22EF; MORE may not be needed");
+        assert!(drawable(&translate("⋯")), "the overflow menu's title");
+        assert!(drawable(MORE), "the Overlay wizard's row menus");
+    }
+
     #[test]
     fn the_forks_commands_have_their_places_and_states() {
         let (mut app, ctx) = app(&["a.pdf"]);
