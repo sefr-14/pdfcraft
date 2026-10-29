@@ -2032,7 +2032,7 @@ fn pages(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
         ui,
         t,
         tx(
-            "One output page per row. Compare as says what a row holds: Matched (a sheet from each revision), Old only or New only (the other revision has a blank there). The arrows move a whole row; the ⋯ menu moves only its Old or New sheet. Choose a page in a cell to pair sheets that moved. \"p.\" is the page's position in the file; a label is the PDF's own page label. The source files are never changed.",
+            "One output page per row. Compare as says what a row holds: Matched (a sheet from each revision), Old only or New only (the other revision has a blank there). The arrows move a whole row; the … menu moves only its Old or New sheet. Choose a page in a cell to pair sheets that moved. \"p.\" is the page's position in the file; a label is the PDF's own page label. The source files are never changed.",
         ),
     );
     ui.add_space(8.0);
@@ -2263,7 +2263,7 @@ fn pages(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
                         }
                     });
                     // Secondary: one revision's sheet alone, or a blank removed.
-                    ui.menu_button("⋯", |ui| {
+                    ui.menu_button(crate::menus::MORE, |ui| {
                         ui.set_min_width(300.0);
                         for (side, slot, role) in [(old, so, "Old"), (new, sn, "New")] {
                             if slot == Slot::Unplaced {
