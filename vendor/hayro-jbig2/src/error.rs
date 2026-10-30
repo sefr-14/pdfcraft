@@ -133,8 +133,12 @@ pub enum OverflowError {
     ReferenceOffset,
     /// Index computation overflowed.
     Index,
-    /// A symbol dictionary has too many symbols.
+    /// A symbol dictionary has too many symbols, or a segment refers to too many.
     SymbolCount,
+    /// PdfCraft patch: the segments retain more bitmaps than a page may hold.
+    RetainedBitmaps,
+    /// PdfCraft patch: a stream has more segments, or references, than it may.
+    SegmentCount,
 }
 
 impl fmt::Display for DecodeError {
@@ -161,7 +165,9 @@ impl fmt::Display for OverflowError {
             Self::ReferenceOffset => write!(f, "overflow in reference offset computation"),
             Self::Index => write!(f, "overflow in index computation"),
             Self::GridDimension => write!(f, "overflow in grid dimension computation"),
-            Self::SymbolCount => write!(f, "a symbol dictionary has too many symbols"),
+            Self::SymbolCount => write!(f, "too many symbols in a dictionary or referred to"),
+            Self::RetainedBitmaps => write!(f, "the segments retain too many bitmaps"),
+            Self::SegmentCount => write!(f, "too many segments or references in a stream"),
         }
     }
 }

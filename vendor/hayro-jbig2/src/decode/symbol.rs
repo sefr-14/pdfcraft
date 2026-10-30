@@ -4,7 +4,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::arithmetic_decoder::{ArithmeticDecoder, ArithmeticDecoderContext};
-use crate::bitmap::{Bitmap, WORD_BITS};
+use crate::bitmap::{BITMAP_WORDS, Bitmap, WORD_BITS, Word};
 use crate::decode::generic::{decode_bitmap_mmr, parse_adaptive_template_pixels};
 use crate::decode::text::{
     DecodeContext, ReferenceCorner, TextRegionContexts, TextRegionFlags, TextRegionHeader,
@@ -45,6 +45,7 @@ pub(crate) fn decode(
     referred_tables: &[HuffmanTable],
     standard_tables: &StandardHuffmanTables,
     input_contexts: Option<&RetainedContexts>,
+    room: u64,
 ) -> Result<SymbolDictionary> {
     let num_new_symbols = header.num_new_symbols;
 
@@ -58,6 +59,8 @@ pub(crate) fn decode(
         total_width: 0,
         height_class_height: 0,
         pixels: 0,
+        new_words: 0,
+        room,
         header,
         standard_tables,
     };
@@ -130,6 +133,13 @@ pub(crate) fn decode(
             if ctx.pixels > MAX_DICTIONARY_PIXELS {
                 bail!(OverflowError::BitmapDimension);
             }
+            // PdfCraft patch: see `room`. Rows take a word at least, so symbols of one column
+            // held 270 MiB within the pixel bound, however few the dictionary exported.
+            let rows = u64::from(symbol_width.div_ceil(WORD_BITS)) * u64::from(ctx.height_class_height);
+            ctx.new_words = ctx.new_words.saturating_add(rows).saturating_add(BITMAP_WORDS as u64);
+            if ctx.new_words > ctx.room {
+                bail!(OverflowError::RetainedBitmaps);
+            }
 
             match (ctx.header.flags.use_huffman, ctx.header.flags.use_refagg) {
                 (false, false) => {
@@ -200,6 +210,18 @@ pub(crate) struct RetainedContexts {
 pub(crate) struct SymbolDictionary {
     pub(crate) exported_symbols: Vec<Bitmap>,
     pub(crate) retained_contexts: Option<RetainedContexts>,
+}
+
+impl SymbolDictionary {
+    /// PdfCraft patch: the words the dictionary holds, its retained contexts included. Those are
+    /// a byte each, and 1.1 MB of dictionaries that retain them, 103 KB behind Flate, held 2.89 GB.
+    pub(crate) fn words(&self) -> usize {
+        let contexts = self.retained_contexts.as_ref().map_or(0, |contexts| {
+            let bytes = contexts.generic_region.len().saturating_add(contexts.refinement_region.len());
+            bytes.saturating_mul(size_of::<ArithmeticDecoderContext>()) / size_of::<Word>()
+        });
+        self.exported_symbols.iter().map(Bitmap::words).fold(contexts, usize::saturating_add)
+    }
 }
 
 /// Decode a symbol bitmap using refinement/aggregate coding (6.5.8.2).
@@ -463,6 +485,12 @@ struct SymbolDecodeContext<'a> {
     symbols_decoded_count: u32,
     total_width: u32,
     height_class_height: u32,
+    /// PdfCraft patch: the words the page may still hold, which neither the new symbols nor the
+    /// exported ones may pass. They are counted as they are made: counted only once the
+    /// dictionary was stored, 8 MiB symbols exported again and again killed the process.
+    room: u64,
+    /// PdfCraft patch: the words of the new symbols so far (see `room`).
+    new_words: u64,
     /// PdfCraft patch: symbol pixels decoded so far (see `MAX_DICTIONARY_PIXELS`).
     pixels: u64,
 }
@@ -708,6 +736,7 @@ fn export_symbols(ctx: &mut SymbolDecodeContext<'_>) -> Result<Vec<Bitmap>> {
         u32::try_from(value).map_err(|_| HuffmanError::InvalidCode.into())
     };
     let mut exported = Vec::with_capacity(ctx.header.num_exported_symbols as usize);
+    let mut exported_words: u64 = 0;
     let mut index: u32 = 0;
     let mut should_export = false;
     // PdfCraft patch: see `EXTRA_EMPTY_STEPS`.
@@ -730,9 +759,13 @@ fn export_symbols(ctx: &mut SymbolDecodeContext<'_>) -> Result<Vec<Bitmap>> {
                 let symbol = ctx
                     .symbols
                     .get(symbol_idx as usize)
-                    .ok_or(SymbolError::OutOfRange)?
-                    .clone();
-                exported.push(symbol);
+                    .ok_or(SymbolError::OutOfRange)?;
+                // PdfCraft patch: see `room`.
+                exported_words = exported_words.saturating_add(symbol.words() as u64);
+                if exported_words > ctx.room {
+                    bail!(OverflowError::RetainedBitmaps);
+                }
+                exported.push(symbol.clone());
             }
         }
 
@@ -863,4 +896,26 @@ pub(crate) fn parse<'a>(reader: &mut Reader<'a>) -> Result<SymbolDictionaryHeade
         num_new_symbols,
         data,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A dictionary may export what it refers to, and may refer to one symbol again and again, so
+    /// its exports are counted against what the page may still hold before each is copied.
+    /// Refused only once stored, the copies are already made, which a render test can't see.
+    #[test]
+    fn exported_symbols_are_counted_before_they_are_copied() {
+        // Huffman coding, 1,000 exported and no new symbols; export runs of 0 and 1,000 (B.1).
+        let data = [0x00, 0x01, 0, 0, 0x03, 0xE8, 0, 0, 0, 0, 0x06, 0x02, 0xD8];
+        let header = parse(&mut Reader::new(&data)).unwrap();
+        let symbol = Bitmap::new(32, 32).unwrap();
+        let input = vec![&symbol; 1000];
+        let tables = StandardHuffmanTables::new();
+        let words = symbol.words() as u64 * 1000;
+        let decoded = decode(&header, &input, &[], &tables, None, words).unwrap();
+        assert_eq!(decoded.exported_symbols.len(), 1000);
+        assert!(decode(&header, &input, &[], &tables, None, words - 1).is_err());
+    }
 }

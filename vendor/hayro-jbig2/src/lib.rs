@@ -75,7 +75,7 @@ pub use error::{
     SegmentError, SymbolError, TemplateError,
 };
 
-use crate::file::parse_segments_sequential;
+use crate::file::{SegmentCount, parse_segments_sequential};
 use bitmap::Bitmap;
 use decode::CombinationOperator;
 use decode::generic;
@@ -120,13 +120,14 @@ impl<'a> Image<'a> {
     /// Annex D.3.
     pub fn new_embedded(data: &'a [u8], globals: Option<&'a [u8]>) -> Result<Self> {
         let mut segments = Vec::new();
+        let mut count = SegmentCount::default();
         if let Some(globals_data) = globals {
             let mut reader = Reader::new(globals_data);
-            parse_segments_sequential(&mut reader, &mut segments)?;
+            parse_segments_sequential(&mut reader, &mut segments, &mut count)?;
         };
 
         let mut reader = Reader::new(data);
-        parse_segments_sequential(&mut reader, &mut segments)?;
+        parse_segments_sequential(&mut reader, &mut segments, &mut count)?;
 
         segments.sort_by_key(|seg| seg.header.segment_number);
 
@@ -162,6 +163,7 @@ impl<'a> Image<'a> {
         if page_info.width == 0 || height == 0 {
             bail!(FormatError::EmptyPage);
         }
+        bitmap::check_page_size(page_info.width, height)?;
 
         Ok(Self {
             segments,
@@ -311,24 +313,18 @@ fn decode_segments(
                 // Intermediate segments cannot have unknown length.
                 let header = generic::parse(&mut reader, false)?;
                 let region = generic::decode(&header, scratch_buffers)?;
-                page_state.store_region(seg.header.segment_number, region.bitmap);
+                page_state.store_region(seg.header.segment_number, region.bitmap)?;
             }
             SegmentType::PatternDictionary => {
                 let header = pattern::parse(&mut reader)?;
-                let dictionary = pattern::decode(&header, scratch_buffers)?;
-                page_state.store_pattern_dictionary(seg.header.segment_number, dictionary);
+                let dictionary = pattern::decode(&header, scratch_buffers, page_state.retained_room())?;
+                page_state.store_pattern_dictionary(seg.header.segment_number, dictionary)?;
             }
             SegmentType::SymbolDictionary => {
                 // "1) Concatenate all the input symbol dictionaries to form SDINSYMS."
                 // (6.5.5, step 1)
                 // Collect references to avoid cloning; symbols are only cloned if re-exported.
-                let input_symbols: Vec<&Bitmap> = seg
-                    .header
-                    .referred_to_segments
-                    .iter()
-                    .filter_map(|&num| page_state.get_symbol_dictionary(num))
-                    .flat_map(|dict| dict.exported_symbols.iter())
-                    .collect();
+                let input_symbols = page_state.referred_symbols(&seg.header.referred_to_segments)?;
 
                 // Collect Huffman tables from referred table segments.
                 let referred_tables: Vec<HuffmanTable> = seg
@@ -354,18 +350,13 @@ fn decode_segments(
                     &referred_tables,
                     &page_state.standard_tables,
                     retained_contexts,
+                    page_state.retained_room(),
                 )?;
-                page_state.store_symbol_dictionary(seg.header.segment_number, dictionary);
+                page_state.store_symbol_dictionary(seg.header.segment_number, dictionary)?;
             }
             SegmentType::ImmediateTextRegion | SegmentType::ImmediateLosslessTextRegion => {
                 // Collect symbols from referred symbol dictionaries (SBSYMS).
-                let symbols: Vec<&Bitmap> = seg
-                    .header
-                    .referred_to_segments
-                    .iter()
-                    .filter_map(|&num| page_state.get_symbol_dictionary(num))
-                    .flat_map(|dict| dict.exported_symbols.iter())
-                    .collect();
+                let symbols = page_state.referred_symbols(&seg.header.referred_to_segments)?;
 
                 // Collect Huffman tables from referred table segments.
                 // "These user-supplied Huffman decoding tables may be supplied either
@@ -412,13 +403,7 @@ fn decode_segments(
             }
             SegmentType::IntermediateTextRegion => {
                 // Collect symbols from referred symbol dictionaries (SBSYMS).
-                let symbols: Vec<&Bitmap> = seg
-                    .header
-                    .referred_to_segments
-                    .iter()
-                    .filter_map(|&num| page_state.get_symbol_dictionary(num))
-                    .flat_map(|dict| dict.exported_symbols.iter())
-                    .collect();
+                let symbols = page_state.referred_symbols(&seg.header.referred_to_segments)?;
 
                 // Collect Huffman tables from referred table segments.
                 let referred_tables: Vec<HuffmanTable> = seg
@@ -437,7 +422,7 @@ fn decode_segments(
                     &page_state.standard_tables,
                     scratch_buffers,
                 )?;
-                page_state.store_region(seg.header.segment_number, region.bitmap);
+                page_state.store_region(seg.header.segment_number, region.bitmap)?;
             }
             SegmentType::ImmediateHalftoneRegion | SegmentType::ImmediateLosslessHalftoneRegion => {
                 let pattern_dict = seg
@@ -476,7 +461,7 @@ fn decode_segments(
 
                 let header = halftone::parse(&mut reader)?;
                 let region = halftone::decode(&header, pattern_dict, scratch_buffers)?;
-                page_state.store_region(seg.header.segment_number, region.bitmap);
+                page_state.store_region(seg.header.segment_number, region.bitmap)?;
             }
             SegmentType::IntermediateGenericRefinementRegion => {
                 // Same logic as immediate refinement, but store result instead of combining.
@@ -489,7 +474,7 @@ fn decode_segments(
 
                 let header = generic_refinement::parse(&mut reader)?;
                 let region = generic_refinement::decode(&header, reference, scratch_buffers)?;
-                page_state.store_region(seg.header.segment_number, region.bitmap);
+                page_state.store_region(seg.header.segment_number, region.bitmap)?;
             }
             SegmentType::ImmediateGenericRefinementRegion
             | SegmentType::ImmediateLosslessGenericRefinementRegion => {
@@ -532,7 +517,7 @@ fn decode_segments(
                 // "This segment contains data which defines one or more user-supplied
                 // Huffman coding tables." (7.4.13)
                 let table = HuffmanTable::read_custom(&mut reader)?;
-                page_state.store_huffman_table(seg.header.segment_number, table);
+                page_state.store_huffman_table(seg.header.segment_number, table)?;
             }
             SegmentType::EndOfPage | SegmentType::EndOfFile => {
                 break;
@@ -544,6 +529,23 @@ fn decode_segments(
 
     Ok(())
 }
+
+/// PdfCraft patch: the words a stored item costs in its list, at least, apart from what it holds.
+const ENTRY_WORDS: u64 = 32;
+
+/// PdfCraft patch: the most words a page's segments may hold for later ones, 64 MiB: two square
+/// bitmaps of 16,384 a side (`bitmap::MAX_PIXELS`). Each stored item is bounded on its own, but without a
+/// bound on all of them a stream of a few dozen bytes a segment held 33 MB each (a 16,384-sample
+/// square region of typical rows), and a few kilobytes could exhaust memory. A segment being
+/// decoded takes more for a while, within its own bounds: the page bitmap isn't counted, nor is
+/// what a region or a grid uses until it is stored or freed.
+const MAX_RETAINED_WORDS: u64 =
+    2 * (bitmap::MAX_PIXELS / bitmap::WORD_BITS as u64 + bitmap::BITMAP_WORDS as u64 + ENTRY_WORDS);
+
+/// PdfCraft patch: the most symbols one segment may refer to, 2^20, far beyond the 65,535 a
+/// dictionary may export. References may repeat, so each names the same symbols again: without
+/// this, 65,535 references to one dictionary in a 78 KB stream collected 17 GB of pointers.
+const MAX_REFERRED_SYMBOLS: u64 = 1 << 20;
 
 /// Page-level decoding state for a JBIG2 page.
 #[derive(Default)]
@@ -561,6 +563,9 @@ pub(crate) struct PageState {
     /// Decoded Huffman tables from table segments, stored as (`segment_number`, table) pairs.
     /// "Tables – see 7.4.13." (type 53)
     pub(crate) huffman_tables: Vec<(u32, HuffmanTable)>,
+    /// PdfCraft patch: the words the regions, dictionaries and tables above hold, at most
+    /// [`MAX_RETAINED_WORDS`].
+    pub(crate) retained_words: u64,
     /// Standard Huffman tables (`TABLE_A` through `TABLE_O`).
     pub(crate) standard_tables: StandardHuffmanTables,
 }
@@ -573,6 +578,7 @@ impl PageState {
         self.pattern_dictionaries.clear();
         self.symbol_dictionaries.clear();
         self.huffman_tables.clear();
+        self.retained_words = 0;
         // Standard tables are lazily built and reused across images.
     }
 
@@ -610,9 +616,26 @@ impl PageState {
         }
     }
 
+    /// PdfCraft patch: the words the page may still hold for later segments.
+    fn retained_room(&self) -> u64 {
+        MAX_RETAINED_WORDS.saturating_sub(self.retained_words)
+    }
+
+    /// PdfCraft patch: count a stored item holding `words` for later segments, refusing past
+    /// [`MAX_RETAINED_WORDS`].
+    fn retain(&mut self, words: usize) -> Result<()> {
+        self.retained_words = self.retained_words.saturating_add(words as u64).saturating_add(ENTRY_WORDS);
+        if self.retained_words > MAX_RETAINED_WORDS {
+            bail!(OverflowError::RetainedBitmaps);
+        }
+        Ok(())
+    }
+
     /// Store a decoded region for later reference.
-    fn store_region(&mut self, segment_number: u32, region: Bitmap) {
+    fn store_region(&mut self, segment_number: u32, region: Bitmap) -> Result<()> {
+        self.retain(region.words())?;
         self.referred_segments.push((segment_number, region));
+        Ok(())
     }
 
     /// Look up a referred segment by number.
@@ -624,8 +647,10 @@ impl PageState {
     }
 
     /// Store a decoded pattern dictionary for later reference.
-    fn store_pattern_dictionary(&mut self, segment_number: u32, dictionary: PatternDictionary) {
+    fn store_pattern_dictionary(&mut self, segment_number: u32, dictionary: PatternDictionary) -> Result<()> {
+        self.retain(dictionary.words())?;
         self.pattern_dictionaries.push((segment_number, dictionary));
+        Ok(())
     }
 
     /// Look up a pattern dictionary by segment number.
@@ -637,8 +662,23 @@ impl PageState {
     }
 
     /// Store a decoded symbol dictionary for later reference.
-    fn store_symbol_dictionary(&mut self, segment_number: u32, dictionary: SymbolDictionary) {
+    fn store_symbol_dictionary(&mut self, segment_number: u32, dictionary: SymbolDictionary) -> Result<()> {
+        self.retain(dictionary.words())?;
         self.symbol_dictionaries.push((segment_number, dictionary));
+        Ok(())
+    }
+
+    /// PdfCraft patch: the symbols of the dictionaries in `segments`, in order, refusing past
+    /// [`MAX_REFERRED_SYMBOLS`] before anything is collected.
+    fn referred_symbols(&self, segments: &[u32]) -> Result<Vec<&Bitmap>> {
+        let dictionaries = || segments.iter().filter_map(|&num| self.get_symbol_dictionary(num));
+        let count = dictionaries()
+            .map(|dictionary| dictionary.exported_symbols.len() as u64)
+            .fold(0, u64::saturating_add);
+        if count > MAX_REFERRED_SYMBOLS {
+            bail!(OverflowError::SymbolCount);
+        }
+        Ok(dictionaries().flat_map(|dictionary| dictionary.exported_symbols.iter()).collect())
     }
 
     /// Look up a symbol dictionary by segment number.
@@ -650,8 +690,10 @@ impl PageState {
     }
 
     /// Store a decoded Huffman table for later reference.
-    fn store_huffman_table(&mut self, segment_number: u32, table: HuffmanTable) {
+    fn store_huffman_table(&mut self, segment_number: u32, table: HuffmanTable) -> Result<()> {
+        self.retain(table.words())?;
         self.huffman_tables.push((segment_number, table));
+        Ok(())
     }
 
     /// Look up a Huffman table by segment number.
@@ -689,4 +731,52 @@ fn init_page(
     page.reset(page_info);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A page past the bounds is refused when the stream is opened, since callers size their
+    /// output from it before decoding starts. 16,384 squared is exactly the bound on pixels.
+    #[test]
+    fn a_page_past_the_bounds_is_refused_when_opened() {
+        let stream = |width: u32, height: u32| {
+            let mut stream = vec![0, 0, 0, 0, 48, 0, 1, 0, 0, 0, 19];
+            stream.extend_from_slice(&width.to_be_bytes());
+            stream.extend_from_slice(&height.to_be_bytes());
+            stream.extend_from_slice(&[0; 11]); // resolution, flags, striping
+            stream
+        };
+        assert!(Image::new_embedded(&stream(16384, 16384), None).is_ok());
+        assert!(Image::new_embedded(&stream(16385, 16384), None).is_err());
+        assert!(Image::new_embedded(&stream(65536, 1), None).is_err(), "too wide, though few pixels");
+        assert!(Image::new_embedded(&stream(1 << 20, 1 << 20), None).is_err());
+    }
+
+    /// A stream and its globals are one stream of segments, so they have one count.
+    #[test]
+    fn the_segments_of_a_stream_and_its_globals_count_together() {
+        let segment: &[u8] = &[0, 0, 0, 0, 62, 0, 1, 0, 0, 0, 0]; // an empty extension
+        let half = segment.repeat(1 << 19);
+        let more = segment.repeat((1 << 19) + 1);
+        let refused = |data: &[u8]| {
+            let error = Image::new_embedded(data, Some(&half)).err().map(|e| e.to_string());
+            error.as_deref() == Some("too many segments or references in a stream")
+        };
+        assert!(!refused(&half), "2^20 segments are allowed");
+        assert!(refused(&more), "one more isn't");
+    }
+
+    /// A dictionary being decoded has what the page may still hold, not all of it: refused only
+    /// once it is stored, its copies would already have been made.
+    #[test]
+    fn the_room_left_shrinks_as_segments_are_stored() {
+        let mut page = PageState::default();
+        assert_eq!(page.retained_room(), MAX_RETAINED_WORDS);
+        page.retain(1000).unwrap();
+        assert_eq!(page.retained_room(), MAX_RETAINED_WORDS - 1000 - ENTRY_WORDS);
+        page.retained_words = MAX_RETAINED_WORDS;
+        assert_eq!(page.retained_room(), 0);
+    }
 }
