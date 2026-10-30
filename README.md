@@ -217,19 +217,20 @@ page view, as in Foxit PDF Reader:
   near the start or end of the document goes as near the middle as scrolling allows. The search's
   own first pick still shows its match near the top. Each tab and tile keeps its own place.
 
-**Also: Check for updates finds this fork's Windows build.** Help › Check for updates (or "Check
-for updates…" in the command palette) no longer offers upstream's releases, which don't have the
-features above. It asks GitHub for the five most recent successful runs of
-[`overlay-windows.yml`](.github/workflows/overlay-windows.yml) on `Main` and shows the newest one
-with a `pdfcraft-overlay-<ver>-<sha7>-windows-x64-portable` artifact that hasn't expired: its
-version, date, artifact name and a **View build on GitHub** link to its run.
+**Also: PDF Overlay updates itself (UPD.1).** Help › Check for updates (or "Check for updates…"
+in the command palette) finds the latest Windows x64 build the owner has approved and signed, never
+upstream's releases. **Update and Restart** downloads it, verifies its signature and every file,
+closes PDF Overlay through the usual Save / Don't save / Cancel questions, replaces only the
+program files, and restarts. The update is kept only once the new version confirms that it
+started; otherwise the previous files come back. **Remind me later** postpones it for a day, a week
+(the default) or a month.
 
-- It reports what is available, nothing more: it doesn't compare that build with the copy you're
-  running, and it never downloads, installs or starts a build. GitHub asks you to sign in to
-  download an artifact, and keeps artifacts for a limited time.
-- When the runs checked have no usable artifact (expired or missing), it says so and links to the
-  workflow's page. When GitHub can't be reached (offline, a timeout, a rate limit, an unexpected
-  answer) it says why and offers **Try again**; a failure is never reported as "no build".
+- Nothing installs without your click. With nothing postponed there is no check at start; when a
+  postponed reminder comes due, PDF Overlay checks once, quietly.
+- Your settings, Rulers and Guides, recent files, recovery data, digital IDs (`PdfCraftData`) and
+  whether the copy is portable (`portable.txt`) are never touched.
+- Updates install only into a folder you can write to, and only in builds of this fork. The design,
+  the publication steps and the remaining owner decisions are in [docs/updates.md](docs/updates.md).
 
 **Also: Reduce File Size and Optimize PDF save like Save As (COMPRESS.1).** File › Reduce File
 Size and the PDF Optimizer optimize the document as it is now, unsaved changes included (comments,
