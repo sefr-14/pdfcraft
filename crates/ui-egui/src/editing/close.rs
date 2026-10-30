@@ -170,6 +170,8 @@ impl PdfCraftApp {
 
     fn quit(&mut self, ctx: &egui::Context) {
         self.allow_quit = true;
+        // An update that waited for this quit installs once the window has closed (UPD.1).
+        self.hand_off_update();
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
 

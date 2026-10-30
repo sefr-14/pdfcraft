@@ -81,7 +81,9 @@ impl PdfCraftApp {
             fill_text_size: fill_sign::TEXT_SIZE,
             dialog: None,
             update_source: None,
+            update_installer: None,
             updates: updates::Updates::default(),
+            after_first_frame: None,
             printer_source: None,
             options_source: None,
             print_tasks: print_ui::PrintTasks::default(),
@@ -527,6 +529,13 @@ impl eframe::App for PdfCraftApp {
         }
         self.poll_updates();
         self.poll_print();
+        // Once a frame has been drawn (`logic` runs before `ui`), an update that waits for this
+        // copy to start confirms it.
+        if ctx.cumulative_pass_nr() >= 1
+            && let Some(confirm) = self.after_first_frame.take()
+        {
+            confirm();
+        }
         // Shortcuts deferred last frame: the text field has taken that frame's typing since.
         let deferred = std::mem::take(&mut self.deferred_commands);
         self.native_menu_clicks(ctx);

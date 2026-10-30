@@ -1662,7 +1662,7 @@ impl Wizard {
         );
     }
 
-    fn busy(&self) -> bool {
+    pub(crate) fn busy(&self) -> bool {
         self.generating || self.preview.pending.is_some() || !self.pages_pending.is_empty()
     }
 }

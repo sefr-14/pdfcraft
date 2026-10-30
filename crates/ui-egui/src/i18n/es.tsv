@@ -2880,23 +2880,38 @@ theme	Appearance	Aspecto
 	Tab view	Vista de pestañas
 	Tile View	Vista en mosaico
 	Tile view	Vista en mosaico
-# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
-	Looking for the latest Windows build…	Buscando la última compilación de Windows…
-	Latest available Windows build	Última compilación de Windows disponible
-	Version: {v}	Versión: {v}
-	Built: {date}	Compilada: {date}
-	Artifact: {name}	Artefacto: {name}
-	This copy is version {c}.	Esta copia es la versión {c}.
-	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	Es posible que GitHub te pida iniciar sesión para descargarla. Las compilaciones se conservan durante un tiempo limitado.
-	View build on GitHub	Ver compilación en GitHub
-	View builds on GitHub	Ver compilaciones en GitHub
-	No successful Windows build was found.	No se encontró ninguna compilación de Windows correcta.
-	No downloadable Windows build was found in the most recent successful builds ({n} checked).	No se encontró ninguna compilación de Windows descargable entre las compilaciones correctas más recientes ({n} revisadas).
-	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	Las compilaciones de Windows revisadas han caducado y ya no se pueden descargar ({n} revisadas).
-	Older builds weren't checked.	No se revisaron las compilaciones más antiguas.
-	Windows builds are listed at {page}.	Las compilaciones de Windows se enumeran en {page}.
+# This fork (sefr-14/pdfcraft): Help > Check for updates offers an approved build and installs it (UPD.1).
 	Try again	Reintentar
-	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Consulta a GitHub cuál es la última compilación de Windows de este fork. No se descarga ni se instala nada automáticamente.
+	updates aren't available in this version of PDF Overlay	las actualizaciones no están disponibles en esta versión de PDF Overlay
+	Installing updates isn't supported in this version.	Esta versión no admite instalar actualizaciones.
+	PDF Overlay — Update available	PDF Overlay — Actualización disponible
+	Checking for updates…	Buscando actualizaciones…
+	PDF Overlay is up to date.	PDF Overlay está actualizado.
+	Latest approved version: {v}	Última versión aprobada: {v}
+	A newer approved Windows x64 build of PDF Overlay is available.	Hay disponible una compilación aprobada más reciente de PDF Overlay para Windows x64.
+	The application will download and verify the update, then restart to install it. Documents and preferences will be preserved.	La aplicación descargará y verificará la actualización y después se reiniciará para instalarla. Se conservarán los documentos y las preferencias.
+	Version {v}, approved {date}	Versión {v}, aprobada el {date}
+	Remind me in:	Recordármelo en:
+	1 day	1 día
+	1 week	1 semana
+	1 month	1 mes
+	Update and Restart	Actualizar y reiniciar
+	Remind me later	Recordármelo más tarde
+	Update and Restart isn't available: {why}	Actualizar y reiniciar no está disponible: {why}
+	Downloading and verifying PDF Overlay {v}…	Descargando y verificando PDF Overlay {v}…
+	Nothing is changed until PDF Overlay restarts.	No se cambia nada hasta que PDF Overlay se reinicie.
+	The update is ready, but PDF Overlay can't restart yet:	La actualización está lista, pero PDF Overlay aún no puede reiniciarse:
+	Overlay compare is still working.	La comparación por superposición sigue en curso.
+	A background task (printing, optimizing…) is still running.	Una tarea en segundo plano (impresión, optimización…) sigue en curso.
+	A document is still opening.	Todavía se está abriendo un documento.
+	Other PDF Overlay windows or the command-line tool are running from this folder ({n}). Close them first.	Hay otras ventanas de PDF Overlay o la herramienta de línea de comandos en ejecución desde esta carpeta ({n}). Ciérrelas primero.
+	PDF Overlay will close and restart to finish the update.	PDF Overlay se cerrará y se reiniciará para terminar la actualización.
+	Couldn't update: {e}	No se pudo actualizar: {e}
+	Nothing was installed.	No se instaló nada.
+	The update was cancelled.	Se canceló la actualización.
+	The update was cancelled. Nothing was installed.	Se canceló la actualización. No se instaló nada.
+	PDF Overlay was updated.	PDF Overlay se actualizó.
+	The update couldn't be completed.	No se pudo completar la actualización.
 # This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
 	Thin lines	Líneas finas
 # This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).

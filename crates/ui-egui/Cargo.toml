@@ -26,6 +26,8 @@ pdfcraft-model = { workspace = true }
 pdfcraft-platform = { workspace = true }
 # This fork's overlay compare (the wizard in src/overlay_ui.rs).
 pdfcraft-overlay = { workspace = true }
+# Update offers and reminders (UPD.1); the installer itself lives in the desktop app.
+pdfcraft-overlay-update = { workspace = true }
 egui = { workspace = true, features = ["bytemuck", "default_fonts", "monochrome_emoji_fonts"] }
 egui_extras = { workspace = true }
 eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "persistence", "links", "clipboard"] }

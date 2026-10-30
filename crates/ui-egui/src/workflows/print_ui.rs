@@ -64,6 +64,16 @@ pub(crate) struct PrintTasks {
     web_last: Option<(String, std::sync::Arc<Vec<u8>>)>,
 }
 
+impl PrintTasks {
+    /// A print job is still being prepared or sent (an update waits for it, UPD.1).
+    pub(crate) fn busy(&self) -> bool {
+        #[cfg(not(target_arch = "wasm32"))]
+        return !self.jobs.is_empty();
+        #[cfg(target_arch = "wasm32")]
+        self.web_job.is_some()
+    }
+}
+
 /// The printers to offer when no [`PrinterSource`] is set: the spooler's, or in a browser its
 /// print dialog.
 fn listed_printers() -> Vec<spool::Printer> {

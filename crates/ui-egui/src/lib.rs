@@ -355,9 +355,13 @@ pub struct PdfCraftApp {
     /// Point size for new Fill & Sign text and dates, kept across launches.
     pub fill_text_size: f64,
     pub dialog: Option<Dialog>,
-    /// How to ask for the latest build (the desktop app sets it; see `updates`).
+    /// How to ask for the approved build (the desktop app sets it; see `updates`).
     pub update_source: Option<updates::UpdateSource>,
+    /// How to install it (the desktop app sets it on Windows; see `updates`).
+    pub update_installer: Option<std::sync::Arc<dyn updates::UpdateInstaller>>,
     pub(crate) updates: updates::Updates,
+    /// Run once after the first frame has been drawn (the desktop app confirms an update with it).
+    pub after_first_frame: Option<Box<dyn FnOnce() + Send>>,
     /// Lists the Print dialog's printers in the background (the desktop app sets it; see
     /// [`PrinterSource`]).
     pub printer_source: Option<PrinterSource>,

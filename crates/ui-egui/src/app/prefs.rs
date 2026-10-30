@@ -127,6 +127,8 @@ impl PdfCraftApp {
             // Null follows the interface language.
             "date_language": self.session.date_language(),
             "author": self.comment_prefs.author,
+            // Help ▸ Check for updates: the postponed update and the reminder interval (UPD.1).
+            "updates": self.updates.reminder.to_json(),
             // Per-tool comment defaults (colours, opacity, widths), so Make Current
             // Properties Default survives a restart (#340).
             "comment_styles": self
@@ -316,6 +318,7 @@ impl PdfCraftApp {
         }
         // An empty or missing name keeps the login-name default; settings are untrusted, so the
         // name is cut to a sane length.
+        self.restore_updates(v.get("updates").unwrap_or(&serde_json::Value::Null));
         if let Some(author) = v["author"].as_str().map(str::trim).filter(|a| !a.is_empty()) {
             self.comment_prefs.author = author.chars().take(MAX_AUTHOR_CHARS).collect();
         }
