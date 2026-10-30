@@ -455,6 +455,52 @@ class ErrorsAndRedaction(BridgeTestCase):
         self.assertLessEqual({FORGEJO_TOKEN, GITHUB_TOKEN, b64, CF_ID, CF_SECRET}, masked)
         self.assertFalse([l for l in lines[first_other:] if l.startswith("::add-mask::")])
 
+    def test_source_auth_is_scoped_to_the_exact_source_repository(self):
+        url = "https://github.com/sefr-14/pdfcraft.git"
+        auth = sync_claude_pr.source_auth(self.config(source_git_url=url))
+        self.assertIsNotNone(auth)
+        self.assertEqual((auth.url_prefix, auth.user, auth.token, auth.cf_access), (url, "x-access-token", GITHUB_TOKEN, None))
+        keys = {key for key, _ in auth.entries()}
+        self.assertEqual(keys, {f"http.{url}/.extraHeader", f"http.{url}/.followRedirects"})
+        self.assertIn((f"http.{url}/.followRedirects", "false"), auth.entries())
+        # No token (local and dry runs): anonymous as before. file:// test remotes: none.
+        self.assertIsNone(sync_claude_pr.source_auth(self.config(source_git_url=url, github_token="")))
+        self.assertIsNone(sync_claude_pr.source_auth(self.config()))
+
+    def test_main_gives_git_the_source_credentials_and_fails_safely(self):
+        import base64
+        from unittest import mock
+        # A source that can't be reached: the bridge must fail, never fall back or leak.
+        self.main_env(SOURCE_GIT_URL="http://127.0.0.1:9/github.git")
+        seen = {}
+        original = sync_claude_pr.Git.temporary
+
+        def capture(*args, **kwargs):
+            seen.update(kwargs)
+            return original(*args, **kwargs)
+
+        with mock.patch.object(sync_claude_pr.Git, "temporary", side_effect=capture):
+            code, stdout, stderr = self.run_main()
+        self.assertEqual(code, 1)
+        (extra,) = seen["extra_auth"]
+        self.assertEqual((extra.url_prefix, extra.user), ("http://127.0.0.1:9/github.git", "x-access-token"))
+        self.assertEqual(seen["auth"].url_prefix, self.forgejo.url, "Forgejo keeps its own credentials")
+        self.assertEqual(self.remotes.ref("forgejo", BRANCH), None, "nothing was pushed")
+        b64 = base64.b64encode(f"x-access-token:{GITHUB_TOKEN}".encode()).decode()
+        lines = stdout.splitlines()
+        self.assertIn(f"::add-mask::{b64}", lines)
+        logged = "\n".join(l for l in lines if not l.startswith("::add-mask::"))
+        for text in (logged, stderr):
+            for secret in (GITHUB_TOKEN, b64, FORGEJO_TOKEN):
+                self.assertNotIn(secret, text)
+
+    def test_main_refuses_a_github_token_that_could_split_a_header(self):
+        self.main_env(GITHUB_TOKEN="ghs_abc\r\nX-Injected: 1")
+        code, stdout, _ = self.run_main()
+        self.assertEqual(code, 1)
+        self.assertIn("GITHUB_TOKEN", stdout)
+        self.assertNotIn("X-Injected", stdout)
+
     def test_main_registers_basic_base64_for_the_default_user(self):
         import base64
         self.main_env(FORGEJO_USER="")

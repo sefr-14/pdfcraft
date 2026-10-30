@@ -393,7 +393,8 @@ class GitAuth:
     def __repr__(self) -> str:
         return f"GitAuth(url_prefix={self.url_prefix!r}, user={self.user!r}, token=***, cf_access=***)"
 
-    def env(self) -> dict[str, str]:
+    def entries(self) -> list[tuple[str, str]]:
+        """The command-scope configuration for this prefix, in order."""
         pair = base64.b64encode(f"{self.user}:{self.token}".encode("utf-8")).decode("ascii")
         prefix = self.url_prefix.rstrip("/") + "/"
         entries = [(f"http.{prefix}.extraHeader", f"Authorization: Basic {pair}")]
@@ -401,11 +402,19 @@ class GitAuth:
             entries += [(f"http.{prefix}.extraHeader", f"{name}: {value}")
                         for name, value in self.cf_access.headers().items()]
         entries.append((f"http.{prefix}.followRedirects", "false"))
-        env = {"GIT_CONFIG_COUNT": str(len(entries))}
-        for i, (key, value) in enumerate(entries):
-            env[f"GIT_CONFIG_KEY_{i}"] = key
-            env[f"GIT_CONFIG_VALUE_{i}"] = value
-        return env
+        return entries
+
+    def env(self) -> dict[str, str]:
+        return config_env(self.entries())
+
+
+def config_env(entries: Sequence[tuple[str, str]]) -> dict[str, str]:
+    """``GIT_CONFIG_COUNT``/``GIT_CONFIG_KEY_n``/``GIT_CONFIG_VALUE_n`` for ``entries``."""
+    env = {"GIT_CONFIG_COUNT": str(len(entries))}
+    for i, (key, value) in enumerate(entries):
+        env[f"GIT_CONFIG_KEY_{i}"] = key
+        env[f"GIT_CONFIG_VALUE_{i}"] = value
+    return env
 
 
 @dataclass
@@ -415,6 +424,9 @@ class Git:
     git_dir: str
     redactor: Redactor = field(default_factory=lambda: REDACTOR)
     auth: GitAuth | None = None
+    # Credentials for further URL prefixes (the bridge's GitHub source repository). Each applies
+    # only to its own prefix, so no credential reaches another host or repository.
+    extra_auth: tuple[GitAuth, ...] = ()
     identity: Mapping[str, str] = field(default_factory=dict)
     git_bin: str = "git"
 
@@ -467,8 +479,9 @@ class Git:
             }
         )
         env.update(self.identity)
-        if self.auth is not None:
-            env.update(self.auth.env())
+        entries = [entry for auth in (self.auth, *self.extra_auth) if auth is not None for entry in auth.entries()]
+        if entries:
+            env.update(config_env(entries))
         return env
 
     def run_raw(

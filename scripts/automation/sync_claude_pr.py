@@ -115,6 +115,26 @@ class Config:
         )
 
 
+# The user name GitHub expects with an Actions token over Git HTTP (Basic auth).
+GITHUB_TOKEN_USER = "x-access-token"
+
+
+def source_auth(cfg: Config) -> GitAuth | None:
+    """Git credentials for the PR's own repository, so its refs can be fetched once it is private.
+
+    The prefix is the exact source URL: Git sends the header only to that repository's paths,
+    never to another repository on the same host, upstream or Forgejo, and follows no redirect
+    for it. Without a token (local and dry runs) fetches stay anonymous, as before; with one,
+    a rejected fetch fails and is never retried anonymously. ``file://`` test remotes take none.
+    """
+    if not cfg.github_token:
+        return None
+    url = cfg.source_git_url
+    if not (url.startswith("https://") or url.startswith("http://127.0.0.1:")):
+        return None
+    return GitAuth(url, GITHUB_TOKEN_USER, cfg.github_token)
+
+
 @dataclass
 class Outcome:
     status: str
@@ -387,13 +407,17 @@ def main() -> int:
         REDACTOR.add_credential(cfg.forgejo_user or "pdfcraft-sync", cfg.forgejo_token)
         if cfg.cf_access is not None:
             cfg.cf_access.register(REDACTOR)
-        REDACTOR.add_credential(None, cfg.github_token)
+        if cfg.github_token:
+            validate_header_value(cfg.github_token, "GITHUB_TOKEN")
+        # Every form Git or HTTP may print it in, including base64(x-access-token:token).
+        REDACTOR.add_credential(GITHUB_TOKEN_USER, cfg.github_token)
         reporter = Reporter(REDACTOR)
         if not cfg.forgejo_token and not cfg.dry_run:
             raise SyncError("FORGEJO_TOKEN is not set")
         auth = (GitAuth(cfg.forgejo_url, cfg.forgejo_user or "pdfcraft-sync", cfg.forgejo_token, cfg.cf_access)
                 if cfg.forgejo_token else None)
-        git = Git.temporary(auth=auth)
+        source = source_auth(cfg)
+        git = Git.temporary(auth=auth, extra_auth=(source,) if source is not None else ())
         if cfg.object_cache:
             git.add_alternate(cfg.object_cache)
         github = GitHubClient(cfg.github_api_url, cfg.github_token or None)

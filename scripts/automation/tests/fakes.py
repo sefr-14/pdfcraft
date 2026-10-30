@@ -483,16 +483,21 @@ class GitHttpServer:
     Every request's headers are recorded. ``require`` maps header names to the values a request
     must carry: a missing Cloudflare header answers 302 to ``redirect_to`` (like Access), a wrong
     or missing ``Authorization`` answers 401. ``fail_status`` makes every request fail that way
-    after it was recorded.
+    after it was recorded. ``repo_require`` adds requirements for one repository (by the first
+    path component, such as ``github.git``), so one host can serve a private repository beside
+    public ones; ``requests`` records each request's repository with its headers.
     """
 
     def __init__(self, project_root: str, require: dict[str, str] | None = None,
-                 redirect_to: str = "http://127.0.0.1:9/") -> None:
+                 redirect_to: str = "http://127.0.0.1:9/",
+                 repo_require: dict[str, dict[str, str]] | None = None) -> None:
         self.project_root = project_root
         self.require = dict(require or {})
+        self.repo_require = {k: dict(v) for k, v in (repo_require or {}).items()}
         self.redirect_to = redirect_to
         self.fail_status: int | None = None
         self.headers: list[dict[str, str]] = []
+        self.requests: list[tuple[str, dict[str, str]]] = []
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -510,10 +515,14 @@ class GitHttpServer:
                 self.wfile.write(data)
 
             def _cgi(self):
-                fake.headers.append({k.lower(): v for k, v in self.headers.items()})
+                recorded = {k.lower(): v for k, v in self.headers.items()}
+                fake.headers.append(recorded)
+                repo = urllib.parse.urlparse(self.path).path.lstrip("/").split("/", 1)[0]
+                fake.requests.append((repo, recorded))
                 length = int(self.headers.get("Content-Length") or 0)
                 body = self.rfile.read(length) if length else b""
-                for name, value in fake.require.items():
+                required = {**fake.require, **fake.repo_require.get(repo, {})}
+                for name, value in required.items():
                     if self.headers.get(name) != value:
                         if name.lower().startswith("cf-access-"):
                             return self._plain(302, "Sign in", {"Location": fake.redirect_to})

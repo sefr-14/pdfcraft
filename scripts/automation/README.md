@@ -52,7 +52,18 @@ never reach either real service.
     `http.<forgejo>/.extraHeader` scoped to the Forgejo URL. It never appears in argv, a URL, a
     remote or a config file. The Cloudflare Access service token travels the same way (see
     [Cloudflare Access](#cloudflare-access)).
-  - Requests carrying credentials never follow a redirect: `http.<forgejo>/.followRedirects=false`
+  - The bridge also sends the workflow's own `GITHUB_TOKEN` to Git, so it can fetch
+    `refs/pull/<N>/head` once `sefr-14/pdfcraft` is private. It travels the same way, as
+    `Authorization: Basic base64(x-access-token:<token>)` in an `extraHeader` scoped to the exact
+    source repository URL (`http.https://github.com/sefr-14/pdfcraft.git/.extraHeader`).
+    - Another repository on github.com, upstream `storytold/pdfcraft` and Forgejo never receive it,
+      and Forgejo's credentials never reach GitHub.
+    - Without a token (local and dry runs) the fetch is anonymous, as before. A rejected token fails
+      the run and is never retried anonymously.
+    - It needs no new secret and no workflow change: `forgejo-pr-sync.yml` already passes the token,
+      and `contents: read` is enough. It takes effect once this script is in `Main`, because
+      `pull_request_target` runs `Main`'s copy.
+  - Requests carrying credentials never follow a redirect: `http.<prefix>/.followRedirects=false`
     for Git, and the Forgejo API client refuses 3xx answers. Otherwise urllib would replay
     `Authorization` and curl would replay the Cloudflare headers to whatever host a redirect names.
   - `GIT_TRACE*`, `GIT_CURL_VERBOSE` and `GIT_ASKPASS` are removed from Git's environment.
