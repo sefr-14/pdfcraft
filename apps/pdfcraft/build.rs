@@ -16,6 +16,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../../assets/app-icon/pdfcraft-document.ico");
     println!("cargo:rerun-if-changed=src/windows_manifest.rs");
     println!("cargo:rerun-if-env-changed=PDFCRAFT_REQUIRE_WINRES");
+    build_identity();
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;
     }
@@ -35,5 +36,27 @@ fn main() {
             return;
         }
         println!("cargo:warning=pdfcraft.exe built without icon/version resources: {e}");
+    }
+}
+
+/// The build identity updates compare (UPD.1): the commit of a build of this fork. GitHub Actions
+/// sets `GITHUB_SHA`, `GITHUB_RUN_ID` and `GITHUB_REPOSITORY` for every step, so the Windows
+/// workflow needs no change; only builds of `sefr-14/pdfcraft` get one. A controlled local test
+/// build may name its commit with `PDF_OVERLAY_BUILD_COMMIT`. Without one, the build is a
+/// development build and never installs updates.
+fn build_identity() {
+    for var in ["GITHUB_SHA", "GITHUB_RUN_ID", "GITHUB_REPOSITORY", "PDF_OVERLAY_BUILD_COMMIT"] {
+        println!("cargo:rerun-if-env-changed={var}");
+    }
+    let env = |k: &str| std::env::var(k).ok().map(|v| v.trim().to_ascii_lowercase());
+    let commit = |c: String| (c.len() == 40 && c.bytes().all(|b| b.is_ascii_hexdigit())).then_some(c);
+    let found = env("PDF_OVERLAY_BUILD_COMMIT")
+        .and_then(commit)
+        .or_else(|| (env("GITHUB_REPOSITORY").as_deref() == Some("sefr-14/pdfcraft")).then(|| env("GITHUB_SHA")).flatten().and_then(commit));
+    if let Some(c) = found {
+        println!("cargo:rustc-env=PDF_OVERLAY_COMMIT={c}");
+    }
+    if let Some(run) = env("GITHUB_RUN_ID").filter(|r| !r.is_empty() && r.bytes().all(|b| b.is_ascii_digit())) {
+        println!("cargo:rustc-env=PDF_OVERLAY_RUN_ID={run}");
     }
 }

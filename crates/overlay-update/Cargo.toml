@@ -1,0 +1,39 @@
+[package]
+name = "pdfcraft-overlay-update"
+description = "PDF Overlay updates (fork, UPD.1): signed channel envelope, eligibility, reminders, archive checks and the journaled install/rollback transaction"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+default = ["install"]
+# Archive validation, extraction and the install/rollback transaction. The UI needs only the
+# offer and reminder types, so it builds without this (and without the zip reader).
+install = ["dep:zip", "dep:flate2"]
+
+[dependencies]
+# Owner signatures on the channel envelope (already in the tree through pdfcraft-sign).
+ed25519-dalek = "3.0.0"
+base64 = "0.23"
+sha2 = "0.11"
+# Reminder intervals and manifest dates (no hand-rolled calendar code).
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# The Windows portable package is a Compress-Archive zip: stored or deflate entries only.
+zip = { version = "9.1", default-features = false, features = ["deflate-flate2"], optional = true }
+# Selects flate2's pure-Rust backend for the zip reader (the workspace's choice).
+flate2 = { workspace = true, optional = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+# Real processes: an interrupted install, then the installed app started (the test binary re-runs
+# itself as that app). Its own `main`, so it can be the app too.
+[[test]]
+name = "recovery_processes"
+harness = false

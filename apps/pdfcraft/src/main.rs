@@ -215,12 +215,19 @@ fn main() -> eframe::Result {
             let _ = std::io::Write::write_fmt(&mut std::io::stderr(), format_args!("pdfcraft: {report}\n"));
         }
     }));
+    // The update helper (UPD.1): a copy of this program in an update's folder, started to install
+    // or repair it. It never opens a window.
+    if updates::run_helper_if_asked().is_some() {
+        return Ok(());
+    }
     let mut files = Vec::new();
     let mut options: Vec<(String, String)> = Vec::new();
     let mut control_file: Option<String> = None;
     let mut create_images = false;
     let mut new_window = false;
-    let mut args = std::env::args().skip(1);
+    // `--overlay-update-verify` and `--overlay-update-result` come from the update helper.
+    let (update_flags, args) = updates::Flags::take(std::env::args().skip(1).collect());
+    let mut args = args.into_iter();
     while let Some(a) = args.next() {
         match a.as_str() {
             "--version" => return print_and_exit(&format!("pdfcraft {}", pdfcraft_engine::build_info::version())),
@@ -261,13 +268,18 @@ fn main() -> eframe::Result {
     // Absolute for this instance too: links relative to a document resolve against its folder,
     // never the working directory.
     let files = single_instance::absolute(&files);
+    // An interrupted update is finished or handed to its helper before anything opens (UPD.1).
+    let update_start = match updates::startup(&update_flags, &files) {
+        updates::Startup::Exit => return Ok(()),
+        updates::Startup::Continue(info) => info,
+    };
     let instance = match single_instance::claim(&files, may_hand_off) {
         single_instance::Claim::HandedOff => return Ok(()),
         single_instance::Claim::Primary(server) => Some(server),
         single_instance::Claim::Alone => None,
     };
     let choice = renderer_choice(std::env::var("PDFCRAFT_RENDERER").ok().as_deref());
-    let launch = Launch { files, options, control_file, create_images, integrated, window_controls };
+    let launch = Launch { files, options, control_file, create_images, integrated, window_controls, update_start };
     // Finder, Open With and the Dock deliver files as Apple events, not arguments; catch the one
     // that launched us as well as later ones. Lives until the event loop returns.
     #[cfg(target_os = "macos")]
@@ -286,7 +298,7 @@ fn main() -> eframe::Result {
             &apple_events,
         ),
     );
-    match result {
+    let result = match result {
         // Only a renderer that couldn't start: without a window or display at all, OpenGL can't
         // help either, and winit's own error says more.
         Err(e @ eframe::Error::Wgpu(_)) if retry_with_gl(choice, started.get()) => {
@@ -306,7 +318,10 @@ fn main() -> eframe::Result {
             )
         }
         other => other,
-    }
+    };
+    // A staged update installs now that the window has closed (UPD.1).
+    updates::after_exit();
+    result
 }
 
 /// Which renderer to start with, from `PDFCRAFT_RENDERER`.
@@ -377,6 +392,8 @@ struct Launch {
     integrated: bool,
     /// The window buttons the app draws, when the desktop leaves the frame to it.
     window_controls: Option<pdfcraft_ui_egui::window_controls::Layout>,
+    /// What this start does about updates (UPD.1).
+    update_start: Box<updates::StartInfo>,
 }
 
 /// Whether the window is a native Wayland one (not X11 or XWayland).
@@ -397,7 +414,7 @@ fn app_creator<'a>(
     instance: Option<&'a single_instance::Server>,
     #[cfg(target_os = "macos")] apple_events: &'a apple_events::AppleEvents,
 ) -> eframe::AppCreator<'a> {
-    let Launch { files, options, control_file, create_images, integrated, window_controls } = launch;
+    let Launch { files, options, control_file, create_images, integrated, window_controls, update_start } = launch;
     Box::new(move |cc| {
         started.set(true);
         let mut app = PdfCraftApp::new();
@@ -420,7 +437,22 @@ fn app_creator<'a>(
         {
             app.motion.source = Some(motion::source());
         }
-        app.update_source = Some(std::sync::Arc::new(updates::latest_build));
+        // Help ▸ Check for updates (UPD.1).
+        app.update_source = Some(std::sync::Arc::new(updates::check));
+        app.update_installer = Some(updates::installer() as std::sync::Arc<dyn pdfcraft_ui_egui::updates::UpdateInstaller>);
+        app.set_installed_update(update_start.installed_seq);
+        if let Some((ok, message)) = update_start.result.clone() {
+            app.show_update_result(ok, message);
+        }
+        if let Some(notice) = &update_start.notice {
+            app.notify(notice.clone());
+        }
+        if let Some((layout, nonce)) = update_start.verify.clone() {
+            // Started by the update helper: tell it this new build is up once a frame is drawn.
+            app.after_first_frame = Some(Box::new(move || updates::confirm(&layout, &nonce, true, None)));
+        } else if let Some(layout) = update_start.commit_after_start.clone() {
+            app.after_first_frame = Some(Box::new(move || updates::commit_here(&layout)));
+        }
         app.printer_source = Some(pdfcraft_ui_egui::system_printers());
         app.os_key_store_ids = cfg!(any(target_os = "macos", target_os = "windows"));
         #[cfg(target_os = "macos")]
