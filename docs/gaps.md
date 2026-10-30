@@ -1,3 +1,4 @@
+<!-- Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history. -->
 # Where PdfCraft falls short of Acrobat Pro
 
 > **Last reviewed:** 2026-10-25 · **Last updated:** 2026-10-25 · **Change:** minor (gaps 5 and 14 current state: native release Hans face via LXGW WenKai Lite; Arabic logical catalog, explicit RTL direction and mirrored stock chrome, with native/browser/IME workflows unqualified; no readiness re-estimate)
@@ -78,6 +79,9 @@ update the numbers.
   plan) or an adopted engine plus our own font and text layers.
 - **Estimate:** 110–190 h (includes the harness). **Owner decision needed** on #841 vs M2.
   **Doc:** [pdf-spec-parity.md](pdf-spec-parity.md).
+- **This fork (RENDER.1, 2026-10-30):** low-zoom thin lines and small text measured against a 4×
+  reference and Poppler: [render1-findings.md](render1-findings.md). Thin rules and pattern/Type 3
+  hairlines get no minimum and hairlines aren't pixel-snapped; text matches its geometry.
 
 ### 3. Editing existing text is fragile on real files
 
