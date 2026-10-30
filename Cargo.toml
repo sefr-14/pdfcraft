@@ -60,6 +60,7 @@ pdfcraft-ui-egui = { path = "crates/ui-egui", version = "0.15.0" }
 pdfcraft-automation = { path = "crates/automation", version = "0.15.0", default-features = false }
 # This fork's overlay compare (crates/overlay). Declared here so `cargo xtask version set` moves its pin too.
 pdfcraft-overlay = { path = "crates/overlay", version = "0.15.0" }
+pdfcraft-overlay-update = { path = "crates/overlay-update", version = "0.15.0", default-features = false }
 
 # pdf
 hayro = "0.7.1"

@@ -68,6 +68,7 @@ pub const TABLE: &[(&str, Class)] = &[
     ("a11y", Class::Layer(4)),
     ("compare", Class::Layer(4)),
     ("measure", Class::Layer(4)),
+    ("overlay-update", Class::Layer(4)), // this fork's updater (crates/overlay-update, UPD.1)
     ("search", Class::Layer(4)),
     ("print", Class::Layer(4)),
     ("media", Class::Layer(4)),
