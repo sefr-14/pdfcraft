@@ -135,8 +135,9 @@ pub(crate) fn decode(
             if ctx.pixels > MAX_DICTIONARY_PIXELS {
                 bail!(OverflowError::BitmapDimension);
             }
-            // PdfCraft patch: see `bitmap::MAX_WORK`.
-            let work = decode_work(symbol_width, ctx.height_class_height);
+            // PdfCraft patch: see `bitmap::MAX_WORK`. One with no rows costs no pixels, but it is
+            // decoded all the same, and a stream can hold thousands of dictionaries of them.
+            let work = decode_work(symbol_width, ctx.height_class_height).saturating_add(1);
             *ctx.work_left = ctx.work_left.checked_sub(work).ok_or(OverflowError::DecodingWork)?;
             // PdfCraft patch: see `room`. Rows take a word at least, so symbols of one column
             // held 270 MiB within the pixel bound, however few the dictionary exported.
