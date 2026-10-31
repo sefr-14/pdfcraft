@@ -905,6 +905,53 @@ fn a_decode_array_with_references_in_it_is_read() {
     }
 }
 
+/// A function's `/Encode`, `/Decode`, `/Domain` and `/Range` are read a pair at a time too, so they
+/// lost a reference at the start of a pair the same way, and the array with it. Each form is compared
+/// with the direct one, which differs from the identity so the array is shown to count.
+#[test]
+fn a_functions_arrays_can_start_with_a_reference() {
+    use super::*;
+    let render = |function: String| -> [u8; 4] {
+        let content = "/C cs 0.25 sc 0 0 200 200 re f";
+        let bytes = format!(
+            "%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+                 2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+                 3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /ColorSpace << /C [/Separation /X /DeviceRGB 9 0 R] >> >> /Contents 4 0 R >> endobj\n\
+                 4 0 obj << /Length {} >> stream\n{content}\nendstream endobj\n\
+                 5 0 obj 1 endobj\n6 0 obj 0 endobj\n\
+                 7 0 obj << /FunctionType 2 /Domain [0 1] /C0 [0 0 0] /C1 [1 0 0] /N 1 >> endobj\n\
+                 8 0 obj << /FunctionType 2 /Domain [0 1] /C0 [0 1 0] /C1 [0 0 1] /N 1 >> endobj\n\
+                 9 0 obj {function} endobj\n\
+                 trailer << /Root 1 0 R >>\n%%EOF",
+            content.len()
+        )
+        .into_bytes();
+        let page = PageRenderer::new(Arc::new(bytes), RenderConfig::default()).render(RenderRequest {
+            page: 0,
+            kind: RequestKind::Pixels,
+            tile: None,
+            scale: 1.0,
+            tag: 0,
+            preview: false,
+        });
+        assert!(page.error.is_none(), "{function}: {:?}", page.error);
+        let start = (100 * page.width as usize + 100) * 4;
+        let mut pixel = [0; 4];
+        pixel.copy_from_slice(page.rgba.get(start..start + 4).expect("centre pixel"));
+        pixel
+    };
+    let sampled = |encode: &str| {
+        format!(
+            "<< /FunctionType 0 /Size [2] /BitsPerSample 8 /Domain [0 1] /Range [0 1 0 1 0 1] /Encode {encode} /Filter /ASCIIHexDecode /Length 13 >> stream\n000000FF8040>\nendstream"
+        )
+    };
+    let stitched = |encode: &str| format!("<< /FunctionType 3 /Domain [0 1] /Functions [7 0 R 8 0 R] /Bounds [.5] /Encode {encode} >>");
+    assert_ne!(render(sampled("[1 0]")), render(sampled("[0 1]")), "/Encode counts");
+    assert_eq!(render(sampled("[5 0 R 0]")), render(sampled("[1 0]")), "a sampled function");
+    assert_ne!(render(stitched("[1 0 0 1]")), render(stitched("[0 1 0 1]")), "/Encode counts");
+    assert_eq!(render(stitched("[5 0 R 0 0 1]")), render(stitched("[1 0 0 1]")), "a stitching function");
+}
+
 /// The lookup table of an `/Indexed` space is a string or a stream, and any part of the space can
 /// be indirect (ISO 32000-2 §8.6.6.3, §7.3.10). A table in an indirect string was lost: reading it
 /// as a stream used up the reference, so the space couldn't be read and drew in grey.

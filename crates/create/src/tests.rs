@@ -1318,3 +1318,31 @@ fn a_tiny_gif_on_a_huge_screen_is_refused() {
     let doc = reopen(&from_images(&[("small.gif".into(), gif_on_screen(40, 30))]).unwrap());
     assert_eq!(media(&pages(&doc)[0]), [0.0, 0.0, 40.0, 30.0]);
 }
+
+/// `/Decode` says which way round a stencil mask is, and its numbers can be given by reference. Read
+/// as absent, they gave the wrong answer, so the file came out a negative of what the page draws.
+#[test]
+fn a_stencil_masks_decode_array_can_hold_references() {
+    use pdfcraft_cos::Document;
+    let export = |decode: &str| {
+        let pdf = format!(
+            "%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+             2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+             3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] /Resources << /XObject << /Im 4 0 R >> >> >> endobj\n\
+             4 0 obj << /Subtype /Image /ImageMask true /Width 8 /Height 1 /BitsPerComponent 1 /Decode {decode} /Filter /ASCIIHexDecode /Length 3 >> stream\nF0>\nendstream endobj\n\
+             5 0 obj 1 endobj\n6 0 obj 0 endobj\ntrailer << /Root 1 0 R >>\n%%EOF"
+        );
+        let doc = Document::open(std::sync::Arc::new(pdf.into_bytes())).unwrap();
+        let mut export = crate::extract::extract_images(&doc, &[0], 1);
+        assert_eq!(export.images.len(), 1, "{decode}: {:?}", export.skipped);
+        export.images.remove(0).data
+    };
+    let (inverted, identity) = (export("[1 0]"), export("[0 1]"));
+    assert_ne!(inverted, identity, "the two ways round differ");
+    for decode in ["[5 0 R 0]", "[1 6 0 R]", "[5 0 R 6 0 R]"] {
+        assert_eq!(export(decode), inverted, "{decode}");
+    }
+    for decode in ["[0 5 0 R]", "[6 0 R 1]", "[6 0 R 5 0 R]"] {
+        assert_eq!(export(decode), identity, "{decode}");
+    }
+}
