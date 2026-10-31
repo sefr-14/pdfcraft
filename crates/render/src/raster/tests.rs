@@ -860,6 +860,43 @@ fn an_uncoloured_pattern_uses_its_underlying_space_in_every_form() {
     }
 }
 
+/// A colour space's parts can refer back to the space, now that a Pattern's underlying space is
+/// followed as an Indexed space's base always was. A file made so ends as a space that can't be
+/// read, and the page draws what it can.
+#[test]
+fn a_colour_space_that_refers_to_itself_ends() {
+    use super::*;
+    let content = "1 0 0 rg 0 0 100 100 re f /C cs 0 sc 100 100 100 100 re f";
+    for (space, objects) in [
+        ("5 0 R", "5 0 obj [/Pattern 5 0 R] endobj"),
+        ("5 0 R", "5 0 obj [/Pattern 6 0 R] endobj 6 0 obj [/Pattern 5 0 R] endobj"),
+        ("5 0 R", "5 0 obj [/Pattern 6 0 R] endobj 6 0 obj [/Indexed 5 0 R 1 <0011>] endobj"),
+        ("5 0 R", "5 0 obj [/Indexed 5 0 R 1 <0011>] endobj"),
+    ] {
+        let bytes = format!(
+            "%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+                 2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+                 3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /ColorSpace << /C {space} >> >> /Contents 4 0 R >> endobj\n\
+                 4 0 obj << /Length {} >> stream\n{content}\nendstream endobj\n\
+                 {objects}\n\
+                 trailer << /Root 1 0 R >>\n%%EOF",
+            content.len()
+        )
+        .into_bytes();
+        let page = PageRenderer::new(Arc::new(bytes), RenderConfig::default()).render(RenderRequest {
+            page: 0,
+            kind: RequestKind::Pixels,
+            tile: None,
+            scale: 1.0,
+            tag: 0,
+            preview: false,
+        });
+        assert!(page.error.is_none(), "{objects}: {:?}", page.error);
+        let start = ((150 * page.width as usize) + 50) * 4;
+        assert_eq!(page.rgba.get(start..start + 4), Some(&[255, 0, 0, 255][..]), "{objects}: what comes before it drew");
+    }
+}
+
 /// An image's `/Decode` pairs can have a reference at the start of a pair. Its read took that for
 /// the whole pair, found no pair there, and ended the array, so the image didn't draw at all.
 #[test]
