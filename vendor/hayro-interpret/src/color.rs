@@ -198,6 +198,9 @@ impl ColorSpaceType {
 
                     // PdfCraft patch (48): cached by what the profile is read from (see
                     // `IccProfileKey`), not by the stream dictionary's bytes alone.
+                    // PdfCraft patch (74): what's kept is what the profile itself reads as. What
+                    // it falls back to depends on how deep it was met, and kept with the profile
+                    // a page could build a chain past the limit on spaces already read.
                     let read = || {
                         let data = icc_stream.raw_data();
                         let content = IccProfileKey::Content {
@@ -206,40 +209,37 @@ impl ColorSpaceType {
                         };
                         cache.get_or_insert_with(hash128(&content), || {
                             cache.count_icc_profile_read();
-                            if let Some(decoded) = icc_stream.decoded().ok().as_ref() {
-                                ICCProfile::new(decoded, num_components)
-                                    .map(|icc| {
-                                        // TODO: For SVG and PNG we can assume that the output color space is
-                                        // sRGB. If we ever implement PDF-to-PDF, we probably want to
-                                        // let the user pass the native color type and don't make this optimization
-                                        // if it's not sRGB.
-                                        if icc.is_srgb() {
-                                            Self::DeviceRgb
-                                        } else {
-                                            Self::ICCBased(icc)
-                                        }
-                                    })
-                                    .or_else(|| {
-                                        dict.get::<Object<'_>>(ALTERNATE)
-                                            .and_then(|o| Self::new(o, cache, depth + 1))
-                                    })
-                                    .or_else(|| match dict.get::<u8>(N) {
-                                        Some(1) => Some(Self::DeviceGray),
-                                        Some(3) => Some(Self::DeviceRgb),
-                                        Some(4) => Some(Self::DeviceCmyk),
-                                        _ => None,
-                                    })
-                            } else {
-                                None
-                            }
+                            let decoded = icc_stream.decoded().ok()?;
+                            Some(ICCProfile::new(&decoded, num_components).map(|icc| {
+                                // TODO: For SVG and PNG we can assume that the output color space is
+                                // sRGB. If we ever implement PDF-to-PDF, we probably want to
+                                // let the user pass the native color type and don't make this optimization
+                                // if it's not sRGB.
+                                if icc.is_srgb() {
+                                    Self::DeviceRgb
+                                } else {
+                                    Self::ICCBased(icc)
+                                }
+                            }))
                         })
                     };
-                    return match icc_stream_object(&color_array, &icc_stream) {
+                    let profile = match icc_stream_object(&color_array, &icc_stream) {
                         Some(object) => {
                             cache.get_or_insert_with(hash128(&IccProfileKey::Object(object)), read)
                         }
                         None => read(),
                     };
+                    return profile?
+                        .or_else(|| {
+                            dict.get::<Object<'_>>(ALTERNATE)
+                                .and_then(|o| Self::new(o, cache, depth + 1))
+                        })
+                        .or_else(|| match dict.get::<u8>(N) {
+                            Some(1) => Some(Self::DeviceGray),
+                            Some(3) => Some(Self::DeviceRgb),
+                            Some(4) => Some(Self::DeviceCmyk),
+                            _ => None,
+                        });
                 }
                 CALCMYK => return Some(Self::DeviceCmyk),
                 CALGRAY => {

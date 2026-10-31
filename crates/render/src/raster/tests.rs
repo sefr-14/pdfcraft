@@ -978,6 +978,76 @@ fn colour_spaces_are_read_to_the_limit_of_their_nesting() {
     assert!(!green(32), "one past it");
 }
 
+/// A page with the colour space resources `spaces` and the other objects `objects`, drawn with
+/// `content`. Objects 5 and 6 are tint transforms: the tint itself, and paper to green.
+fn page_with_colour_spaces(spaces: &str, objects: &str, content: &str) -> super::RenderedPage {
+    use super::*;
+    let bytes = format!(
+        "%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+             2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+             3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /ColorSpace << {spaces} >> >> /Contents 4 0 R >> endobj\n\
+             4 0 obj << /Length {} >> stream\n{content}\nendstream endobj\n\
+             5 0 obj << /FunctionType 2 /Domain [0 1] /N 1 /C0 [0] /C1 [1] >> endobj\n\
+             6 0 obj << /FunctionType 2 /Domain [0 1] /N 1 /C0 [1 1 1] /C1 [0 1 0] >> endobj\n\
+             {objects}\n\
+             trailer << /Root 1 0 R >>\n%%EOF",
+        content.len()
+    )
+    .into_bytes();
+    PageRenderer::new(Arc::new(bytes), RenderConfig::default()).render(RenderRequest {
+        page: 0,
+        kind: RequestKind::Pixels,
+        tile: None,
+        scale: 1.0,
+        tag: 0,
+        preview: false,
+    })
+}
+
+/// What an ICC profile reads as is kept. If what it falls back to were kept with it, a page
+/// selecting the last of a chain first would build each space on the one before, and no read
+/// would be deep: 20,000 levels past the limit, for whatever walks the space to paint with it.
+#[test]
+fn a_chain_built_on_spaces_already_read_ends() {
+    const LINKS: u32 = 20_000;
+    let selected: String = (0..LINKS).rev().map(|i| format!("/C{i} cs\n")).collect();
+    let content = format!("1 0 0 rg 0 0 100 100 re f\n{selected}0 sc 100 100 100 100 re f");
+    let spaces: String = (0..LINKS).map(|i| format!("/C{i} [/ICCBased {} 0 R] ", 10 + i)).collect();
+    let around: [&dyn Fn(&str) -> String; 4] = [
+        &|next| format!("[/Pattern {next}]"),
+        &|next| format!("[/Indexed {next} 1 <0011>]"),
+        &|next| format!("[/Separation /A {next} 5 0 R]"),
+        &|next| format!("[/DeviceN [/A] {next} 5 0 R]"),
+    ];
+    for around in around {
+        let mut objects: String = (0..LINKS)
+            .map(|i| {
+                let alternate = around(&format!("[/ICCBased {} 0 R]", 11 + i));
+                format!("{} 0 obj << /N 1 /Alternate {alternate} /Length 1 >> stream\nx\nendstream endobj\n", 10 + i)
+            })
+            .collect();
+        objects.push_str(&format!("{} 0 obj << /N 1 /Length 1 >> stream\nx\nendstream endobj\n", 10 + LINKS));
+        let page = page_with_colour_spaces(&spaces, &objects, &content);
+        assert!(page.error.is_none(), "{}: {:?}", around("next"), page.error);
+        let start = ((150 * page.width as usize) + 50) * 4;
+        assert_eq!(page.rgba.get(start..start + 4), Some(&[255, 0, 0, 255][..]), "{}: what comes before it drew", around("next"));
+    }
+}
+
+/// A profile met at the limit can't read its alternate there, which says nothing of a read nearer
+/// the top: the space kept from the first read isn't what the second gets.
+#[test]
+fn a_profile_read_at_the_limit_keeps_its_alternate_for_a_read_nearer_the_top() {
+    let chain: String = (0..31).map(|i| format!("{} 0 obj [/Separation /A {} 0 R 5 0 R] endobj\n", 10 + i, 11 + i)).collect();
+    let objects = format!(
+        "{chain}41 0 obj [/ICCBased 7 0 R] endobj\n\
+         7 0 obj << /N 1 /Alternate [/Separation /A /DeviceRGB 6 0 R] /Length 1 >> stream\nx\nendstream endobj\n"
+    );
+    let page = page_with_colour_spaces("/Deep 10 0 R /Near 41 0 R", &objects, "/Deep cs /Near cs 1 scn 0 0 200 200 re f");
+    assert!(page.error.is_none(), "{:?}", page.error);
+    assert_eq!(page.rgba.get(..4), Some(&[0, 255, 0, 255][..]));
+}
+
 /// An image's `/Decode` pairs can have a reference at the start of a pair. Its read took that for
 /// the whole pair, found no pair there, and ended the array, so the image didn't draw at all.
 #[test]
