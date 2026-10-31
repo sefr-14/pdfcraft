@@ -24,6 +24,30 @@ pub(crate) const MAX_PIXELS: u64 = 1 << 28;
 /// the pixel bound alone let a 98-byte segment take 1 GiB; this one leaves 128 MiB.
 pub(crate) const MAX_GRID_CELLS: u64 = 1 << 25;
 
+/// PdfCraft patch: the decoding work a stream may ask for, in pixels decoded from their code: four
+/// of the largest pages, about 6 s on data the decoder predicts and about 17 s on data it can't, so
+/// a render finishes inside its 20 s watchdog. Each bitmap is bounded on its own, but nothing
+/// bounded how many there are: 1,140 bytes of generic regions took over 40 s, a 795-byte PDF's one
+/// halftone 265 s, and a 923-byte PDF's regions would have taken days.
+pub(crate) const MAX_WORK: u64 = 4 * MAX_PIXELS;
+
+/// PdfCraft patch: the work of a line of a Huffman table built for symbols, about 50 ns (see
+/// [`MAX_WORK`]).
+pub(crate) const HUFFMAN_LINE_WORK: u64 = 10;
+
+/// PdfCraft patch: the work of decoding a bitmap pixel by pixel (see [`MAX_WORK`]). A row costs up
+/// to 21 ns however few pixels it has, about 4 pixels' worth, so one of no width isn't free: 16,384
+/// regions of 0 × 65535 took 9 s at a cost of nothing.
+pub(crate) fn decode_work(width: u32, height: u32) -> u64 {
+    u64::from(height) * (u64::from(width) + 4)
+}
+
+/// PdfCraft patch: the work of copying a bitmap (see [`MAX_WORK`]): a word at a time, and a row is
+/// a copy of its own, so a tall thin bitmap costs its rows, not its pixels.
+pub(crate) fn copy_work(width: u32, height: u32) -> u64 {
+    u64::from(height) * (u64::from(width.div_ceil(WORD_BITS)) + 1)
+}
+
 /// The underlying word type for packed pixel storage.
 /// Change this to `u32` to switch back to 32-bit words.
 pub(crate) type Word = u32;

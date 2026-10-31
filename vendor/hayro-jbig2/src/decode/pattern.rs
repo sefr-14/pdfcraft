@@ -3,7 +3,7 @@
 use super::{AdaptiveTemplatePixel, Template, generic};
 use crate::ScratchBuffers;
 use crate::arithmetic_decoder::{ArithmeticDecoder, ArithmeticDecoderContext};
-use crate::bitmap::{Bitmap, WORD_BITS, Word};
+use crate::bitmap::{Bitmap, WORD_BITS, Word, copy_work};
 use crate::error::{OverflowError, ParseError, Result};
 use crate::reader::Reader;
 use alloc::vec::Vec;
@@ -216,6 +216,17 @@ pub(crate) struct PatternDictionaryHeader<'a> {
     /// `GRAYMAX`
     pub(crate) num_patterns: u32,
     pub(crate) data: &'a [u8],
+}
+
+impl PatternDictionaryHeader<'_> {
+    /// PdfCraft patch: the work of decoding the patterns, side by side in one bitmap, and of
+    /// taking each out of it (see `bitmap::MAX_WORK`).
+    pub(crate) fn work(&self) -> u64 {
+        let (width, height) = (u32::from(self.pattern_width), u32::from(self.pattern_height));
+        let patterns = u64::from(self.num_patterns) + 1;
+        let side_by_side = u64::from(height) * (patterns.saturating_mul(u64::from(width)) + 4);
+        side_by_side.saturating_add(patterns.saturating_mul(copy_work(width, height)))
+    }
 }
 
 /// Parse a pattern dictionary segment header (7.4.4.1).

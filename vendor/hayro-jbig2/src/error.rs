@@ -139,6 +139,8 @@ pub enum OverflowError {
     RetainedBitmaps,
     /// PdfCraft patch: a stream has more segments, or references, than it may.
     SegmentCount,
+    /// PdfCraft patch: a stream asks for more decoding work than it may.
+    DecodingWork,
 }
 
 impl fmt::Display for DecodeError {
@@ -168,6 +170,7 @@ impl fmt::Display for OverflowError {
             Self::SymbolCount => write!(f, "too many symbols in a dictionary or referred to"),
             Self::RetainedBitmaps => write!(f, "the segments retain too many bitmaps"),
             Self::SegmentCount => write!(f, "too many segments or references in a stream"),
+            Self::DecodingWork => write!(f, "a stream asks for too much decoding work"),
         }
     }
 }

@@ -4,7 +4,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::arithmetic_decoder::{ArithmeticDecoder, ArithmeticDecoderContext};
-use crate::bitmap::{BITMAP_WORDS, Bitmap, WORD_BITS, Word};
+use crate::bitmap::{BITMAP_WORDS, Bitmap, HUFFMAN_LINE_WORK, WORD_BITS, Word, decode_work};
 use crate::decode::generic::{decode_bitmap_mmr, parse_adaptive_template_pixels};
 use crate::decode::text::{
     DecodeContext, ReferenceCorner, TextRegionContexts, TextRegionFlags, TextRegionHeader,
@@ -46,6 +46,7 @@ pub(crate) fn decode(
     standard_tables: &StandardHuffmanTables,
     input_contexts: Option<&RetainedContexts>,
     room: u64,
+    work_left: &mut u64,
 ) -> Result<SymbolDictionary> {
     let num_new_symbols = header.num_new_symbols;
 
@@ -61,6 +62,7 @@ pub(crate) fn decode(
         pixels: 0,
         new_words: 0,
         room,
+        work_left,
         header,
         standard_tables,
     };
@@ -133,6 +135,9 @@ pub(crate) fn decode(
             if ctx.pixels > MAX_DICTIONARY_PIXELS {
                 bail!(OverflowError::BitmapDimension);
             }
+            // PdfCraft patch: see `bitmap::MAX_WORK`.
+            let work = decode_work(symbol_width, ctx.height_class_height);
+            *ctx.work_left = ctx.work_left.checked_sub(work).ok_or(OverflowError::DecodingWork)?;
             // PdfCraft patch: see `room`. Rows take a word at least, so symbols of one column
             // held 270 MiB within the pixel bound, however few the dictionary exported.
             let rows = u64::from(symbol_width.div_ceil(WORD_BITS)) * u64::from(ctx.height_class_height);
@@ -359,6 +364,11 @@ fn decode_aggregation_bitmap(
 ) -> Result<Bitmap> {
     let use_huffman = ctx.header.flags.use_huffman;
 
+    // PdfCraft patch: see `bitmap::MAX_WORK`. What follows is sized by all the symbols, for each
+    // aggregated symbol, at about 50 ns a symbol: a 713-byte PDF asked for an hour.
+    let work = u64::from(ctx.total_symbols()).saturating_mul(HUFFMAN_LINE_WORK);
+    *ctx.work_left = ctx.work_left.checked_sub(work).ok_or(OverflowError::DecodingWork)?;
+
     // Concatenate input and new symbols.
     let mut all_symbols: Vec<&Bitmap> =
         Vec::with_capacity(ctx.symbols.input.len() + ctx.symbols.new.len());
@@ -444,7 +454,7 @@ fn decode_aggregation_bitmap(
         header.region_info.y_location,
         header.flags.default_pixel,
     )?;
-    decode_with(decode_ctx, &all_symbols, &header, &mut bitmap)?;
+    decode_with(decode_ctx, &all_symbols, &header, &mut bitmap, ctx.work_left)?;
     Ok(bitmap)
 }
 
@@ -491,6 +501,8 @@ struct SymbolDecodeContext<'a> {
     room: u64,
     /// PdfCraft patch: the words of the new symbols so far (see `room`).
     new_words: u64,
+    /// PdfCraft patch: the decoding work the stream may still ask for (see `bitmap::MAX_WORK`).
+    work_left: &'a mut u64,
     /// PdfCraft patch: symbol pixels decoded so far (see `MAX_DICTIONARY_PIXELS`).
     pixels: u64,
 }
@@ -914,8 +926,8 @@ mod tests {
         let input = vec![&symbol; 1000];
         let tables = StandardHuffmanTables::new();
         let words = symbol.words() as u64 * 1000;
-        let decoded = decode(&header, &input, &[], &tables, None, words).unwrap();
+        let decoded = decode(&header, &input, &[], &tables, None, words, &mut u64::MAX.clone()).unwrap();
         assert_eq!(decoded.exported_symbols.len(), 1000);
-        assert!(decode(&header, &input, &[], &tables, None, words - 1).is_err());
+        assert!(decode(&header, &input, &[], &tables, None, words - 1, &mut u64::MAX.clone()).is_err());
     }
 }
