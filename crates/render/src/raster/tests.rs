@@ -4109,47 +4109,47 @@ fn jbig2_decoding_work_is_counted_item_by_item() {
             data: jbig2_pattern_dictionary(32, 2),
             cost: two_patterns(1, 32),
         },
-        // Each symbol costs one more than its pixels, so that one of no rows isn't free.
-        Item { what: "symbols of no rows", before: vec![], spent: 0, kind: 0, refs: &[], data: no_row_jbig2_dictionary(5), cost: 5 },
-        // Rows cost in a symbol of no pixels too.
-        Item { what: "symbols without pixels", before: vec![], spent: 0, kind: 0, refs: &[], data: zero_width_jbig2_dictionary(3, false), cost: 15 },
-        Item { what: "a tall symbol of no width", before: vec![], spent: 0, kind: 0, refs: &[], data: zero(1000), cost: 4001 },
-        Item { what: "new symbols", before: vec![], spent: 0, kind: 0, refs: &[], data: square_jbig2_dictionary(80, false), cost: 6721 },
-        Item { what: "referred symbols", before: symbol(), spent: 5, kind: 0, refs: &[1], data: exporting_none, cost: 1 },
+        // What an item reads counts, at 38 an integer: two classes, five widths and an export run.
+        Item { what: "symbols of no rows", before: vec![], spent: 0, kind: 0, refs: &[], data: no_row_jbig2_dictionary(5), cost: 304 },
+        // Rows cost in a symbol of no pixels too, on top of a class, three widths and an export run.
+        Item { what: "symbols without pixels", before: vec![], spent: 0, kind: 0, refs: &[], data: zero_width_jbig2_dictionary(3, false), cost: 202 },
+        Item { what: "a tall symbol of no width", before: vec![], spent: 0, kind: 0, refs: &[], data: zero(1000), cost: 4114 },
+        Item { what: "new symbols", before: vec![], spent: 0, kind: 0, refs: &[], data: square_jbig2_dictionary(80, false), cost: 6834 },
+        Item { what: "referred symbols", before: symbol(), spent: 156, kind: 0, refs: &[1], data: exporting_none, cost: 39 },
         // Its symbol, and its one row and word; Huffman-coded, a table line for the symbol.
-        Item { what: "immediate text", before: symbol(), spent: 5, kind: 6, refs: &[1], data: jbig2_text_region(1, 1, 0), cost: 13 },
-        Item { what: "intermediate text", before: symbol(), spent: 5, kind: 4, refs: &[1], data: jbig2_text_region(1, 1, 0), cost: 13 },
-        Item { what: "a text region's pixels", before: symbol(), spent: 5, kind: 6, refs: &[1], data: jbig2_text_region(32, 32, 0), cost: 75 },
+        Item { what: "immediate text", before: symbol(), spent: 156, kind: 6, refs: &[1], data: jbig2_text_region(1, 1, 0), cost: 13 },
+        Item { what: "intermediate text", before: symbol(), spent: 156, kind: 4, refs: &[1], data: jbig2_text_region(1, 1, 0), cost: 13 },
+        Item { what: "a text region's pixels", before: symbol(), spent: 156, kind: 6, refs: &[1], data: jbig2_text_region(32, 32, 0), cost: 75 },
         Item {
             what: "an intermediate text region's pixels",
             before: symbol(),
-            spent: 5,
+            spent: 156,
             kind: 4,
             refs: &[1],
             data: jbig2_text_region(32, 32, 0),
             cost: 75,
         },
-        // The region's 13, a copy of the symbol's row and the round of the loop.
-        Item { what: "an instance", before: symbol(), spent: 5, kind: 6, refs: &[1], data: jbig2_text_region(1, 1, 1), cost: 15 },
-        // The region's 13, 80 rows of 4 words copied, the round of the loop.
+        // The region's 13, a copy of the symbol's row, and the instance's 4 integers.
+        Item { what: "an instance", before: symbol(), spent: 156, kind: 6, refs: &[1], data: jbig2_text_region(1, 1, 1), cost: 166 },
+        // The region's 13, 80 rows of 4 words copied, and the instance's 4 integers.
         Item {
             what: "an instance of a large symbol",
             before: vec![(0, square_jbig2_dictionary(80, true))],
-            spent: 6721,
+            spent: 6872,
             kind: 6,
             refs: &[1],
             data: jbig2_text_region(1, 1, 1),
-            cost: 334,
+            cost: 485,
         },
-        // And decoded as well as copied.
+        // And decoded as well as copied, with the 4 integers that gave its size.
         Item {
             what: "a refined instance",
             before: vec![(0, square_jbig2_dictionary(80, true))],
-            spent: 6721,
+            spent: 6872,
             kind: 6,
             refs: &[1],
             data: jbig2_refined_text_region(),
-            cost: 7054,
+            cost: 7357,
         },
         // A bit plane, a cell's copy and the region's.
         Item {

@@ -11,7 +11,7 @@ use super::{
 use super::{RegionBitmap, generic_refinement};
 use crate::ScratchBuffers;
 use crate::arithmetic_decoder::{ArithmeticDecoder, ArithmeticDecoderContext};
-use crate::bitmap::{Bitmap, copy_work, decode_work};
+use crate::bitmap::{Bitmap, INTEGER_WORK, copy_work, decode_work};
 use crate::error::{HuffmanError, OverflowError, ParseError, Result, SymbolError, bail};
 use crate::huffman_table::{HuffmanTable, StandardHuffmanTables, TableLine};
 use crate::integer_decoder::IntegerDecoder;
@@ -161,8 +161,8 @@ pub(crate) fn decode_with(
             let symbol_height = symbol_bitmap_ref.height as i32;
 
             // PdfCraft patch: see `bitmap::MAX_WORK`. An instance of a large symbol costs its copy,
-            // and 10,000 of one took 64 s. Even one with no pixels goes round this loop.
-            let work = copy_work(symbol_bitmap_ref.width, symbol_bitmap_ref.height).saturating_add(1);
+            // and 10,000 of one took 64 s. Even one with no pixels reads its four integers.
+            let work = copy_work(symbol_bitmap_ref.width, symbol_bitmap_ref.height).saturating_add(4 * INTEGER_WORK);
             *work_left = work_left.checked_sub(work).ok_or(OverflowError::DecodingWork)?;
 
             if !header.flags.transposed
@@ -573,8 +573,8 @@ fn decode_symbol_instance_bitmap(
         .ok_or(OverflowError::ReferenceOffset)?;
 
     // PdfCraft patch: see `bitmap::MAX_WORK`. Before it is decoded: charged after, one instance
-    // could still be 2^28 pixels past what was left.
-    let work = decode_work(refined_width, refined_height);
+    // could still be 2^28 pixels past what was left. With the four integers that gave its size.
+    let work = decode_work(refined_width, refined_height).saturating_add(4 * INTEGER_WORK);
     *work_left = work_left.checked_sub(work).ok_or(OverflowError::DecodingWork)?;
 
     let mut refined_bitmap = Bitmap::new(refined_width, refined_height)?;
