@@ -803,6 +803,62 @@ fn indexed_palettes_over_lab_keep_their_colours() {
     }
     assert!(indexed[0] > 180, "the palette red must not render near black: {indexed:?}");
 }
+
+/// The lookup table of an `/Indexed` space is a string or a stream, and any part of the space can
+/// be indirect (ISO 32000-2 §8.6.6.3, §7.3.10). A table in an indirect string was lost: reading it
+/// as a stream used up the reference, so the space couldn't be read and drew in grey.
+#[test]
+fn an_indexed_lookup_table_is_read_in_every_legal_form() {
+    use super::*;
+    let render = |space: &str, content: &str, extra: &str| -> [u8; 4] {
+        let bytes = format!(
+            "%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+                 2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+                 3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /ColorSpace << /I {space} >> /XObject << /Im 9 0 R >> >> /Contents 4 0 R >> endobj\n\
+                 4 0 obj << /Length {} >> stream\n{content}\nendstream endobj\n\
+                 5 0 obj <000000FF0000> endobj\n\
+                 6 0 obj << /Filter /ASCIIHexDecode /Length 13 >> stream\n000000FF0000>\nendstream endobj\n\
+                 7 0 obj /DeviceRGB endobj\n\
+                 8 0 obj 1 endobj\n\
+                 {extra}\n\
+                 trailer << /Root 1 0 R >>\n%%EOF",
+            content.len()
+        )
+        .into_bytes();
+        let page = PageRenderer::new(Arc::new(bytes), RenderConfig::default()).render(RenderRequest {
+            page: 0,
+            kind: RequestKind::Pixels,
+            tile: None,
+            scale: 1.0,
+            tag: 0,
+            preview: false,
+        });
+        assert!(page.error.is_none(), "{space}: {:?}", page.error);
+        let start = (100 * page.width as usize + 100) * 4;
+        let mut pixel = [0; 4];
+        pixel.copy_from_slice(page.rgba.get(start..start + 4).expect("centre pixel"));
+        pixel
+    };
+    let paint = "/I cs 1 sc 0 0 200 200 re f";
+    // One byte of index 1, as an image in the same space: the image path reads it too.
+    let image = "9 0 obj << /Type /XObject /Subtype /Image /Width 1 /Height 1 /BitsPerComponent 8 /ColorSpace [/Indexed /DeviceRGB 1 5 0 R] /Filter /ASCIIHexDecode /Length 3 >> stream\n01>\nendstream endobj";
+    for space in [
+        "[/Indexed /DeviceRGB 1 <000000FF0000>]",
+        "[/Indexed /DeviceRGB 1 5 0 R]",
+        "[/Indexed /DeviceRGB 1 6 0 R]",
+        "[/Indexed 7 0 R 8 0 R 5 0 R]",
+        "[/I /DeviceRGB 1 5 0 R]",
+    ] {
+        assert_eq!(render(space, paint, ""), [255, 0, 0, 255], "{space}");
+    }
+    let indirect = "10 0 obj [/Indexed /DeviceRGB 1 5 0 R] endobj";
+    assert_eq!(render("10 0 R", paint, indirect), [255, 0, 0, 255], "the whole space by reference");
+    assert_eq!(render("/DeviceRGB", "q 200 0 0 200 0 0 cm /Im Do Q", image), [255, 0, 0, 255], "an image's table by reference");
+    // What's neither table form leaves the space unreadable, as a missing table does.
+    for space in ["[/Indexed /DeviceRGB 1 8 0 R]", "[/Indexed /DeviceRGB 1 99 0 R]", "[/Indexed /DeviceRGB 1]"] {
+        let _ = render(space, paint, "");
+    }
+}
 #[test]
 fn watchdog_skips_a_stuck_page_and_keeps_rendering() {
     use super::*;

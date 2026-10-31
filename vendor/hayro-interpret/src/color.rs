@@ -999,13 +999,14 @@ impl Indexed {
         let hival = iter.next::<u32>()?.min(u8::MAX as u32) as u8;
 
         let values = {
-            let data = iter
-                .next::<Stream<'_>>()
-                .and_then(|s| s.decoded().ok())
-                .or_else(|| {
-                    iter.next::<object::String<'_>>()
-                        .map(|s| Cow::Owned(s.to_vec()))
-                })?;
+            // PdfCraft patch (71): read once, as whichever it is. A failed read as a stream leaves
+            // a direct string in place but uses up a reference, so a table in an indirect string
+            // was lost, and the space with it.
+            let data = match iter.next::<Object<'_>>()? {
+                Object::Stream(s) => s.decoded().ok()?,
+                Object::String(s) => Cow::Owned(s.to_vec()),
+                _ => return None,
+            };
 
             let num_components = base_color_space.num_components();
 
