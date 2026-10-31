@@ -897,6 +897,87 @@ fn a_colour_space_that_refers_to_itself_ends() {
     }
 }
 
+/// A chain of colour spaces repeats no object, so what ends a cycle lets it through. Each way one
+/// space names another ends, at a depth that leaves room on the stack, and the page draws what it
+/// can.
+#[test]
+fn a_chain_of_colour_spaces_ends() {
+    use super::*;
+    const LINKS: u32 = 20_000;
+    let content = "1 0 0 rg 0 0 100 100 re f /C cs 0 sc 100 100 100 100 re f";
+    let link: [(&str, &dyn Fn(u32) -> String); 5] = [
+        ("[/Pattern 10 0 R]", &|next| format!("[/Pattern {next} 0 R]")),
+        ("10 0 R", &|next| format!("[/Indexed {next} 0 R 1 <0011>]")),
+        ("10 0 R", &|next| format!("[/Separation /A {next} 0 R 5 0 R]")),
+        ("10 0 R", &|next| format!("[/DeviceN [/A] {next} 0 R 5 0 R]")),
+        ("[/ICCBased 10 0 R]", &|next| format!("<< /N 1 /Alternate [/ICCBased {next} 0 R] /Length 1 >> stream\nx\nendstream")),
+    ];
+    for (space, link) in link {
+        let objects: String = (0..LINKS).map(|i| format!("{} 0 obj {} endobj\n", 10 + i, link(11 + i))).collect();
+        let bytes = format!(
+            "%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+                 2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+                 3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /ColorSpace << /C {space} >> >> /Contents 4 0 R >> endobj\n\
+                 4 0 obj << /Length {} >> stream\n{content}\nendstream endobj\n\
+                 5 0 obj << /FunctionType 2 /Domain [0 1] /N 1 /C0 [0] /C1 [1] >> endobj\n\
+                 {objects}{} 0 obj /DeviceGray endobj\n\
+                 trailer << /Root 1 0 R >>\n%%EOF",
+            content.len(),
+            10 + LINKS
+        )
+        .into_bytes();
+        let page = PageRenderer::new(Arc::new(bytes), RenderConfig::default()).render(RenderRequest {
+            page: 0,
+            kind: RequestKind::Pixels,
+            tile: None,
+            scale: 1.0,
+            tag: 0,
+            preview: false,
+        });
+        assert!(page.error.is_none(), "{}: {:?}", link(11), page.error);
+        let start = ((150 * page.width as usize) + 50) * 4;
+        assert_eq!(page.rgba.get(start..start + 4), Some(&[255, 0, 0, 255][..]), "{}: what comes before it drew", link(11));
+    }
+}
+
+/// A file nests colour spaces five levels at most, and the limit is well past that: 31 spaces over
+/// a device space are read and draw their colour, and with one more the space isn't read.
+#[test]
+fn colour_spaces_are_read_to_the_limit_of_their_nesting() {
+    use super::*;
+    let content = "/C cs 1 scn 0 0 200 200 re f";
+    let green = |levels: u32| {
+        let objects: String = (0..levels - 1).map(|i| format!("{} 0 obj [/Separation /A {} 0 R 5 0 R] endobj\n", 10 + i, 11 + i)).collect();
+        let bytes = format!(
+            "%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+                 2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+                 3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /ColorSpace << /C 10 0 R >> >> /Contents 4 0 R >> endobj\n\
+                 4 0 obj << /Length {} >> stream\n{content}\nendstream endobj\n\
+                 5 0 obj << /FunctionType 2 /Domain [0 1] /N 1 /C0 [0] /C1 [1] >> endobj\n\
+                 6 0 obj << /FunctionType 2 /Domain [0 1] /N 1 /C0 [1 1 1] /C1 [0 1 0] >> endobj\n\
+                 {objects}{} 0 obj [/Separation /A /DeviceRGB 6 0 R] endobj\n\
+                 trailer << /Root 1 0 R >>\n%%EOF",
+            content.len(),
+            10 + levels - 1
+        )
+        .into_bytes();
+        let page = PageRenderer::new(Arc::new(bytes), RenderConfig::default()).render(RenderRequest {
+            page: 0,
+            kind: RequestKind::Pixels,
+            tile: None,
+            scale: 1.0,
+            tag: 0,
+            preview: false,
+        });
+        assert!(page.error.is_none(), "{levels}: {:?}", page.error);
+        page.rgba.get(..4) == Some(&[0, 255, 0, 255][..])
+    };
+    assert!(green(1), "a space on its own");
+    assert!(green(5), "as deep as a legal file goes");
+    assert!(green(31), "the deepest that is read");
+    assert!(!green(32), "one past it");
+}
+
 /// An image's `/Decode` pairs can have a reference at the start of a pair. Its read took that for
 /// the whole pair, found no pair there, and ended the array, so the image didn't draw at all.
 #[test]
