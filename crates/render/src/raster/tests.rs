@@ -804,6 +804,107 @@ fn indexed_palettes_over_lab_keep_their_colours() {
     assert!(indexed[0] > 180, "the palette red must not render near black: {indexed:?}");
 }
 
+/// A Pattern space's underlying space is any other, named or by reference as well as a direct array
+/// (ISO 32000-2 §8.7.3.3). It was skipped when it was a name or a reference, so an uncoloured tiling
+/// pattern took its components as RGB: a CMYK cyan drew red, and a grey of 0.5 dark red. Each is
+/// compared with the same colour painted without the pattern.
+#[test]
+fn an_uncoloured_pattern_uses_its_underlying_space_in_every_form() {
+    use super::*;
+    let render = |space: &str, content: &str| -> [u8; 4] {
+        let pattern = "0 0 10 10 re f";
+        let bytes = format!(
+            "%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+                 2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+                 3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /ColorSpace << /C {space} >> /Pattern << /P 5 0 R >> >> /Contents 4 0 R >> endobj\n\
+                 4 0 obj << /Length {} >> stream\n{content}\nendstream endobj\n\
+                 5 0 obj << /Type /Pattern /PatternType 1 /PaintType 2 /TilingType 1 /BBox [0 0 10 10] /XStep 10 /YStep 10 /Resources << >> /Length {} >> stream\n{pattern}\nendstream endobj\n\
+                 6 0 obj /DeviceCMYK endobj\n\
+                 7 0 obj /DeviceGray endobj\n\
+                 8 0 obj [/Indexed /DeviceRGB 1 <00FF00FF0000>] endobj\n\
+                 9 0 obj [/Pattern /DeviceCMYK] endobj\n\
+                 trailer << /Root 1 0 R >>\n%%EOF",
+            content.len(),
+            pattern.len()
+        )
+        .into_bytes();
+        let page = PageRenderer::new(Arc::new(bytes), RenderConfig::default()).render(RenderRequest {
+            page: 0,
+            kind: RequestKind::Pixels,
+            tile: None,
+            scale: 1.0,
+            tag: 0,
+            preview: false,
+        });
+        assert!(page.error.is_none(), "{space}: {:?}", page.error);
+        let start = (100 * page.width as usize + 100) * 4;
+        let mut pixel = [0; 4];
+        pixel.copy_from_slice(page.rgba.get(start..start + 4).expect("centre pixel"));
+        pixel
+    };
+    let fill = "0 0 200 200 re f";
+    let cyan = render("/DeviceCMYK", &format!("/DeviceCMYK cs 1 0 0 0 sc {fill}"));
+    let grey = render("/DeviceGray", &format!("/DeviceGray cs 0.5 sc {fill}"));
+    let green = render("8 0 R", &format!("/C cs 0 sc {fill}"));
+    assert_ne!(cyan[0], 255, "cyan has no red");
+    for (space, colour, want) in [
+        ("[/Pattern /DeviceCMYK]", "1 0 0 0", cyan),
+        ("[/Pattern 6 0 R]", "1 0 0 0", cyan),
+        ("9 0 R", "1 0 0 0", cyan),
+        ("[/Pattern /DeviceGray]", ".5", grey),
+        ("[/Pattern 7 0 R]", ".5", grey),
+        ("[/Pattern 8 0 R]", "0", green),
+        ("[/Pattern [/Indexed /DeviceRGB 1 <00FF00FF0000>]]", "0", green),
+    ] {
+        assert_eq!(render(space, &format!("/C cs {colour} /P scn {fill}")), want, "{space}");
+    }
+}
+
+/// An image's `/Decode` pairs can have a reference at the start of a pair. Its read took that for
+/// the whole pair, found no pair there, and ended the array, so the image didn't draw at all.
+#[test]
+fn a_decode_array_with_references_in_it_is_read() {
+    use super::*;
+    let render = |width_of: &str, decode: &str, space: &str, data: &str| -> [u8; 4] {
+        let content = "1 0 0 rg 0 0 200 200 re f q 200 0 0 200 0 0 cm /Im Do Q";
+        let bytes = format!(
+            "%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+                 2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+                 3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /XObject << /Im 5 0 R >> >> /Contents 4 0 R >> endobj\n\
+                 4 0 obj << /Length {} >> stream\n{content}\nendstream endobj\n\
+                 5 0 obj << /Type /XObject /Subtype /Image /Width {width_of} /Height 1 /BitsPerComponent 8 /ColorSpace {space} /Decode {decode} /Filter /ASCIIHexDecode /Length {} >> stream\n{data}\nendstream endobj\n\
+                 6 0 obj 1 endobj\n\
+                 7 0 obj 0 endobj\n\
+                 trailer << /Root 1 0 R >>\n%%EOF",
+            content.len(),
+            data.len()
+        )
+        .into_bytes();
+        let page = PageRenderer::new(Arc::new(bytes), RenderConfig::default()).render(RenderRequest {
+            page: 0,
+            kind: RequestKind::Pixels,
+            tile: None,
+            scale: 1.0,
+            tag: 0,
+            preview: false,
+        });
+        assert!(page.error.is_none(), "{decode}: {:?}", page.error);
+        let start = (100 * page.width as usize + 100) * 4;
+        let mut pixel = [0; 4];
+        pixel.copy_from_slice(page.rgba.get(start..start + 4).expect("centre pixel"));
+        pixel
+    };
+    let grey = render("1", "[1 0]", "/DeviceGray", "40>");
+    assert_eq!(grey, [191, 191, 191, 255], "the direct form inverts the sample");
+    for decode in ["[6 0 R 0]", "[1 7 0 R]", "[6 0 R 7 0 R]"] {
+        assert_eq!(render("1", decode, "/DeviceGray", "40>"), grey, "{decode}");
+    }
+    let rgb = render("1", "[1 0 1 0 1 0]", "/DeviceRGB", "204060>");
+    for decode in ["[6 0 R 0 1 0 1 0]", "[1 0 6 0 R 0 1 0]", "[1 0 1 0 6 0 R 0]", "[6 0 R 7 0 R 6 0 R 7 0 R 6 0 R 7 0 R]"] {
+        assert_eq!(render("1", decode, "/DeviceRGB", "204060>"), rgb, "{decode}");
+    }
+}
+
 /// The lookup table of an `/Indexed` space is a string or a stream, and any part of the space can
 /// be indirect (ISO 32000-2 §8.6.6.3, §7.3.10). A table in an indirect string was lost: reading it
 /// as a stream used up the reference, so the space couldn't be read and drew in grey.
