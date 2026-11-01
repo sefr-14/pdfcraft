@@ -1456,6 +1456,7 @@ mod tests {
     /// `count` object streams stored as themselves, the `keys` of each a member of the next, or
     /// with `ring` of the first after the last. Reading the first member reads them all, and it is
     /// `count + 100` to tell.
+    #[cfg(feature = "std")]
     fn chain_of_object_streams(count: u32, keys: &[&str], ring: bool) -> Vec<u8> {
         let mut stored = page_objects();
         let mut packed = Vec::new();
@@ -1484,6 +1485,7 @@ mod tests {
     /// at each, and 50,000 ran out of an 8 MiB stack. It stops at the gate's limit, on half the stack
     /// of a render worker. Past that `/N` and `/First` can't be read, so the member reads as missing,
     /// and a `/Length` that can't be read falls back on `endstream`, so it reads. A short chain reads.
+    #[cfg(feature = "std")]
     #[test]
     fn a_chain_of_object_streams_ends_at_the_limit_of_nested_loads() {
         for key in ["N", "First", "Length"] {
@@ -1507,6 +1509,7 @@ mod tests {
     /// and an index that fails isn't remembered, so the work doubled at each stream: 65 streams, one
     /// past the limit, in 8 KB, didn't finish, and other threads waited at the gate. The index reads
     /// the dictionary alone now. Without that this doesn't end, so the time allowed can't fail it.
+    #[cfg(feature = "std")]
     #[test]
     fn a_chain_of_object_streams_takes_no_more_work_for_two_ways_on() {
         for (count, ring) in [(65, false), (20, true), (5_000, false)] {
