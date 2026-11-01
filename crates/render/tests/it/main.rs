@@ -6,6 +6,7 @@ mod jbig2_invariants;
 mod low_zoom;
 mod luminosity_group_space;
 mod named_form_properties;
+mod rotated_image_snap;
 mod search;
 mod separation_all;
 mod stroke_degenerate_cubic;
