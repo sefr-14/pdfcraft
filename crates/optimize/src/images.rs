@@ -634,11 +634,20 @@ mod dimension_tests {
     }
 
     /// Resampling goes through no more than one of the two sizes holds, whatever their proportions:
-    /// these shapes asked for 160 GB and more on the way, and that aborted the process. A flat
-    /// picture stays flat, and pictures of ordinary proportions resample as they always did.
+    /// the first three shapes asked for 160 GB and more on the way, and that aborted the process.
+    /// The last two would ask for 10 GB and 30 GB if they went across first, which is why the way
+    /// round depends on the shapes. A flat picture stays flat, and pictures of ordinary proportions
+    /// resample as they always did.
     #[test]
     fn resampling_across_proportions_takes_the_memory_of_neither_product() {
-        for (w, h, nw, nh, n) in [(100_000u32, 1u32, 1u32, 100_000u32, 1usize), (1_000_000, 1, 4, 100_000, 1), (100_000, 1, 1, 100_000, 3)] {
+        let shapes = [
+            (100_000u32, 1u32, 1u32, 100_000u32, 1usize),
+            (1_000_000, 1, 4, 100_000, 1),
+            (100_000, 1, 1, 100_000, 3),
+            (1, 100_000, 100_000, 1, 1),
+            (1, 100_000, 100_000, 1, 3),
+        ];
+        for (w, h, nw, nh, n) in shapes {
             let px = vec![0x60; (w * h) as usize * n];
             let out = resample(&px, n, w, h, nw, nh).unwrap();
             assert_eq!(out.len(), (nw * nh) as usize * n);
@@ -679,6 +688,9 @@ mod dimension_tests {
         // A step past it goes the long way, which is how to tell.
         let px = noise(25, 15);
         assert_ne!(resample(&px, 1, 25, 15, 10, 20).unwrap(), direct(&px, 25, 15, 10, 20));
+        // A picture of the size asked for comes through as it is.
+        let px = noise(20, 10);
+        assert_eq!(resample(&px, 1, 20, 10, 20, 10).unwrap(), px);
     }
 }
 

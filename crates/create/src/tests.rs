@@ -1354,9 +1354,11 @@ fn a_stencil_masks_decode_array_can_hold_references() {
     }
 }
 
-/// A mask of other proportions than its image is scaled to it, however far apart they are: these
-/// shapes asked for 160 GB on the way, in a file of a kilobyte, and that aborted the process. The
-/// value comes through, and masks of ordinary proportions are scaled as they always were.
+/// A mask of other proportions than its image is scaled to it, however far apart they are: the
+/// first two shapes asked for 160 GB on the way, in a file of a kilobyte, and that aborted the
+/// process. The third would ask for 10 GB if it went across first, which is why the way round
+/// depends on the shapes. The value comes through, and masks of ordinary proportions, of the
+/// image's size and larger than it, are scaled as they always were.
 #[test]
 fn a_mask_of_other_proportions_than_its_image_is_scaled_without_the_memory_of_both() {
     use pdfcraft_cos::{Dict, Document, Object, Stream};
@@ -1370,7 +1372,16 @@ fn a_mask_of_other_proportions_than_its_image_is_scaled_without_the_memory_of_bo
         d.set(b"Filter".to_vec(), Object::name("FlateDecode"));
         Stream::from_raw(d, pdfcraft_filters::encode_flate(data))
     };
-    for (mask_w, mask_h, w, h) in [(100_000usize, 1usize, 1usize, 100_000usize), (100_000, 64, 64, 100_000), (64, 1, 1, 64), (3, 2, 6, 4)] {
+    let shapes = [
+        (100_000usize, 1usize, 1usize, 100_000usize),
+        (100_000, 64, 64, 100_000),
+        (1, 100_000, 100_000, 1),
+        (64, 1, 1, 64),
+        (3, 2, 6, 4),
+        (3, 2, 3, 2),
+        (6, 4, 3, 2),
+    ];
+    for (mask_w, mask_h, w, h) in shapes {
         let mut doc = Document::new_empty();
         let mask = doc.add(Object::Stream(gray(mask_w as i64, mask_h as i64, &vec![0x80; mask_w * mask_h])));
         let mut image = gray(w as i64, h as i64, &vec![0x40; w * h]);
@@ -1413,4 +1424,7 @@ fn proportions_up_to_the_limit_scale_as_they_did() {
     let mask = noise(25, 15);
     let direct = image::imageops::resize(&mask, 10, 20, image::imageops::FilterType::Triangle);
     assert_ne!(crate::extract::scaled(&mask, 10, 20), direct);
+    // A mask of its image's size comes through as it is.
+    let mask = noise(20, 10);
+    assert_eq!(crate::extract::scaled(&mask, 20, 10), mask);
 }
