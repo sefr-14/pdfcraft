@@ -1094,11 +1094,72 @@ fn a_decode_array_with_references_in_it_is_read() {
     for decode in ["[6 0 R 0 1 0 1 0]", "[1 0 6 0 R 0 1 0]", "[1 0 1 0 6 0 R 0]", "[6 0 R 7 0 R 6 0 R 7 0 R 6 0 R 7 0 R]"] {
         assert_eq!(render("1", decode, "/DeviceRGB", "204060>"), rgb, "{decode}");
     }
-    // A reference that only leads back to itself holds no number. The read ends, and the image is
-    // drawn over the red under it.
+    // A reference that only leads back to itself holds no number, and reads as one that names
+    // nothing does.
+    let missing = render("1", "[99 0 R 0]", "/DeviceGray", "40>");
     for decode in ["[8 0 R 0]", "[1 8 0 R]", "[9 0 R 0]", "[1 9 0 R]", "[8 0 R 9 0 R]"] {
-        assert_ne!(render("1", decode, "/DeviceGray", "40>"), [255, 0, 0, 255], "{decode}");
+        assert_eq!(render("1", decode, "/DeviceGray", "40>"), missing, "{decode}");
     }
+}
+
+/// An object that holds only a reference stands for what that names, stored on its own or in an
+/// object stream. Read as a number it was the reference's own object number: here 8 names 7, 7
+/// names 6 and 6 holds 1, and that read as 7, which drew white. A chain past the limit, and so a
+/// cycle, reads as a missing object does.
+#[test]
+fn a_reference_to_a_reference_is_what_it_names() {
+    use super::*;
+    let file = |decode: &str, objects: &str| -> Vec<u8> {
+        let content = "1 0 0 rg 0 0 200 200 re f q 200 0 0 200 0 0 cm /Im Do Q";
+        format!(
+            "%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+                 2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+                 3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /XObject << /Im 5 0 R >> >> /Contents 4 0 R >> endobj\n\
+                 4 0 obj << /Length {} >> stream\n{content}\nendstream endobj\n\
+                 5 0 obj << /Type /XObject /Subtype /Image /Width 1 /Height 1 /BitsPerComponent 8 /ColorSpace /DeviceGray /Decode {decode} /Filter /ASCIIHexDecode /Length 3 >> stream\n40>\nendstream endobj\n\
+                 {objects}\n\
+                 trailer << /Root 1 0 R >>\n%%EOF",
+            content.len()
+        )
+        .into_bytes()
+    };
+    let draw = |bytes: Vec<u8>| -> [u8; 4] {
+        let page = PageRenderer::new(Arc::new(bytes), RenderConfig::default()).render(RenderRequest {
+            page: 0,
+            kind: RequestKind::Pixels,
+            tile: None,
+            scale: 1.0,
+            tag: 0,
+            preview: false,
+        });
+        assert!(page.error.is_none(), "{:?}", page.error);
+        let start = (100 * page.width as usize + 100) * 4;
+        let mut pixel = [0; 4];
+        pixel.copy_from_slice(page.rgba.get(start..start + 4).expect("centre pixel"));
+        pixel
+    };
+    let grey = draw(file("[1 0]", ""));
+    assert_eq!(grey, [191, 191, 191, 255]);
+
+    let chain = "6 0 obj 1 endobj 7 0 obj 6 0 R endobj 8 0 obj 7 0 R endobj";
+    assert_eq!(draw(file("[8 0 R 0]", chain)), grey, "stored on their own");
+    let doc = pdfcraft_cos::Document::open(Arc::new(file("[8 0 R 0]", chain))).unwrap();
+    let packed = pdfcraft_cos::write_full(&doc, &pdfcraft_cos::SaveOptions::default()).unwrap();
+    assert!(packed.windows(7).any(|w| w == b"/ObjStm"), "the save packs them");
+    assert_eq!(draw(packed), grey, "stored in an object stream");
+    assert_eq!(draw(file("9 0 R", "9 0 obj 10 0 R endobj 10 0 obj [1 0] endobj")), grey, "not only numbers");
+    let commented = "6 0 obj 1 endobj 7 0 obj 6 %c\n0 R endobj 8 0 obj 7 0 %c\nR endobj";
+    assert_eq!(draw(file("[8 %c\n0 R 0]", commented)), grey, "a comment counts as white space");
+
+    let links = |n: usize| -> String {
+        let links: String = (0..n).map(|i| format!("{} 0 obj {} 0 R endobj\n", 10 + i, 11 + i)).collect();
+        format!("{links}{} 0 obj 1 endobj", 10 + n)
+    };
+    let missing = draw(file("[99 0 R 0]", ""));
+    assert_ne!(missing, grey);
+    assert_eq!(draw(file("[10 0 R 0]", &links(32))), grey, "32 references are followed");
+    assert_eq!(draw(file("[10 0 R 0]", &links(33))), missing, "33 aren't");
+    assert_eq!(draw(file("[6 0 R 0]", "6 0 obj 6 0 R endobj")), missing, "nor is a cycle");
 }
 
 /// A function's `/Encode`, `/Decode`, `/Domain` and `/Range` are read a pair at a time too, so they
