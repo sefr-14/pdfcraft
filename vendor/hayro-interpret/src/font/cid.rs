@@ -712,6 +712,7 @@ mod width_tests {
              2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
              3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >> endobj\n\
              4 0 obj 20 endobj\n5 0 obj {array} endobj\n6 0 obj 22 endobj\n\
+             7 0 obj 7 0 R endobj\n8 0 obj 9 0 R endobj\n9 0 obj 8 0 R endobj\n\
              trailer << /Root 1 0 R >>\n%%EOF\n"
         );
         Pdf::new(pdf.into_bytes()).unwrap()
@@ -750,5 +751,13 @@ mod width_tests {
         let by_range = vec![(20, [-900.0, 400.0, 800.0]), (21, [-900.0, 400.0, 800.0]), (22, [-900.0, 400.0, 800.0])];
         assert_eq!(vertical("[20 22 -900 400 800]"), by_range);
         assert_eq!(vertical("[4 0 R 22 -900 400 800]"), by_range);
+
+        // A reference that only leads back to itself holds no number. The reads end.
+        for array in ["[7 0 R [500 600]]", "[8 0 R [500 600]]", "[20 7 0 R 700]", "[7 0 R 8 0 R 700]", "[20 [7 0 R 600]]"] {
+            widths(array);
+        }
+        for array in ["[7 0 R [-1000 500 880]]", "[8 0 R 22 -900 400 800]", "[20 [7 0 R 500 880]]"] {
+            vertical(array);
+        }
     }
 }

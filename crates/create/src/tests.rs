@@ -1330,7 +1330,8 @@ fn a_stencil_masks_decode_array_can_hold_references() {
              2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
              3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] /Resources << /XObject << /Im 4 0 R >> >> >> endobj\n\
              4 0 obj << /Subtype /Image /ImageMask true /Width 8 /Height 1 /BitsPerComponent 1 /Decode {decode} /Filter /ASCIIHexDecode /Length 3 >> stream\nF0>\nendstream endobj\n\
-             5 0 obj 1 endobj\n6 0 obj 0 endobj\ntrailer << /Root 1 0 R >>\n%%EOF"
+             5 0 obj 1 endobj\n6 0 obj 0 endobj\n7 0 obj 7 0 R endobj\n8 0 obj 9 0 R endobj\n9 0 obj 8 0 R endobj\n\
+             trailer << /Root 1 0 R >>\n%%EOF"
         );
         let doc = Document::open(std::sync::Arc::new(pdf.into_bytes())).unwrap();
         let mut export = crate::extract::extract_images(&doc, &[0], 1);
@@ -1344,5 +1345,11 @@ fn a_stencil_masks_decode_array_can_hold_references() {
     }
     for decode in ["[0 5 0 R]", "[6 0 R 1]", "[6 0 R 5 0 R]"] {
         assert_eq!(export(decode), identity, "{decode}");
+    }
+    // A reference that only leads back to itself holds no number. The read ends, and the file comes
+    // out one way round or the other.
+    for decode in ["[7 0 R 0]", "[1 7 0 R]", "[8 0 R 0]", "[1 8 0 R]", "[7 0 R 8 0 R]"] {
+        let file = export(decode);
+        assert!(file == inverted || file == identity, "{decode}");
     }
 }

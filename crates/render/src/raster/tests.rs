@@ -1063,6 +1063,9 @@ fn a_decode_array_with_references_in_it_is_read() {
                  5 0 obj << /Type /XObject /Subtype /Image /Width {width_of} /Height 1 /BitsPerComponent 8 /ColorSpace {space} /Decode {decode} /Filter /ASCIIHexDecode /Length {} >> stream\n{data}\nendstream endobj\n\
                  6 0 obj 1 endobj\n\
                  7 0 obj 0 endobj\n\
+                 8 0 obj 8 0 R endobj\n\
+                 9 0 obj 10 0 R endobj\n\
+                 10 0 obj 9 0 R endobj\n\
                  trailer << /Root 1 0 R >>\n%%EOF",
             content.len(),
             data.len()
@@ -1090,6 +1093,11 @@ fn a_decode_array_with_references_in_it_is_read() {
     let rgb = render("1", "[1 0 1 0 1 0]", "/DeviceRGB", "204060>");
     for decode in ["[6 0 R 0 1 0 1 0]", "[1 0 6 0 R 0 1 0]", "[1 0 1 0 6 0 R 0]", "[6 0 R 7 0 R 6 0 R 7 0 R 6 0 R 7 0 R]"] {
         assert_eq!(render("1", decode, "/DeviceRGB", "204060>"), rgb, "{decode}");
+    }
+    // A reference that only leads back to itself holds no number. The read ends, and the image is
+    // drawn over the red under it.
+    for decode in ["[8 0 R 0]", "[1 8 0 R]", "[9 0 R 0]", "[1 9 0 R]", "[8 0 R 9 0 R]"] {
+        assert_ne!(render("1", decode, "/DeviceGray", "40>"), [255, 0, 0, 255], "{decode}");
     }
 }
 
@@ -1193,6 +1201,11 @@ fn an_indexed_lookup_table_is_read_in_every_legal_form() {
     // What's neither table form leaves the space unreadable, as a missing table does.
     for space in ["[/Indexed /DeviceRGB 1 8 0 R]", "[/Indexed /DeviceRGB 1 99 0 R]", "[/Indexed /DeviceRGB 1]"] {
         let _ = render(space, paint, "");
+    }
+    // So does a table that only leads back to itself, and the read of it ends.
+    let cycle = "11 0 obj 11 0 R endobj 12 0 obj 13 0 R endobj 13 0 obj 12 0 R endobj";
+    for space in ["[/Indexed /DeviceRGB 1 11 0 R]", "[/Indexed /DeviceRGB 1 12 0 R]"] {
+        let _ = render(space, paint, cycle);
     }
 }
 #[test]
