@@ -1013,3 +1013,23 @@ fn the_snapping_notice_doesnt_move_the_panel() {
     assert!(!h.state_mut().views[0].measure.snapping_loading());
     assert_eq!(unit(&h), before, "the unit list stays where it was");
 }
+
+/// A held read takes over the page's lines (FIX.2): an earlier read of the same page, here a held
+/// one that never answers, standing for a worker that hasn't finished, no longer counts as
+/// loading. The Windows build of SYNC.14 failed `the_snapping_notice_doesnt_move_the_panel` twice
+/// because the Calibrate tool's own read of page 0 was still running beside the held one.
+#[test]
+fn a_held_read_replaces_the_pages_earlier_read() {
+    let (mut h, id) = harness(plain());
+    let hold = |h: &mut Harness<'static, PdfCraftApp>| {
+        let app = h.state_mut();
+        let doc = app.session.get(id).unwrap();
+        app.views[0].measure.hold_snapping(doc, 0)
+    };
+    let _never_answers = hold(&mut h);
+    let tx = hold(&mut h);
+    assert!(h.state_mut().views[0].measure.snapping_loading());
+    let bytes = h.state().session.get(id).unwrap().bytes.clone();
+    tx.send(Snapper::read(bytes, None, 0, &HashSet::new())).unwrap();
+    assert!(!h.state_mut().views[0].measure.snapping_loading(), "only the held read counts");
+}
