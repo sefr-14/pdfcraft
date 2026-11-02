@@ -4313,6 +4313,7 @@ dependencies = [
  "hayro-syntax",
  "image",
  "pdfcraft-cos",
+ "pdfcraft-filters",
  "pdfcraft-fonts",
  "pdfcraft-model",
  "png 0.18.1",
