@@ -2,7 +2,7 @@
 use std::sync::Arc;
 
 use super::document::is_placeholder_title;
-use super::edit::check_permission;
+use super::edit::{EditCtx, check_permission, run_edit};
 use super::*;
 use pdfcraft_render::{Layer, LayerOp, OpenError, ReadingColors};
 
@@ -861,9 +861,10 @@ fn revert_preserves_the_saved_pages_after_undo() {
 #[test]
 fn full_save_is_readable_and_smaller_after_deletes() {
     let (mut s, id) = session_with(5);
+    let original = s.save_bytes(id).unwrap();
     s.apply(id, Edit::DeletePages { pages: vec![0, 1, 2] }).unwrap();
     let full = s.save_full_bytes(id).unwrap();
-    assert!(full.len() < s.save_bytes(id).unwrap().len());
+    assert!(full.len() < original.len());
     let mut s2 = Session::new();
     let id2 = s2.open("full.pdf", None, full, None).unwrap();
     assert_eq!(page_texts(&s2, id2), ["Page 4", "Page 5"]);
@@ -2168,6 +2169,84 @@ fn passwords_that_encryption_would_make_empty_or_equal_are_refused() {
     ];
     for p in &distinct {
         assert_eq!(protect_and_reopen(p), (Ok(()), Some([None, Some(User), Some(Owner)])), "{:?}", p.algorithm);
+    }
+}
+
+#[test]
+fn fresh_sessions_protecting_identical_documents_produce_different_salts() {
+    // Characterization only: two sessions' salts differ. A per-call RandomState already did
+    // that before Protect drew from the platform CSPRNG, so this does not prove the source.
+    // `protect_fails_closed_when_randomness_is_unavailable` is the guard. It does not compile
+    // against a Protect with no CSPRNG hook, and it fails closed when that hook errors or
+    // returns zeros. Comparing the stored function with `getrandom::fill` is not reliable:
+    // one function can have different addresses in different codegen units.
+    let raw = Arc::new(fixture(1));
+    let encrypt_bytes = |saved: Arc<Vec<u8>>, key: &[u8]| -> Vec<u8> {
+        let doc = pdfcraft_cos::Document::open_with_password(saved, Some("secret")).unwrap();
+        let enc = doc.trailer().get(b"Encrypt").map(|o| doc.resolve(o)).unwrap();
+        enc.as_dict().unwrap().get(key).map(|o| doc.resolve(o)).unwrap().as_string().unwrap().bytes.clone()
+    };
+    let protect_once = |p: Protection| -> Arc<Vec<u8>> {
+        let mut s = Session::new();
+        let id = s.open("same.pdf", None, raw.clone(), None).unwrap();
+        s.apply(id, Edit::Protect(p)).unwrap();
+        s.save_bytes(id).unwrap()
+    };
+    let a = protect_once(protection(Some("secret"), None));
+    let b = protect_once(protection(Some("secret"), None));
+    let (u_a, u_b) = (encrypt_bytes(a.clone(), b"U"), encrypt_bytes(b.clone(), b"U"));
+    let (o_a, o_b) = (encrypt_bytes(a.clone(), b"O"), encrypt_bytes(b.clone(), b"O"));
+    let (ue_a, ue_b) = (encrypt_bytes(a.clone(), b"UE"), encrypt_bytes(b.clone(), b"UE"));
+    let (oe_a, oe_b) = (encrypt_bytes(a, b"OE"), encrypt_bytes(b, b"OE"));
+    assert_eq!((u_a.len(), u_b.len(), o_a.len(), o_b.len()), (48, 48, 48, 48));
+    assert_ne!(&u_a[32..48], &u_b[32..48], "user validation and key salts must differ across fresh sessions");
+    assert_ne!(&o_a[32..48], &o_b[32..48], "owner validation and key salts must differ across fresh sessions");
+    assert_ne!(ue_a, ue_b, "wrapped user file keys must differ across fresh sessions");
+    assert_ne!(oe_a, oe_b, "wrapped owner file keys must differ across fresh sessions");
+
+    // Generated owner passwords in R4 (AES-128) must also come from CSPRNG entropy, even when the
+    // document already carries a fixed /ID and only an open password is set.
+    let mut with_id = pdfcraft_cos::Document::open(raw).unwrap();
+    let fixed_id = pdfcraft_cos::Object::String(pdfcraft_cos::PdfString { bytes: b"0123456789abcdef".to_vec(), hex: true });
+    with_id.trailer_mut().set(b"ID".to_vec(), pdfcraft_cos::Object::Array(vec![fixed_id.clone(), fixed_id]));
+    let raw_with_id = Arc::new(pdfcraft_cos::write_full(&with_id, &Default::default()).unwrap());
+    let protect_r4 = || -> Vec<u8> {
+        let mut s = Session::new();
+        let id = s.open("same.pdf", None, raw_with_id.clone(), None).unwrap();
+        let p = Protection { algorithm: pdfcraft_cos::Algorithm::Aes128, ..protection(Some("secret"), None) };
+        s.apply(id, Edit::Protect(p)).unwrap();
+        encrypt_bytes(s.save_bytes(id).unwrap(), b"O")
+    };
+    assert_ne!(protect_r4(), protect_r4(), "generated owner passwords must differ across fresh sessions");
+}
+
+#[test]
+fn protect_fails_closed_when_randomness_is_unavailable() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static CALLS: AtomicUsize = AtomicUsize::new(0);
+    fn fail_rng(_: &mut [u8]) -> Result<(), getrandom::Error> {
+        Err(getrandom::Error::UNSUPPORTED)
+    }
+    fn zero_rng(out: &mut [u8]) -> Result<(), getrandom::Error> {
+        out.fill(0);
+        Ok(())
+    }
+    fn fail_second_rng(out: &mut [u8]) -> Result<(), getrandom::Error> {
+        if CALLS.fetch_add(1, Ordering::SeqCst) == 0 {
+            out.fill(0xA5);
+            Ok(())
+        } else {
+            Err(getrandom::Error::UNSUPPORTED)
+        }
+    }
+    CALLS.store(0, Ordering::SeqCst);
+    for rng in [fail_rng, zero_rng, fail_second_rng] {
+        let mut doc = pdfcraft_cos::Document::open(Arc::new(fixture(1))).unwrap();
+        let mut cx = EditCtx::new(None, 0);
+        cx.rng = rng;
+        let err = run_edit(&mut doc, &Edit::Protect(protection(Some("secret"), None)), &mut cx);
+        assert!(matches!(err, Err(EditError::Protection(_))), "Protect must fail closed when CSPRNG fails: {err:?}");
+        assert!(doc.output_handler().is_none(), "document must stay unprotected when CSPRNG fails");
     }
 }
 
@@ -8921,4 +9000,64 @@ fn need_appearances_buttons_are_displayed_from_their_captions() {
     for x in [20, 100, 180] {
         assert!(ink(&shown, inside(x, 100)) > 700, "the file's square at {x}");
     }
+}
+
+/// Whether `needle` occurs in `haystack`.
+fn contains(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack.windows(needle.len()).any(|w| w == needle)
+}
+
+#[test]
+fn saving_after_deleting_pages_rewrites_the_file_without_them() {
+    let (mut s, id) = session_with(6);
+    let original = s.save_bytes(id).unwrap();
+    s.apply(id, Edit::DeletePages { pages: vec![1, 2, 3, 4] }).unwrap();
+    let saved = s.save_bytes(id).unwrap();
+    assert!(saved.len() < original.len(), "the file shrank: {} -> {}", original.len(), saved.len());
+    assert!(!saved.starts_with(original.as_slice()), "a full rewrite, not an update appended to the old file");
+    assert!(!contains(&saved, b"Page 3"), "a deleted page's text is not left in an earlier revision");
+    let mut again = Session::new();
+    let id2 = again.open("saved.pdf", None, saved, None).unwrap();
+    assert_eq!(page_texts(&again, id2), ["Page 1", "Page 6"]);
+}
+
+#[test]
+fn saving_after_deleting_pages_from_a_signed_file_stays_incremental() {
+    let p12 = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../sign/tests/data/ec-p256.p12")).unwrap();
+    let digital_id = sign::pkcs12::open(&p12, "test").unwrap();
+    let mut s = Session::new().with_clock(|| 1_800_000_000);
+    let id = s.open("fixture.pdf", None, Arc::new(fixture(3)), None).unwrap();
+    let opts = SignOptions { page: 0, rect: Some([20.0, 20.0, 160.0, 50.0]), ..SignOptions::default() };
+    let signed = s.sign(id, &digital_id, opts).unwrap();
+    s.mark_signed(id, signed.clone(), None).unwrap();
+    s.apply(id, Edit::DeletePages { pages: vec![2] }).unwrap();
+    let saved = s.save_bytes(id).unwrap();
+    assert!(saved.starts_with(signed.as_ref()), "the signed bytes stay an incremental update");
+    assert!(s.get(id).unwrap().is_signed());
+}
+
+#[test]
+fn saving_after_a_batch_that_deletes_pages_rewrites_the_file() {
+    let (mut s, id) = session_with(6);
+    let original = s.save_bytes(id).unwrap();
+    let batch = Edit::Batch {
+        label: "Delete and rotate".into(),
+        edits: vec![
+            Edit::Batch { label: "Delete pages".into(), edits: vec![Edit::DeletePages { pages: vec![1, 2, 3, 4] }] },
+            Edit::RotatePages { pages: vec![0], degrees: 90 },
+        ],
+    };
+    s.apply(id, batch).unwrap();
+    let saved = s.save_bytes(id).unwrap();
+    assert!(!saved.starts_with(original.as_slice()), "a full rewrite, not an update appended to the old file");
+    assert!(!contains(&saved, b"Page 3"), "a deleted page's text is not left in an earlier revision");
+}
+
+#[test]
+fn saving_without_deleting_pages_stays_incremental() {
+    let (mut s, id) = session_with(3);
+    let original = s.save_bytes(id).unwrap();
+    s.apply(id, Edit::RotatePages { pages: vec![0], degrees: 90 }).unwrap();
+    let saved = s.save_bytes(id).unwrap();
+    assert!(saved.starts_with(original.as_slice()), "an edit that deletes nothing is still appended");
 }

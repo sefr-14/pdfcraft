@@ -4313,6 +4313,7 @@ dependencies = [
  "hayro-syntax",
  "image",
  "pdfcraft-cos",
+ "pdfcraft-filters",
  "pdfcraft-fonts",
  "pdfcraft-model",
  "png 0.18.1",
@@ -4354,6 +4355,7 @@ version = "0.15.0"
 dependencies = [
  "chrono",
  "craft-docpath",
+ "getrandom 0.4.3",
  "icu_properties",
  "idna",
  "image",
