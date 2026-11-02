@@ -377,11 +377,16 @@ impl MeasureView {
         self.snappers.iter().any(|(_, l)| matches!(l, Lines::Loading(_)))
     }
 
-    /// Tests: `page`'s lines stay loading until the returned sender sends them.
+    /// Tests: `page`'s lines stay loading until the returned sender sends them. The held read
+    /// replaces any read of the page already under way (a worker the tool started a frame
+    /// earlier), so only the test decides when the lines arrive; the replaced worker's answer
+    /// goes to a dropped receiver, which `read_lines` ignores (FIX.2).
     #[cfg(test)]
     pub(crate) fn hold_snapping(&mut self, doc: &Document, page: usize) -> mpsc::Sender<Result<Snapper, String>> {
         let (tx, rx) = mpsc::channel();
-        self.snappers.insert(0, (SnapKey::of(doc, page), Lines::Loading(rx)));
+        let key = SnapKey::of(doc, page);
+        self.snappers.retain(|(k, _)| *k != key);
+        self.snappers.insert(0, (key, Lines::Loading(rx)));
         tx
     }
 }
