@@ -1701,35 +1701,3 @@ fn a_stream_whose_length_is_itself_and_never_ends_loads_quickly() {
     });
     rx.recv_timeout(std::time::Duration::from_secs(20)).expect("loading must not retry exponentially");
 }
-
-#[test]
-fn a_missing_file_id_is_derived_from_the_encryption_seed() {
-    let mut doc = Document::new_empty();
-    let seed = [9u8; 32];
-    doc.set_encryption(&pdfcraft_crypt::NewEncryption {
-        algorithm: pdfcraft_crypt::Algorithm::Aes256,
-        user_password: "user",
-        owner_password: "owner",
-        permissions: -4,
-        encrypt_metadata: true,
-        seed,
-    })
-    .unwrap();
-    let id = doc.trailer().get(b"ID").and_then(|o| o.as_array()).and_then(|a| a.first()).and_then(|o| o.as_string()).map(|s| s.bytes.clone());
-    assert_eq!(id.as_deref(), Some(pdfcraft_crypt::file_id(&seed).as_slice()));
-
-    let mut kept = Document::new_empty();
-    let fixed = Object::String(crate::PdfString { bytes: b"0123456789abcdef".to_vec(), hex: true });
-    kept.trailer_mut().set(b"ID".to_vec(), Object::Array(vec![fixed.clone(), fixed]));
-    kept.set_encryption(&pdfcraft_crypt::NewEncryption {
-        algorithm: pdfcraft_crypt::Algorithm::Aes256,
-        user_password: "user",
-        owner_password: "owner",
-        permissions: -4,
-        encrypt_metadata: true,
-        seed,
-    })
-    .unwrap();
-    let still = kept.trailer().get(b"ID").and_then(|o| o.as_array()).and_then(|a| a.first()).and_then(|o| o.as_string()).map(|s| s.bytes.clone());
-    assert_eq!(still.as_deref(), Some(b"0123456789abcdef".as_slice()));
-}

@@ -18,15 +18,6 @@ fn deletes_pages(edit: &Edit) -> bool {
     }
 }
 
-/// Whether the edit, or any edit inside a batch, deletes pages.
-fn deletes_pages(edit: &Edit) -> bool {
-    match edit {
-        Edit::DeletePages { .. } => true,
-        Edit::Batch { edits, .. } => edits.iter().any(deletes_pages),
-        _ => false,
-    }
-}
-
 impl Session {
     /// Apply an edit. On success the previous state is undoable and the view data is refreshed.
     pub fn apply(&mut self, id: DocId, edit: Edit) -> Result<(), EditError> {
