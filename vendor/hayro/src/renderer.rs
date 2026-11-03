@@ -1239,6 +1239,10 @@ impl Renderer {
                 pass: Some(pass),
                 unsupported: false,
             },
+            // This fork (OV9): an ink pass draws the group's document content, so View ▸ Thin
+            // lines applies in it as anywhere else (`set_stroke_properties` still leaves
+            // annotations, stroked text and Type 3 glyphs alone).
+            thin_lines: self.thin_lines,
             knockout: Vec::new(),
             erasing: false,
             erase_groups: 0,

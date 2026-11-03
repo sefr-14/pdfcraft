@@ -10052,3 +10052,43 @@ fn thin_lines_tiles_match_full_render() {
     }
 }
 
+/// Thin lines reach the strokes of an isolated DeviceCMYK transparency group too (this fork, OV9,
+/// with upstream's CMYK ink passes, hayro patch 27): such a group is drawn by separate ink passes,
+/// each a renderer of its own, and every pass must carry the setting. A 10 pt black stroke in
+/// the group is 20 device pixels wide at scale 2, and one with thin lines.
+#[test]
+fn thin_lines_reach_strokes_inside_an_isolated_cmyk_group() {
+    let stroke = "0 0 0 1 K 10 w 30 10 m 30 90 l S";
+    let page = "/G0 Do";
+    let pdf = format!(
+        "%PDF-1.7\n\
+         1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+         2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+         3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Contents 4 0 R /Resources << /XObject << /G0 5 0 R >> >> >> endobj\n\
+         4 0 obj << /Length {} >> stream\n{page}\nendstream endobj\n\
+         5 0 obj << /Type /XObject /Subtype /Form /BBox [0 0 200 100] /Group << /S /Transparency /CS /DeviceCMYK /I true >> /Length {} >> stream\n{stroke}\nendstream endobj\n\
+         trailer << /Root 1 0 R >>\n%%EOF",
+        page.len(),
+        stroke.len()
+    );
+    let render = |thin_lines: bool| {
+        let mut r = PageRenderer::new(Arc::new(pdf.clone().into_bytes()), RenderConfig { thin_lines, ..Default::default() });
+        let page = r.render(RenderRequest { page: 0, kind: RequestKind::Pixels, tile: None, scale: 2.0, tag: 0, preview: false });
+        assert!(page.error.is_none(), "{:?}", page.error);
+        page
+    };
+    // Inked pixels across device row 100 (user y 50), left of device x 120. A one-pixel line
+    // centred on a pixel edge is two half-grey pixels, so anything not white counts.
+    let dark = |p: &RenderedPage| {
+        (0..120)
+            .filter(|&x| {
+                let i = ((100 * p.width + x) * 4) as usize;
+                p.rgba[i] < 250 || p.rgba[i + 1] < 250 || p.rgba[i + 2] < 250
+            })
+            .count()
+    };
+    let (off, on) = (render(false), render(true));
+    assert!(dark(&off) >= 19, "off: the stroke is 10 pt wide: {}", dark(&off));
+    assert!((1..=2).contains(&dark(&on)), "on: one device pixel, antialiased over at most two: {}", dark(&on));
+}
+
