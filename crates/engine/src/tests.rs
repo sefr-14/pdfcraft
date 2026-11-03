@@ -4558,6 +4558,22 @@ fn thin_lines_set_rerender_and_never_touch_the_file() {
     assert!(!s.set_thin_lines(DocId(u64::MAX), true));
 }
 
+/// Turning Thin lines on or off rebuilds the viewer's pool as every other view setting does,
+/// through `display_config`: the on-screen options stay (installed CJK faces for fonts a PDF
+/// doesn't embed, upstream 57a16aea) along with the new setting (SYNC.15, A2).
+#[test]
+fn thin_lines_keep_the_viewers_on_screen_options() {
+    let (mut s, id) = session_with(1);
+    assert!(s.get(id).unwrap().renderer.config().system_fonts, "the viewer's pool draws on screen");
+    assert!(s.set_thin_lines(id, true));
+    let config = s.get(id).unwrap().renderer.config();
+    assert!(config.thin_lines, "the pool draws thin lines");
+    assert!(config.system_fonts, "and keeps the on-screen fallback faces");
+    assert!(s.set_thin_lines(id, false));
+    let config = s.get(id).unwrap().renderer.config();
+    assert!(!config.thin_lines && config.system_fonts);
+}
+
 /// Per-PDF view settings (this fork, OV11) tell files apart by the trailer's `/ID` and keep
 /// guides with their page by its object. Reading either changes nothing.
 #[test]

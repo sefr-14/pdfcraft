@@ -279,7 +279,8 @@ impl Session {
             return false;
         }
         doc.config.thin_lines = on;
-        doc.renderer = RenderPool::new(doc.display.clone(), render_threads(), doc.config.clone());
+        // Through `display_config`, as every view setting: the viewer keeps its on-screen options.
+        doc.renderer = RenderPool::new(doc.display.clone(), render_threads(), display_config(&doc.config));
         doc.generation += 1;
         true
     }
