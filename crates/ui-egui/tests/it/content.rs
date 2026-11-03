@@ -32,6 +32,21 @@ fn harness_bytes_with_step_dt(bytes: Vec<u8>, step_dt: f32) -> Harness<'static, 
     h
 }
 
+/// [`harness`], drawing a box for a character no face has instead of panicking (the app's own
+/// policy), for checks of layout in every interface language.
+fn harness_drawing_boxes() -> Harness<'static, PdfCraftApp> {
+    let bytes = include_bytes!("../data/form.pdf").to_vec();
+    let mut h = Harness::builder().with_size(egui::vec2(1400.0, 900.0)).with_step_dt(0.25).allow_missing_glyphs().build_eframe(move |_cc| {
+        let mut app = PdfCraftApp::new();
+        app.set_option("language", "en").unwrap();
+        app.open_bytes("form.pdf", None, bytes.clone()).unwrap();
+        app.set_option("zoom", "150").unwrap();
+        app
+    });
+    crate::support::settle(&mut h);
+    h
+}
+
 fn at(h: &Harness<'static, PdfCraftApp>, x: f32, y: f32) -> Pos2 {
     let r = h.state().views[0].page_screen_rect(0).expect("on screen");
     let k = r.width() / 300.0;
@@ -764,7 +779,11 @@ fn format_text_fits_the_tools_pane_at_its_narrowest() {
 fn format_text_lists_fit_the_narrowest_tools_pane_in_every_language() {
     use egui::accesskit::Role;
     for lang in pdfcraft_ui_egui::i18n::Lang::all() {
-        let mut h = harness();
+        // This fork (SYNC.15): a script this machine's faces only partly cover draws boxes for the
+        // rest, as the app does (egui's default policy; only the harness panics). The Windows
+        // build has no craft-fonts, so a Japanese interface there finds Han characters in the
+        // installed Korean face but no kana (ー in the mode bar); the lists must fit all the same.
+        let mut h = harness_drawing_boxes();
         // A script with no face on this machine (Lao without system fonts) can't be drawn at all.
         if !h.ctx.fonts_mut(|f| f.has_glyphs(&egui::FontId::proportional(13.0), lang.name())) {
             continue;
