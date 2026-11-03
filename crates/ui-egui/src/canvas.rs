@@ -2556,7 +2556,7 @@ fn draw_pages(
     let ptr = PagePointer::read(ui, &resp, modal);
     // This fork (OV11): the Hand tool takes, moves and lets go of guides, against where the pages
     // were last frame; then the document's guides of the pages drawn now, to paint over them.
-    crate::guides::pointer_input(ui, view, env.info, &ptr, guides);
+    crate::guides::pointer_input(view, env.info, &ptr, guides);
     let marks = crate::guides::shown(guides.prefs, guides.id, env.visible_pages);
     let env = &PageEnv { marks: &marks, ..*env };
     view.screen_rects.clear();
@@ -3673,32 +3673,42 @@ fn view_tool(interaction: Interaction, tool: QuickTool) -> QuickTool {
     }
 }
 
-/// [`document_area`] for a view that may not be the active one (Tile View).
-pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui, interaction: Interaction) {
-    let t = Tokens::get(ui.ctx());
-    // Only the active view's tools act on its pages.
-    let tools = interaction == Interaction::Full;
-    let can_paste_key = egui::Id::unique("can-paste-image");
-    let can_paste_image = if ui.input(|i| i.pointer.secondary_pressed()) {
-        let can = app.can_paste_image();
-        ui.data_mut(|d| d.insert_temp(can_paste_key, can));
-        can
-    } else {
-        ui.data(|d| d.get_temp(can_paste_key)).unwrap_or(false)
-    };
-    // Keyboard scrolling applies to this frame's page view only, never later.
-    let key_scroll = std::mem::take(&mut app.views[index].key_scroll);
-    if key_scroll != 0.0 {
-        app.views[index].end_find_following();
-    }
-    // The Search panel closed: its search moves to the find bar.
+/// The Search panel closed: its search moves to the find bar.
+fn search_panel_closed(app: &mut PdfCraftApp, index: usize) {
     let search_open = app.right == Some(crate::RightPanel::Search);
-    if let Some(f) = app.views[index].find.as_mut()
+    if let Some(f) = app.views.get_mut(index).and_then(|v| v.find.as_mut())
         && f.in_panel
         && !search_open
     {
         f.in_panel = false;
     }
+}
+
+/// Whether the page menu offers Paste image, worked out when the right button goes down and kept
+/// until the next press (reading the clipboard every frame would be too slow).
+fn can_paste_image(app: &PdfCraftApp, ui: &egui::Ui) -> bool {
+    let can_paste_key = egui::Id::unique("can-paste-image");
+    if ui.input(|i| i.pointer.secondary_pressed()) {
+        let can = app.can_paste_image();
+        ui.data_mut(|d| d.insert_temp(can_paste_key, can));
+        can
+    } else {
+        ui.data(|d| d.get_temp(can_paste_key)).unwrap_or(false)
+    }
+}
+
+/// [`document_area`] for a view that may not be the active one (Tile View).
+pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui, interaction: Interaction) {
+    let t = Tokens::get(ui.ctx());
+    // Only the active view's tools act on its pages.
+    let tools = interaction == Interaction::Full;
+    let can_paste_image = can_paste_image(app, ui);
+    // Keyboard scrolling applies to this frame's page view only, never later.
+    let key_scroll = std::mem::take(&mut app.views[index].key_scroll);
+    if key_scroll != 0.0 {
+        app.views[index].end_find_following();
+    }
+    search_panel_closed(app, index);
     if close_requested_tab(app, index) {
         return;
     }
