@@ -22,12 +22,19 @@ pub(crate) struct Hotbar {
     picker_open: bool,
 }
 
+/// Where a hotbar nobody has moved floats, as fractions of its travel: the bottom-right corner.
+const DEFAULT_POSITION: [f32; 2] = [1.0, 1.0];
+
 impl Default for Hotbar {
-    /// Create a default empty horizontal floating hotbar.
+    /// Create a default empty horizontal floating hotbar. This fork (SYNC.15, D2): it starts in
+    /// the page area's bottom-right corner, not upstream's top centre over the sheet's top edge.
+    /// The other corners hold the quick bar (top left), the find bar (top right) and the page-size
+    /// hint (bottom left), and at Fit Page the corner is usually margin beside the sheet. It still
+    /// moves and docks as upstream's does, and a saved position wins.
     fn default() -> Self {
         Self {
             tools: Vec::new(),
-            position: [0.5, 0.0],
+            position: DEFAULT_POSITION,
             vertical: false,
             button_size: 32.0,
             dock: None,
@@ -368,5 +375,46 @@ mod tests {
         assert!(matches_search(ink, "comment.ink"), "command ID must still match");
         assert!(!matches_search(ink, "introuvable"));
         crate::i18n::set_current(crate::i18n::Lang::EN);
+    }
+
+    /// SYNC.15 (D2): the empty hotbar a new user sees keeps clear of the drawing's top edge and of
+    /// the other floating bars: it sits in the page area's bottom-right corner, away from the
+    /// quick bar and the find bar.
+    #[test]
+    fn the_default_hotbar_floats_in_the_bottom_right_corner() {
+        use egui_kittest::Harness;
+        let bytes = pdfcraft_engine::Session::new().create_blank(792.0, 612.0, 1).unwrap();
+        let mut h = Harness::builder().with_size(vec2(1400.0, 900.0)).build_eframe(move |_| {
+            let mut app = PdfCraftApp::new();
+            app.set_option("language", "en").unwrap();
+            app.open_bytes("sheet.pdf", None, bytes.as_ref().clone()).unwrap();
+            app.views[0].open_find();
+            app
+        });
+        h.run_steps(6);
+        let area = |name: &str| h.ctx.memory(|m| m.area_rect(egui::Id::unique(name)));
+        let page_area = h.state().views[0].viewport_rect();
+        let bar = area("custom-hotbar").expect("the hotbar is shown");
+        assert!(page_area.contains_rect(bar), "{bar:?} in {page_area:?}");
+        assert!(bar.right() > page_area.right() - 20.0 && bar.bottom() > page_area.bottom() - 20.0, "{bar:?} in the corner of {page_area:?}");
+        let quick = area("quick-bar").expect("the quick bar is shown");
+        assert!(!bar.intersects(quick), "{bar:?} clear of the quick bar {quick:?}");
+        let find = area("find-bar").expect("the find bar is open");
+        assert!(!bar.intersects(find), "{bar:?} clear of the find bar {find:?}");
+        let page = h.state().views[0].page_screen_rect(0).expect("the page is drawn");
+        assert!(bar.top() > page.top() + page.height() / 2.0, "{bar:?} is not over the sheet's top half {page:?}");
+    }
+
+    /// SYNC.15 (D2): PDF Overlay drew page and thumbnail shadows before upstream made them a
+    /// preference, so the preference starts on and a new user sees the pages as before; turned
+    /// off, it stays off across a restart.
+    #[test]
+    fn page_edge_shadows_start_on_as_before_and_turned_off_stay_off() {
+        let mut app = PdfCraftApp::new();
+        assert!(app.show_page_edge_shadows);
+        app.show_page_edge_shadows = false;
+        let mut restored = PdfCraftApp::new();
+        restored.restore(&app.persist());
+        assert!(!restored.show_page_edge_shadows);
     }
 }
