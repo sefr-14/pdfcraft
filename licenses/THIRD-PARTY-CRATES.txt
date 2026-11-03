@@ -10,7 +10,7 @@ licence text without a copyright line. The pdfcraft-* crates are PdfCraft's own 
 LICENSE-APACHE, NOTICE).
 
 Overview
-  MIT License (MIT): 418
+  MIT License (MIT): 419
   ISC License (ISC): 26
   Unicode License v3 (Unicode-3.0): 26
   Apache License 2.0 (Apache-2.0): 19
@@ -6362,8 +6362,8 @@ MIT License (MIT)
 
 Used by:
   - vello_common 0.0.8 <https://github.com/linebender/vello>
-  - vello_common 0.2.0 <https://github.com/linebender/vello>
   - vello_cpu 0.0.8 <https://github.com/linebender/vello>
+  - vello_common 0.2.0 <https://github.com/linebender/vello>
   - vello_cpu 0.2.0 <https://github.com/linebender/vello>
 
 Copyright 2020 the Vello Authors
@@ -7289,38 +7289,38 @@ Used by:
     authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
   - epaint 0.37.0 <https://github.com/emilk/egui/tree/main/crates/epaint>
     authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
-  - pdfcraft 0.15.0
-  - pdfcraft-a11y 0.15.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-annot 0.15.0
-  - pdfcraft-audit 0.15.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-compare 0.15.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-content 0.15.0
-  - pdfcraft-cos 0.15.0
-  - pdfcraft-create 0.15.0
-  - pdfcraft-crypt 0.15.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-edit 0.15.0
-  - pdfcraft-engine 0.15.0
-  - pdfcraft-export 0.15.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-filters 0.15.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-fonts 0.15.0
-  - pdfcraft-forms 0.15.0
-  - pdfcraft-geom 0.15.0
-  - pdfcraft-js 0.15.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-measure 0.15.0
-  - pdfcraft-model 0.15.0
-  - pdfcraft-ocr 0.15.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-optimize 0.15.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-organize 0.15.0
-  - pdfcraft-overlay 0.15.0
-  - pdfcraft-platform 0.15.0
-  - pdfcraft-preflight 0.15.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-print 0.15.0
-  - pdfcraft-redact 0.15.0
-  - pdfcraft-render 0.15.0
-  - pdfcraft-sign 0.15.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-ui-egui 0.15.0
-  - pdfcraft-xfa 0.15.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-xfdf 0.15.0
+  - pdfcraft 0.18.0
+  - pdfcraft-a11y 0.18.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-annot 0.18.0
+  - pdfcraft-audit 0.18.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-compare 0.18.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-content 0.18.0
+  - pdfcraft-cos 0.18.0
+  - pdfcraft-create 0.18.0
+  - pdfcraft-crypt 0.18.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-edit 0.18.0
+  - pdfcraft-engine 0.18.0
+  - pdfcraft-export 0.18.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-filters 0.18.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-fonts 0.18.0
+  - pdfcraft-forms 0.18.0
+  - pdfcraft-geom 0.18.0
+  - pdfcraft-js 0.18.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-measure 0.18.0
+  - pdfcraft-model 0.18.0
+  - pdfcraft-ocr 0.18.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-optimize 0.18.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-organize 0.18.0
+  - pdfcraft-overlay 0.18.0
+  - pdfcraft-platform 0.18.0
+  - pdfcraft-preflight 0.18.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-print 0.18.0
+  - pdfcraft-redact 0.18.0
+  - pdfcraft-render 0.18.0
+  - pdfcraft-sign 0.18.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-ui-egui 0.18.0
+  - pdfcraft-xfa 0.18.0 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-xfdf 0.18.0
   - accesskit 0.25.1 <https://github.com/AccessKit/accesskit>
     authors: The AccessKit contributors
   - accesskit_consumer 0.39.1 <https://github.com/AccessKit/accesskit>
@@ -7396,8 +7396,6 @@ Used by:
   - windows-result 0.4.1 <https://github.com/microsoft/windows-rs>
   - windows-strings 0.5.1 <https://github.com/microsoft/windows-rs>
   - windows-sys 0.52.0 <https://github.com/microsoft/windows-rs>
-    authors: Microsoft
-  - windows-sys 0.59.0 <https://github.com/microsoft/windows-rs>
     authors: Microsoft
   - windows-sys 0.61.2 <https://github.com/microsoft/windows-rs>
   - windows-targets 0.52.6 <https://github.com/microsoft/windows-rs>
@@ -7845,6 +7843,8 @@ Used by:
     authors: David Tolnay <dtolnay@gmail.com>
   - thiserror 2.0.21 <https://github.com/dtolnay/thiserror>
     authors: David Tolnay <dtolnay@gmail.com>
+  - typed-path 0.13.0 <https://github.com/chipsenkbeil/typed-path>
+    authors: Chip Senkbeil <chip@senkbeil.org>
   - typeid 1.0.3 <https://github.com/dtolnay/typeid>
     authors: David Tolnay <dtolnay@gmail.com>
   - unicode-ident 1.0.26 <https://github.com/dtolnay/unicode-ident>
@@ -8041,6 +8041,8 @@ MIT License (MIT)
 Used by:
   - tracing-core 0.1.36 <https://github.com/tokio-rs/tracing>
     authors: Tokio Contributors <team@tokio.rs>
+  - zip 9.1.3 <https://github.com/zip-rs/zip2>
+    authors: Mathijs van de Nes <git@mathijs.vd-nes.nl>; Marli Frost <marli@frost.red>; Ryan Levick <ryan.levick@gmail.com>; Chris Hennick <hennickc@amazon.com>
 
 The MIT License (MIT)
 

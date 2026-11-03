@@ -81,7 +81,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 PDF Overlay (unofficial fork; called PdfCraft Overlay until BRAND.1)
 
 This repository, https://github.com/sefr-14/pdfcraft, is an unofficial fork of PdfCraft
-(https://github.com/storytold/pdfcraft), based on upstream release v0.15.0. It is not made,
+(https://github.com/storytold/pdfcraft), based on upstream release v0.18.0. It is not made,
 endorsed or supported by the ArtCraft Team. It is maintained for internal use; that is its purpose,
 not a restriction, and it does not limit any right the licences above grant.
 

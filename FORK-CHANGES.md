@@ -44,6 +44,6 @@ notice requirement.
 | Windows x64 builds on request, as Actions artifacts, never releases | `.github/workflows/overlay-windows.yml` (new) |
 | GitHub pull requests are bridged to the authoritative Forgejo repository, and upstream is trial-merged daily for review | `.github/workflows/forgejo-*.yml`, `scripts/automation` (new) |
 | Upstream workflows the fork doesn't use are removed or run only on demand | `.github/workflows/` |
-| Upstream releases come in by true merge of the release tag (`v0.15.0` in SYNC.13); the SYNC.12 backports are part of it | see the Git history |
+| Upstream releases come in by true merge of the release tag (`v0.15.0` in SYNC.13, `v0.18.0` in SYNC.15); the SYNC.12 and SYNC.14 backports are part of them | see the Git history |
 | Between releases, selected upstream fixes come in by `cherry-pick -x` or a manual port that names its upstream commit (SYNC.12; SYNC.14 from upstream main `f47618f5`, listed in the ROADMAP log) | see the Git history |
 | Upstream's Windows installer-policy check (`packaging-lint.yml`) runs only in upstream's repository: the fork ships a portable zip, not an MSI | `.github/workflows/packaging-lint.yml` |
