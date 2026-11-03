@@ -1,3 +1,4 @@
+# Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 # Stage 1 source documents only. Destinations are logical names, not packaging instructions.
 # licences lists audited full-text identifiers; omission grants no bundle applicability.
 
@@ -13,20 +14,23 @@ licences = ["MIT"]
 destination = "LICENSE-MIT"
 sha256 = "cd7032ea33b71427f188e34ffb4aee9d6868a57fd196037c5c8b2be03a2a0352"
 
+# This fork (sefr-14/pdfcraft): PDF Overlay's own notice (BRAND.1, LIC.1).
 [[document]]
 source = "NOTICE"
 destination = "NOTICE"
-sha256 = "9f854f730719af962cd840529324d089e05e68a30bd245c50e33f96e009b4314"
+sha256 = "37b0bec3ab89741f310520b38c85e8a6eb94989b5ad889d9ba962e4941c2b104"
 
+# This fork (sefr-14/pdfcraft): PDF Overlay's own app icon licence (LIC.2).
 [[document]]
 source = "assets/app-icon/LICENSE-document.txt"
 destination = "assets/app-icon/LICENSE-document.txt"
-sha256 = "64a3137e3d5cc41e5b78d2ad8dd9ddddd6588283f9f7b3128aa6a8a50852fb9a"
+sha256 = "a87417fd810024ca971612c14d6201ace9a440d5558ee061f8b5508eebf94ae2"
 
+# This fork (sefr-14/pdfcraft): PDF Overlay's own app icon licence (LIC.2).
 [[document]]
 source = "assets/app-icon/LICENSE.txt"
 destination = "assets/app-icon/LICENSE.txt"
-sha256 = "b768acafe6cbad8247eedf86b5b5381feefcd4ee0f8c7808b86811bc687cf37b"
+sha256 = "45f9ec8f43f5e5042dadd6cab78194622023cd205bc625dada31b0b5f35e31d7"
 
 [[document]]
 source = "assets/fonts/OFL-DancingScript.txt"
