@@ -1730,66 +1730,6 @@ mod dimension_tests {
         let px = noise(20, 10);
         assert_eq!(resample(&px, 1, 20, 10, 20, 10).unwrap(), px);
     }
-
-    /// Resampling goes through no more than one of the two sizes holds, whatever their proportions:
-    /// the first three shapes asked for 160 GB and more on the way, and that aborted the process.
-    /// The last two would ask for 10 GB and 30 GB if they went across first, which is why the way
-    /// round depends on the shapes. A flat picture stays flat, and pictures of ordinary proportions
-    /// resample as they always did.
-    #[test]
-    fn resampling_across_proportions_takes_the_memory_of_neither_product() {
-        let shapes = [
-            (100_000u32, 1u32, 1u32, 100_000u32, 1usize),
-            (1_000_000, 1, 4, 100_000, 1),
-            (100_000, 1, 1, 100_000, 3),
-            (1, 100_000, 100_000, 1, 1),
-            (1, 100_000, 100_000, 1, 3),
-        ];
-        for (w, h, nw, nh, n) in shapes {
-            let px = vec![0x60; (w * h) as usize * n];
-            let out = resample(&px, n, w, h, nw, nh).unwrap();
-            assert_eq!(out.len(), (nw * nh) as usize * n);
-            assert!(out.iter().all(|v| v.abs_diff(0x60) <= 1), "{w} × {h} to {nw} × {nh}");
-        }
-        let (w, h, nw, nh) = (40u32, 30u32, 20u32, 15u32);
-        let px: Vec<u8> = (0..w * h).map(|i| (i * 7 % 251) as u8).collect();
-        let image = image::GrayImage::from_raw(w, h, px.clone()).unwrap();
-        let direct = image::imageops::resize(&image, nw, nh, image::imageops::FilterType::CatmullRom).into_raw();
-        assert_eq!(resample(&px, 1, w, h, nw, nh).unwrap(), direct, "as it was");
-    }
-
-    /// The long way round is for proportions far apart: up to a quarter over the larger picture the
-    /// buffer is no danger, and that scales as it always did, to the byte. Noise, as a flat picture comes
-    /// out the same either way.
-    #[test]
-    fn proportions_up_to_the_limit_resample_as_they_did() {
-        let noise = |w: u32, h: u32| -> Vec<u8> {
-            let mut seed = 0x2545_F491_4F6C_DD1Du64;
-            (0..w * h)
-                .map(|_| {
-                    seed ^= seed << 13;
-                    seed ^= seed >> 7;
-                    seed ^= seed << 17;
-                    seed as u8
-                })
-                .collect()
-        };
-        let direct = |px: &[u8], w, h, nw, nh| {
-            let image = image::GrayImage::from_raw(w, h, px.to_vec()).unwrap();
-            image::imageops::resize(&image, nw, nh, image::imageops::FilterType::CatmullRom).into_raw()
-        };
-        // Each exactly a quarter over the larger: the source's size, then the target's.
-        for (w, h, nw, nh) in [(25, 16, 10, 20), (20, 5, 16, 25)] {
-            let px = noise(w, h);
-            assert_eq!(resample(&px, 1, w, h, nw, nh).unwrap(), direct(&px, w, h, nw, nh), "{w} × {h} to {nw} × {nh}");
-        }
-        // A step past it goes the long way, which is how to tell.
-        let px = noise(25, 15);
-        assert_ne!(resample(&px, 1, 25, 15, 10, 20).unwrap(), direct(&px, 25, 15, 10, 20));
-        // A picture of the size asked for comes through as it is.
-        let px = noise(20, 10);
-        assert_eq!(resample(&px, 1, 20, 10, 20, 10).unwrap(), px);
-    }
 }
 
 #[cfg(test)]
