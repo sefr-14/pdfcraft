@@ -178,7 +178,8 @@ pub fn raw_stream(dict: &str, data: &str) -> String {
 }
 
 /// The page's decoded content streams joined as `page_as_form` joins them (each followed by a
-/// newline), read through pdfcraft-model's page list.
+/// space, as the renderer joins them: upstream #3502, SYNC.15), read through pdfcraft-model's
+/// page list.
 pub fn page_content(doc: &Document, page: usize) -> Vec<u8> {
     let pages = pdfcraft_model::pages(doc);
     let p = &pages[page];
@@ -191,7 +192,7 @@ pub fn page_content(doc: &Document, page: usize) -> Vec<u8> {
     for o in list {
         if let Object::Stream(s) = &*doc.resolve(&o) {
             out.extend(s.decoded().expect("synthetic streams decode"));
-            out.push(b'\n');
+            out.push(b' ');
         }
     }
     out
