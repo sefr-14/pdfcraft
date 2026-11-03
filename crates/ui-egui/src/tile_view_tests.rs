@@ -453,3 +453,19 @@ fn the_wheel_over_the_overlay_wizard_moves_no_tile() {
     wheel_at(&mut h, centre, 120.0, egui::Modifiers::COMMAND);
     assert_eq!((place(&h, 0), place(&h, 1)), (a, b), "the wizard's own window takes the wheel");
 }
+
+/// SYNC.15 (D2): upstream's hotbar is the active view's, as the tools it runs are. Tile View
+/// draws every tile's page area, and inactive tiles stop before the floating tools, the hotbar
+/// with them; drawn from each, it would be one bar (one area id) moved from tile to tile within
+/// the frame, left over the last tile drawn, active or not.
+#[test]
+fn tile_view_shows_the_hotbar_over_the_active_tile() {
+    let mut h = two_tiles();
+    let bar = |h: &Harness<'static, PdfCraftApp>| h.ctx.memory(|m| m.area_rect(egui::Id::unique("custom-hotbar")));
+    for active in [0, 1] {
+        h.state_mut().active = Some(active);
+        h.run_steps(4);
+        let (Some(bar), tile) = (bar(&h), viewport(&h, active)) else { panic!("no hotbar") };
+        assert!(tile.expand(1.0).contains_rect(bar), "tile {active} active: the bar {bar:?} is over it ({tile:?})");
+    }
+}
