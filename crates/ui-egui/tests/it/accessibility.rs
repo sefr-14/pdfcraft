@@ -92,7 +92,7 @@ fn checking_fixing_skipping_and_reporting() {
     assert_eq!(status(&h, Rule::Title), Status::Passed);
     assert_eq!(h.state().a11y.previous.as_ref().unwrap().1.result(Rule::Title).unwrap().status, Status::Failed);
     assert!(matches!(h.state().dialog, Some(Dialog::Properties(_))));
-    assert_eq!(h.state().window_title, "notes — PDF Overlay");
+    assert_eq!(h.state().window_title, "notes • — PDF Overlay");
     h.state_mut().dialog = None;
     h.run_steps(2);
     h.get_by_label("Compare");

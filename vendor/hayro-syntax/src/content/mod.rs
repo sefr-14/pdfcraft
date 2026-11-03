@@ -190,11 +190,6 @@ impl<'a> UntypedIter<'a> {
             self.committed = self.skip_blanks_and_comments();
         }
 
-        // PdfCraft patch: set when this instruction carried more operands than the limit. Its
-        // operator is then dropped with them, rather than applied to the ones that did fit
-        // (#3568).
-        let mut overflowed = false;
-
         while !self.reader.at_end() {
             // I believe booleans/null never appear as an operator?
             if matches!(
@@ -212,9 +207,7 @@ impl<'a> UntypedIter<'a> {
                     if self.undecided() {
                         return None;
                     }
-                    if self.stack.push(object).is_none() {
-                        overflowed = true;
-                    }
+                    self.stack.push(object);
                 } else if self.reader.read_without_context::<Operator<'_>>().is_some() {
                     if self.undecided() {
                         return None;
@@ -234,7 +227,6 @@ impl<'a> UntypedIter<'a> {
                     // content was deliberately not parsed.
                     warn!("skipped an unreadable name in content stream");
                     self.stack.clear();
-                    overflowed = false;
                     continue;
                 } else {
                     return None;
@@ -253,7 +245,6 @@ impl<'a> UntypedIter<'a> {
                         // the rest of the page was lost. Step over it and carry on (#3568).
                         if !self.lookahead && self.skip_bad_token() {
                             self.stack.clear();
-                            overflowed = false;
                             continue;
                         }
 
@@ -302,7 +293,7 @@ impl<'a> UntypedIter<'a> {
                         UnfilteredEnd::Found(end_data, end_after_ei) => {
                             let image_data = stream_data.get(..end_data)?;
                             let stream = Stream::new(image_data, dict.clone());
-                            self.stack.push(Object::Stream(stream))?;
+                            self.stack.push(Object::Stream(stream));
                             self.reader.read_bytes(end_after_ei)?;
                             self.reader.skip_white_spaces();
                             accepted = true;
@@ -464,7 +455,7 @@ impl<'a> UntypedIter<'a> {
                                 return None;
                             }
 
-                            self.stack.push(Object::Stream(stream))?;
+                            self.stack.push(Object::Stream(stream));
 
                             self.reader.read_bytes(2)?;
                             self.reader.skip_white_spaces();
@@ -480,17 +471,6 @@ impl<'a> UntypedIter<'a> {
                         self.needs_more = true;
                         return None;
                     }
-                }
-
-                if overflowed && !self.lookahead {
-                    // PdfCraft patch: see `overflowed` above. ISO 32000-2 Annex C gives 10 as the
-                    // historical operand limit; past it the instruction is dropped whole.
-                    warn!("dropped an instruction with more operands than the limit");
-                    self.stack.clear();
-                    overflowed = false;
-                    self.committed = self.reader.offset();
-                    self.reader.skip_white_spaces_and_comments();
-                    continue;
                 }
 
                 self.operator = Some(operator);
@@ -717,11 +697,16 @@ impl<'a> Stack<'a> {
     }
 
     /// PdfCraft patch (28): push an operand, dropping the oldest once `MAX_OPERANDS` are held
-    /// (see `MAX_OPERANDS`). Never fails: it used to, and the failure ended the content stream.
-    fn push(&mut self, operand: Object<'a>) -> Option<()> {
+    /// (see `MAX_OPERANDS`). It cannot fail: it used to, and the failure ended the content stream.
+    ///
+    /// The operands kept are the newest, so the ones nearest the operator -- which are its own.
+    /// No operator takes anywhere near `MAX_OPERANDS` of them (`scn` takes one per colourant, and
+    /// ISO 32000 allows a DeviceN space 32), so an instruction preceded by stray operands is
+    /// applied to its own and the strays fall off the back.
+    fn push(&mut self, operand: Object<'a>) {
         if self.data.len() < MAX_OPERANDS {
             self.data.push(operand);
-            return Some(());
+            return;
         }
 
         self.dropped = true;
@@ -729,7 +714,6 @@ impl<'a> Stack<'a> {
             *slot = operand;
         }
         self.oldest = (self.oldest + 1) % MAX_OPERANDS;
-        Some(())
     }
 
     /// PdfCraft patch (28): put the operands back in the order they were read, oldest first,
