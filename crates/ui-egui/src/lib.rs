@@ -28,6 +28,7 @@ macro_rules! tl_ctx {
 }
 pub mod canvas;
 mod chrome;
+mod image_engine;
 // This fork's overlay compare wizard.
 mod overlay_ui;
 // This fork: Escape takes one step back per press (OV11).
@@ -39,7 +40,6 @@ mod rulers;
 // This fork: Tab View and Tile View (OV7.2).
 mod tile_view;
 mod tool_keys;
-mod image_engine;
 pub use combine_grid::ThumbState as CombineThumb;
 pub use combine_ui::{Columns as CombineColumns, CombineView, Lock as CombineLock, SortKey};
 mod commands;

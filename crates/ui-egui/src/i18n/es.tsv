@@ -2915,6 +2915,9 @@ theme	Appearance	Aspecto
 	field names can't contain a period: {name}	los nombres de campo no pueden contener un punto: {name}
 	two cells would both be named {name}	dos celdas se llamarían {name}
 	a field named {name} already exists	ya existe un campo llamado {name}
+	Arrange image	Organizar imagen
+	Crop	Recortar
+
 # This fork (sefr-14/pdfcraft): Overlay compare, the command and its All tools item.
 	Overlay compare…	Comparar por superposición…
 	Overlay two revisions	Superponer dos revisiones
@@ -3003,8 +3006,6 @@ theme	Appearance	Aspecto
 	The document changed while it was being optimized, so nothing was saved. Run it again to include your latest changes.	El documento cambió mientras se optimizaba, así que no se guardó nada. Vuelve a ejecutarlo para incluir tus últimos cambios.
 	{name} is open in another tab. Close it or choose another name.	{name} está abierto en otra pestaña. Ciérralo o elige otro nombre.
 	{name} changed on disk since it was opened, so nothing was saved. Choose another name to keep both.	{name} cambió en el disco desde que se abrió, así que no se guardó nada. Elige otro nombre para conservar ambos.
-	Arrange image	Organizar imagen
-	Crop	Recortar
 
 # Date picker: Today button (#4274) (AI-assisted, not separately native-reviewed)
 	Today	Hoy
