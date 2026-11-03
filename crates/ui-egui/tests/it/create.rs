@@ -219,7 +219,7 @@ fn reduce_file_size_makes_the_same_tab_the_smaller_file_with_its_unsaved_changes
         left: None,
         top: None
     }));
-    app.views[0].fill_text = Some(TypeBox { page: 0, at: [40.0, 200.0], text: "Typed".into(), size: 10.0, focus: false });
+    app.views[0].fill_text = Some(TypeBox { page: 0, at: [40.0, 200.0], text: "Typed".into(), size: 10.0, color: [0.0; 3], focus: false });
     assert!(app.session.get(id).unwrap().dirty);
     let out = dir.0.join("site plan (reduced).pdf");
     app.save_override = Some(out.to_string_lossy().into_owned());
