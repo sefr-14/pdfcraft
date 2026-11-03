@@ -433,6 +433,41 @@ fn the_hand_tool_moves_selects_and_deletes_guides_and_escape_puts_one_back() {
     untouched(&mut h, id, &bytes);
 }
 
+/// A4 (SYNC.15): the guide cursor is claimed through the page cursor (`view.cursor`), above the
+/// Hand tool's own. Over a guide it shows the way the guide moves, rather than the hand, and a
+/// held guide keeps that cursor through the drag, rather than the hand's Grabbing.
+#[test]
+fn the_hand_tool_shows_which_way_a_guide_under_it_moves() {
+    let file = plans("cursor.pdf");
+    let mut h = harness(1600.0, move |app| open(app, &file));
+    let id = h.state().views[0].id;
+    {
+        let p = &mut h.state_mut().doc_prefs;
+        p.add_guide(id, 0, Axis::Y, 150.0).unwrap();
+        p.add_guide(id, 0, Axis::X, 120.0).unwrap();
+    }
+    h.state_mut().quick_tool = QuickTool::Hand;
+    h.run_steps(4);
+    let cursor_at = |h: &mut Harness<'static, PdfCraftApp>, p: Pos2| {
+        h.hover_at(p);
+        h.run_steps(2);
+        h.output().platform_output.cursor_icon
+    };
+    let p = on_page(&h, 0, 0, 250.0, 150.0);
+    assert_eq!(cursor_at(&mut h, p), egui::CursorIcon::ResizeVertical, "over the horizontal guide");
+    let p = on_page(&h, 0, 0, 120.0, 220.0);
+    assert_eq!(cursor_at(&mut h, p), egui::CursorIcon::ResizeHorizontal, "over the vertical guide");
+    let p = on_page(&h, 0, 0, 250.0, 300.0);
+    assert_eq!(cursor_at(&mut h, p), egui::CursorIcon::Grab, "away from the guides, the hand");
+    // Held and moved: the guide's cursor stays, though the page widget reports a drag.
+    let from = on_page(&h, 0, 0, 250.0, 150.0);
+    let to = on_page(&h, 0, 0, 250.0, 200.0);
+    drag(&mut h, from, to, 6, true);
+    assert_eq!(h.output().platform_output.cursor_icon, egui::CursorIcon::ResizeVertical, "while the guide is dragged");
+    button(&mut h, to, false);
+    h.run_steps(3);
+}
+
 /// D4 (SYNC.13): the Hand tool takes guides through the pages' own pointer (`PagePointer`), so a
 /// press on a guide under something drawn over the page (the find bar) leaves the guide alone,
 /// while the same guide beside it is taken as before.

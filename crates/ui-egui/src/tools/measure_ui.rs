@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use std::sync::{Arc, mpsc};
 
-use crate::{LeftPanel, PdfCraftApp, QuickTool, canvas::DocView, theme::Tokens, widgets};
+use crate::{LeftPanel, PdfCraftApp, QuickTool, canvas::DocView, page_cursor::Layer, theme::Tokens, widgets};
 use egui::{Color32, Pos2, Stroke};
 use pdfcraft_cos::ObjRef;
 use pdfcraft_engine::{
@@ -548,7 +548,7 @@ pub(crate) fn page_input(
         let _ = state.snapping(&ctx, doc, page);
     }
     if let Some(pos) = pos {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+        view.cursor.claim(Layer::ToolArea, egui::CursorIcon::Crosshair);
         let (vx, vy) = xf.screen_to_view(pos);
         let [x, y] = info.view_to_user(vx, vy);
         let mut point = [f64::from(x), f64::from(y)];

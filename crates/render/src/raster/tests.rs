@@ -4059,7 +4059,10 @@ fn jbig2_image_draws_with(stream: &[u8], space: &str, entries: &str, objects: &[
     pdf.extend_from_slice(b"\nendstream endobj\n");
     pdf.extend_from_slice(objects);
     pdf.extend_from_slice(b"trailer << /Root 1 0 R >>\n%%EOF\n");
-    let mut r = PageRenderer::new(Arc::new(pdf), RenderConfig::default());
+    // What one image may take, which the page's allowance, tested on its own, would otherwise reach
+    // first: it is the same size, and the page itself comes out of it.
+    let config = RenderConfig { jbig2_work: Some(u64::MAX), ..RenderConfig::default() };
+    let mut r = PageRenderer::new(Arc::new(pdf), config);
     let page = r.render(RenderRequest { page: 0, kind: RequestKind::Pixels, tile: None, scale: 1.0, tag: 0, ..Default::default() });
     assert!(page.error.is_none(), "{:?}", page.error);
     assert_eq!(&page.rgba[((38 * 40 + 1) * 4)..][..4], &[255, 0, 0, 255], "the rest of the page draws");
@@ -4069,6 +4072,217 @@ fn jbig2_image_draws_with(stream: &[u8], space: &str, entries: &str, objects: &[
         [255, 255, 255, 255] => false,
         other => panic!("neither the image nor the page: {other:?}"),
     }
+}
+
+/// The JBIG2 images of a page share one allowance, down to the step, and the next page starts with
+/// its own. The images differ by an extension segment: one image decoded again isn't decoded twice.
+#[test]
+fn the_jbig2_images_of_a_page_share_one_allowance() {
+    let image = |number: u8, id: u8| {
+        let mut stream = black_jbig2_page();
+        jbig2_segment(&mut stream, 1, 62, &[], &[0, 0, 0, 0, id]);
+        let mut object = format!(
+            "{number} 0 obj << /Type /XObject /Subtype /Image /Width 16 /Height 2 /BitsPerComponent 1 /ColorSpace /DeviceGray /Filter /JBIG2Decode /Length {} >> stream\n",
+            stream.len()
+        )
+        .into_bytes();
+        object.extend_from_slice(&stream);
+        object.extend_from_slice(b"\nendstream endobj\n");
+        object
+    };
+    let page = |number: u8, content: u8, xobjects: &str| {
+        format!("{number} 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 40 40] /Contents {content} 0 R /Resources << /XObject << {xobjects} >> >> >> endobj\n").into_bytes()
+    };
+    let content = |number: u8, text: &str| format!("{number} 0 obj << /Length {} >> stream\n{text}\nendstream endobj\n", text.len()).into_bytes();
+    let mut pdf =
+        b"%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >> endobj\n".to_vec();
+    pdf.extend(page(3, 5, "/A 7 0 R /B 8 0 R"));
+    pdf.extend(page(4, 6, "/C 9 0 R"));
+    pdf.extend(content(5, "q 20 0 0 40 0 0 cm /A Do Q q 20 0 0 40 20 0 cm /B Do Q"));
+    pdf.extend(content(6, "q 20 0 0 40 0 0 cm /C Do Q"));
+    pdf.extend(image(7, 1));
+    pdf.extend(image(8, 2));
+    pdf.extend(image(9, 3));
+    pdf.extend_from_slice(b"trailer << /Root 1 0 R >>\n%%EOF\n");
+    let pdf = Arc::new(pdf);
+    let black = |page: &RenderedPage, x: usize| match &page.rgba[((20 * 40 + x) * 4)..][..4] {
+        [0, 0, 0, 255] => true,
+        [255, 255, 255, 255] => false,
+        other => panic!("neither an image nor the page: {other:?}"),
+    };
+    let pages = |work: u64| {
+        let mut renderer = PageRenderer::new(pdf.clone(), RenderConfig { jbig2_work: Some(work), ..RenderConfig::default() });
+        [0, 1].map(|page| renderer.render(RenderRequest { page, kind: RequestKind::Pixels, tile: None, scale: 1.0, tag: 0, ..Default::default() }))
+    };
+    let drawn = |work: u64| {
+        let [first, _] = pages(work);
+        assert!(first.error.is_none(), "{:?}", first.error);
+        (black(&first, 10), black(&first, 30))
+    };
+    let one = (1..1_000).find(|work| drawn(*work).0).expect("a small image is cheap");
+    assert_eq!(drawn(one - 1), (false, false), "a step short of the first");
+    assert_eq!(drawn(one), (true, false), "enough for one");
+    assert_eq!(drawn(2 * one - 1), (true, false), "a step short of both");
+    assert_eq!(drawn(2 * one), (true, true), "enough for both");
+    let [first, second] = pages(one);
+    assert!(first.warnings.contains(&RenderWarning::ContentTruncated), "the page says it left something out: {:?}", first.warnings);
+    assert!(pages(2 * one)[0].warnings.is_empty(), "and only then");
+    assert!(black(&second, 10), "the next page has its own allowance, though this one spent all of it");
+    let usual = PageRenderer::new(pdf.clone(), RenderConfig::default()).render(RenderRequest {
+        page: 0,
+        kind: RequestKind::Pixels,
+        tile: None,
+        scale: 1.0,
+        tag: 0,
+        ..Default::default()
+    });
+    assert!(black(&usual, 10) && black(&usual, 30), "the usual allowance is far above a page like this");
+}
+
+/// Without its mask a picture would show what the mask hides, so a JBIG2 mask past the page's
+/// allowance takes the picture with it, and the page says so. A mask that can't be read for any
+/// other reason leaves the picture, as it did.
+#[test]
+fn a_picture_whose_jbig2_mask_is_past_the_pages_allowance_is_not_drawn() {
+    let draw = |entry: &str, filter: &str, mask: &[u8], work: u64| {
+        let content = b"q 20 0 0 20 5 5 cm /Im1 Do Q";
+        let mut pdf = b"%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 40 40] /Contents 4 0 R /Resources << /XObject << /Im1 5 0 R >> >> >> endobj\n".to_vec();
+        pdf.extend_from_slice(format!("4 0 obj << /Length {} >> stream\n", content.len()).as_bytes());
+        pdf.extend_from_slice(content);
+        pdf.extend_from_slice(b"\nendstream endobj\n");
+        pdf.extend_from_slice(
+            format!("5 0 obj << /Type /XObject /Subtype /Image /Width 1 /Height 1 /BitsPerComponent 8 /ColorSpace /DeviceGray {entry} 6 0 R /Length 1 >> stream\n\0\nendstream endobj\n").as_bytes(),
+        );
+        let kind = if entry == "/Mask" { "/ImageMask true" } else { "/ColorSpace /DeviceGray" };
+        pdf.extend_from_slice(
+            format!(
+                "6 0 obj << /Type /XObject /Subtype /Image /Width 16 /Height 2 /BitsPerComponent 1 {kind} /Filter {filter} /Length {} >> stream\n",
+                mask.len()
+            )
+            .as_bytes(),
+        );
+        pdf.extend_from_slice(mask);
+        pdf.extend_from_slice(b"\nendstream endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n");
+        let config = RenderConfig { jbig2_work: Some(work), ..RenderConfig::default() };
+        let page = PageRenderer::new(Arc::new(pdf), config).render(RenderRequest {
+            page: 0,
+            kind: RequestKind::Pixels,
+            tile: None,
+            scale: 1.0,
+            tag: 0,
+            ..Default::default()
+        });
+        assert!(page.error.is_none(), "{:?}", page.error);
+        let shown = match &page.rgba[((25 * 40 + 15) * 4)..][..4] {
+            [0, 0, 0, 255] => true,
+            [255, 255, 255, 255] => false,
+            other => panic!("neither the picture nor the page: {other:?}"),
+        };
+        (shown, page.warnings.contains(&RenderWarning::ContentTruncated))
+    };
+    let mask = black_jbig2_page();
+    let jbig2 = "/JBIG2Decode";
+    assert_eq!(draw("/SMask", jbig2, &mask, u64::MAX), (false, false), "the mask hides all of it");
+    assert_eq!(draw("/SMask", jbig2, &mask, 0), (false, true), "past the allowance a soft mask hides it too");
+    assert_eq!(draw("/Mask", jbig2, &mask, 0), (false, true), "and so does a stencil mask");
+    assert_eq!(draw("/SMask", jbig2, b"no JBIG2 here", 1 << 20), (true, false), "any other bad mask is no mask");
+    let other = draw("/SMask", "/DCTDecode", b"no JPEG here", 0);
+    assert_eq!(other, (true, false), "and a page with nothing left says nothing of a mask that isn't JBIG2");
+}
+
+/// A page's allowance ends with it, so what decodes on its thread afterwards has no page to run out
+/// on, and a `Context` used again starts afresh.
+#[test]
+fn a_pages_jbig2_allowance_ends_with_the_page() {
+    use hayro::hayro_interpret::font::Glyph;
+    use hayro::hayro_interpret::hayro_syntax::Pdf;
+    use hayro::hayro_interpret::{
+        BlendMode, ClipPath, Context, Device, GlyphDrawMode, Image, InterpreterCache, InterpreterSettings, Paint, PathDrawMode, SoftMask,
+        TransformExt, interpret_page,
+    };
+    use hayro_syntax::page_jbig2_work_spent;
+    use kurbo::{Affine, BezPath, Rect};
+
+    /// Notes at each path whether the page has run out.
+    struct Spent(Vec<bool>);
+    impl<'a> Device<'a> for Spent {
+        fn set_soft_mask(&mut self, _: Option<SoftMask<'a>>) {}
+        fn set_blend_mode(&mut self, _: BlendMode) {}
+        fn draw_path(&mut self, _: &BezPath, _: Affine, _: &Paint<'a>, _: &PathDrawMode) {
+            self.0.push(page_jbig2_work_spent());
+        }
+        fn push_clip_path(&mut self, _: &ClipPath) {}
+        fn push_transparency_group(&mut self, _: f32, _: Option<SoftMask<'a>>, _: BlendMode) {}
+        fn draw_glyph(&mut self, _: &Glyph<'a>, _: Affine, _: Affine, _: &Paint<'a>, _: &GlyphDrawMode) {}
+        fn draw_image(&mut self, _: Image<'a, '_>, _: Affine) {}
+        fn pop_clip_path(&mut self) {}
+        fn pop_transparency_group(&mut self) {}
+    }
+
+    let content = "0 0 4 4 re f";
+    let bytes = format!(
+        "%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 40 40] /Contents 4 0 R >> endobj\n4 0 obj << /Length {} >> stream\n{content}\nendstream endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n",
+        content.len()
+    );
+    let pdf = Pdf::new(Arc::new(bytes.into_bytes())).expect("parses");
+    let page = &pdf.pages()[0];
+    let cache = InterpreterCache::new();
+    let settings = InterpreterSettings { jbig2_work: 0, ..InterpreterSettings::default() };
+    let mut ctx = Context::new(page.initial_transform(true).to_kurbo(), Rect::new(0.0, 0.0, 40.0, 40.0), &cache, page.xref(), settings);
+    let mut device = Spent(Vec::new());
+    for _ in 0..2 {
+        interpret_page(page, &mut ctx, &mut device);
+        assert!(!page_jbig2_work_spent(), "no page is being drawn");
+    }
+    assert_eq!(device.0, [true, true], "each time, the page has what its settings give it");
+}
+
+/// An image that can't be decoded has still cost its reading, which a page repeats for each time
+/// it draws one, since such an image isn't kept. So what it reads comes out of the page's allowance,
+/// and an image after it has less. Allowed exactly what the good one takes, it isn't drawn behind
+/// the bad one, and is drawn alone.
+#[test]
+fn an_image_that_fails_spends_the_pages_allowance_too() {
+    let image = |number: u8, stream: &[u8]| {
+        let mut object = format!(
+            "{number} 0 obj << /Type /XObject /Subtype /Image /Width 16 /Height 2 /BitsPerComponent 1 /ColorSpace /DeviceGray /Filter /JBIG2Decode /Length {} >> stream\n",
+            stream.len()
+        )
+        .into_bytes();
+        object.extend_from_slice(stream);
+        object.extend_from_slice(b"\nendstream endobj\n");
+        object
+    };
+    let pdf = |content: &str| {
+        let mut pdf = format!(
+            "%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+             3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 40 40] /Contents 4 0 R /Resources << /XObject << /Bad 5 0 R /Good 6 0 R >> >> >> endobj\n\
+             4 0 obj << /Length {} >> stream\n{content}\nendstream endobj\n",
+            content.len()
+        )
+        .into_bytes();
+        pdf.extend(image(5, &[0xFF; 64]));
+        pdf.extend(image(6, &black_jbig2_page()));
+        pdf.extend_from_slice(b"trailer << /Root 1 0 R >>\n%%EOF\n");
+        Arc::new(pdf)
+    };
+    let good = "q 40 0 0 40 0 0 cm /Good Do Q";
+    let drawn = |content: &str, work: u64| {
+        let config = RenderConfig { jbig2_work: Some(work), ..RenderConfig::default() };
+        let page = PageRenderer::new(pdf(content), config).render(RenderRequest {
+            page: 0,
+            kind: RequestKind::Pixels,
+            tile: None,
+            scale: 1.0,
+            tag: 0,
+            ..Default::default()
+        });
+        assert!(page.error.is_none(), "{:?}", page.error);
+        page.rgba[((20 * 40 + 20) * 4)..][..4] == [0, 0, 0, 255]
+    };
+    let cost = (1..2_000).find(|work| drawn(good, *work)).expect("a small image is cheap");
+    assert!(!drawn(&format!("q 1 0 0 1 0 0 cm /Bad Do Q {good}"), cost), "the bad one spent some of it");
+    assert!(drawn(&format!("q 1 0 0 1 0 0 cm /Bad Do Q {good}"), cost + 4 * 64), "and what it spent is its reading");
 }
 
 /// Bits written from the top of each byte, as JBIG2's Huffman-coded data is.
@@ -8488,6 +8702,10 @@ mod default_colour_spaces;
 // (vendored hayro-syntax patch 28, hayro-interpret patch 55).
 mod devicen_inks;
 
+// #3776: isolated DeviceCMYK groups blend in CMYK (vendored hayro-interpret patch 70, hayro
+// patch 27).
+mod isolated_cmyk_groups;
+
 /// The generation-0 stand-in a rebuilt table files an object under must not make the object a
 /// second object: enumeration yielded it once per key, so a document recovered without a readable
 /// page tree reported the page twice (noted in review of #5580).
@@ -8613,6 +8831,249 @@ fn test_clip_only_text_raster_preserves_clipping_without_painting() {
     assert!(pixels.contains(&white), "the clip is text-shaped, not the whole page");
 }
 
+#[cfg(target_os = "windows")]
+mod gbk_glyphs;
+
+/// Chinese and Korean CID fonts that aren't embedded (Adobe-CNS1 `MSung-Light`, Adobe-GB1
+/// `STSong-Light`, Adobe-Korea1 `HYGoThic-Medium`; Acrobat also writes Japanese `KozGoPr6N`
+/// text boxes without the font) drew nothing, because craft-fonts has only Japanese faces.
+/// They now draw in a face already installed on the machine, read at runtime. A machine
+/// without such a face draws nothing, as before, so each check is skipped there.
+#[test]
+fn non_embedded_chinese_and_korean_cid_fonts_draw_with_an_installed_face() {
+    use hayro::hayro_interpret::font::FallbackFontQuery;
+    use hayro::hayro_interpret::hayro_cmap::CharacterCollection;
+    // (base font, collection, ordering, encoding, encoded text, descendant subtype)
+    let cases = [
+        ("MSung-Light", CidFamily::AdobeCNS1, "CNS1", "UniCNS-UCS2-H", "7E419AD45B57", "CIDFontType0"), // 繁體字
+        ("STSong-Light", CidFamily::AdobeGB1, "GB1", "UniGB-UCS2-H", "72698D448DF7", "CIDFontType0"),   // 物资跷
+        ("HYGoThic-Medium", CidFamily::AdobeKorea1, "Korea1", "UniKS-UCS2-H", "D55CAE00", "CIDFontType0"), // 한글
+        // The real Windows book uses non-embedded TrueType CID fonts and a legacy GBK CMap,
+        // without ToUnicode. These bytes encode 中文; they are not Unicode code points.
+        ("SimSun", CidFamily::AdobeGB1, "GB1", "GBK-EUC-H", "D6D0CEC4", "CIDFontType2"),
+        ("SimHei", CidFamily::AdobeGB1, "GB1", "GBK-EUC-H", "D6D0CEC4", "CIDFontType2"),
+        ("KaiTi", CidFamily::AdobeGB1, "GB1", "GBK-EUC-H", "D6D0CEC4", "CIDFontType2"),
+        ("FangSong", CidFamily::AdobeGB1, "GB1", "GBK-EUC-H", "D6D0CEC4", "CIDFontType2"),
+        ("ABCDEF+FZSSK--GBK1-0", CidFamily::AdobeGB1, "GB1", "GBK-EUC-H", "D6D0CEC4", "CIDFontType2"),
+        ("ABCDEF+FZHTK--GBK1-0", CidFamily::AdobeGB1, "GB1", "GBK-EUC-H", "D6D0CEC4", "CIDFontType2"),
+        ("ABCDEF+FZKTK--GBK1-0", CidFamily::AdobeGB1, "GB1", "GBK-EUC-H", "D6D0CEC4", "CIDFontType2"),
+        ("ABCDEF+FZFSK--GBK1-0", CidFamily::AdobeGB1, "GB1", "GBK-EUC-H", "D6D0CEC4", "CIDFontType2"),
+    ];
+    for (base_font, family, ordering, encoding, code, subtype) in cases {
+        let query = FontQuery::Fallback(FallbackFontQuery {
+            post_script_name: Some(base_font.into()),
+            character_collection: Some(CharacterCollection { family, supplement: 2 }),
+            ..FallbackFontQuery::default()
+        });
+        if super::system_fallback(&query).is_none() {
+            eprintln!("no installed face for {base_font} (or PDFCRAFT_SYSTEM_FONTS=0): skipped");
+            continue;
+        }
+        let content = format!("BT /F1 40 Tf 5 15 Td <{code}> Tj ET");
+        let pdf = format!(
+            "%PDF-1.7
+1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
+2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj
+3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 200 60] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj
+4 0 obj << /Length {} >> stream
+{content}
+endstream endobj
+5 0 obj << /Type /Font /Subtype /Type0 /BaseFont /{base_font} /Encoding /{encoding} /DescendantFonts [6 0 R] >> endobj
+6 0 obj << /Type /Font /Subtype /{subtype} /BaseFont /{base_font} /CIDSystemInfo << /Registry (Adobe) /Ordering ({ordering}) /Supplement 2 >>
+  /FontDescriptor 7 0 R /DW 1000 >> endobj
+7 0 obj << /Type /FontDescriptor /FontName /{base_font} /Flags 6 /FontBBox [0 -141 1000 859] /ItalicAngle 0 /Ascent 859 /Descent -141 /CapHeight 700 /StemV 80 >> endobj
+trailer << /Root 1 0 R >>
+%%EOF",
+            content.len()
+        );
+        let pdf = Arc::new(pdf.into_bytes());
+        let ink = |config: RenderConfig| {
+            let mut r = PageRenderer::new(pdf.clone(), config);
+            let p = r.render(RenderRequest { page: 0, kind: RequestKind::Pixels, tile: None, scale: 1.0, tag: 0, ..Default::default() });
+            assert!(p.error.is_none(), "{base_font}: {:?}", p.error);
+            p.rgba.as_chunks::<4>().0.iter().filter(|c| c[0] < 128).count()
+        };
+        // Two to four glyphs at 40 pt cover several hundred dark pixels; a blank run has none.
+        let shown = ink(RenderConfig { system_fonts: true, ..RenderConfig::default() });
+        assert!(shown > 300, "{base_font}: the text is drawn ({shown} dark pixels)");
+        // Off by default: exports, printing and OCR render without an installed font, so
+        // nothing drawn with one can be saved (AGENTS.md §1.2, §1.4).
+        let saved = ink(RenderConfig::default());
+        assert!(saved < 50, "{base_font}: not drawn without system_fonts ({saved} dark pixels)");
+        if encoding == "GBK-EUC-H" {
+            #[cfg(target_os = "windows")]
+            gbk_glyphs::assert_expected_glyphs(&pdf, base_font);
+            let mut renderer = PageRenderer::new(pdf, RenderConfig { system_fonts: true, ..Default::default() });
+            let text = renderer.render(RenderRequest { page: 0, kind: RequestKind::Text, ..Default::default() });
+            assert!(text.error.is_none(), "{base_font}: {:?}", text.error);
+            assert_eq!(text.text.unwrap().plain_text().trim(), "中文", "the fallback preserves GBK text mapping");
+        }
+    }
+}
+
+/// Print preview must match output even after the same worker cached an installed face.
+/// Switching back to the viewer must not retain the print resolver's missing-font result.
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn print_preview_excludes_installed_fonts_without_poisoning_viewer_cache() {
+    use hayro::hayro_interpret::font::FallbackFontQuery;
+    use hayro::hayro_interpret::hayro_cmap::CharacterCollection;
+    let query = FontQuery::Fallback(FallbackFontQuery {
+        post_script_name: Some("SimSun".into()),
+        character_collection: Some(CharacterCollection { family: CidFamily::AdobeGB1, supplement: 2 }),
+        ..Default::default()
+    });
+    if super::system_fallback(&query).is_none() {
+        eprintln!("no installed GB1 face (or PDFCRAFT_SYSTEM_FONTS=0): skipped");
+        return;
+    }
+    let content = "BT /F1 40 Tf 5 15 Td <D6D0CEC4> Tj ET";
+    let bytes = Arc::new(format!(
+        "%PDF-1.7\n\
+         1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+         2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+         3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 120 60] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj\n\
+         4 0 obj << /Length {} >> stream\n{content}\nendstream endobj\n\
+         5 0 obj << /Type /Font /Subtype /Type0 /BaseFont /SimSun /Encoding /GBK-EUC-H /DescendantFonts [6 0 R] >> endobj\n\
+         6 0 obj << /Type /Font /Subtype /CIDFontType2 /BaseFont /SimSun /CIDSystemInfo << /Registry (Adobe) /Ordering (GB1) /Supplement 2 >> /FontDescriptor 7 0 R /DW 1000 >> endobj\n\
+         7 0 obj << /Type /FontDescriptor /FontName /SimSun /Flags 6 /FontBBox [0 -141 1000 859] /ItalicAngle 0 /Ascent 859 /Descent -141 /CapHeight 700 /StemV 80 >> endobj\n\
+         trailer << /Root 1 0 R >>\n%%EOF", content.len()
+    ).into_bytes());
+    let config = RenderConfig::default().on_screen();
+    let mut inline = PageRenderer::new(bytes.clone(), config.clone());
+    let mut output = PageRenderer::new(bytes.clone(), RenderConfig::default());
+    let pool = RenderPool::new(bytes, 1, config);
+    for tile in [None, Some(Tile { x: 0, y: 0, w: 120, h: 60 })] {
+        // Cover both directions with a warm worker cache, including other caller tag bits.
+        for tag in [PRINT_TAG | 1, 2, PRINT_TAG | 3, 4] {
+            let req = RenderRequest { page: 0, scale: 1.0, tile, tag, ..Default::default() };
+            let truth = output.render(req);
+            assert!(truth.error.is_none(), "{:?}", truth.error);
+            pool.set_queue(vec![req]);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            let worker = loop {
+                if let Some(page) = pool.try_recv() {
+                    break page;
+                }
+                assert!(std::time::Instant::now() < deadline, "print-preview worker timed out");
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            };
+            for page in [inline.render(req), worker] {
+                assert!(page.error.is_none(), "{:?}", page.error);
+                if tag & PRINT_TAG != 0 {
+                    assert_eq!(page.rgba, truth.rgba, "print preview must match output, tile={tile:?}");
+                } else {
+                    let ink = page.rgba.as_chunks::<4>().0.iter().filter(|c| c[0] < 128).count();
+                    assert!(ink > 300, "viewer still draws installed Chinese glyphs: {ink}");
+                }
+            }
+        }
+    }
+}
+
+/// A malformed token in a content stream used to end the stream there, so the renderer, text
+/// extraction, Find and search-based redaction lost the rest of the page while the edit
+/// reader, MuPDF and pdftotext read it (#3565, #3568). Each token below is now stepped over.
+#[test]
+fn a_malformed_token_does_not_end_the_content_stream() {
+    // One token between two text objects. `BEFORE` is drawn before it, `AFTER` after.
+    let page = |token: &str| {
+        let stream = format!("BT /F1 8 Tf 2 30 Td (BEFORE) Tj ET {token} BT /F1 8 Tf 2 10 Td (AFTER) Tj ET");
+        let mut pdf = b"%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 60 40] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >> endobj\n5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n".to_vec();
+        pdf.extend_from_slice(format!("4 0 obj << /Length {} >> stream\n", stream.len()).as_bytes());
+        pdf.extend_from_slice(stream.as_bytes());
+        pdf.extend_from_slice(b"\nendstream endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n");
+        let mut renderer = PageRenderer::new(Arc::new(pdf), RenderConfig::default());
+        let text = renderer.render(RenderRequest { page: 0, kind: RequestKind::Text, ..Default::default() });
+        assert!(text.error.is_none(), "{token}: {:?}", text.error);
+        text.text.expect("a text layer").plain_text()
+    };
+
+    for token in [
+        // A `re` with three operands: the typed iterator used to abort on a path operator it
+        // could not dispatch, which is what #3568 reports.
+        "20 10 10 re",
+        // Eleven operands: under the 256 the stack holds, so this one runs on its own last
+        // operand. Past the limit is covered by
+        // `an_operator_past_the_operand_limit_reads_its_own_operands` below.
+        "0 0 0 0 0 0 0 0 0 0 0 g",
+        // A stray delimiter: the lexer could not read an operator and jumped to the end.
+        ")",
+        // The same with no space after it. Stepping over the regular characters that follow a
+        // delimiter ate the next operator, so the page lost its second text object
+        // (#3636 review); only the delimiter is stepped over.
+        ")BT ET",
+        // A malformed `#` escape in a name, so neither an object nor an operator read.
+        "/C#2 gs",
+        // And the well-formed forms still work.
+        "20 10 10 5 re n",
+        "0.5 g",
+    ] {
+        let text = page(token);
+        assert!(text.contains("BEFORE"), "{token}: {text:?}");
+        assert!(text.contains("AFTER"), "{token}: the rest of the page was lost: {text:?}");
+        assert!(text.find("BEFORE") < text.find("AFTER"), "{token}: the page is read in order: {text:?}");
+    }
+}
+
+/// An operator preceded by more operands than the stack holds is applied to its own operands,
+/// which are the ones nearest it, rather than to whichever of the strays survived. The parser
+/// had a branch meant to drop such an instruction whole, dead because `Stack::push` always
+/// reported success (noted in review of #3636); reviving it loses legitimate content, which
+/// `an_operator_with_hundreds_of_operands_does_not_end_the_content` measures, so the dead branch
+/// is gone and this pins what the ring buffer does instead.
+#[test]
+fn an_operator_past_the_operand_limit_reads_its_own_operands() {
+    // The strays are `1` and the operator's own operand is `0`, so the two answers differ: white
+    // if the operator read a stray, black if it read its own.
+    let page = |strays: usize| {
+        let stream = format!("{}0 g 0 0 20 20 re f", "1 ".repeat(strays));
+        let pdf = format!(
+            "%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 20 20] /Contents 4 0 R >> endobj\n4 0 obj << /Length {} >> stream\n{stream}\nendstream endobj\ntrailer << /Root 1 0 R >>\n%%EOF",
+            stream.len()
+        );
+        let mut r = PageRenderer::new(Arc::new(pdf.into_bytes()), RenderConfig::default());
+        let p = r.render(RenderRequest { page: 0, kind: RequestKind::Pixels, scale: 1.0, ..Default::default() });
+        assert!(p.error.is_none(), "{strays} strays: {:?}", p.error);
+        p.rgba.as_chunks::<4>().0.to_vec()
+    };
+    let all_black = |pixels: &[[u8; 4]]| pixels.iter().all(|p| *p == [0, 0, 0, 255]);
+
+    // None, a few, the limit, and past it: the fill is the black the `g` asked for every time.
+    for strays in [0, 5, 255, 256, 257, 600] {
+        assert!(all_black(&page(strays)), "{strays} stray operands: the `g` reads its own operand");
+    }
+}
+
+/// Content after an inline image whose data holds `EI` is still read. This pins the property
+/// but does **not** exercise the look-ahead gating added for #3636's review: accepting a false
+/// `EI` truncates the image, while the text after the real one is read either way, and this
+/// assertion passes with the gating removed. Showing the truncation needs valid ASCII85 data
+/// that contains `EI`, which this fixture does not have.
+#[test]
+fn content_after_an_inline_image_holding_ei_is_still_read() {
+    // An ASCII85 image whose data holds `EI\n`, then an `re` with three operands and twenty
+    // `q`s -- enough steps to satisfy the look-ahead's counter if the bad `re` were skipped --
+    // before the real `EI`. `AFTER` is drawn once the image is over.
+    let stream = b"q 100 0 0 100 10 10 cm BI /W 4 /H 4 /CS /G /BPC 8 /F /A85 ID EI
+20 10 10 re q q q q q q q q q q q q q q q q q q q q EI Q BT /F1 8 Tf 2 4 Td (AFTER) Tj ET"
+        .to_vec();
+    let mut pdf =
+        b"%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 120 120] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >> endobj\n5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n"
+            .to_vec();
+    pdf.extend_from_slice(format!("4 0 obj << /Length {} >> stream\n", stream.len()).as_bytes());
+    pdf.extend_from_slice(&stream);
+    pdf.extend_from_slice(b"\nendstream endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n");
+
+    let mut renderer = PageRenderer::new(Arc::new(pdf), RenderConfig::default());
+    let text = renderer.render(RenderRequest { page: 0, kind: RequestKind::Text, ..Default::default() });
+    assert!(text.error.is_none(), "{:?}", text.error);
+    let page = text.text.expect("a text layer").plain_text();
+    // The image ran to the real `EI`, so the text after it is the page's only text: the first
+    // `EI` inside the data was not taken for the end.
+    assert!(page.contains("AFTER"), "the content after the image was lost: {page:?}");
+}
+
 /// View ▸ Thin lines (this fork, OV9) test page, 200 × 100 pt: a 10 pt blue stroke at x 30,
 /// a 6 pt red dashed stroke at x 60, a black filled square, a stroked (Tr 1) green "H", a
 /// tiling pattern of 3 pt black hatching, and a Square annotation with an 8 pt border.
@@ -8724,75 +9185,42 @@ fn thin_lines_tiles_match_full_render() {
     }
 }
 
-/// A malformed token in a content stream used to end the stream there, so the renderer, text
-/// extraction, Find and search-based redaction lost the rest of the page while the edit
-/// reader, MuPDF and pdftotext read it (#3565, #3568). Each token below is now stepped over.
+/// Thin lines reach the strokes of an isolated DeviceCMYK transparency group too (this fork, OV9,
+/// with upstream's CMYK ink passes, hayro patch 27): such a group is drawn by separate ink passes,
+/// each a renderer of its own, and every pass must carry the setting. A 10 pt black stroke in
+/// the group is 20 device pixels wide at scale 2, and one with thin lines.
 #[test]
-fn a_malformed_token_does_not_end_the_content_stream() {
-    // One token between two text objects. `BEFORE` is drawn before it, `AFTER` after.
-    let page = |token: &str| {
-        let stream = format!("BT /F1 8 Tf 2 30 Td (BEFORE) Tj ET {token} BT /F1 8 Tf 2 10 Td (AFTER) Tj ET");
-        let mut pdf = b"%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 60 40] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >> endobj\n5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n".to_vec();
-        pdf.extend_from_slice(format!("4 0 obj << /Length {} >> stream\n", stream.len()).as_bytes());
-        pdf.extend_from_slice(stream.as_bytes());
-        pdf.extend_from_slice(b"\nendstream endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n");
-        let mut renderer = PageRenderer::new(Arc::new(pdf), RenderConfig::default());
-        let text = renderer.render(RenderRequest { page: 0, kind: RequestKind::Text, ..Default::default() });
-        assert!(text.error.is_none(), "{token}: {:?}", text.error);
-        text.text.expect("a text layer").plain_text()
+fn thin_lines_reach_strokes_inside_an_isolated_cmyk_group() {
+    let stroke = "0 0 0 1 K 10 w 30 10 m 30 90 l S";
+    let page = "/G0 Do";
+    let pdf = format!(
+        "%PDF-1.7\n\
+         1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+         2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+         3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Contents 4 0 R /Resources << /XObject << /G0 5 0 R >> >> >> endobj\n\
+         4 0 obj << /Length {} >> stream\n{page}\nendstream endobj\n\
+         5 0 obj << /Type /XObject /Subtype /Form /BBox [0 0 200 100] /Group << /S /Transparency /CS /DeviceCMYK /I true >> /Length {} >> stream\n{stroke}\nendstream endobj\n\
+         trailer << /Root 1 0 R >>\n%%EOF",
+        page.len(),
+        stroke.len()
+    );
+    let render = |thin_lines: bool| {
+        let mut r = PageRenderer::new(Arc::new(pdf.clone().into_bytes()), RenderConfig { thin_lines, ..Default::default() });
+        let page = r.render(RenderRequest { page: 0, kind: RequestKind::Pixels, tile: None, scale: 2.0, tag: 0, preview: false });
+        assert!(page.error.is_none(), "{:?}", page.error);
+        page
     };
-
-    for token in [
-        // A `re` with three operands: the typed iterator used to abort on a path operator it
-        // could not dispatch, which is what #3568 reports.
-        "20 10 10 re",
-        // More operands than the limit (ISO 32000-2 Annex C gives 10): the instruction is
-        // dropped, not the stream.
-        "0 0 0 0 0 0 0 0 0 0 0 g",
-        // A stray delimiter: the lexer could not read an operator and jumped to the end.
-        ")",
-        // The same with no space after it. Stepping over the regular characters that follow a
-        // delimiter ate the next operator, so the page lost its second text object
-        // (#3636 review); only the delimiter is stepped over.
-        ")BT ET",
-        // A malformed `#` escape in a name, so neither an object nor an operator read.
-        "/C#2 gs",
-        // And the well-formed forms still work.
-        "20 10 10 5 re n",
-        "0.5 g",
-    ] {
-        let text = page(token);
-        assert!(text.contains("BEFORE"), "{token}: {text:?}");
-        assert!(text.contains("AFTER"), "{token}: the rest of the page was lost: {text:?}");
-        assert!(text.find("BEFORE") < text.find("AFTER"), "{token}: the page is read in order: {text:?}");
-    }
-}
-
-/// Content after an inline image whose data holds `EI` is still read. This pins the property
-/// but does **not** exercise the look-ahead gating added for #3636's review: accepting a false
-/// `EI` truncates the image, while the text after the real one is read either way, and this
-/// assertion passes with the gating removed. Showing the truncation needs valid ASCII85 data
-/// that contains `EI`, which this fixture does not have.
-#[test]
-fn content_after_an_inline_image_holding_ei_is_still_read() {
-    // An ASCII85 image whose data holds `EI\n`, then an `re` with three operands and twenty
-    // `q`s -- enough steps to satisfy the look-ahead's counter if the bad `re` were skipped --
-    // before the real `EI`. `AFTER` is drawn once the image is over.
-    let stream = b"q 100 0 0 100 10 10 cm BI /W 4 /H 4 /CS /G /BPC 8 /F /A85 ID EI
-20 10 10 re q q q q q q q q q q q q q q q q q q q q EI Q BT /F1 8 Tf 2 4 Td (AFTER) Tj ET"
-        .to_vec();
-    let mut pdf =
-        b"%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 120 120] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >> endobj\n5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n"
-            .to_vec();
-    pdf.extend_from_slice(format!("4 0 obj << /Length {} >> stream\n", stream.len()).as_bytes());
-    pdf.extend_from_slice(&stream);
-    pdf.extend_from_slice(b"\nendstream endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n");
-
-    let mut renderer = PageRenderer::new(Arc::new(pdf), RenderConfig::default());
-    let text = renderer.render(RenderRequest { page: 0, kind: RequestKind::Text, ..Default::default() });
-    assert!(text.error.is_none(), "{:?}", text.error);
-    let page = text.text.expect("a text layer").plain_text();
-    // The image ran to the real `EI`, so the text after it is the page's only text: the first
-    // `EI` inside the data was not taken for the end.
-    assert!(page.contains("AFTER"), "the content after the image was lost: {page:?}");
+    // Inked pixels across device row 100 (user y 50), left of device x 120. A one-pixel line
+    // centred on a pixel edge is two half-grey pixels, so anything not white counts.
+    let dark = |p: &RenderedPage| {
+        (0..120)
+            .filter(|&x| {
+                let i = ((100 * p.width + x) * 4) as usize;
+                p.rgba[i] < 250 || p.rgba[i + 1] < 250 || p.rgba[i + 2] < 250
+            })
+            .count()
+    };
+    let (off, on) = (render(false), render(true));
+    assert!(dark(&off) >= 19, "off: the stroke is 10 pt wide: {}", dark(&off));
+    assert!((1..=2).contains(&dark(&on)), "on: one device pixel, antialiased over at most two: {}", dark(&on));
 }

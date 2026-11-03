@@ -219,7 +219,7 @@ fn reduce_file_size_makes_the_same_tab_the_smaller_file_with_its_unsaved_changes
         left: None,
         top: None
     }));
-    app.views[0].fill_text = Some(TypeBox { page: 0, at: [40.0, 200.0], text: "Typed".into(), size: 10.0, focus: false });
+    app.views[0].fill_text = Some(TypeBox { page: 0, at: [40.0, 200.0], text: "Typed".into(), size: 10.0, color: [0.0; 3], focus: false });
     assert!(app.session.get(id).unwrap().dirty);
     let out = dir.0.join("site plan (reduced).pdf");
     app.save_override = Some(out.to_string_lossy().into_owned());
@@ -432,6 +432,12 @@ fn the_pdf_optimizer_dialog_saves_an_optimized_copy() {
     h.run_steps(2);
     h.get_by_label("PDF Optimizer");
     h.get_by_label("Color Images");
+    h.get_by_label("Monochrome Images");
+    assert_eq!(h.state().optimize_draft.settings.mono, pdfcraft_engine::optimize::MonoSettings::REDUCE);
+    // Monochrome Images ▸ Downsample to can be turned off.
+    h.get_by_label("Downsample to").click();
+    h.run_steps(2);
+    assert!(!h.state().optimize_draft.settings.mono.downsample);
     h.get_by_label("Discard Objects").click();
     h.run_steps(2);
     h.get_by_label("Discard document tags").click();
@@ -618,4 +624,25 @@ fn multiple_files_past_a_thousand_are_all_used() {
     assert_eq!(app.views.len(), 1);
     let doc = app.session.get(app.views[0].id).unwrap();
     assert_eq!(doc.info.pages.len(), 1001, "every picked file is used, in order");
+}
+
+/// Create ▸ Blank page uses the system region's paper, not always US Letter (#5644): the app
+/// starts with the system's, and a blank page is on A4 and on Letter as the paper says
+/// (CodeRabbit on #5651: a Letter host alone would not tell a hard-coded Letter apart).
+#[test]
+fn a_blank_page_is_on_the_system_regions_paper() {
+    use pdfcraft_ui_egui::paper::Paper;
+    assert_eq!(PdfCraftApp::new().blank_paper, Paper::system());
+    for paper in [Paper::A4, Paper::Letter] {
+        let mut app = PdfCraftApp::new();
+        app.blank_paper = paper;
+        assert!(app.execute("create.blank"));
+        let docs = app.session.docs();
+        let crop = docs.last().and_then(|d| d.info.pages.first()).map(|p| p.crop).unwrap();
+        let (w, h) = paper.points();
+        assert!(
+            ((crop[2] - crop[0]) as f64 - w).abs() < 0.01 && ((crop[3] - crop[1]) as f64 - h).abs() < 0.01,
+            "{paper:?}: {crop:?} is not {w} × {h}"
+        );
+    }
 }

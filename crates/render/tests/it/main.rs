@@ -3,9 +3,12 @@
 mod cid_fallback_query;
 mod inline_image_ei;
 mod jbig2_invariants;
+mod knockout_backdrop;
 mod low_zoom;
 mod luminosity_group_space;
 mod named_form_properties;
+mod nonseparable_gray;
+mod open_type_cff_simple_font;
 mod rotated_image_snap;
 mod search;
 mod separation_all;

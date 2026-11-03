@@ -357,6 +357,12 @@ impl RenderPool {
         }
     }
 
+    /// The configuration this pool draws with (this fork: the engine's tests check that a view
+    /// setting rebuilds the viewer's pool with its on-screen options, SYNC.15).
+    pub fn config(&self) -> &RenderConfig {
+        &self.config
+    }
+
     pub fn try_recv(&self) -> Option<RenderedPage> {
         if let Some(r) = &self.inline {
             let req = self.shared.queue.pop()?;

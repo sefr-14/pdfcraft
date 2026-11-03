@@ -11,6 +11,7 @@ use pdfcraft_render::{DocInfo, PageInfo};
 
 use crate::canvas::{DocView, PageXform};
 use crate::doc_prefs::{Axis, DocPrefs, GuideRef, PageGuides};
+use crate::page_cursor::Layer;
 use crate::page_pointer::PagePointer;
 
 /// How near (points) the pointer must be to a guide to take it.
@@ -170,7 +171,7 @@ pub(crate) struct GuideFrame<'a> {
 /// taken, a release lets go, and a press elsewhere deselects. The pointer over a guide it can take
 /// shows that it moves. What is drawn over the pages (a dialog, a menu, the quick bar) keeps all of
 /// this from happening through it, as `PagePointer` knows.
-pub(crate) fn pointer_input(ui: &egui::Ui, view: &mut DocView, info: &DocInfo, ptr: &PagePointer, frame: &mut GuideFrame<'_>) {
+pub(crate) fn pointer_input(view: &mut DocView, info: &DocInfo, ptr: &PagePointer, frame: &mut GuideFrame<'_>) {
     let GuideFrame { prefs, id, area, hand } = frame;
     let (prefs, id, area) = (&mut **prefs, *id, *area);
     view.guides.pointer = ptr.pos;
@@ -212,7 +213,7 @@ pub(crate) fn pointer_input(ui: &egui::Ui, view: &mut DocView, info: &DocInfo, p
             None => view.guides.selected = None,
         }
     }
-    hover_cursor(ui, view, info, prefs, id, ptr.within(area));
+    hover_cursor(view, info, prefs, id, ptr.within(area));
 }
 
 /// The guides of `pages` when the document's guides are shown, copied so the rulers can change them
@@ -259,8 +260,9 @@ pub(crate) fn paint(
 }
 
 /// The pointer (`pointer`, from [`PagePointer`]) is over a guide the Hand tool can take, or one is
-/// held: show that it moves.
-fn hover_cursor(ui: &egui::Ui, view: &DocView, info: &DocInfo, prefs: &DocPrefs, id: DocId, pointer: Option<Pos2>) {
+/// held: show that it moves. The cursor is claimed, never set (SYNC.15): over a guide on the layer
+/// of what a drag moves whole, above the Hand tool's own; while one is dragged, on the drag's.
+fn hover_cursor(view: &mut DocView, info: &DocInfo, prefs: &DocPrefs, id: DocId, pointer: Option<Pos2>) {
     let dragging = view.guides.drag.filter(|d| d.live);
     let shown = match dragging {
         Some(d) => info
@@ -271,7 +273,8 @@ fn hover_cursor(ui: &egui::Ui, view: &DocView, info: &DocInfo, prefs: &DocPrefs,
         None => pointer.and_then(|p| hit(view, info, prefs, id, p)).map(|(_, h)| h),
     };
     if let Some(h) = shown {
-        ui.ctx().set_cursor_icon(if h { egui::CursorIcon::ResizeVertical } else { egui::CursorIcon::ResizeHorizontal });
+        let layer = if dragging.is_some() { Layer::Drag } else { Layer::Placed };
+        view.cursor.claim(layer, if h { egui::CursorIcon::ResizeVertical } else { egui::CursorIcon::ResizeHorizontal });
     }
 }
 

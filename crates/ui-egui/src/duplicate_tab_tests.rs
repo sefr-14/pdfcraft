@@ -315,7 +315,8 @@ fn typing_in_a_closing_duplicate_goes_into_the_document() {
     let id = app.views[0].id;
     app.duplicate_view(0);
     // Fill & Sign text typed in the duplicate and not committed yet.
-    app.views[1].fill_text = Some(crate::fill_sign::TypeBox { page: 0, at: [72.0, 700.0], text: "Approved".into(), size: 12.0, focus: false });
+    app.views[1].fill_text =
+        Some(crate::fill_sign::TypeBox { page: 0, at: [72.0, 700.0], text: "Approved".into(), size: 12.0, color: [0.0; 3], focus: false });
     assert!(app.has_unsaved_typing(1));
     let annotations = app.session.get(id).unwrap().info.annotations.len();
     app.request_close_tab(1);

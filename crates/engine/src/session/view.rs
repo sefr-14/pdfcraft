@@ -1,7 +1,7 @@
 // Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 use super::{
     Arc, BookmarkPage, BookmarkRow, DocId, Document, EditError, LayerOp, OpenError, ReadingColors, RenderConfig, RenderPool, Session, SummarySort,
-    apply_layer_state, comment_summary, local_utc_offset, outline_rows, parse_ymd, render_threads, use_layer_choices,
+    apply_layer_state, comment_summary, display_config, local_utc_offset, outline_rows, parse_ymd, render_threads, use_layer_choices,
 };
 
 impl Session {
@@ -247,7 +247,7 @@ impl Session {
             return false;
         }
         doc.config.hide_comments = hide;
-        doc.renderer = RenderPool::new(doc.display.clone(), render_threads(), doc.config.clone());
+        doc.renderer = RenderPool::new(doc.display.clone(), render_threads(), display_config(&doc.config));
         doc.generation += 1;
         true
     }
@@ -260,7 +260,7 @@ impl Session {
             return false;
         }
         doc.config.reading_colors = colors;
-        doc.renderer = RenderPool::new(doc.display.clone(), render_threads(), doc.config.clone());
+        doc.renderer = RenderPool::new(doc.display.clone(), render_threads(), display_config(&doc.config));
         doc.generation += 1;
         true
     }
@@ -279,7 +279,8 @@ impl Session {
             return false;
         }
         doc.config.thin_lines = on;
-        doc.renderer = RenderPool::new(doc.display.clone(), render_threads(), doc.config.clone());
+        // Through `display_config`, as every view setting: the viewer keeps its on-screen options.
+        doc.renderer = RenderPool::new(doc.display.clone(), render_threads(), display_config(&doc.config));
         doc.generation += 1;
         true
     }
