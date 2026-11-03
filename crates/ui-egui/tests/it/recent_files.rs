@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Preferences ▸ Recent files to keep (#5572): how many files the recent list holds, from none
 //! up to 50, on every path that adds to it, shows it or saves it.
 
@@ -93,15 +94,15 @@ fn at_zero_opening_a_file_records_nothing() {
 fn at_zero_home_has_no_recent_section() {
     let h = harness(0, &[]);
     assert!(h.query_by_label("Recent").is_none(), "no heading");
-    assert!(h.query_by_label_contains("Files you open in PdfCraft appear here").is_none(), "and no promise of a list");
-    h.get_by_label_contains("PdfCraft works offline");
+    assert!(h.query_by_label_contains("Files you open in PDF Overlay appear here").is_none(), "and no promise of a list");
+    h.get_by_label_contains("PDF Overlay works offline");
 }
 
 #[test]
 fn above_zero_an_empty_list_still_says_what_it_is_for() {
     let h = harness(1, &[]);
     h.get_by_label("Recent");
-    h.get_by_label_contains("Files you open in PdfCraft appear here");
+    h.get_by_label_contains("Files you open in PDF Overlay appear here");
 }
 
 #[test]

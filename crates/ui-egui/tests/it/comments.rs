@@ -3330,7 +3330,9 @@ fn hotbar_drag_moves_and_persists_position() {
     let mut h = harness(|_| {});
     let before: serde_json::Value = serde_json::from_str(&h.state().persist()).unwrap();
     let from = h.get_by_label("Drag hotbar").rect().center();
-    drag(&mut h, from, from + egui::vec2(90.0, 90.0));
+    // This fork (SYNC.15): the hotbar starts in the bottom-right corner, so the drag goes up and
+    // left (upstream's started at the top centre and went down and right).
+    drag(&mut h, from, from - egui::vec2(90.0, 90.0));
     let after: serde_json::Value = serde_json::from_str(&h.state().persist()).unwrap();
     assert_ne!(before["hotbar"]["position"], after["hotbar"]["position"]);
     let mut restored = PdfCraftApp::new();
