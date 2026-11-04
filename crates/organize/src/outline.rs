@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Editing bookmarks (the document outline, ISO 32000-2 §12.3.3), execution plan M4.6.
 //!
 //! Bookmarks are addressed by their **path**: child indices from the top level, so `[0, 2]` is
@@ -16,6 +17,10 @@ use std::collections::{HashMap, HashSet};
 use pdfcraft_cos::{Dict, Document, ObjRef, Object, PdfString};
 
 use crate::{OrganizeError, walk};
+
+// This fork (BOOKMARK.1): several bookmarks indented or outdented together.
+mod shift;
+pub use shift::{MAX_SHIFT, OutlineShape, Shift, ShiftPlan, plan_shift, shift_bookmarks};
 
 /// Deepest level a listing enters (the top level is 0). Bookmarks deeper than this are not
 /// listed; edits still reach them by path.
@@ -72,6 +77,23 @@ pub enum OutlineError {
     BadColor,
     #[error("this document has no tagged headings to make bookmarks from")]
     NoEntries,
+    /// BOOKMARK.1 (this fork): a group Indent where a bookmark is the first at its level, so has
+    /// none above it to go under.
+    #[error("the first bookmark at its level has nothing above it to go under (bookmark {0:?})")]
+    CannotIndent(Vec<usize>),
+    /// BOOKMARK.1: a group Outdent of a top-level bookmark.
+    #[error("a top-level bookmark can't move out a level (bookmark {0:?})")]
+    CannotOutdent(Vec<usize>),
+    /// BOOKMARK.1: a group Indent would nest a bookmark deeper than bookmarks are listed.
+    #[error("bookmark {0:?} would be nested deeper than bookmarks are listed")]
+    TooDeep(Vec<usize>),
+    /// BOOKMARK.1: the outline links a bookmark from two places, in a loop, or to something that
+    /// isn't a bookmark, so moving bookmarks together could leave its links inconsistent.
+    #[error("the outline links a bookmark more than once, in a loop, or to something that isn't a bookmark; these bookmarks can't be moved together")]
+    Tangled,
+    /// BOOKMARK.1: more bookmarks in one group move than [`shift::MAX_SHIFT`].
+    #[error("too many bookmarks to move at once")]
+    TooMany,
     #[error("{0}")]
     Organize(#[from] OrganizeError),
     #[error("{0}")]
@@ -715,8 +737,16 @@ pub fn move_bookmark(doc: &mut Document, from: &[usize], to_parent: &[usize], in
 /// Open `parent` so a bookmark just added or moved into it shows (the root is always open).
 /// Only the sign of `/Count` matters here: [`recount`] sets its value.
 fn show_children(doc: &mut Document, parent: ObjRef, parent_path: &[usize]) -> Result<()> {
-    if !parent_path.is_empty() && doc.get(parent).as_dict().and_then(|d| d.int(b"Count")).is_none_or(|c| c <= 0) {
-        put(doc, parent, b"Count", Some(Object::Int(1)))?;
+    if !parent_path.is_empty() {
+        open_item(doc, parent)?;
+    }
+    Ok(())
+}
+
+/// Open the bookmark `item` (never the root): a positive `/Count`, whose value [`recount`] sets.
+fn open_item(doc: &mut Document, item: ObjRef) -> Result<()> {
+    if doc.get(item).as_dict().and_then(|d| d.int(b"Count")).is_none_or(|c| c <= 0) {
+        put(doc, item, b"Count", Some(Object::Int(1)))?;
     }
     Ok(())
 }
