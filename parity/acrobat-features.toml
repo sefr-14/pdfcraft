@@ -3340,9 +3340,9 @@ tier = "P0"
 milestone = "M4"
 status = "shipped"
 commands = []
-tools = ["bookmark_move"]
-evidence = ["crates/ui-egui/tests/it/bookmarks.rs::new_rename_reorder_indent_delete_and_undo", "crates/organize/src/tests.rs::bookmarks_add_rename_move_delete", "crates/engine/src/tests.rs::bookmark_edits_show_in_the_viewer_undo_and_save", "crates/automation/tests/it/automation.rs::bookmarks_through_tools"]
-notes = ""
+tools = ["bookmark_move", "bookmark_indent", "bookmark_outdent"]
+evidence = ["crates/ui-egui/tests/it/bookmarks.rs::new_rename_reorder_indent_delete_and_undo", "crates/organize/src/tests.rs::bookmarks_add_rename_move_delete", "crates/engine/src/tests.rs::bookmark_edits_show_in_the_viewer_undo_and_save", "crates/automation/tests/it/automation.rs::bookmarks_through_tools", "crates/organize/src/outline/shift/tests.rs::a_group_is_the_same_as_its_moves_one_at_a_time", "crates/organize/src/outline/shift/tests.rs::a_bookmark_linked_from_two_parents_refuses_even_under_an_untouched_parent", "crates/engine/src/bookmark_shift_tests.rs::a_group_indent_is_one_undo_step_and_survives_save", "crates/automation/tests/it/bookmark_shift.rs::bookmarks_indent_and_outdent_together_undo_and_save", "crates/ui-egui/tests/it/bookmark_selection.rs::a_group_indents_and_outdents_as_one_undo_step"]
+notes = "This fork (BOOKMARK.1): the panel selects several bookmarks (click, Ctrl/⌘-click, Shift-click over the rows shown, across levels; folding a branch or a search drops the rows it hides; Escape clears) and Indent or Outdent moves them together as one undo step, each by the single-bookmark rule, those under another selected one with it. A group is refused whole, changing nothing, when one can't move, would end deeper than the 33 listed levels, or the outline links a bookmark twice, in a loop or to a non-bookmark; a selection made before the document changed is dropped. Missing: dragging bookmarks (one or several), arrow-key navigation, Move up/down, Delete, Style and Colour for several at once, and a depth check on the single Indent."
 
 [[feature]]
 id = "organize.bookmark-set-destination"

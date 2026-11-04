@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 use super::bookmarks::{BmAction, OutlineCtx, outline_item, outline_matches};
 use super::pages::{page_tools, pages, thumbnail_size};
 use super::{
@@ -190,6 +191,22 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                         if info.outline.is_empty() {
                             empty(ui, &t, "bookmark", "This document has no bookmarks.");
                         }
+                        // This fork (BOOKMARK.1): a selection made in another version of the document
+                        // is dropped; Escape over the panel clears it.
+                        let stamp = crate::content_version(doc);
+                        view.bookmarks.expire(stamp);
+                        // Not while a title is being renamed: its own Escape cancels the rename
+                        // (egui unfocuses the field before the panel runs).
+                        if !modal
+                            && bm_rename.is_none()
+                            && !view.bookmarks.is_empty()
+                            && !ui.ctx().egui_wants_keyboard_input()
+                            && ui.rect_contains_pointer(ui.clip_rect())
+                            && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+                        {
+                            view.bookmarks.clear();
+                        }
+                        let mut shown = Vec::new();
                         let mut ctx = OutlineCtx {
                             nav: &mut nav,
                             action: &mut bm_action,
@@ -199,6 +216,10 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                             expand: bm_expand,
                             matches: &bookmark_matches,
                             searching: !bookmark_query.is_empty(),
+                            sel: &mut view.bookmarks,
+                            shown: &mut shown,
+                            stamp,
+                            partial: info.outline_more,
                         };
                         if ctx.searching && bookmark_matches.is_empty() && !info.outline.is_empty() {
                             ui.label(tl!("No matches."));
@@ -206,6 +227,7 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                         for (i, item) in info.outline.iter().enumerate() {
                             outline_item(ui, &t, info, item, &[i], info.outline.len(), &mut ctx);
                         }
+                        view.bookmarks.finish_frame(shown);
                         if info.outline_more {
                             ui.label(tl!("Some bookmarks are not shown here: the panel lists a limited number, nested a limited depth."));
                         }

@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! The edits a document takes: what each is called, whether its permissions allow it, and running it.
 
 use std::sync::Arc;
@@ -102,6 +103,14 @@ pub enum Edit {
         from: Vec<usize>,
         to_parent: Vec<usize>,
         index: usize,
+    },
+    /// This fork (BOOKMARK.1): indent (`outdent: false`) or outdent several bookmarks together,
+    /// as one change: each as the single Indent or Outdent would, in outline order (reverse for
+    /// Outdent), with those under another one moving with it. All or nothing
+    /// ([`pdfcraft_organize::shift_bookmarks`]).
+    ShiftBookmarks {
+        paths: Vec<Vec<usize>>,
+        outdent: bool,
     },
     /// Point a bookmark at another page.
     SetBookmarkPage {

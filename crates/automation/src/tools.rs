@@ -35,6 +35,11 @@ fn path(what: &str) -> Value {
     json!({ "type": "array", "items": { "type": "integer", "minimum": 1 }, "description": format!("{what}: 1-based positions from the top level, e.g. [2, 1] = the first child of the second bookmark.") })
 }
 
+/// This fork (BOOKMARK.1): several bookmark paths.
+fn paths(what: &str) -> Value {
+    json!({ "type": "array", "items": path("A bookmark"), "minItems": 1, "maxItems": 10_000, "description": format!("{what}, each a path of 1-based positions from the top level.") })
+}
+
 fn path_arg() -> Value {
     json!({ "type": "string", "description": "A file path (relative to --root when set)." })
 }
@@ -325,6 +330,19 @@ pub fn tools() -> Vec<ToolDef> {
             json!({ "doc": doc(), "path": path("The bookmark to move"), "parent": path("New parent (omit for the top level)"), "position": { "type": "integer", "minimum": 1, "description": "1-based position among the new parent's children, counted after the bookmark is removed (default: last)." } }),
             &["doc", "path"],
         )),
+        // This fork (BOOKMARK.1): several bookmarks indented or outdented together.
+        t(
+            "bookmark_indent",
+            "Indent bookmarks",
+            "Make each bookmark the last child of the bookmark above it at its level, as one undoable step. Bookmarks under another one listed move with it; a run of listed siblings keeps its order. Refused whole, changing nothing, if any of them is first at its level, would end deeper than 33 levels (the top level is the first), or the outline links a bookmark more than once.",
+        )
+        .with(schema(json!({ "doc": doc(), "paths": paths("The bookmarks to indent") }), &["doc", "paths"])),
+        t(
+            "bookmark_outdent",
+            "Outdent bookmarks",
+            "Move each bookmark out a level, to straight after its parent, as one undoable step; the bookmarks after it at its old level stay. Bookmarks under another one listed move with it; listed siblings keep their order. Refused whole, changing nothing, if any of them is at the top level or the outline links a bookmark more than once.",
+        )
+        .with(schema(json!({ "doc": doc(), "paths": paths("The bookmarks to outdent") }), &["doc", "paths"])),
         t("bookmark_set_page", "Set a bookmark's page", "Point a bookmark at another page. Undoable.")
             .with(schema(json!({ "doc": doc(), "path": path("The bookmark"), "page": { "type": "integer", "minimum": 1 } }), &["doc", "path", "page"])),
         t(

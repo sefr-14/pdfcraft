@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! pdfcraft-organize — page and document-structure edits (L4).
 //!
 //! Every operation mutates a `pdfcraft_cos::Document` (copy-on-write), so callers snapshot the
@@ -40,6 +41,8 @@ pub use outline::{
     Bookmark, BookmarkPage, OutlineEntry, OutlineError, add_bookmark, add_bookmark_at, add_bookmark_tree, bookmark_page, bookmarks, delete_bookmark,
     move_bookmark, rename_bookmark, set_bookmark_color, set_bookmark_open, set_bookmark_page, set_bookmark_style, top_level_bookmarks,
 };
+// This fork (BOOKMARK.1): several bookmarks indented or outdented together.
+pub use outline::{MAX_SHIFT, OutlineShape, Shift, ShiftPlan, plan_shift, shift_bookmarks};
 pub use transition::{TRANSITION_DIRECTIONS, TRANSITION_STYLES, Transition, TransitionSpec, set_transition};
 pub use view::{InitialView, displays_doc_title, initial_view, set_initial_view};
 

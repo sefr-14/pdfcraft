@@ -223,6 +223,11 @@ impl Automation {
                 let index = a.opt_int("position")?.map_or(usize::MAX, |p| (p.max(1) - 1) as usize);
                 self.apply(&a, Edit::MoveBookmark { from, to_parent, index })?
             }
+            // This fork (BOOKMARK.1).
+            "bookmark_indent" | "bookmark_outdent" => {
+                let paths = a.paths("paths")?;
+                self.apply(&a, Edit::ShiftBookmarks { paths, outdent: name == "bookmark_outdent" })?
+            }
             "bookmark_set_page" => {
                 let (path, page) = (a.path("path")?, self.page(&a)?);
                 self.apply(&a, Edit::SetBookmarkPage { path, page })?

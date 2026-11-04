@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! The bookmark list.
 
 /// A bookmark as the bookmark list shows it.
@@ -58,4 +59,26 @@ pub(crate) fn outline_rows(items: &[pdfcraft_render::OutlineItem]) -> Vec<Bookma
         }
     }
     rows
+}
+
+/// This fork (BOOKMARK.1): what indenting (`outdent: false`) or outdenting the bookmarks at
+/// `paths` of the viewer's outline `items` would do, without doing it: their new paths, or why
+/// the group can't move. The panel uses it to offer the command and to select the moved
+/// bookmarks after it. It is a preview: `items` is the viewer's window of the outline, which
+/// leaves out repeated links and what lies past its limits, so the edit itself
+/// ([`crate::Edit::ShiftBookmarks`]) checks the document again and decides.
+pub fn preview_shift(
+    items: &[pdfcraft_render::OutlineItem],
+    paths: &[Vec<usize>],
+    outdent: bool,
+) -> Result<Vec<Vec<usize>>, pdfcraft_organize::OutlineError> {
+    let mut shape = pdfcraft_organize::OutlineShape::new();
+    // Each viewer item once, with the node it hangs from; an explicit stack, no recursion.
+    let mut todo: Vec<(usize, &pdfcraft_render::OutlineItem)> = items.iter().rev().map(|i| (0, i)).collect();
+    while let Some((parent, item)) = todo.pop() {
+        let Some(node) = shape.add(parent) else { continue };
+        todo.extend(item.children.iter().rev().map(|c| (node, c)));
+    }
+    let shift = if outdent { pdfcraft_organize::Shift::Out } else { pdfcraft_organize::Shift::In };
+    pdfcraft_organize::plan_shift(&shape, paths, shift).map(|plan| plan.paths)
 }

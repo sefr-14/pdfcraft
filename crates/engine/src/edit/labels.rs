@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 use super::{Edit, FillMark, ImageEdit, Label, LineEnding, MarkKind, Markup, PageBox, ReviewState, Shape, field_table};
 
 /// Every wording [`Edit::label`] can produce, for an interface to translate. `Edit::Batch` is not
@@ -35,6 +36,8 @@ pub const EDIT_LABELS: &[&str] = &[
     "Rename bookmark",
     "Delete bookmark",
     "Move bookmark",
+    "Indent bookmarks",
+    "Outdent bookmarks",
     "Set bookmark destination",
     "Colour",
     "Style",
@@ -189,6 +192,8 @@ impl Edit {
             Edit::RenameBookmark { .. } => Label::of("Rename bookmark"),
             Edit::DeleteBookmark { .. } => Label::of("Delete bookmark"),
             Edit::MoveBookmark { .. } => Label::of("Move bookmark"),
+            Edit::ShiftBookmarks { outdent: false, .. } => Label::of("Indent bookmarks"),
+            Edit::ShiftBookmarks { outdent: true, .. } => Label::of("Outdent bookmarks"),
             Edit::SetBookmarkPage { .. } => Label::of("Set bookmark destination"),
             // The bookmark Style and Colour menus' own names, already said in every language.
             Edit::SetBookmarkColor { .. } => Label::of("Colour"),

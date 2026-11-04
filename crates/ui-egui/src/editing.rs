@@ -981,6 +981,11 @@ impl PdfCraftApp {
     /// Carry out a Bookmarks-panel action as an undoable edit.
     pub fn bookmark_action(&mut self, action: crate::panels::BmAction) {
         use crate::panels::BmAction as A;
+        // This fork (BOOKMARK.1): the group actions act on the panel's selection.
+        if matches!(action, A::IndentSelected | A::OutdentSelected) {
+            self.shift_selected_bookmarks(action == A::OutdentSelected);
+            return;
+        }
         let Some((i, id)) = self.active_ids() else { return };
         let current = self.views[i].current;
         let parent_of = |p: &[usize]| p[..p.len() - 1].to_vec();
@@ -1026,6 +1031,8 @@ impl PdfCraftApp {
                 let at = parent[parent.len() - 1] + 1;
                 Edit::MoveBookmark { from: path, to_parent: grand, index: at }
             }
+            // Handled before the match.
+            A::IndentSelected | A::OutdentSelected => return,
             A::FromStructure => {
                 self.right = Some(crate::RightPanel::Bookmarks);
                 Edit::BookmarksFromStructure
@@ -1037,6 +1044,40 @@ impl PdfCraftApp {
             }
         };
         self.apply_edit(edit);
+    }
+}
+
+impl PdfCraftApp {
+    /// This fork (BOOKMARK.1): indent (or outdent) the bookmarks selected in the active view's
+    /// Bookmarks panel together, as one undoable change. Nothing happens when the selection was
+    /// made in another version of the document (its paths may name other bookmarks now). Afterwards
+    /// the moved bookmarks are selected where they went, and their new parents open; a refused
+    /// group keeps the selection and changes nothing.
+    pub fn shift_selected_bookmarks(&mut self, outdent: bool) {
+        let Some((i, id)) = self.active_ids() else { return };
+        let Some(doc) = self.session.get(id) else { return };
+        let stamp = crate::content_version(doc);
+        let Some(view) = self.views.get_mut(i) else { return };
+        if view.bookmarks.seen() != Some(stamp) {
+            view.bookmarks.clear();
+            return;
+        }
+        let paths = view.bookmarks.paths();
+        if paths.is_empty() {
+            return;
+        }
+        // Where they go, from the outline as shown; a window that leaves bookmarks out can't tell.
+        let moved = if doc.info.outline_more { None } else { pdfcraft_engine::preview_shift(&doc.info.outline, &paths, outdent).ok() };
+        if !self.apply_edit(Edit::ShiftBookmarks { paths, outdent }) {
+            return;
+        }
+        let now = self.session.get(id).map(crate::content_version);
+        if let Some(view) = self.views.get_mut(i) {
+            match (moved, now) {
+                (Some(moved), Some(now)) => view.bookmarks.select_moved(moved, now),
+                _ => view.bookmarks.clear(),
+            }
+        }
     }
 }
 

@@ -25,6 +25,8 @@ mod attach_picker_target;
 mod attachment_row;
 mod bookmark_position;
 mod bookmarks;
+// This fork (BOOKMARK.1).
+mod bookmark_selection;
 mod bulk_fields;
 mod buttons;
 mod camera;

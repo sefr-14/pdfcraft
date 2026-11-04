@@ -127,6 +127,8 @@ pub use pdfcraft_xfdf::Format as DataFormat;
 
 use bookmarks::outline_rows;
 pub use bookmarks::{BookmarkPage, BookmarkRow};
+// This fork (BOOKMARK.1): what a group Indent or Outdent would do, for the Bookmarks panel.
+pub use bookmarks::preview_shift;
 use comments::comment_list;
 pub use comments::{SummarySort, comment_kind, comment_summary, comment_type_name};
 #[cfg(test)]
@@ -140,6 +142,7 @@ pub use history::Label;
 use layers::{apply_layer_state, set_default_layer_state, use_layer_choices};
 pub use open::{OpenContext, PreparedDocument};
 pub use page_filter::{PageOrientation, PageParity, filter_pages};
+pub use pdfcraft_organize::OutlineError;
 pub use pictures::{MarkFile, image_dimensions};
 use pictures::{embed_image, fit_picture, mark_source};
 use protection::unrestricted;
@@ -173,3 +176,6 @@ fn display_config(config: &pdfcraft_render::RenderConfig) -> pdfcraft_render::Re
 
 #[cfg(test)]
 mod tests;
+// This fork (BOOKMARK.1): group Indent and Outdent through the session.
+#[cfg(test)]
+mod bookmark_shift_tests;

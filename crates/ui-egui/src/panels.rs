@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Left tool panel (All tools + tool sub-panels, generated from the engine catalogue) and the
 //! right-hand panels (Comments, Bookmarks, Pages, Fields, Layers, Attachments).
 
@@ -22,6 +23,8 @@ pub mod side_panels;
 mod tools;
 
 pub use bookmarks::BmAction;
+// This fork (BOOKMARK.1).
+pub use bookmarks::BookmarkSelection;
 pub(crate) use bookmarks::ellipsized_prefix;
 pub use right::right_panel;
 pub use tools::left_panel;

@@ -661,6 +661,8 @@ pub struct DocView {
     pub block_drag: Option<crate::edit_text_ui::BlockDrag>,
     /// Commenting state: selected comment, gestures, composer.
     pub comments: crate::comments::CommentView,
+    /// This fork (BOOKMARK.1): the bookmarks selected in the Bookmarks panel.
+    pub bookmarks: crate::panels::BookmarkSelection,
     pub measure: crate::measure_ui::MeasureView,
     /// This fork (OV11): the guide selected or held in this view (the guides are the document's).
     pub guides: crate::guides::GuideView,
@@ -1050,6 +1052,7 @@ impl DocView {
             pan_hold_until: 0.0,
             slow_pages: HashSet::new(),
             comments: Default::default(),
+            bookmarks: Default::default(),
             measure: Default::default(),
             guides: Default::default(),
             forms: Default::default(),

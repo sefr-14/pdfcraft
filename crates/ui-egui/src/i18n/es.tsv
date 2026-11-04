@@ -3034,3 +3034,10 @@ theme	Appearance	Aspecto
 	No image on clipboard to paste	No hay ninguna imagen en el portapapeles para pegar
 	Pinned {tool} to Home	{tool} fijado en Inicio
 	Unpinned {tool} from Home	{tool} desfijado de Inicio
+# This fork (sefr-14/pdfcraft): bookmark multiselection, group Indent and Outdent (BOOKMARK.1).
+	Indent bookmarks	Aumentar sangría de marcadores
+	Outdent bookmarks	Reducir sangría de marcadores
+	The first bookmark at its level has nothing above it to go under	El primer marcador de su nivel no tiene ninguno encima bajo el que colocarse
+	A top-level bookmark can't move out a level	Un marcador de nivel superior no puede subir de nivel
+	Too deeply nested to show in the panel	Demasiado anidado para mostrarse en el panel
+	These bookmarks can't be moved together	Estos marcadores no se pueden mover juntos
