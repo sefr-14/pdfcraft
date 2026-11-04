@@ -68,7 +68,14 @@ fn tool_card(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens, g: &'static c
         Some(g.id)
     } else {
         if theme::hand(resp).clicked() {
-            app.select_tool(g.id);
+            // This fork (COMBINE.1): Combine files goes straight to its tab, as File › Combine
+            // files… does, instead of a tool pane with its one row. An open Combine tab keeps its
+            // list. Every other card, and every other way to Combine, is unchanged.
+            if g.id == "combine" {
+                app.run_command("page.combine");
+            } else {
+                app.select_tool(g.id);
+            }
         }
         None
     }
