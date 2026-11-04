@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 use super::{
     AddedContent, Arc, Edit, EditError, FieldValue, ImageEdit, NewAnnotation, Shape, a11y, copy_image, decode_data_file, embed_image, fit_picture,
     image_content_type, is_xfa_data_file, js, mark_source, measure, open_source, strip_xfa, unrestricted, xfa, xfa_after_data_change,
@@ -24,6 +25,7 @@ pub(crate) fn check_permission(edit: &Edit, p: &pdfcraft_cos::Permissions) -> Re
         | Edit::RenameBookmark { .. }
         | Edit::DeleteBookmark { .. }
         | Edit::MoveBookmark { .. }
+        | Edit::ShiftBookmarks { .. }
         | Edit::SetBookmarkPage { .. }
         | Edit::SetBookmarkColor { .. }
         | Edit::SetBookmarkStyle { .. }
@@ -450,6 +452,10 @@ pub(crate) fn run_edit(doc: &mut pdfcraft_cos::Document, edit: &Edit, cx: &mut E
         Edit::DeleteBookmark { path } => pdfcraft_organize::delete_bookmark(doc, path)?,
         Edit::MoveBookmark { from, to_parent, index } => {
             pdfcraft_organize::move_bookmark(doc, from, to_parent, *index)?;
+        }
+        Edit::ShiftBookmarks { paths, outdent } => {
+            let shift = if *outdent { pdfcraft_organize::Shift::Out } else { pdfcraft_organize::Shift::In };
+            pdfcraft_organize::shift_bookmarks(doc, paths, shift)?;
         }
         Edit::SetBookmarkPage { path, page } => pdfcraft_organize::set_bookmark_page(doc, path, *page)?,
         Edit::SetBookmarkColor { path, color } => pdfcraft_organize::set_bookmark_color(doc, path, *color)?,

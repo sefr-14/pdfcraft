@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 use super::error::{Result, ToolError};
 use super::{Document, Value, comments, json};
 
@@ -122,6 +123,22 @@ impl Args<'_> {
         let Some(v) = self.get(key) else { return Ok(None) };
         let arr = v.as_array().ok_or_else(|| Self::wrong(key, "an array of integers"))?;
         arr.iter().map(|x| x.as_i64().ok_or_else(|| Self::wrong(key, "an array of integers"))).collect::<Result<Vec<_>>>().map(Some)
+    }
+    /// This fork (BOOKMARK.1): a list of 1-based bookmark paths → 0-based indices. Each path is
+    /// read as [`Self::path`] reads one; the list must not be empty.
+    pub(crate) fn paths(&self, key: &str) -> Result<Vec<Vec<usize>>> {
+        let v = self.get(key).ok_or_else(|| Self::missing(key))?;
+        let list = v.as_array().filter(|l| !l.is_empty()).ok_or_else(|| Self::wrong(key, "a non-empty array of bookmark paths"))?;
+        list.iter()
+            .map(|p| {
+                let p = p.as_array().filter(|p| !p.is_empty()).ok_or_else(|| Self::wrong(key, "a non-empty array of bookmark paths"))?;
+                p.iter()
+                    .map(|i| {
+                        i.as_i64().filter(|i| *i >= 1).and_then(|i| usize::try_from(i - 1).ok()).ok_or_else(|| Self::wrong(key, "1-based positions"))
+                    })
+                    .collect()
+            })
+            .collect()
     }
     /// A 1-based bookmark path → 0-based indices.
     pub(crate) fn path(&self, key: &str) -> Result<Vec<usize>> {
