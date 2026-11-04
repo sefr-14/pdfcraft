@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 use super::{DocInfo, Nav, OutlineItem, Rect, Sense, Tokens, icons, pos2, theme, vec2};
 
 /// What the user asked to do with a bookmark (applied after the panel is drawn).
@@ -19,10 +20,143 @@ pub enum BmAction {
     Indent(Vec<usize>),
     /// Move it out to follow its parent.
     Outdent(Vec<usize>),
+    /// This fork (BOOKMARK.1): indent the selected bookmarks together.
+    IndentSelected,
+    /// This fork (BOOKMARK.1): outdent the selected bookmarks together.
+    OutdentSelected,
     /// Bookmarks from the tagged headings, under a new first "Untitled" bookmark.
     FromStructure,
     /// Open New bookmarks from text styles, to choose a style per bookmark level (#1693).
     FromTextStyles,
+}
+
+/// This fork (BOOKMARK.1): the bookmarks selected in a view's Bookmarks panel, by path.
+///
+/// A click selects one bookmark, Ctrl+Click (⌘ on macOS) adds or removes one, and Shift+Click
+/// selects the rows shown from the anchor to the one clicked. Paths name rows only while the
+/// document stays as it was: the selection carries the document version it was made in
+/// ([`crate::content_version`]) and is dropped as soon as that changes (an edit, undo or redo, a
+/// save, another tab's change, a reload). A row that stops being shown (its parent folds, a search
+/// leaves it out) leaves the selection.
+#[derive(Clone, Debug, Default)]
+pub struct BookmarkSelection {
+    selected: std::collections::BTreeSet<Vec<usize>>,
+    anchor: Option<Vec<usize>>,
+    /// The rows drawn on the last frame, in order: what a Shift+Click range runs through.
+    shown: Vec<Vec<usize>>,
+    /// The document version the selection was made in.
+    seen: Option<(u64, usize)>,
+    /// Bookmarks whose rows open on the next frame (the new parents after a group move).
+    reveal: std::collections::HashSet<Vec<usize>>,
+}
+
+impl BookmarkSelection {
+    /// The selected paths, in outline order (the order of paths is outline order).
+    pub fn paths(&self) -> Vec<Vec<usize>> {
+        self.selected.iter().cloned().collect()
+    }
+
+    pub fn len(&self) -> usize {
+        self.selected.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.selected.is_empty()
+    }
+
+    pub(crate) fn contains(&self, path: &[usize]) -> bool {
+        self.selected.contains(path)
+    }
+
+    /// The document version the selection was made in.
+    pub(crate) fn seen(&self) -> Option<(u64, usize)> {
+        self.seen
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.selected.clear();
+        self.anchor = None;
+        self.seen = None;
+    }
+
+    /// Drop the selection when the document is no longer the version it was made in.
+    pub(crate) fn expire(&mut self, now: (u64, usize)) {
+        if self.seen.is_some_and(|seen| seen != now) {
+            self.clear();
+        }
+    }
+
+    /// A plain click: only `path`, which becomes the anchor.
+    pub(crate) fn only(&mut self, path: &[usize], now: (u64, usize)) {
+        self.selected = std::iter::once(path.to_vec()).collect();
+        self.anchor = Some(path.to_vec());
+        self.seen = Some(now);
+    }
+
+    /// Ctrl+Click: add or remove `path`, which becomes the anchor.
+    pub(crate) fn toggle(&mut self, path: &[usize], now: (u64, usize)) {
+        self.expire(now);
+        if !self.selected.remove(path) {
+            self.selected.insert(path.to_vec());
+        }
+        self.anchor = Some(path.to_vec());
+        self.seen = Some(now);
+    }
+
+    /// Shift+Click: the rows shown from the anchor to `path`, in place of the selection; the
+    /// anchor stays. Without a shown anchor it is a plain click's selection.
+    pub(crate) fn range_to(&mut self, path: &[usize], now: (u64, usize)) {
+        self.expire(now);
+        let at = |p: &[usize]| self.shown.iter().position(|s| s.as_slice() == p);
+        match (self.anchor.as_deref().and_then(at), at(path)) {
+            (Some(a), Some(b)) => {
+                let (from, to) = (a.min(b), a.max(b));
+                self.selected = self.shown.get(from..=to).map(|rows| rows.iter().cloned().collect()).unwrap_or_default();
+                self.seen = Some(now);
+            }
+            _ => self.only(path, now),
+        }
+    }
+
+    /// After a group move: select the moved bookmarks at their new `paths`, and open their new
+    /// parents on the next frame so they still show.
+    pub(crate) fn select_moved(&mut self, paths: Vec<Vec<usize>>, now: (u64, usize)) {
+        self.reveal = paths.iter().flat_map(|p| (1..p.len()).filter_map(|n| p.get(..n).map(<[usize]>::to_vec))).collect();
+        self.anchor = paths.first().cloned();
+        self.selected = paths.into_iter().collect();
+        self.seen = Some(now);
+    }
+
+    /// Whether the row at `path` opens on this frame.
+    fn reveals(&self, path: &[usize]) -> bool {
+        self.reveal.contains(path)
+    }
+
+    /// The panel drew `shown`, in order: what is not shown leaves the selection, and an anchor no
+    /// longer shown becomes its nearest shown ancestor.
+    pub(crate) fn finish_frame(&mut self, shown: Vec<Vec<usize>>) {
+        let visible: std::collections::HashSet<&[usize]> = shown.iter().map(Vec::as_slice).collect();
+        self.selected.retain(|p| visible.contains(p.as_slice()));
+        if let Some(anchor) = self.anchor.take() {
+            self.anchor = (1..=anchor.len()).rev().filter_map(|n| anchor.get(..n)).find(|p| visible.contains(p)).map(<[usize]>::to_vec);
+        }
+        if self.selected.is_empty() && self.anchor.is_none() {
+            self.seen = None;
+        }
+        self.reveal.clear();
+        self.shown = shown;
+    }
+}
+
+/// Why a group Indent or Outdent is not offered.
+fn shift_refusal(e: &pdfcraft_engine::OutlineError) -> &'static str {
+    use pdfcraft_engine::OutlineError as E;
+    match e {
+        E::CannotIndent(_) => tl!("The first bookmark at its level has nothing above it to go under"),
+        E::CannotOutdent(_) => tl!("A top-level bookmark can't move out a level"),
+        E::TooDeep(_) => tl!("Too deeply nested to show in the panel"),
+        _ => tl!("These bookmarks can't be moved together"),
+    }
 }
 
 /// Matching titles plus their ancestors, keeping document paths rather than filtered indexes.
@@ -60,6 +194,13 @@ pub(super) struct OutlineCtx<'a> {
     pub(super) expand: Option<usize>,
     pub(super) matches: &'a std::collections::HashSet<Vec<usize>>,
     pub(super) searching: bool,
+    /// This fork (BOOKMARK.1): the view's selection, the rows drawn so far this frame, and the
+    /// document version a click selects in.
+    pub(super) sel: &'a mut BookmarkSelection,
+    pub(super) shown: &'a mut Vec<Vec<usize>>,
+    pub(super) stamp: (u64, usize),
+    /// Whether the viewer's outline leaves bookmarks out (the group preview can't tell then).
+    pub(super) partial: bool,
 }
 
 /// The destination page label gets its own right-aligned column in a bookmark row; drawing
@@ -118,12 +259,17 @@ pub(super) fn outline_item(
     if cx.searching && !cx.matches.contains(path) {
         return;
     }
-    let depth = path.len() - 1;
+    let depth = path.len().saturating_sub(1);
     let indent = depth as f32 * 16.0;
     let id = ui.scope_id().with(("outline", path));
     if let Some(levels) = cx.expand {
         ui.data_mut(|d| d.insert_temp(id, depth < levels));
     }
+    // This fork (BOOKMARK.1): the new parent of a group just moved opens, so the group still shows.
+    if cx.sel.reveals(path) {
+        ui.data_mut(|d| d.insert_temp(id, true));
+    }
+    cx.shown.push(path.to_vec());
     // A bookmark opens as the file says at every level: a positive /Count is open, a negative
     // one (or none) closed (ISO 32000-2 §12.3.3, Table 151). The reader's own toggles and a
     // search override it.
@@ -177,7 +323,7 @@ pub(super) fn outline_item(
         let h = (galley.size().y + 12.0).max(28.0);
         let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), h), Sense::click());
         resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &item.title));
-        theme::Press::track(ui, &resp).wash(ui, rect, 6, false);
+        theme::Press::track(ui, &resp).wash(ui, rect, 6, cx.sel.contains(path));
         let x0 = rect.left() + indent;
         if !item.children.is_empty() {
             let tri = Rect::from_min_size(pos2(x0, rect.top() + 6.0), vec2(16.0, 16.0));
@@ -194,10 +340,24 @@ pub(super) fn outline_item(
             let pos = pos2(rect.right() - 6.0 - g.size().x, rect.top() + 14.0 - g.size().y / 2.0);
             ui.painter().galley(pos, g, t.text_faint);
         }
-        if theme::hand(resp.clone()).clicked()
-            && let Some(p) = item.page
-        {
-            *cx.nav = Some(Nav::Dest(p, item.view));
+        // This fork (BOOKMARK.1): Ctrl+Click and Shift+Click select without going anywhere; a
+        // plain click selects the row and goes to its destination, as before.
+        if theme::hand(resp.clone()).clicked() {
+            let m = ui.input(|i| i.modifiers);
+            if m.command {
+                cx.sel.toggle(path, cx.stamp);
+            } else if m.shift {
+                cx.sel.range_to(path, cx.stamp);
+            } else {
+                cx.sel.only(path, cx.stamp);
+                if let Some(p) = item.page {
+                    *cx.nav = Some(Nav::Dest(p, item.view));
+                }
+            }
+        }
+        // A right-click on a row outside the selection makes it the selection, without going there.
+        if resp.secondary_clicked() && !cx.sel.contains(path) {
+            cx.sel.only(path, cx.stamp);
         }
         if resp.double_clicked() && cx.editable {
             *cx.action = Some(BmAction::StartRename(path.to_vec()));
@@ -207,6 +367,35 @@ pub(super) fn outline_item(
         {
             let current = cx.current;
             resp.context_menu(|ui| {
+                // This fork (BOOKMARK.1): on one of several selected rows, the menu acts on them all.
+                if cx.sel.len() >= 2 && cx.sel.contains(path) {
+                    let paths = cx.sel.paths();
+                    for label in ["Rename", "Style", "Colour"] {
+                        ui.add_enabled(false, egui::Button::new(tl!(label)));
+                    }
+                    ui.add_enabled(
+                        false,
+                        egui::Button::new(crate::i18n::fmt(tl!("Set to current page ({n})"), &[("n", &(current + 1).to_string())])),
+                    );
+                    ui.separator();
+                    ui.add_enabled(false, egui::Button::new(tl!("Move up")));
+                    ui.add_enabled(false, egui::Button::new(tl!("Move down")));
+                    for (label, outdent, action) in [("Indent", false, BmAction::IndentSelected), ("Outdent", true, BmAction::OutdentSelected)] {
+                        let refusal = if cx.partial { None } else { pdfcraft_engine::preview_shift(&info.outline, &paths, outdent).err() };
+                        let button = ui.add_enabled(refusal.is_none(), egui::Button::new(tl!(label)));
+                        let button = match &refusal {
+                            Some(e) => button.on_disabled_hover_text(shift_refusal(e)),
+                            None => button,
+                        };
+                        if button.clicked() {
+                            *cx.action = Some(action);
+                            ui.close();
+                        }
+                    }
+                    ui.separator();
+                    ui.add_enabled(false, egui::Button::new(tl!("Delete")));
+                    return;
+                }
                 let mut pick = |ui: &mut egui::Ui, label: &str, enabled: bool, a: BmAction| {
                     if ui.add_enabled(enabled, egui::Button::new(tl!(label))).clicked() {
                         *cx.action = Some(a);
