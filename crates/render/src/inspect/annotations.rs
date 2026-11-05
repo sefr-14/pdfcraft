@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 use super::core::{limited_pdf_string, pretty_date, spend};
 use super::model::{Annotation, AttachmentSource, DestView, Field, FieldKind, LayerOp, Link, LinkTarget, RemoteDestination, link_replies};
 use super::navigation::text_string;
@@ -173,6 +174,7 @@ impl<'a> Inspector<'a> {
                 rect,
                 color,
                 index,
+                object: self.resolved_id(a),
                 state: self.text(d, b"State"),
                 quads,
                 locked: d.get(b"F").ok().and_then(|f| self.resolve(f).as_i64().ok()).unwrap_or(0) & 128 != 0,

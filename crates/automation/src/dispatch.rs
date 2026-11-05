@@ -867,6 +867,8 @@ impl Automation {
             "comments_summarize" => self.comments_summarize(&a)?,
             "comment_edit" => self.comment_edit(&a)?,
             "comment_delete" => self.comment_delete(&a)?,
+            // This fork (COMMENTS.1).
+            "comment_delete_many" => self.comment_delete_many(&a)?,
             other => return Err(ToolError::UnknownTool(other.into())),
         };
         Ok(vec![Content::Json(out)])

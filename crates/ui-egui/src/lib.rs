@@ -665,6 +665,8 @@ pub struct PdfCraftApp {
     control: Option<control::Control>,
     /// A bookmark being renamed in the Bookmarks panel: (path, text so far).
     pub bookmark_rename: Option<(Vec<usize>, String)>,
+    /// This fork (COMMENTS.1): Delete selected (comments), waiting for its confirmation.
+    pub comment_delete: Option<crate::comments::delete_group::CommentDeleteDraft>,
     /// Number pages dialog settings (1-based pages).
     pub number_draft: NumberDraft,
     pub(crate) word_count_draft: word_count_ui::Draft,

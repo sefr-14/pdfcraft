@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 use super::create::finite;
 use super::draw::set_appearance;
 use super::lookup::{annot_dict, annot_ref, annotation_flags, annots, drawn_upright, is_fill_sign, page_ref, page_refs};
@@ -14,6 +15,11 @@ use super::{AnnotError, Dict, Document, ObjRef, Object, PdfString, appearance};
 pub struct Summary {
     pub page: usize,
     pub index: usize,
+    /// This fork (COMMENTS.1): the indirect object this `/Annots` entry finally names (a chain of
+    /// references followed as [`final_ref`] does), as (number, generation); `None` for an inline
+    /// dictionary. It names the same annotation for as long as the document is open: object
+    /// numbers are never reused. As `pdfcraft_render::Annotation::object`.
+    pub object: Option<(u32, u16)>,
     pub subtype: String,
     pub author: Option<String>,
     pub contents: Option<String>,
@@ -60,7 +66,7 @@ pub fn is_comment_subtype(subtype: &str) -> bool {
 
 /// Where a reference to a reference (`5 0 obj 6 0 R endobj`) ends, as `pdfcraft_render::inspect`
 /// follows it, within a few steps (a cycle stops there).
-fn final_ref(doc: &Document, mut r: ObjRef) -> ObjRef {
+pub(crate) fn final_ref(doc: &Document, mut r: ObjRef) -> ObjRef {
     for _ in 0..8 {
         match &*doc.get(r) {
             Object::Ref(next) => r = *next,
@@ -126,6 +132,7 @@ pub fn summaries(doc: &Document) -> Vec<Summary> {
             out.push(Summary {
                 page,
                 index,
+                object: entry.as_ref().map(|r| final_ref(doc, r)).map(|r| (r.num, r.generation)),
                 subtype,
                 author: text_value(doc, d, b"T"),
                 // Acrobat ends lines with CR, which the interface would draw as nothing (keep in

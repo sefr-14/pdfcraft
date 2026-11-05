@@ -600,8 +600,16 @@ pub(crate) fn keys(ctx: &egui::Context, view: &mut DocView, tool: &mut QuickTool
     let measuring = matches!(tool, QuickTool::Measure(_)) && !view.measure.points.is_empty();
     let cv = &mut view.comments;
     if escape && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-        // One step back per press: cancel the gesture, then deselect, then drop the tool.
-        let cancelled = cv.gesture.take().is_some() || cv.selected.take().is_some();
+        // One step back per press: cancel the gesture, then deselect, then drop the tool. This fork
+        // (COMMENTS.1): deselecting drops the active comment and the cards selected in the panel
+        // together, in one press.
+        let cancelled = if cv.gesture.take().is_some() {
+            true
+        } else {
+            let active = cv.selected.take().is_some();
+            let group = cv.group.clear();
+            active || group
+        };
         let dropped = !cancelled && matches!(tool, QuickTool::Comment(_));
         if dropped {
             *tool = QuickTool::Select;
@@ -611,8 +619,11 @@ pub(crate) fn keys(ctx: &egui::Context, view: &mut DocView, tool: &mut QuickTool
             ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
         }
     }
+    // This fork (COMMENTS.1): with several cards selected in the panel, the keys delete nothing
+    // (not even the active comment); Delete selected, which asks first, deletes them.
     if allowed
         && !measuring
+        && cv.group.len() < 2
         && let Some((page, index)) = cv.selected
         && ctx.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace))
     {

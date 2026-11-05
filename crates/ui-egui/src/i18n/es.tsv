@@ -3041,3 +3041,14 @@ theme	Appearance	Aspecto
 	A top-level bookmark can't move out a level	Un marcador de nivel superior no puede subir de nivel
 	Too deeply nested to show in the panel	Demasiado anidado para mostrarse en el panel
 	These bookmarks can't be moved together	Estos marcadores no se pueden mover juntos
+# This fork (sefr-14/pdfcraft): Comments multiselection, Delete, Collapse and Expand selected (COMMENTS.1).
+	Delete selected ({n})	Eliminar seleccionados ({n})
+	Collapse selected	Contraer seleccionados
+	Expand selected	Expandir seleccionados
+	Sort by page to fold page groups	Ordene por página para contraer los grupos de páginas
+	Some of these comments can't be deleted: one is locked, or the document doesn't allow it	Algunos de estos comentarios no se pueden eliminar: uno está bloqueado o el documento no lo permite
+	Delete comments	Eliminar comentarios
+	Delete {comments} and {replies}?	¿Eliminar {comments} y {replies}?
+	Their pop-ups go with them. You can undo this.	Sus notas emergentes también se eliminan. Puede deshacerlo.
+	Couldn't delete the comments: {error}	No se pudieron eliminar los comentarios: {error}
+	The comments changed. Review the selection and try again.	Los comentarios cambiaron. Revise la selección e inténtelo de nuevo.

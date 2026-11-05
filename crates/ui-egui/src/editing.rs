@@ -79,6 +79,20 @@ fn select_after_edit(
             }
         }
         Edit::DeleteAnnotation { page, index } => view.comments.annotation_deleted(annots_before, &info.annotations, (*page, *index)),
+        // This fork (COMMENTS.1): the active comment, and one open in the editor, stay where their
+        // object now is, or close with it; the selected cards went. Nothing scrolls.
+        Edit::DeleteAnnotations { .. } => {
+            let moved = |key: (usize, usize)| -> Option<(usize, usize)> {
+                let object = annots_before.iter().find(|a| (a.page, a.index) == key)?.object?;
+                info.annotations.iter().find(|a| a.object == Some(object)).map(|a| (a.page, a.index))
+            };
+            view.comments.selected = view.comments.selected.and_then(moved);
+            view.comments.editing = view.comments.editing.take().and_then(|(p, i, text)| moved((p, i)).map(|(p, i)| (p, i, text)));
+            if view.comments.editing.is_none() {
+                view.comments.editor_focus = None;
+            }
+            view.comments.group.clear();
+        }
         _ => {}
     }
 }
@@ -147,6 +161,8 @@ impl PdfCraftApp {
         // and the one open in the panel's editor, went.
         let annots_before = match (&edit, self.session.get(id)) {
             (Edit::DeleteAnnotation { page, .. }, Some(d)) => d.info.annotations.iter().filter(|a| a.page == *page).cloned().collect(),
+            // This fork (COMMENTS.1): every page's, to find the active comment again by its object.
+            (Edit::DeleteAnnotations { .. }, Some(d)) => d.info.annotations.clone(),
             _ => Vec::new(),
         };
         match self.session.apply(id, edit.clone()) {

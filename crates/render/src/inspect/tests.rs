@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 #[test]
 fn png_predictor_rows_longer_than_the_data_are_refused_before_allocating() {
     // Vendored lopdf patch: a fuzzed `/Columns 4294967295` allocated two 4 GiB rows before
@@ -297,6 +298,7 @@ fn no_rotate_comments_are_shown_upright_from_their_corner_and_back() {
         rect: [40.0, 50.0, 70.0, 70.0],
         color: None,
         index: 0,
+        object: None,
         state: None,
         quads: Vec::new(),
         locked: false,
