@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Commenting in the document view (execution plan M5.3–M5.4; Acrobat's "Add comments").
 //!
 //! - **Tools** ([`CommentTool`]): sticky note, text box, highlight / underline / strikethrough
@@ -27,6 +28,9 @@ mod input;
 mod menu;
 mod paint;
 mod state;
+// This fork (COMMENTS.1): several cards selected in the Comments panel, and deleting them.
+pub mod delete_group;
+pub mod group;
 
 pub(crate) use composer::{composer, submit_key};
 #[cfg(test)]

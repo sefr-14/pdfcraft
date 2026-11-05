@@ -1212,6 +1212,8 @@ impl DocView {
     /// runs in. Text being typed stays: it is committed against the document as it is then.
     pub(crate) fn forget_content_selection(&mut self) {
         self.comments.selected = None;
+        // This fork (COMMENTS.1).
+        self.comments.group.clear();
         self.image_selection = None;
         self.picked_image = None;
         self.block_drag = None;
@@ -4263,6 +4265,8 @@ fn apply_frame_requests(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui, 
         }
         Some(PageMenuAction::FlattenComments) => {
             app.views[index].comments.selected = None;
+            // This fork (COMMENTS.1).
+            app.views[index].comments.group.clear();
             app.views[index].pending_edit = Some(pdfcraft_engine::Edit::Flatten { comments: true, fields: false });
         }
         Some(PageMenuAction::AddBookmark) => {

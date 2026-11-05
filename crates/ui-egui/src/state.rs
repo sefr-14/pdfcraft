@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 use super::*;
 
 /// Top-level workspace modes (Acrobat's mode bar).
@@ -136,6 +137,8 @@ pub enum Dialog {
     RedactSearch,
     RedactProps,
     RedactApply,
+    /// This fork (COMMENTS.1): Delete selected (comments) confirmation.
+    DeleteComments,
     /// File ▸ Print.
     Print,
     /// File ▸ Revert confirmation.

@@ -35,6 +35,8 @@ mod combine_grid;
 mod commands;
 mod comment_pin;
 mod comments;
+// This fork (COMMENTS.1).
+mod comments_selection;
 mod compare;
 mod content;
 mod control;
