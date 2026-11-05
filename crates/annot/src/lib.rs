@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! pdfcraft-annot — comments (annotations), ISO 32000-2 §12.5, execution plan M5.1–M5.3.
 //!
 //! Builders for the comment types Acrobat's commenting tools create (sticky note, highlight,
@@ -18,6 +19,8 @@ use std::collections::{HashMap, HashSet};
 
 use pdfcraft_cos::{Dict, Document, ObjRef, Object, PdfString, Stream};
 
+// This fork (COMMENTS.1): deleting several comments at once.
+mod bulk;
 mod create;
 mod draw;
 mod info;
@@ -25,6 +28,7 @@ mod lookup;
 mod modify;
 mod types;
 
+pub use bulk::{DeleteTarget, DeletionSet, MAX_DELETE_TARGETS, delete_annotations, deletion_set};
 #[cfg(test)]
 use create::num_array;
 pub use create::{add_annotation, callout_attach, orient_image_stamp};

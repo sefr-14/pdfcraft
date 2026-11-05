@@ -164,3 +164,60 @@ pub fn comment_summary(name: &str, all: &[pdfcraft_render::Annotation], sort: Su
     }
     out
 }
+
+/// This fork (COMMENTS.1): what deleting the comments `targets` removes, worked out on `doc`
+/// without changing it.
+///
+/// A target is a comment of its own (a card in the Comments panel) or a reply, as the panel tells
+/// them apart: by the comment list it is drawn from ([`comment_list`]). Each must match its entry
+/// there exactly, page, position and object, or the document changed and nothing is deleted.
+/// The comments go with their pop-ups and their replies on their page
+/// ([`pdfcraft_annot::deletion_set`]). A reply among the targets that goes with one of them is
+/// counted once, as a reply; a reply that wouldn't (its comment isn't a target, or it is on
+/// another page) refuses the whole deletion: several comments are deleted at once, replies one
+/// at a time. The counts cover every entry removed except pop-ups, each once: `comments` the
+/// comments targeted, `replies` all the rest.
+pub(crate) fn plan_comment_deletion(
+    doc: &pdfcraft_cos::Document,
+    targets: &[pdfcraft_annot::DeleteTarget],
+) -> Result<(CommentDeletion, pdfcraft_annot::DeletionSet), crate::EditError> {
+    use std::collections::BTreeSet;
+    let list = comment_list(doc);
+    let invalid = |m: String| crate::EditError::Comment(pdfcraft_annot::AnnotError::Invalid(m));
+    let (mut roots, mut replies) = (BTreeSet::new(), BTreeSet::new());
+    for t in targets {
+        let entry = list.iter().find(|a| a.page == t.page && a.index == t.index && a.object == t.object).ok_or_else(|| {
+            invalid(format!("comment {} on page {} changed; take the comments again", t.index.saturating_add(1), t.page.saturating_add(1)))
+        })?;
+        if entry.is_comment() {
+            roots.insert(*t);
+        } else {
+            replies.insert(*t);
+        }
+    }
+    if roots.is_empty() {
+        return Err(invalid("several comments are deleted together; delete a reply from its own menu".into()));
+    }
+    let roots: Vec<_> = roots.into_iter().collect();
+    let set = pdfcraft_annot::deletion_set(doc, &roots)?;
+    let gone: BTreeSet<(usize, usize)> = set.removed.iter().map(|&(page, index, _)| (page, index)).collect();
+    if let Some(r) = replies.iter().find(|r| !gone.contains(&(r.page, r.index))) {
+        return Err(invalid(format!(
+            "comment {} on page {} is a reply that doesn't go with the comments chosen: delete it from its own menu",
+            r.index.saturating_add(1),
+            r.page.saturating_add(1)
+        )));
+    }
+    let shown = set.removed.iter().filter(|&&(_, _, popup)| !popup).count();
+    let comments = roots.len();
+    Ok((CommentDeletion { replies: shown.saturating_sub(comments), comments, roots }, set))
+}
+
+/// This fork (COMMENTS.1): the comments a deletion takes, and how many comments and replies go.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CommentDeletion {
+    /// The targets that are comments of their own: what is deleted (replies go with them).
+    pub roots: Vec<pdfcraft_annot::DeleteTarget>,
+    pub comments: usize,
+    pub replies: usize,
+}

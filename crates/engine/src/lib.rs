@@ -131,6 +131,7 @@ pub use bookmarks::{BookmarkPage, BookmarkRow};
 pub use bookmarks::preview_shift;
 use comments::comment_list;
 pub use comments::{SummarySort, comment_kind, comment_summary, comment_type_name};
+// This fork (COMMENTS.1): deleting several comments at once.
 #[cfg(test)]
 use document::page_runs;
 pub use document::{Document, EditNotice, MAX_FILE_ID, TextNotice, display_bytes_for, render_password_for};
@@ -142,6 +143,7 @@ pub use history::Label;
 use layers::{apply_layer_state, set_default_layer_state, use_layer_choices};
 pub use open::{OpenContext, PreparedDocument};
 pub use page_filter::{PageOrientation, PageParity, filter_pages};
+pub use pdfcraft_annot::{DeleteTarget, MAX_DELETE_TARGETS};
 pub use pdfcraft_organize::OutlineError;
 pub use pictures::{MarkFile, image_dimensions};
 use pictures::{embed_image, fit_picture, mark_source};

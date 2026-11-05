@@ -171,6 +171,12 @@ pub enum Edit {
         page: usize,
         index: usize,
     },
+    /// This fork (COMMENTS.1): delete several comments together, each with its pop-up and its
+    /// replies on its page, as one change. Each target names the object its slot must still hold;
+    /// a reply goes only with its comment. All or nothing ([`crate::comments::plan_comment_deletion`]).
+    DeleteAnnotations {
+        targets: Vec<pdfcraft_annot::DeleteTarget>,
+    },
     SetAnnotationContents {
         page: usize,
         index: usize,

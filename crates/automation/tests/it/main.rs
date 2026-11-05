@@ -8,7 +8,9 @@ mod backdrop;
 mod batch;
 // This fork (BOOKMARK.1).
 mod bookmark_shift;
+// This fork (COMMENTS.1).
 mod button_caption;
+mod comment_delete_many;
 mod form_bulk;
 mod hostile_args;
 mod optimize_content_boundaries;

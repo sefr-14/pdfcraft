@@ -114,7 +114,7 @@ pub fn lift_annotation(doc: &mut Document, page: usize, index: usize) -> Result<
 
 /// What deleting the `/Annots` entry `target` starts from: its reference, or for an inline
 /// comment (which has none to collect) the pop-up it names, which still goes.
-fn seed(target: &Object) -> Option<ObjRef> {
+pub(crate) fn seed(target: &Object) -> Option<ObjRef> {
     target.as_ref().or_else(|| target.as_dict().and_then(|d| d.reference(b"Popup")))
 }
 

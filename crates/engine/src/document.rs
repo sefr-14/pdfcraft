@@ -418,6 +418,18 @@ impl Document {
         self.editor.as_ref().is_some_and(|e| pdfcraft_annot::deletable(&e.cos, page, index).is_ok())
     }
 
+    /// This fork (COMMENTS.1): how many comments and replies `Edit::DeleteAnnotations` would
+    /// delete with these targets, or why it wouldn't, without deleting anything: the engine's own
+    /// dry run, which the edit repeats, so a confirmation states exactly what goes.
+    pub fn comments_deletion_preview(&self, targets: &[pdfcraft_annot::DeleteTarget]) -> Result<(usize, usize), crate::EditError> {
+        let editor = self.editor.as_ref().ok_or_else(|| crate::EditError::ReadOnly(self.read_only_reason.clone().unwrap_or_default()))?;
+        if !self.allows_annotation() {
+            return Err(crate::EditError::NotPermitted("comments"));
+        }
+        let (plan, _) = crate::comments::plan_comment_deletion(&editor.cos, targets)?;
+        Ok((plan.comments, plan.replies))
+    }
+
     pub fn can_undo(&self) -> Option<&str> {
         self.undo_label().map(Label::as_str)
     }

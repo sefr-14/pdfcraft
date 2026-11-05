@@ -944,6 +944,26 @@ pub fn tools() -> Vec<ToolDef> {
         )),
         t("comment_image_preview", "Preview image signature layers", "Return a PNG of the page without the selected image signature/initials (layer=background, default), or its embedded image with alpha (layer=image). Includes the displayed rectangle, document rotation, image_rotation (how far clockwise the image is shown turned) and annotation opacity. Cache these layers for live placement/resizing; commit once with comment_edit. Does not change the document or undo history.")
             .ro().with(schema(comment_ref(json!({ "layer": { "type": "string", "enum": ["background", "image"], "default": "background" }, "dpi": { "type": "number", "minimum": 1, "maximum": 600, "default": 96 } })), &["doc"])),
+        // This fork (COMMENTS.1).
+        t(
+            "comment_delete_many",
+            "Delete comments",
+            "Delete several comments (each by id, or page and index, from comment_list) with their pop-ups and their replies on their page, as one undoable step. A reply listed with its comment goes with it and is counted once; a reply on its own, or anything that changed, refuses the whole call and nothing is deleted. Reports deleted_comments and deleted_replies.",
+        )
+        .destructive()
+        .with(schema(
+            json!({
+                "doc": doc(),
+                "comments": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 10000,
+                    "items": { "type": "object", "properties": { "id": { "type": "string" }, "page": { "type": "integer", "minimum": 1 }, "index": { "type": "integer", "minimum": 1 } } },
+                    "description": "The comments: each { id } or { page, index }, 1-based, as comment_list reports them."
+                }
+            }),
+            &["doc", "comments"],
+        )),
         t("comment_delete", "Delete a comment", "Delete a comment with its pop-up and replies, or one reply (its id, or page and index, from comment_list) with its pop-up and the replies to it; the comment and its other replies stay. Undoable.").destructive().with(schema(comment_ref(json!({})), &["doc"])),
         t(
             "doc_protect",

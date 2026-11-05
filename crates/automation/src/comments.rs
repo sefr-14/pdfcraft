@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Comment tools: list, add, reply, set status, edit and delete (execution plan M5, AGENTS.md §3).
 //!
 //! Geometry follows the automation convention: points from the top-left of the displayed page,
@@ -697,6 +698,34 @@ impl Automation {
     pub(crate) fn comment_delete(&mut self, a: &Args) -> Result<Value> {
         let (page, index) = self.comment_target(a)?;
         self.apply(a, Edit::DeleteAnnotation { page, index })
+    }
+
+    /// This fork (COMMENTS.1): delete several comments at once (each `id`, or `page` and
+    /// `index`, as comment_delete takes one), as one undoable step. A reply goes only with its
+    /// comment; anything that can't go refuses the whole call.
+    pub(crate) fn comment_delete_many(&mut self, a: &Args) -> Result<Value> {
+        let list =
+            a.get("comments").and_then(Value::as_array).filter(|l| !l.is_empty()).ok_or_else(|| Args::wrong("comments", "a non-empty array"))?;
+        if list.len() > pdfcraft_engine::MAX_DELETE_TARGETS {
+            return Err(Args::wrong("comments", "at most 10000 comments"));
+        }
+        let all = self.comments(a)?;
+        let mut targets = Vec::with_capacity(list.len());
+        for item in list {
+            let mut one = item.as_object().cloned().ok_or_else(|| Args::wrong("comments", "an array of {id} or {page, index} objects"))?;
+            if let Some(doc) = a.get("doc") {
+                one.insert("doc".into(), doc.clone());
+            }
+            let one = Value::Object(one);
+            let (page, index) = self.comment_target(&Args(&one))?;
+            let object = all.iter().find(|c| c.page == page && c.index == index).and_then(|c| c.object);
+            targets.push(pdfcraft_engine::DeleteTarget { page, index, object });
+        }
+        let (comments, replies) = self.doc(a)?.comments_deletion_preview(&targets).map_err(failed)?;
+        let mut out = self.apply(a, Edit::DeleteAnnotations { targets })?;
+        out["deleted_comments"] = json!(comments);
+        out["deleted_replies"] = json!(replies);
+        Ok(out)
     }
 }
 
