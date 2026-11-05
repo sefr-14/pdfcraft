@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! The comment list and its summary.
 
 /// The comment list, read from the object graph (as `inspect` lists comments).
@@ -17,6 +18,7 @@ pub(crate) fn comment_list(doc: &pdfcraft_cos::Document) -> Vec<pdfcraft_render:
             rect: s.rect,
             color: s.color,
             index: s.index,
+            object: s.object,
             state: s.state,
             quads: s.quads,
             locked: s.locked,

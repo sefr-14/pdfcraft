@@ -179,3 +179,6 @@ mod tests;
 // This fork (BOOKMARK.1): group Indent and Outdent through the session.
 #[cfg(test)]
 mod bookmark_shift_tests;
+// This fork (COMMENTS.1): comment identity and deleting several comments at once.
+#[cfg(test)]
+mod comment_bulk_tests;

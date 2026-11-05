@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 use super::HashMap;
 
 /// What kind of XFA form a document has (`/AcroForm /XFA`).
@@ -323,6 +324,12 @@ pub struct Annotation {
     pub color: Option<[f32; 3]>,
     /// Position in the page's `/Annots` (how edits address the comment).
     pub index: usize,
+    /// This fork (COMMENTS.1): the indirect object this `/Annots` entry finally names, as (number,
+    /// generation); `None` for an inline dictionary. It names the same annotation for as long as the
+    /// document is open (object numbers are never reused), where `index` moves when an earlier
+    /// entry is deleted: what a selection holds on to. The engine's comment list reads it the same
+    /// way (`pdfcraft_annot::Summary::object`).
+    pub object: Option<(u32, u16)>,
     /// For a status reply (`/State`, Acrobat's "Set status"): the state it sets.
     pub state: Option<String>,
     /// Text markup quadrilaterals (`/QuadPoints`), 8 numbers each.
