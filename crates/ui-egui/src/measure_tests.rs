@@ -1033,3 +1033,67 @@ fn a_held_read_replaces_the_pages_earlier_read() {
     tx.send(Snapper::read(bytes, None, 0, &HashSet::new())).unwrap();
     assert!(!h.state_mut().views[0].measure.snapping_loading(), "only the held read counts");
 }
+
+/// This fork (MEASURE.UI.1): Apply scale, as drawn: its rect, whether an accent-filled shape
+/// covers it, whether its text is white, and whether it is enabled.
+fn apply_scale_look(h: &Harness<'static, PdfCraftApp>) -> (egui::Rect, bool, bool, bool) {
+    use egui_kittest::kittest::NodeT;
+    let node = h.get_by_label("Apply scale");
+    let (rect, enabled) = (node.rect(), !node.accesskit_node().is_disabled());
+    let accent = crate::theme::Tokens::get(&h.ctx).accent;
+    let (mut filled, mut white) = (false, false);
+    fn walk(shape: &egui::Shape, rect: egui::Rect, accent: egui::Color32, filled: &mut bool, white: &mut bool) {
+        match shape {
+            egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, rect, accent, filled, white)),
+            egui::Shape::Rect(r) if r.fill == accent && r.rect.expand(1.0).contains_rect(rect) && rect.expand(1.0).contains_rect(r.rect) => {
+                *filled = true
+            }
+            egui::Shape::Text(t) if rect.contains(t.pos) => {
+                let colored = t.galley.job.sections.iter().any(|s| s.format.color == egui::Color32::WHITE);
+                *white |= colored || t.override_text_color == Some(egui::Color32::WHITE) || t.fallback_color == egui::Color32::WHITE;
+            }
+            _ => {}
+        }
+    }
+    for clipped in &h.output().shapes {
+        walk(&clipped.shape, rect, accent, &mut filled, &mut white);
+    }
+    (rect, filled, white, enabled)
+}
+
+/// MEASURE.UI.1: Apply scale is the Measure panel's primary action, drawn in the accent with white
+/// text like the app's other primary buttons; disabled (the PDF forbids comments) it is the
+/// neutral button it was, and the same size either way.
+#[test]
+fn apply_scale_is_the_primary_action_and_keeps_its_size_and_disabled_look() {
+    let (mut h, _) = harness(plain());
+    tool(&mut h, Tool::Calibrate);
+    h.run_steps(2);
+    let (on, filled, white, enabled) = apply_scale_look(&h);
+    assert!(enabled, "a PDF that allows comments can take a scale");
+    assert!(filled, "enabled, it is filled with the accent");
+    assert!(white, "with white text");
+
+    let restricted = {
+        let mut s = Session::new();
+        let id = s.open("plan.pdf", None, Arc::new(plain()), None).unwrap();
+        let p = pdfcraft_engine::Protection {
+            permissions_password: Some("owner".into()),
+            changes: pdfcraft_engine::Changes::None,
+            ..pdfcraft_engine::Protection::default()
+        };
+        s.apply(id, pdfcraft_engine::Edit::Protect(p)).unwrap();
+        s.save_bytes(id).unwrap().as_ref().clone()
+    };
+    let (mut h, id) = harness(restricted);
+    tool(&mut h, Tool::Calibrate);
+    h.run_steps(2);
+    let (off, filled, white, enabled) = apply_scale_look(&h);
+    assert!(!enabled, "disabled where the PDF forbids comments");
+    assert!(!filled && !white, "disabled, it keeps the neutral look it had");
+    assert_eq!(on.size(), off.size(), "the same size enabled and disabled (the disabled one is drawn as before)");
+    let edits = h.state().session.get(id).unwrap().edit_generation();
+    h.get_by_label("Apply scale").click();
+    h.run_steps(3);
+    assert_eq!(h.state().session.get(id).unwrap().edit_generation(), edits, "and it can't be used");
+}

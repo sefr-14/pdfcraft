@@ -799,7 +799,7 @@ pub(crate) fn panel(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens) {
     egui::ScrollArea::vertical().id_salt("measure-panel").show(ui, |ui| panel_body(app, ui, t));
 }
 /// Draw the measurement panel: tool selection, scale calibration, snapping and the current reading.
-fn panel_body(app: &mut PdfCraftApp, ui: &mut egui::Ui, _t: &Tokens) {
+fn panel_body(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens) {
     crate::widgets::begin_dialog(ui);
     let Some((index, id)) = app.active_ids() else {
         ui.label(tl!("Open a PDF to measure it."));
@@ -933,7 +933,16 @@ fn panel_body(app: &mut PdfCraftApp, ui: &mut egui::Ui, _t: &Tokens) {
         let viewport = ui.label(tl!("Viewport"));
         ui.add(crate::widgets::line(&mut state.name).desired_width(130.0).char_limit(128)).labelled_by(viewport.id);
     });
-    let apply = ui.add_enabled(doc.allows_annotation(), egui::Button::new(tl!("Apply scale"))).clicked();
+    // This fork (MEASURE.UI.1): Apply scale is the panel's primary action, so it looks like the
+    // app's other primary buttons (the Comments panel's Save): the accent with white text. Only
+    // when it can be used: disabled, it stays the neutral button egui fades, as before.
+    let allowed = doc.allows_annotation();
+    let button = if allowed {
+        egui::Button::new(egui::RichText::new(tl!("Apply scale")).color(Color32::WHITE)).fill(t.accent).corner_radius(12)
+    } else {
+        egui::Button::new(tl!("Apply scale"))
+    };
+    let apply = ui.add_enabled(allowed, button).clicked();
     if let Some(error) = &state.error {
         ui.colored_label(Color32::from_rgb(190, 50, 50), error);
     }
