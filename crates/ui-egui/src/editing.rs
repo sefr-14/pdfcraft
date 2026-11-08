@@ -149,11 +149,11 @@ fn form_edit_pages(
     (changed_pages, unbaked)
 }
 
-/// This fork (SYNC.16i): said when a comment selection is dropped because the document changed
+/// This fork (SYNC.16h): said when a comment selection is dropped because the document changed
 /// elsewhere (another tab or tile, automation).
 pub(crate) const STALE_COMMENTS: &str = "The document changed elsewhere, so the selected comments were deselected. Select them again.";
 
-/// This fork (SYNC.16i): whether `edit` can move comments to other places, (page, index in
+/// This fork (SYNC.16h): whether `edit` can move comments to other places, (page, index in
 /// `/Annots`), without `select_after_edit` remapping the selection: page structure, flattening,
 /// redaction, sanitizing, imports, erasing ink, and a batch of any of them. A selection doesn't
 /// survive these.
@@ -180,7 +180,7 @@ fn moves_comment_places(edit: &Edit) -> bool {
 }
 
 impl PdfCraftApp {
-    /// This fork (SYNC.16i): at the start of each pass, after `sync_shared_views` and after the
+    /// This fork (SYNC.16h): at the start of each pass, after `sync_shared_views` and after the
     /// control channel's edits: every view drops a comment selection taken in another version of
     /// its document. The active view's is said.
     pub(crate) fn expire_comment_selections(&mut self) {
@@ -226,7 +226,7 @@ impl PdfCraftApp {
         };
         // A deletion moves the comments after it on the page: these say where the selected one,
         // and the one open in the panel's editor, went.
-        // This fork (SYNC.16i): a selection taken in another version of the document goes before
+        // This fork (SYNC.16h): a selection taken in another version of the document goes before
         // this edit's own remapping could move it onto other comments.
         if let (Some(doc), Some(view)) = (self.session.get(id), self.views.get_mut(i))
             && view.comments.expire(crate::content_version(doc))
@@ -286,7 +286,7 @@ impl PdfCraftApp {
                 }
                 // Keep the pages the user acted on selected, where they now are.
                 select_after_edit(view, &edit, info, &annots_before, self.quick_tool);
-                // This fork (SYNC.16i): the selection's places are this version's now, unless the
+                // This fork (SYNC.16h): the selection's places are this version's now, unless the
                 // edit moved comments without remapping the selection.
                 if moves_comment_places(&edit) {
                     view.comments.clear_selection();

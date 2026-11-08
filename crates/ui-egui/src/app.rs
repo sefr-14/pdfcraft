@@ -723,7 +723,7 @@ impl eframe::App for PdfCraftApp {
         migrate_panel_state(ui);
         // Tabs that show a document changed through another of its tabs catch up first.
         self.sync_shared_views();
-        // This fork (SYNC.16i): comment selections from another version of their document go.
+        // This fork (SYNC.16h): comment selections from another version of their document go.
         self.expire_comment_selections();
         // Rulers and guides follow opened, changed, saved and closed documents (OV11).
         self.sync_doc_prefs();

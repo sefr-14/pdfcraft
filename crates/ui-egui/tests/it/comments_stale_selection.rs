@@ -293,3 +293,21 @@ fn moving_the_selected_comments_page_drops_the_selection() {
     press(&mut h, 0, Key::Delete);
     assert_eq!(snapshot(&h), before, "nothing deleted after the page moved");
 }
+
+/// A selection set before the view's first pass (as automation, the control channel and tests
+/// do) is the document's current one: the guard keeps it, and Delete deletes what it names.
+#[test]
+fn a_selection_set_before_the_first_pass_is_kept() {
+    let mut h = Harness::builder().with_size(egui::vec2(1400.0, 900.0)).build_eframe(|_cc| {
+        let mut app = PdfCraftApp::new();
+        app.set_option("language", "en").unwrap();
+        app.open_bytes("comments.pdf", None, comments()).expect("opens");
+        app.views[0].comments.select_only((0, 1));
+        app
+    });
+    h.run_steps(4);
+    let before = state(&h);
+    assert!(h.state().views[0].comments.selected.is_some(), "the selection survives the first pass");
+    press(&mut h, 0, Key::Delete);
+    assert_eq!(state(&h), without(&before, &["C2"]));
+}

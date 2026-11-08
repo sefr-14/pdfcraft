@@ -191,7 +191,7 @@ pub struct CommentView {
     pub tool_done: bool,
     /// What the inline editor (`editing`) does with the keyboard the next time it is drawn.
     pub(crate) editor_focus: Option<EditorFocus>,
-    /// This fork (SYNC.16i): the document version (`content_version`) the selection's places were
+    /// This fork (SYNC.16h): the document version (`content_version`) the selection's places were
     /// taken in, or that this view's own edit moved them to. The places, (page, index in
     /// `/Annots`), name other comments after a change this view didn't make (another tab or tile,
     /// automation): [`CommentView::expire`] then drops the selection.
@@ -263,13 +263,14 @@ impl CommentView {
         self.also.clear();
     }
 
-    /// This fork (SYNC.16i): the document is version `now`. A selection taken in another version
+    /// This fork (SYNC.16h): the document is version `now`. A selection taken in another version
     /// (see [`CommentView::seen`]) is dropped, and `true` says so; it is never matched to the
     /// comments now at its places, which may be others. Without a selection, places taken from
-    /// now on are `now`'s.
+    /// now on are `now`'s. A view that has seen no version yet (a selection set before its first
+    /// pass) takes `now` as the selection's.
     pub(crate) fn expire(&mut self, now: (u64, usize)) -> bool {
         let held = self.selected.is_some() || !self.also.is_empty();
-        let stale = held && self.seen != Some(now);
+        let stale = held && self.seen.is_some_and(|seen| seen != now);
         if stale {
             self.clear_selection();
         }
