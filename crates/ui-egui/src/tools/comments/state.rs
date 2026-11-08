@@ -191,6 +191,11 @@ pub struct CommentView {
     pub tool_done: bool,
     /// What the inline editor (`editing`) does with the keyboard the next time it is drawn.
     pub(crate) editor_focus: Option<EditorFocus>,
+    /// This fork (SYNC.16i): the document version (`content_version`) the selection's places were
+    /// taken in, or that this view's own edit moved them to. The places, (page, index in
+    /// `/Annots`), name other comments after a change this view didn't make (another tab or tile,
+    /// automation): [`CommentView::expire`] then drops the selection.
+    pub(crate) seen: Option<(u64, usize)>,
     // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72): the cards selected in the Comments panel,
     // apart from the active comment, and the panel's Delete selected request.
     // pub(crate) group: super::group::Group,
@@ -256,6 +261,20 @@ impl CommentView {
     pub fn clear_selection(&mut self) {
         self.selected = None;
         self.also.clear();
+    }
+
+    /// This fork (SYNC.16i): the document is version `now`. A selection taken in another version
+    /// (see [`CommentView::seen`]) is dropped, and `true` says so; it is never matched to the
+    /// comments now at its places, which may be others. Without a selection, places taken from
+    /// now on are `now`'s.
+    pub(crate) fn expire(&mut self, now: (u64, usize)) -> bool {
+        let held = self.selected.is_some() || !self.also.is_empty();
+        let stale = held && self.seen != Some(now);
+        if stale {
+            self.clear_selection();
+        }
+        self.seen = Some(now);
+        stale
     }
 
     /// Takes back the last point of a polygon, cloud or connected lines being drawn; the first

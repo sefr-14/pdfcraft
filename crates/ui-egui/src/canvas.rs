@@ -1264,7 +1264,9 @@ impl DocView {
     /// selected comment, picture or link, a box being dragged), as an undo does in the view it
     /// runs in. Text being typed stays: it is committed against the document as it is then.
     pub(crate) fn forget_content_selection(&mut self) {
-        self.comments.selected = None;
+        // This fork (SYNC.16i): every selected comment, not only the one with the handles: `also`
+        // left behind would name other comments, and a Ctrl+Click then a Delete would delete them.
+        self.comments.clear_selection();
         // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72): self.comments.group.clear();
         self.image_selection = None;
         self.picked_image = None;

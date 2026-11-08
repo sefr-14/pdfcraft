@@ -106,3 +106,5 @@
 	Their pop-ups go with them. You can undo this.	Sus notas emergentes también se eliminan. Puede deshacerlo.
 	Couldn't delete the comments: {error}	No se pudieron eliminar los comentarios: {error}
 	The comments changed. Review the selection and try again.	Los comentarios cambiaron. Revise la selección e inténtelo de nuevo.
+# This fork (sefr-14/pdfcraft): a comment selection dropped because the document changed elsewhere (SYNC.16).
+	The document changed elsewhere, so the selected comments were deselected. Select them again.	El documento cambió en otro lugar, así que los comentarios seleccionados se deseleccionaron. Vuelva a seleccionarlos.
