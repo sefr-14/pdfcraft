@@ -696,8 +696,8 @@ pub struct PdfCraftApp {
     control: Option<control::Control>,
     /// A bookmark being renamed in the Bookmarks panel: (path, text so far).
     pub bookmark_rename: Option<(Vec<usize>, String)>,
-    /// This fork (COMMENTS.1): Delete selected (comments), waiting for its confirmation.
-    pub comment_delete: Option<crate::comments::delete_group::CommentDeleteDraft>,
+    // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72): Delete selected (comments), waiting for its confirmation.
+    // pub comment_delete: Option<crate::comments::delete_group::CommentDeleteDraft>,
     /// Bookmarks copied or cut in the Bookmarks panel, with their subtrees, ready to paste into
     /// any document. Destinations are page indices.
     pub bookmark_clipboard: Option<Vec<pdfcraft_engine::OutlineNode>>,

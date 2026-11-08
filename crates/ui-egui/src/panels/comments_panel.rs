@@ -1,4 +1,3 @@
-// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! The Comments panel (Acrobat's right-hand comment list; 11-visual-spec §3, audit `a15-*`).
 //!
 //! Header "Comments N" (comments, as Acrobat counts them) with "N replies" under it and search;
@@ -14,7 +13,6 @@ use pdfcraft_engine::{Edit, NoteIcon, ReviewState, Shape};
 use pdfcraft_render::{Annotation, DocInfo};
 
 use crate::canvas::DocView;
-use crate::comments::group::CommentKey;
 use crate::comments::{CommentPrefs, CommentTool, SortBy, color32, status_badge};
 use crate::panels::Nav;
 use crate::theme::{self, Tokens};
@@ -234,16 +232,6 @@ pub(crate) fn show(
             SortBy::Date => None,
         }
     };
-    // This fork (COMMENTS.1): the cards selected in the panel follow the active comment when it
-    // changes, and keep only cards still listed; the cards shown, in order, are what a
-    // Shift+Click range runs through (folded page groups' cards are not shown).
-    let stamp = crate::content_version(doc);
-    let active = view.comments.selected.and_then(|(p, i)| info.annotations.iter().find(|a| a.page == p && a.index == i));
-    view.comments.group.follow(active.map(|a| (CommentKey::of(a), a.is_comment())), stamp);
-    let listed: std::collections::HashSet<CommentKey> = roots.iter().map(|a| CommentKey::of(a)).collect();
-    view.comments.group.reconcile(&listed, stamp);
-    let shown: Vec<CommentKey> =
-        roots.iter().filter(|a| !(sort == SortBy::Page && view.comments.collapsed_pages.contains(&a.page))).map(|a| CommentKey::of(a)).collect();
     // A comment selected elsewhere (on the page, or just added) opens its folded group, or the
     // card it should scroll to would not be drawn.
     if view.comments.reveal
@@ -294,10 +282,7 @@ pub(crate) fn show(
         // A card with an editor open on it or on a reply is always drawn too (CodeRabbit on
         // #5583): a kept height would show it at its size before the editor opened.
         let editing = view.comments.editing.as_ref().is_some_and(|(p, i, _)| (*p, *i) == key || thread.iter().any(|r| (r.page, r.index) == (*p, *i)));
-        // This fork (COMMENTS.1): and whether it was among the selected cards, or their anchor.
-        let ck = CommentKey::of(a);
-        let grouped = (view.comments.group.contains(&ck), view.comments.group.is_anchor(&ck));
-        let id = ui.scope_id().with(("comment-card", view.id, key, card_signature(a, thread), selected, editing, grouped));
+        let id = ui.scope_id().with(("comment-card", view.id, key, card_signature(a, thread), selected, editing));
         // The selected card is always drawn, so it can scroll itself into view and keep its menu
         // and editor.
         if virtual_list && !selected && !editing && skip_if_hidden(ui, id) {
@@ -312,48 +297,7 @@ pub(crate) fn show(
             remember_height(ui, id, top);
         }
     }
-    // This fork (COMMENTS.1): a card clicked this frame, now that the cards shown are known.
-    if let Some((key, modifiers)) = view.comments.group.clicked.take() {
-        view.comments.group.click(key, modifiers, &shown, stamp);
-    }
     edit
-}
-
-/// This fork (COMMENTS.1): Delete, Collapse and Expand selected, for the selected cards (the
-/// group's own menu and the panel's "…" menu). Delete is offered only when the engine's dry run
-/// would delete them; Collapse and Expand fold the selected cards' page groups, which exist only
-/// when the panel is sorted by page.
-pub(crate) fn group_actions(ui: &mut egui::Ui, doc: &pdfcraft_engine::Document, view: &mut DocView, allowed: bool) {
-    let cv = &mut view.comments;
-    let annotations = &doc.info.annotations;
-    let targets = cv.group.targets(annotations);
-    let n = targets.len();
-    let deletable = allowed && !targets.is_empty() && doc.comments_deletion_preview(&targets).is_ok();
-    let label = crate::i18n::fmt(tl!("Delete selected ({n})"), &[("n", &n.to_string())]);
-    let button = ui
-        .add_enabled(deletable, egui::Button::new(label))
-        .on_disabled_hover_text(tl!("Some of these comments can't be deleted: one is locked, or the document doesn't allow it"));
-    if button.clicked() {
-        cv.delete_request = true;
-        ui.close();
-    }
-    let by_page = cv.sort == SortBy::Page;
-    let pages = cv.group.pages(annotations);
-    let fold = |ui: &mut egui::Ui, label: &str| {
-        ui.add_enabled(by_page && !pages.is_empty(), egui::Button::new(tl!(label))).on_disabled_hover_text(tl!("Sort by page to fold page groups"))
-    };
-    if fold(ui, "Collapse selected").clicked() {
-        for p in &pages {
-            if !cv.collapsed_pages.contains(p) {
-                cv.collapsed_pages.push(*p);
-            }
-        }
-        ui.close();
-    }
-    if fold(ui, "Expand selected").clicked() {
-        cv.collapsed_pages.retain(|p| !pages.contains(p));
-        ui.close();
-    }
 }
 
 /// The "Page N" group header with its fold chevron and comment count `n`; a click folds or
@@ -444,10 +388,8 @@ struct CardContext<'a> {
 }
 
 fn card(ui: &mut egui::Ui, view: &mut DocView, context: CardContext<'_>) -> Option<Edit> {
-    // `order` is for upstream's ⇧-click range; until SYNC.16k the panel's cards select through
-    // COMMENTS.1's group, which keeps its own order.
     let CardContext { theme: t, annotation: a, rotation, thread, order, doc, prefs, allowed, nav } = context;
-    let _ = order;
+    let info = &doc.info;
     let mut edit = None;
     let key = (a.page, a.index);
     let selected = view.comments.is_selected(key);
@@ -459,16 +401,7 @@ fn card(ui: &mut egui::Ui, view: &mut DocView, context: CardContext<'_>) -> Opti
     let marked = is_marked(thread);
     let replies: Vec<&&Annotation> = thread.iter().filter(|r| r.state.is_none()).collect();
     let editing = view.comments.editing.as_ref().is_some_and(|(p, i, _)| (*p, *i) == key);
-    // This fork (COMMENTS.1): a card among the selected ones is tinted; their anchor is outlined.
-    let ck = CommentKey::of(a);
-    let (member, anchor) = (view.comments.group.contains(&ck), view.comments.group.is_anchor(&ck));
-    let fill = if selected {
-        t.hover.gamma_multiply(0.7)
-    } else if member {
-        t.accent_soft
-    } else {
-        Color32::TRANSPARENT
-    };
+    let fill = if selected { t.hover.gamma_multiply(0.7) } else { Color32::TRANSPARENT };
     let mut open_menu = false;
     let mut more_rect = None;
     let frame = egui::Frame::NONE
@@ -609,9 +542,6 @@ fn card(ui: &mut egui::Ui, view: &mut DocView, context: CardContext<'_>) -> Opti
             (r, body.response.rect)
         });
     let rect = frame.response.rect;
-    if anchor {
-        ui.painter().rect_stroke(rect, CornerRadius::same(6), Stroke::new(1.0, t.accent), egui::StrokeKind::Inside);
-    }
     if selected {
         let bar = egui::Rect::from_min_size(rect.min, vec2(4.0, rect.height()));
         ui.painter().rect_filled(bar, CornerRadius { nw: 6, sw: 6, ne: 0, se: 0 }, CARD_ACCENT);
@@ -629,32 +559,20 @@ fn card(ui: &mut egui::Ui, view: &mut DocView, context: CardContext<'_>) -> Opti
         .interact(hit, ui.scope_id().with(("card", key)), Sense::click())
         .on_hover_cursor(egui::CursorIcon::PointingHand)
         .on_hover_text(crate::i18n::fmt(tl!("{kind} — click to show it on the page"), &[("kind", tl!(kind_label(a)))]));
-    // This fork (COMMENTS.1): Ctrl+Click and Shift+Click change only the cards selected in the
-    // panel, never the active comment, the view or the page; a plain click does what it always
-    // did and makes the card the whole selection.
-    let modifiers = ui.input(|i| i.modifiers);
     if click.clicked() {
-        view.comments.group.clicked = Some((ck, modifiers));
-        if !modifiers.command && !modifiers.shift {
-            view.comments.selected = Some(key);
-            view.comments.reply.clear();
-            *nav = Some(Nav::Flash(a.page, a.shown_rect(rotation)));
+        // ⌘/Ctrl-click adds the comment to the selection, as on the page; ⇧-click selects the
+        // cards from the one with the handles to this one, as lists do.
+        let modifiers = ui.input(|i| i.modifiers);
+        if modifiers.shift && !modifiers.command {
+            view.comments.select_range(order, key);
+        } else if modifiers.command {
+            view.comments.toggle(key);
+        } else {
+            view.comments.select_only(key);
         }
+        view.comments.reply.clear();
+        *nav = Some(Nav::Flash(a.page, a.shown_rect(rotation)));
     }
-    // A right-click on one of several selected cards opens their menu; on any other card it makes
-    // that card the selection and opens its own menu, without going to it (or changing the
-    // active comment).
-    if click.secondary_clicked() && !(member && view.comments.group.len() >= 2) {
-        view.comments.group.clicked = Some((ck, egui::Modifiers::NONE));
-    }
-    click.context_menu(|ui| {
-        ui.set_min_width(180.0);
-        if view.comments.group.contains(&ck) && view.comments.group.len() >= 2 {
-            group_actions(ui, doc, view, allowed);
-        } else if let Some(e) = card_items(ui, view, doc, prefs, a, marked) {
-            edit = Some(e);
-        }
-    });
     // On the selected card a double-click on the text edits it too (dragging over it selects
     // words of it, for copying).
     let body = (selected && !editing).then(|| ui.interact(body, ui.scope_id().with(("card-body", key)), Sense::click()));
@@ -673,66 +591,49 @@ fn card(ui: &mut egui::Ui, view: &mut DocView, context: CardContext<'_>) -> Opti
         .layout(Layout::top_down_justified(Align::Min))
         .show(|ui| {
             ui.set_min_width(160.0);
-            if let Some(e) = card_items(ui, view, doc, prefs, a, marked) {
-                edit = Some(e);
-            }
-        });
-    edit
-}
-
-/// A card's own menu (its "…" button, or a right-click): what it offers for that comment.
-fn card_items(
-    ui: &mut egui::Ui,
-    view: &mut DocView,
-    doc: &pdfcraft_engine::Document,
-    prefs: &CommentPrefs,
-    a: &Annotation,
-    marked: bool,
-) -> Option<Edit> {
-    let info = &doc.info;
-    let mut edit = None;
-    crate::comments::attachment_items(ui, view, info, a);
-    if ui.button(tl_ctx!("comment menu", "Edit")).clicked() {
-        view.comments.open_editor(a.page, a.index, a.contents.clone().unwrap_or_default());
-        ui.close();
-    }
-    ui.menu_button(tl!("Set status"), |ui| {
-        for s in [ReviewState::None, ReviewState::Accepted, ReviewState::Cancelled, ReviewState::Completed, ReviewState::Rejected] {
-            if ui.button(tl!(s.name())).clicked() {
-                edit = Some(Edit::SetAnnotationStatus { page: a.page, index: a.index, state: s, author: prefs.author.clone() });
+            crate::comments::attachment_items(ui, view, info, a);
+            if ui.button(tl_ctx!("comment menu", "Edit")).clicked() {
+                view.comments.open_editor(a.page, a.index, a.contents.clone().unwrap_or_default());
                 ui.close();
             }
-        }
-    });
-    if ui.button(tl!(if marked { "Remove checkmark" } else { "Mark with checkmark" })).clicked() {
-        edit = Some(Edit::MarkAnnotation { page: a.page, index: a.index, marked: !marked, author: prefs.author.clone() });
-        ui.close();
-    }
-    if ui.button(tl!("Copy text")).clicked() {
-        ui.ctx().copy_text(a.contents.clone().unwrap_or_default());
-        ui.close();
-    }
-    if ui.button(tl!("Properties…")).clicked() {
-        view.comments.props_request = Some((a.page, a.index));
-        ui.close();
-    }
-    if ui.add_enabled(crate::comments::defaultable(a), egui::Button::new(tl!("Make Current Properties Default"))).clicked() {
-        view.comments.default_request = Some((a.page, a.index));
-        ui.close();
-    }
-    if ui.button(tl!("Copy comment")).clicked() {
-        // The card's comment alone (the page's menu copies the whole selection).
-        view.comments.select_only((a.page, a.index));
-        view.comments.copy_request = true;
-        ui.close();
-    }
-    ui.separator();
-    // A locked reply can't be deleted, so it keeps the comment it answers too.
-    if ui.add_enabled(doc.annotation_deletable(a.page, a.index), egui::Button::new(tl!("Delete"))).clicked() {
-        view.comments.clear_selection();
-        edit = Some(Edit::DeleteAnnotation { page: a.page, index: a.index });
-        ui.close();
-    }
+            ui.menu_button(tl!("Set status"), |ui| {
+                for s in [ReviewState::None, ReviewState::Accepted, ReviewState::Cancelled, ReviewState::Completed, ReviewState::Rejected] {
+                    if ui.button(tl!(s.name())).clicked() {
+                        edit = Some(Edit::SetAnnotationStatus { page: a.page, index: a.index, state: s, author: prefs.author.clone() });
+                        ui.close();
+                    }
+                }
+            });
+            if ui.button(tl!(if marked { "Remove checkmark" } else { "Mark with checkmark" })).clicked() {
+                edit = Some(Edit::MarkAnnotation { page: a.page, index: a.index, marked: !marked, author: prefs.author.clone() });
+                ui.close();
+            }
+            if ui.button(tl!("Copy text")).clicked() {
+                ui.ctx().copy_text(a.contents.clone().unwrap_or_default());
+                ui.close();
+            }
+            if ui.button(tl!("Properties…")).clicked() {
+                view.comments.props_request = Some((a.page, a.index));
+                ui.close();
+            }
+            if ui.add_enabled(crate::comments::defaultable(a), egui::Button::new(tl!("Make Current Properties Default"))).clicked() {
+                view.comments.default_request = Some((a.page, a.index));
+                ui.close();
+            }
+            if ui.button(tl!("Copy comment")).clicked() {
+                // The card's comment alone (the page's menu copies the whole selection).
+                view.comments.select_only(key);
+                view.comments.copy_request = true;
+                ui.close();
+            }
+            ui.separator();
+            // A locked reply can't be deleted, so it keeps the comment it answers too.
+            if ui.add_enabled(doc.annotation_deletable(a.page, a.index), egui::Button::new(tl!("Delete"))).clicked() {
+                view.comments.clear_selection();
+                edit = Some(Edit::DeleteAnnotation { page: a.page, index: a.index });
+                ui.close();
+            }
+        });
     edit
 }
 
@@ -823,18 +724,9 @@ fn legible(c: Color32, t: &Tokens) -> Color32 {
 /// The Comments panel header's filter and sort controls (Acrobat: filter funnel and "…").
 /// The header's "…" (sort, hide all, summary, data exchange) and filter menus; returns a
 /// command to run.
-pub(crate) fn header_controls(
-    ui: &mut egui::Ui,
-    doc: &pdfcraft_engine::Document,
-    view: &mut DocView,
-    hidden: bool,
-    allowed: bool,
-) -> Option<&'static str> {
-    let info = &doc.info;
-    // This fork (COMMENTS.1): the menu starts with the selected cards' actions.
-    let grouped = !view.comments.group.is_empty();
+pub(crate) fn header_controls(ui: &mut egui::Ui, info: &DocInfo, view: &mut DocView, hidden: bool) -> Option<&'static str> {
     let mut command = None;
-    let cv = &view.comments;
+    let cv = &mut view.comments;
     let mut types: Vec<String> = info.annotations.iter().filter(|a| a.is_comment()).map(|a| kind_label(a).to_string()).collect();
     types.sort();
     types.dedup();
@@ -852,11 +744,6 @@ pub(crate) fn header_controls(
     let more = icons::button(ui, "ellipsis", 26.0, false, tl!("More options"));
     egui::Popup::menu(&more).show(|ui| {
         ui.set_min_width(220.0);
-        if grouped {
-            group_actions(ui, doc, view, allowed);
-            ui.separator();
-        }
-        let cv = &mut view.comments;
         ui.label(egui::RichText::new(tl!("Sort by")).small());
         for (s, label) in [
             (SortBy::Page, tl!("Page")),
@@ -906,7 +793,6 @@ pub(crate) fn header_controls(
     let filter = icons::button(ui, "filter", 26.0, active, tl!("Filter comments"));
     egui::Popup::menu(&filter).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
         ui.set_min_width(200.0);
-        let cv = &mut view.comments;
         let toggle = |ui: &mut egui::Ui, list: &mut Vec<String>, value: &str, label: &str| {
             let mut shown = !list.iter().any(|x| x == value);
             if ui.add(widgets::checkbox(&mut shown, label)).changed() {

@@ -1,3 +1,6 @@
+// INACTIVE — COMMENTS.1 fallback (SYNC.16 trial of upstream #3484). Not compiled: nothing
+// declares this module. Original: f3ccab72 (COMMENTS.1c), on 2d1dd6d9 / ff87c233 (COMMENTS.1b, 1a).
+// Restore: README.md in this folder, and FORK-CHANGES.md § COMMENTS.1 fallback.
 //! This fork (sefr-14/pdfcraft, COMMENTS.1): the cards selected in the Comments panel.
 //!
 //! A card stands for a comment and its replies. The selection is the panel's own: Ctrl+Click (⌘ on

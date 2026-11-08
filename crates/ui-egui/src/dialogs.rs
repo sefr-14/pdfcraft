@@ -50,8 +50,8 @@ struct Pending {
     field_props_now: bool,
     bulk_field_props_now: bool,
     redact_now: Option<Dialog>,
-    /// This fork (COMMENTS.1): Delete selected (comments) was confirmed.
-    delete_comments_now: bool,
+    // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72): Delete selected (comments) was confirmed.
+    // delete_comments_now: bool,
     import_words: bool,
     print_go: bool,
     revert_now: bool,
@@ -198,17 +198,17 @@ fn dialog_body(ui: &mut egui::Ui, app: &mut PdfCraftApp, dialog: Dialog, req: &m
                 return false;
             }
         }
-        // This fork (COMMENTS.1).
-        Dialog::DeleteComments => {
-            let Some(d) = app.comment_delete.as_ref() else {
-                req.close = true;
-                return false;
-            };
-            let (ok, cancel) = crate::comments::delete_group::body(ui, d, &t);
-            req.delete_comments_now = ok;
-            req.close = ok || cancel;
-            return false;
-        }
+        // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72):
+        // Dialog::DeleteComments => {
+        //     let Some(d) = app.comment_delete.as_ref() else {
+        //         req.close = true;
+        //         return false;
+        //     };
+        //     let (ok, cancel) = crate::comments::delete_group::body(ui, d, &t);
+        //     req.delete_comments_now = ok;
+        //     req.close = ok || cancel;
+        //     return false;
+        // }
         Dialog::RedactApply => {
             let marks = app.active_ids().and_then(|(_, id)| app.session.get(id)).map_or(0, |d| d.redaction_marks());
             let (ok, cancel) = crate::redact_ui::apply_body(ui, marks, &t);
@@ -1844,10 +1844,10 @@ fn finish_actions(app: &mut PdfCraftApp, req: &mut Pending) {
 
 /// Redaction, hidden-data and field-properties requests.
 fn finish_redactions_and_fields(app: &mut PdfCraftApp, req: &mut Pending) {
-    // This fork (COMMENTS.1).
-    if std::mem::take(&mut req.delete_comments_now) {
-        app.confirm_delete_comments();
-    }
+    // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72):
+    // if std::mem::take(&mut req.delete_comments_now) {
+    //     app.confirm_delete_comments();
+    // }
     match req.redact_now.take() {
         Some(Dialog::RedactPages) => app.redact_pages(),
         Some(Dialog::RedactSearch) => {
@@ -1991,8 +1991,8 @@ fn finish_close(app: &mut PdfCraftApp, dialog: Dialog, modal_closed: bool, req: 
         // Only now: the number in Preferences can pass through 0 on its way to the one wanted.
         app.recent.truncate(app.recent_limit);
         app.dialog = None;
-        // This fork (COMMENTS.1): a Delete selected that was cancelled.
-        app.comment_delete = None;
+        // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72): a Delete selected that was cancelled.
+        // app.comment_delete = None;
         app.props_draft = None;
         app.view_draft = None;
         app.custom_draft = None;

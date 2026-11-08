@@ -1,12 +1,15 @@
 //! This fork (COMMENTS.1): selecting several comment cards in the Comments panel, and Delete,
 //! Collapse and Expand selected, driven like a user would.
+//!
+//! SYNC.16: the selection these tests read is upstream's (`CommentView::selection`, #3484), on trial
+//! in place of COMMENTS.1's own; only the helpers that read it changed. The tests whose
+//! expectations upstream's model changes are kept verbatim, inactive, in `comments1_fallback.rs`,
+//! and upstream-model counterparts stand here in their place.
 
 use egui::{Key, Modifiers, Pos2, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use pdfcraft_engine::Edit;
 use pdfcraft_ui_egui::PdfCraftApp;
-use pdfcraft_ui_egui::comments::group::CommentKey;
 
 /// A PDF of `pages` pages (300 × 200) whose annotations are `annots`: (page, body) in order, as
 /// objects after the pages; `{N}` in a body is replaced by the object number of the annotation N
@@ -87,12 +90,17 @@ fn annot(h: &Harness<'static, PdfCraftApp>, text: &str) -> pdfcraft_render::Anno
     doc.info.annotations.iter().find(|a| a.contents.as_deref() == Some(text)).cloned().unwrap_or_else(|| panic!("no {text:?}"))
 }
 
-/// The texts of the selected cards, in list order.
+/// The texts of the selected comments (upstream's selection, the one with the handles among
+/// them), in list order.
 fn group(h: &Harness<'static, PdfCraftApp>) -> Vec<String> {
-    let id = h.state().views[0].id;
-    let doc = h.state().session.get(id).unwrap();
-    let g = h.state().views[0].comments.group();
-    doc.info.annotations.iter().filter(|a| g.contains(&CommentKey::of(a))).filter_map(|a| a.contents.clone()).collect()
+    group_of(h, 0)
+}
+
+fn group_of(h: &Harness<'static, PdfCraftApp>, view: usize) -> Vec<String> {
+    let v = &h.state().views[view];
+    let doc = h.state().session.get(v.id).unwrap();
+    let keys = v.comments.selection();
+    doc.info.annotations.iter().filter(|a| keys.contains(&(a.page, a.index))).filter_map(|a| a.contents.clone()).collect()
 }
 
 fn active(h: &Harness<'static, PdfCraftApp>) -> Option<String> {
@@ -120,13 +128,6 @@ fn click(h: &mut Harness<'static, PdfCraftApp>, text: &str, modifiers: Modifiers
     h.run_steps(3);
 }
 
-/// Where the document view is: its page, the first page's place on screen, and whether a
-/// comment was flashed or is being revealed.
-fn place(h: &Harness<'static, PdfCraftApp>) -> (usize, Option<egui::Rect>, bool, bool) {
-    let v = &h.state().views[0];
-    (v.current, v.page_screen_rect(0), v.flash.is_some(), v.comments.reveal)
-}
-
 /// Pick `item` from the menu open now.
 fn pick(h: &mut Harness<'static, PdfCraftApp>, item: &str) {
     h.get_by_label(item).click();
@@ -143,121 +144,6 @@ fn a_plain_click_selects_the_card_and_shows_it_as_before() {
 }
 
 #[test]
-fn ctrl_and_shift_select_cards_without_touching_the_page_or_the_active_comment() {
-    let mut h = harness(cards());
-    click(&mut h, "Card A", Modifiers::NONE);
-    h.state_mut().views[0].flash = None;
-    h.run_steps(2);
-    let before = place(&h);
-    click(&mut h, "Card C", Modifiers::COMMAND);
-    click(&mut h, "Card D", Modifiers::COMMAND);
-    assert_eq!(group(&h), ["Card A", "Card C", "Card D"]);
-    assert_eq!(active(&h).as_deref(), Some("Card A"), "the active comment stays");
-    assert_eq!(place(&h), before, "no page change, scroll, flash or reveal");
-    // Shift: the cards shown from the anchor (D) to B, in place of the selection.
-    click(&mut h, "Card B", Modifiers::SHIFT);
-    assert_eq!(group(&h), ["Card B", "Card C", "Card D"]);
-    assert_eq!(active(&h).as_deref(), Some("Card A"));
-    assert_eq!(place(&h), before);
-    // Ctrl+Click on the active card takes it out of the group; it stays active.
-    click(&mut h, "Card A", Modifiers::COMMAND);
-    click(&mut h, "Card A", Modifiers::COMMAND);
-    assert!(group(&h).contains(&"Card B".to_string()) && !group(&h).contains(&"Card A".to_string()));
-    assert_eq!(active(&h).as_deref(), Some("Card A"));
-}
-
-#[test]
-fn a_comment_chosen_on_the_page_becomes_the_selection() {
-    let mut h = harness(cards());
-    click(&mut h, "Card A", Modifiers::NONE);
-    click(&mut h, "Card C", Modifiers::COMMAND);
-    let d = annot(&h, "Card D");
-    h.state_mut().views[0].comments.selected = Some((d.page, d.index));
-    h.run_steps(3);
-    assert_eq!(group(&h), ["Card D"]);
-}
-
-/// Revision 3c: one Escape clears the active comment and the selected cards; a gesture in
-/// progress is cancelled first, on its own.
-#[test]
-fn one_escape_clears_the_active_comment_and_the_selected_cards() {
-    let mut h = harness(cards());
-    click(&mut h, "Card A", Modifiers::NONE);
-    click(&mut h, "Card B", Modifiers::COMMAND);
-    click(&mut h, "Card C", Modifiers::COMMAND);
-    h.key_press(Key::Escape);
-    h.run_steps(2);
-    assert_eq!((active(&h), group(&h).len()), (None, 0), "one press clears both");
-    // The active card taken out of the group first.
-    click(&mut h, "Card A", Modifiers::NONE);
-    click(&mut h, "Card B", Modifiers::COMMAND);
-    click(&mut h, "Card C", Modifiers::COMMAND);
-    click(&mut h, "Card A", Modifiers::COMMAND);
-    assert_eq!(group(&h), ["Card B", "Card C"]);
-    h.key_press(Key::Escape);
-    h.run_steps(2);
-    assert_eq!((active(&h), group(&h).len()), (None, 0));
-    // Only cards selected, no active comment.
-    click(&mut h, "Card B", Modifiers::COMMAND);
-    click(&mut h, "Card C", Modifiers::COMMAND);
-    assert_eq!(active(&h), None);
-    h.key_press(Key::Escape);
-    h.run_steps(2);
-    assert!(group(&h).is_empty());
-    // With the Comments panel closed (nothing else looks after the selection then), the press
-    // still clears both.
-    click(&mut h, "Card A", Modifiers::NONE);
-    click(&mut h, "Card B", Modifiers::COMMAND);
-    h.state_mut().choose_right_panel(None);
-    h.run_steps(2);
-    assert_eq!(h.state().views[0].comments.group().len(), 2);
-    h.key_press(Key::Escape);
-    h.run_steps(2);
-    assert_eq!(h.state().views[0].comments.selected, None);
-    assert!(h.state().views[0].comments.group().is_empty(), "one press, panel closed");
-    h.state_mut().set_option("panel", "comments").unwrap();
-    h.run_steps(3);
-    // A gesture in progress goes first, alone; the next press clears both.
-    click(&mut h, "Card A", Modifiers::NONE);
-    click(&mut h, "Card B", Modifiers::COMMAND);
-    h.state_mut().views[0].comments.gesture = Some(pdfcraft_ui_egui::comments::Gesture::Move { page: 0, index: 0, from: egui::pos2(1.0, 1.0) });
-    h.key_press(Key::Escape);
-    h.run_steps(2);
-    assert!(h.state().views[0].comments.gesture.is_none());
-    assert_eq!((active(&h).as_deref(), group(&h).len()), (Some("Card A"), 2), "the selection stays");
-    h.key_press(Key::Escape);
-    h.run_steps(2);
-    assert_eq!((active(&h), group(&h).len()), (None, 0));
-}
-
-/// Approved regression: with two cards selected, Delete and Backspace delete nothing, not even
-/// the active comment taken out of the group.
-#[test]
-fn delete_and_backspace_do_nothing_while_several_cards_are_selected() {
-    let mut h = harness(cards());
-    click(&mut h, "Card A", Modifiers::NONE);
-    click(&mut h, "Card C", Modifiers::COMMAND);
-    click(&mut h, "Card D", Modifiers::COMMAND);
-    click(&mut h, "Card A", Modifiers::COMMAND);
-    assert_eq!(group(&h), ["Card C", "Card D"]);
-    assert_eq!(active(&h).as_deref(), Some("Card A"));
-    let id = h.state().views[0].id;
-    let (before, undo) = (texts(&h), h.state().session.get(id).unwrap().can_undo().map(str::to_owned));
-    for key in [Key::Delete, Key::Backspace] {
-        h.key_press(key);
-        h.run_steps(3);
-    }
-    assert_eq!(texts(&h), before, "nothing deleted");
-    assert_eq!(h.state().session.get(id).unwrap().can_undo().map(str::to_owned), undo);
-    assert!(h.state().views[0].pending_edit.is_none());
-    // The active comment inside the group: nothing either.
-    click(&mut h, "Card A", Modifiers::COMMAND);
-    h.key_press(Key::Delete);
-    h.run_steps(3);
-    assert_eq!(texts(&h), before);
-}
-
-#[test]
 fn with_one_card_selected_the_keys_delete_as_before() {
     let mut h = harness(cards());
     click(&mut h, "Card C", Modifiers::NONE);
@@ -269,102 +155,7 @@ fn with_one_card_selected_the_keys_delete_as_before() {
 }
 
 #[test]
-fn a_right_click_keeps_a_group_and_elsewhere_selects_that_card_alone() {
-    let mut h = harness(cards());
-    click(&mut h, "Card A", Modifiers::NONE);
-    click(&mut h, "Card C", Modifiers::COMMAND);
-    let before = place(&h);
-    h.get_by_label("Card C").click_secondary();
-    h.run_steps(2);
-    assert_eq!(group(&h), ["Card A", "Card C"]);
-    h.get_by_label("Delete selected (2)");
-    h.key_press(Key::Escape);
-    h.run_steps(2);
-    // Outside the group: that card alone, its own menu, no navigation, the active comment kept.
-    click(&mut h, "Card A", Modifiers::NONE);
-    click(&mut h, "Card C", Modifiers::COMMAND);
-    h.state_mut().views[0].flash = None;
-    h.get_by_label("Card D").click_secondary();
-    h.run_steps(2);
-    assert_eq!(group(&h), ["Card D"]);
-    assert_eq!(active(&h).as_deref(), Some("Card A"));
-    assert_eq!(place(&h).0, before.0);
-    assert!(h.state().views[0].flash.is_none());
-    h.get_by_label("Properties…");
-}
-
-#[test]
-fn delete_selected_asks_once_with_the_counts_and_is_one_undo_step() {
-    let mut h = harness(cards());
-    click(&mut h, "Card B", Modifiers::NONE);
-    click(&mut h, "Card D", Modifiers::COMMAND);
-    h.state_mut().views[0].flash = None;
-    let before_place = place(&h);
-    let before = texts(&h);
-    h.get_by_label("Card D").click_secondary();
-    h.run_steps(2);
-    pick(&mut h, "Delete selected (2)");
-    // B goes with b1 and b2.
-    h.get_by_label("Delete 2 comments and 2 replies?");
-    // Cancel: nothing changes.
-    pick(&mut h, "Cancel");
-    assert_eq!(texts(&h), before);
-    assert!(h.state().dialog.is_none());
-    // Again, and Delete.
-    h.get_by_label("Card D").click_secondary();
-    h.run_steps(2);
-    pick(&mut h, "Delete selected (2)");
-    h.query_all_by_label("Delete").last().expect("the dialog's Delete").click();
-    h.run_steps(4);
-    assert_eq!(texts(&h), ["Card A", "Card C", "Card E"]);
-    assert!(group(&h).is_empty());
-    assert_eq!(active(&h), None, "the active comment went with them");
-    assert_eq!((place(&h).0, place(&h).1), (before_place.0, before_place.1), "the page view never moved");
-    let id = h.state().views[0].id;
-    assert_eq!(h.state().session.get(id).unwrap().can_undo(), Some("Delete comments"));
-    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
-    h.run_steps(3);
-    assert_eq!(texts(&h), before, "one undo puts them all back");
-}
-
-#[test]
-fn after_a_bulk_delete_the_active_comment_keeps_its_place() {
-    let mut h = harness(cards());
-    // E is active; A and B (before nothing of E's) and C are deleted.
-    click(&mut h, "Card E", Modifiers::NONE);
-    click(&mut h, "Card A", Modifiers::COMMAND);
-    click(&mut h, "Card E", Modifiers::COMMAND);
-    click(&mut h, "Card B", Modifiers::COMMAND);
-    assert_eq!(group(&h), ["Card A", "Card B"]);
-    h.state_mut().ask_delete_comments();
-    h.run_steps(2);
-    h.state_mut().confirm_delete_comments();
-    h.run_steps(3);
-    assert_eq!(texts(&h), ["Card C", "Card D", "Card E"]);
-    assert_eq!(active(&h).as_deref(), Some("Card E"), "found again by its object");
-}
-
-/// The confirmation holds the document version its counts came from: confirmed after a change
-/// (here, made in another tab), it deletes nothing.
-#[test]
-fn a_confirmation_from_before_a_change_deletes_nothing() {
-    let mut h = harness(cards());
-    click(&mut h, "Card A", Modifiers::NONE);
-    click(&mut h, "Card C", Modifiers::COMMAND);
-    h.state_mut().ask_delete_comments();
-    h.run_steps(1);
-    assert!(h.state().comment_delete.is_some());
-    let id = h.state().views[0].id;
-    let e = annot(&h, "Card E");
-    h.state_mut().session.apply(id, Edit::SetAnnotationContents { page: e.page, index: e.index, text: "Card E2".into() }).unwrap();
-    let before = texts(&h);
-    h.state_mut().confirm_delete_comments();
-    h.run_steps(2);
-    assert_eq!(texts(&h), before, "nothing deleted");
-    assert!(h.state().toast.as_ref().is_some_and(|(m, _)| m.contains("changed")), "{:?}", h.state().toast);
-}
-
-#[test]
+#[ignore = "SYNC.16f: Collapse and Expand selected return over upstream's selection in SYNC.16g"]
 fn collapse_and_expand_selected_fold_the_selected_cards_page_groups() {
     let mut h = harness(cards());
     click(&mut h, "Card A", Modifiers::NONE);
@@ -392,19 +183,6 @@ fn collapse_and_expand_selected_fold_the_selected_cards_page_groups() {
     h.run_steps(2);
     pick(&mut h, "Collapse selected");
     assert!(h.state().views[0].comments.collapsed_pages.is_empty(), "disabled when sorted by author");
-}
-
-#[test]
-fn a_filter_drops_the_cards_it_hides_and_a_sort_keeps_the_selection() {
-    let mut h = harness(cards());
-    click(&mut h, "Card A", Modifiers::NONE);
-    click(&mut h, "Card C", Modifiers::COMMAND);
-    h.state_mut().views[0].comments.sort = pdfcraft_ui_egui::comments::SortBy::Date;
-    h.run_steps(3);
-    assert_eq!(group(&h), ["Card A", "Card C"]);
-    h.state_mut().views[0].comments.search = Some("Card C".into());
-    h.run_steps(3);
-    assert_eq!(group(&h), ["Card C"]);
 }
 
 #[test]
@@ -453,6 +231,118 @@ fn each_tab_keeps_its_own_selection_and_a_duplicate_starts_empty() {
     h.run_steps(4);
     let views = &h.state().views;
     assert_eq!(views.len(), 2);
-    assert!(views[1].comments.group().is_empty(), "a duplicate tab starts with no selection");
-    assert_eq!(views[0].comments.group().len(), 2, "the first tab keeps its own");
+    assert!(group_of(&h, 1).is_empty(), "a duplicate tab starts with no selection");
+    assert_eq!(group_of(&h, 0).len(), 2, "the first tab keeps its own");
+}
+
+// SYNC.16: upstream-model counterparts of the COMMENTS.1 tests kept in `comments1_fallback.rs`.
+
+/// Counterpart of `ctrl_and_shift_select_cards_without_touching_the_page_or_the_active_comment`:
+/// in upstream's model (#3484) Ctrl+Click (⌘ on macOS) adds a card and gives it the handles, and
+/// Shift+Click selects the cards shown from the one with the handles.
+#[test]
+fn ctrl_and_shift_in_the_panel_select_with_the_handles_on_the_last_clicked() {
+    let mut h = harness(cards());
+    click(&mut h, "Card A", Modifiers::NONE);
+    assert_eq!((group(&h), active(&h).as_deref()), (vec!["Card A".to_string()], Some("Card A")));
+    click(&mut h, "Card C", Modifiers::COMMAND);
+    assert_eq!((group(&h), active(&h).as_deref()), (vec!["Card A".to_string(), "Card C".to_string()], Some("Card C")));
+    click(&mut h, "Card D", Modifiers::SHIFT);
+    assert_eq!(group(&h), ["Card C", "Card D"], "from the card with the handles to the one clicked");
+    // Ctrl+Click on the card with the handles takes it out; another selected card takes them.
+    click(&mut h, "Card C", Modifiers::COMMAND);
+    assert_eq!((group(&h), active(&h).as_deref()), (vec!["Card D".to_string()], Some("Card D")));
+}
+
+/// Counterpart of `delete_and_backspace_do_nothing_while_several_cards_are_selected`: in
+/// upstream's model Delete and Backspace delete every selected comment, their replies with
+/// them, as one undo step.
+#[test]
+fn delete_and_backspace_delete_every_selected_comment_as_one_undo_step() {
+    for key in [Key::Delete, Key::Backspace] {
+        let mut h = harness(cards());
+        let all = texts(&h);
+        click(&mut h, "Card B", Modifiers::NONE);
+        click(&mut h, "Card D", Modifiers::COMMAND);
+        h.key_press(key);
+        h.run_steps(3);
+        assert_eq!(texts(&h), ["Card A", "Card C", "Card E"], "{key:?}: B with its replies, and D");
+        assert!(group(&h).is_empty(), "{key:?}");
+        assert!(h.state_mut().execute("edit.undo"));
+        h.run_steps(3);
+        assert_eq!(texts(&h), all, "{key:?}: one undo step brings them all back");
+    }
+}
+
+/// Counterpart of `one_escape_clears_the_active_comment_and_the_selected_cards`: one Escape
+/// clears every selected comment, with the Comments panel open or closed.
+#[test]
+fn one_escape_clears_every_selected_comment() {
+    let mut h = harness(cards());
+    click(&mut h, "Card A", Modifiers::NONE);
+    click(&mut h, "Card B", Modifiers::COMMAND);
+    click(&mut h, "Card C", Modifiers::COMMAND);
+    h.key_press(Key::Escape);
+    h.run_steps(2);
+    assert_eq!((active(&h), group(&h).len()), (None, 0), "one press clears them all");
+    click(&mut h, "Card A", Modifiers::NONE);
+    click(&mut h, "Card B", Modifiers::COMMAND);
+    h.state_mut().choose_right_panel(None);
+    h.run_steps(2);
+    assert_eq!(group(&h).len(), 2);
+    h.key_press(Key::Escape);
+    h.run_steps(2);
+    assert!(group(&h).is_empty(), "one press, panel closed");
+}
+
+/// Counterpart of `a_comment_chosen_on_the_page_becomes_the_selection`: choosing one comment
+/// alone (`select_only`, what a plain click on the page or a card does) replaces the selection.
+/// Clicks on the page itself are upstream's tests (`ctrl_click_selects_several_comments_and_delete_removes_them_all`).
+#[test]
+fn choosing_a_comment_alone_replaces_the_selection() {
+    let mut h = harness(cards());
+    click(&mut h, "Card A", Modifiers::NONE);
+    click(&mut h, "Card C", Modifiers::COMMAND);
+    let d = annot(&h, "Card D");
+    h.state_mut().views[0].comments.select_only((d.page, d.index));
+    h.run_steps(3);
+    assert_eq!(group(&h), ["Card D"]);
+}
+
+/// Counterpart of `a_filter_drops_the_cards_it_hides_and_a_sort_keeps_the_selection`. A sort
+/// keeps the selection, as before. In upstream's model a search that hides a selected card keeps
+/// it selected (COMMENTS.1 dropped it), so Delete would delete it too: this pins that difference
+/// for the owner's evaluation.
+#[test]
+fn a_sort_keeps_the_selection_and_a_search_keeps_hidden_cards_selected() {
+    let mut h = harness(cards());
+    click(&mut h, "Card A", Modifiers::NONE);
+    click(&mut h, "Card C", Modifiers::COMMAND);
+    h.state_mut().views[0].comments.sort = pdfcraft_ui_egui::comments::SortBy::Date;
+    h.run_steps(3);
+    assert_eq!(group(&h), ["Card A", "Card C"]);
+    h.state_mut().views[0].comments.search = Some("Card C".into());
+    h.run_steps(3);
+    assert_eq!(group(&h), ["Card A", "Card C"], "upstream keeps the hidden card selected");
+}
+
+/// Counterpart of `a_right_click_keeps_a_group_and_elsewhere_selects_that_card_alone`: in
+/// upstream's model each selected card has a "More" menu (no right-click menu on cards), which
+/// acts on that card; its Copy comment selects it alone.
+#[test]
+fn a_cards_copy_comment_selects_that_card_alone() {
+    let mut h = harness(cards());
+    click(&mut h, "Card A", Modifiers::NONE);
+    click(&mut h, "Card C", Modifiers::COMMAND);
+    // Card C's own "More" button: the one on the header row just above its text.
+    let body = h.get_by_label("Card C").rect();
+    let more = h
+        .query_all_by_label("More")
+        .filter(|n| n.rect().bottom() <= body.top() + 1.0)
+        .max_by(|a, b| a.rect().top().total_cmp(&b.rect().top()))
+        .expect("Card C's More button");
+    more.click();
+    h.run_steps(3);
+    pick(&mut h, "Copy comment");
+    assert_eq!(group(&h), ["Card C"]);
 }

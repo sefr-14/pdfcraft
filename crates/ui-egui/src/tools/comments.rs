@@ -28,9 +28,12 @@ mod input;
 mod menu;
 mod paint;
 mod state;
-// This fork (COMMENTS.1): several cards selected in the Comments panel, and deleting them.
-pub mod delete_group;
-pub mod group;
+// COMMENTS.1 fallback (inactive, SYNC.16): the panel's own card selection and its confirmed
+// Delete selected (f3ccab72). The sources are kept, not compiled, in `comments/comments1_fallback/`;
+// its README says how to bring them back. Upstream's selection (`CommentView::{selected, also}`,
+// #3484) is the one in use.
+// pub mod delete_group;
+// pub mod group;
 
 pub(crate) use composer::{composer, submit_key};
 #[cfg(test)]

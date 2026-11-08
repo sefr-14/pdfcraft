@@ -191,11 +191,10 @@ pub struct CommentView {
     pub tool_done: bool,
     /// What the inline editor (`editing`) does with the keyboard the next time it is drawn.
     pub(crate) editor_focus: Option<EditorFocus>,
-    /// This fork (COMMENTS.1): the cards selected in the Comments panel, apart from the active
-    /// comment (`selected`), and what the bulk actions act on (see [`super::group`]).
-    pub(crate) group: super::group::Group,
-    /// Delete selected was asked for from the panel: the app confirms it.
-    pub delete_request: bool,
+    // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72): the cards selected in the Comments panel,
+    // apart from the active comment, and the panel's Delete selected request.
+    // pub(crate) group: super::group::Group,
+    // pub delete_request: bool,
 }
 
 /// A one-off change to the keyboard focus of the Comments panel's inline editor. The editor
@@ -309,16 +308,11 @@ impl CommentView {
     /// page, so a (page, index) held here may now name another one. The selection and the inline
     /// editor close, its unsaved text with it, rather than Save writing that text over whatever
     /// took its place.
-    /// This fork (COMMENTS.1): the cards selected in the Comments panel.
-    pub fn group(&self) -> &super::group::Group {
-        &self.group
-    }
-
     pub(crate) fn history_stepped(&mut self) {
         self.clear_selection();
         self.editing = None;
         self.editor_focus = None;
-        self.group.clear();
+        // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72): self.group.clear();
     }
 }
 

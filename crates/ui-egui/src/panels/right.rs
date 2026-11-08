@@ -90,7 +90,7 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                         }
                         // Right to left: close, "…", filter, search (Acrobat's order left to right).
                         if panel == RightPanel::Comments {
-                            panel_command = crate::comments_panel::header_controls(ui, doc, view, doc.comments_hidden(), comment_allowed);
+                            panel_command = crate::comments_panel::header_controls(ui, &doc.info, view, doc.comments_hidden());
                         }
                         if panel == RightPanel::Comments
                             && icons::button(ui, "search", 26.0, view.comments.search.is_some(), tl!("Search comments")).clicked()
@@ -437,10 +437,10 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
         }
         None => {}
     }
-    // This fork (COMMENTS.1): Delete selected, confirmed first.
-    if app.views.get_mut(index).is_some_and(|v| std::mem::take(&mut v.comments.delete_request)) {
-        app.ask_delete_comments();
-    }
+    // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72): Delete selected, confirmed first.
+    // if app.views.get_mut(index).is_some_and(|v| std::mem::take(&mut v.comments.delete_request)) {
+    //     app.ask_delete_comments();
+    // }
     if let Some((p, i)) = app.views.get_mut(index).and_then(|v| v.comments.default_request.take()) {
         app.make_comment_default(p, i);
     }

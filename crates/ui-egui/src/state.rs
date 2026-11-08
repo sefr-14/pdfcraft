@@ -137,8 +137,8 @@ pub enum Dialog {
     RedactSearch,
     RedactProps,
     RedactApply,
-    /// This fork (COMMENTS.1): Delete selected (comments) confirmation.
-    DeleteComments,
+    // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72): Delete selected (comments) confirmation.
+    // DeleteComments,
     /// File ▸ Print.
     Print,
     /// File ▸ Revert confirmation.

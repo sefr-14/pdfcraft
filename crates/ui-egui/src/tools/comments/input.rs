@@ -703,15 +703,15 @@ pub(crate) fn keys(ctx: &egui::Context, view: &mut DocView, tool: &mut QuickTool
     if escape && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         // One step back per press: cancel the gesture, then deselect, then drop the tool (a
         // comment tool, or a Fill & Sign one: its Text tool would otherwise open a box at every
-        // click with no way out by the keyboard). This fork (COMMENTS.1): deselecting drops the
-        // active comment and the cards selected in the panel together, in one press.
+        // click with no way out by the keyboard).
         let cancelled = if cv.gesture.take().is_some() {
             true
         } else {
             let active = cv.selected.is_some();
             cv.clear_selection();
-            let group = cv.group.clear();
-            active || group
+            // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72): deselecting also dropped the cards selected in the panel,
+            // `let group = cv.group.clear(); active || group`.
+            active
         };
         let dropped = !cancelled && matches!(tool, QuickTool::Comment(_) | QuickTool::Fill(_));
         if dropped {
@@ -722,11 +722,10 @@ pub(crate) fn keys(ctx: &egui::Context, view: &mut DocView, tool: &mut QuickTool
             ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
         }
     }
-    // This fork (COMMENTS.1): with several cards selected in the panel, the keys delete nothing
-    // (not even the active comment); Delete selected, which asks first, deletes them.
+    // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72): with several cards selected in the panel the keys deleted nothing,
+    // `&& cv.group.len() < 2`; upstream's Delete and Backspace delete every selected comment.
     if allowed
         && !measuring
-        && cv.group.len() < 2
         && cv.selected.is_some()
         && ctx.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace))
         && let Some(edit) = delete_selected(cv)

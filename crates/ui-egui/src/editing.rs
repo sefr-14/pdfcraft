@@ -93,7 +93,7 @@ fn select_after_edit(
                 view.comments.editor_focus = None;
             }
             view.comments.also.clear();
-            view.comments.group.clear();
+            // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72): view.comments.group.clear();
         }
         // A group moved together stays selected (its positions don't change), so it
         // can be moved or copied again; anything else in a batch clears the selection.

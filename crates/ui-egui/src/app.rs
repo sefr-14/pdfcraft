@@ -284,7 +284,7 @@ impl PdfCraftApp {
             fonts_cjk: theme::CjkPreference::Default,
             control: None,
             bookmark_rename: None,
-            comment_delete: None,
+            // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72): comment_delete: None,
             bookmark_clipboard: None,
             last_opened_url: None,
             pending_link: None,
