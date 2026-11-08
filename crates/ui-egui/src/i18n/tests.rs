@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 use super::*;
 
 const JA: fn() -> Lang = || Lang::from_code("ja").expect("ja registered");
@@ -1556,4 +1557,95 @@ fn image_paste_and_home_notifications_are_translated() {
             }
         }
     }
+}
+
+// This fork (sefr-14/pdfcraft, SYNC.16): PDF Overlay's rows over craft-i18n's, which `build.rs`
+// merges into each locale's app catalog: the overlay file's rows first, then craft-i18n's
+// "PdfCraft" rows with the name written "PDF Overlay", then craft-i18n's.
+
+/// The overlay catalog of `code` (`src/i18n/overlay/<code>.tsv`), `""` without one.
+fn overlay(code: &str) -> String {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/i18n/overlay").join(format!("{code}.tsv"));
+    std::fs::read_to_string(path).unwrap_or_default()
+}
+
+/// Every overlay file is for a language PDF Overlay offers: a row for any other one would be
+/// read by nothing.
+#[test]
+fn every_overlay_catalog_is_for_an_offered_language() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/i18n/overlay");
+    let mut files = 0;
+    for entry in std::fs::read_dir(dir).expect("the overlay catalogs").flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let code = name.strip_suffix(".tsv").unwrap_or_else(|| panic!("{name}: overlay catalogs are <code>.tsv"));
+        assert!(LANGUAGES.iter().any(|l| l.code == code), "{name}: {code} isn't one of the offered languages");
+        assert!(!rows(&overlay(code)).is_empty(), "{name} has no rows");
+        files += 1;
+    }
+    assert!(files >= 20, "{files} overlay catalogs");
+}
+
+/// Each of the fork's rows is what the interface shows, in every language that has them: the
+/// overlay wins over craft-i18n's own row for the same text.
+#[test]
+fn the_forks_rows_win_over_craft_i18n_in_every_language() {
+    needs_catalogs!();
+    let mut checked = 0;
+    for lang in Lang::all() {
+        for (context, source, translation) in rows(&overlay(lang.code())) {
+            let shown = match context.as_str() {
+                "" => tr(lang, &source),
+                c if c.starts_with('@') => continue,
+                c => tr_ctx(lang, c, &source),
+            };
+            assert_eq!(shown, translation, "{}: {source:?}", lang.code());
+            checked += 1;
+        }
+    }
+    assert!(checked >= 900, "{checked} rows checked");
+}
+
+/// The fork's own labels are in Spanish (the owner's localisation policy): Overlay compare,
+/// Duplicate Tab and Tile View, the updates, measuring, rulers and guides.
+#[test]
+fn spanish_shows_the_forks_own_labels() {
+    needs_catalogs!();
+    let es = Lang::from_code("es").expect("es registered");
+    let sections = overlay("es").lines().filter(|l| l.starts_with("# This fork (sefr-14/pdfcraft): ")).count();
+    assert!(sections >= 10, "{sections} fork sections in the Spanish overlay");
+    assert!(rows(&overlay("es")).len() >= 80, "the Spanish overlay's rows");
+    for (english, spanish) in [("Overlay compare…", "Comparar por superposición…"), ("Overlay two revisions", "Superponer dos revisiones")] {
+        assert_eq!(tr(es, english), spanish);
+    }
+}
+
+/// A string this fork shows with its own name has the translation of upstream's with
+/// "PdfCraft", the name changed, in every language (unless the overlay has its own row).
+#[test]
+fn rebranded_strings_take_upstreams_translation_with_the_forks_name() {
+    needs_catalogs!();
+    let mut checked = 0;
+    for lang in Lang::all().filter(|l| l.code() != "en") {
+        let own: std::collections::HashSet<String> = rows(&overlay(lang.code())).into_iter().map(|(_, source, _)| source).collect();
+        for (context, source, _) in lang.catalog_texts().flat_map(rows) {
+            // The overlay's own rows aren't rebranded ("Upstream PdfCraft on GitHub" names
+            // upstream on purpose).
+            if !context.is_empty() || !source.contains("PdfCraft") || own.contains(&source) {
+                continue;
+            }
+            let branded = source.replace("PdfCraft", "PDF Overlay");
+            if own.contains(&branded) {
+                continue;
+            }
+            assert_eq!(tr(lang, &branded), tr(lang, &source).replace("PdfCraft", "PDF Overlay"), "{}: {branded:?}", lang.code());
+            checked += 1;
+        }
+    }
+    assert!(checked >= 500, "{checked} rebranded rows checked");
+    let de = Lang::from_code("de").expect("de registered");
+    assert_ne!(
+        tr(de, "PDF Overlay works offline. No telemetry, no account, and no cloud processing unless you add a provider."),
+        "PDF Overlay works offline. No telemetry, no account, and no cloud processing unless you add a provider.",
+        "the start-page promise is translated"
+    );
 }
