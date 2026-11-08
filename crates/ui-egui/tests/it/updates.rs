@@ -444,6 +444,9 @@ fn an_installed_update_clears_its_postponement() {
 
 #[test]
 fn spanish_has_the_approved_wording() {
+    if crate::support::skip_without_catalogs("spanish_has_the_approved_wording") {
+        return;
+    }
     let mut h = checked(Setup::new(Ok(Check::Available(offer(7)))));
     h.state_mut().set_option("language", "es").unwrap();
     h.run_steps(3);

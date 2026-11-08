@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Bake the contributor credits into the binary as static Rust tables, and embed the craft-i18n
 //! interface catalogs. Nothing is read at run time.
 //!
@@ -43,6 +44,8 @@ const APP_CATALOG: &str = "pdfcraft.tsv";
 fn craft_i18n() -> String {
     println!("cargo::rerun-if-env-changed=CRAFT_I18N_DIR");
     println!("cargo::rerun-if-env-changed=CRAFT_I18N_REQUIRED");
+    // This fork (SYNC.16): an overlay catalog added or removed.
+    println!("cargo::rerun-if-changed={OVERLAY_DIR}");
     let required = std::env::var("CRAFT_I18N_REQUIRED").is_ok_and(|v| v.trim() == "1");
     let entries = match std::env::var_os("CRAFT_I18N_DIR").filter(|d| !d.is_empty()) {
         // Not canonicalized: on Windows that gives `\\?\C:\…`, which `include_str!` can't read.
@@ -61,15 +64,104 @@ fn craft_i18n() -> String {
             Vec::new()
         }
     };
+    let out_dir = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap_or_default());
     let mut o = String::from("/// (locale, shared catalog, PdfCraft's catalog), one entry per locale; `\"\"` for a missing file.\n");
     o.push_str("pub static CRAFT_I18N: &craft_i18n::Embedded = &[\n");
     for (code, shared, app) in entries {
+        // This fork (SYNC.16): the app catalog with PDF Overlay's own rows over it, written to
+        // OUT_DIR; craft-i18n's as it is when that can't be made.
+        let app = overlay_catalog(&code, shared.as_deref(), &app, &out_dir).unwrap_or(app);
         // `{:?}` escapes the path (Windows backslashes) as a Rust string literal.
         let shared = shared.map_or_else(|| "\"\"".to_string(), |p| format!("include_str!({p:?})"));
         let _ = writeln!(o, "    ({code:?}, {shared}, include_str!({app:?})),");
     }
     o.push_str("];\n");
     o
+}
+
+/// This fork (sefr-14/pdfcraft, SYNC.16): PDF Overlay's own rows, read over each locale's
+/// craft-i18n `pdfcraft.tsv`, one file per locale in this directory.
+const OVERLAY_DIR: &str = "src/i18n/overlay";
+
+/// The product name as craft-i18n's catalogs write it, and as this fork shows it.
+const UPSTREAM_NAME: &str = "PdfCraft";
+const FORK_NAME: &str = "PDF Overlay";
+
+/// This fork (SYNC.16): the app catalog PDF Overlay embeds for one locale, written to `out_dir`
+/// and returned as its path. Its rows, first match winning, are:
+///
+/// 1. the locale's overlay file (`src/i18n/overlay/<code>.tsv`): the fork's own labels, as the
+///    fork's in-repo catalogs had them;
+/// 2. every craft-i18n row (shared or app) whose source names `PdfCraft`, again with the name
+///    written `PDF Overlay` in its source and translation: the strings this fork rebrands;
+/// 3. craft-i18n's `pdfcraft.tsv`, less the rows 1 and 2 replace.
+///
+/// craft-i18n keeps the first of two rows with one key and logs the second, so nothing is
+/// written twice. `None` (with a warning) when a file can't be read or written: the caller then
+/// embeds craft-i18n's catalog as it is.
+fn overlay_catalog(code: &str, shared: Option<&std::path::Path>, app: &std::path::Path, out_dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    let read = |p: &std::path::Path| match std::fs::read_to_string(p) {
+        Ok(t) => Some(t),
+        Err(e) => {
+            println!("cargo::warning=reading {}: {e}; PDF Overlay's rows are left out", p.display());
+            None
+        }
+    };
+    let app_text = read(app)?;
+    let shared_text = match shared {
+        Some(p) => read(p)?,
+        None => String::new(),
+    };
+    let overlay_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(OVERLAY_DIR).join(format!("{code}.tsv"));
+    println!("cargo::rerun-if-changed={}", overlay_path.display());
+    let overlay_text = if overlay_path.is_file() { read(&overlay_path)? } else { String::new() };
+    let text = merge_overlay(&overlay_text, &shared_text, &app_text);
+    let out = out_dir.join(format!("craft_i18n_{code}.tsv"));
+    match std::fs::write(&out, text) {
+        Ok(()) => Some(out),
+        Err(e) => {
+            println!("cargo::warning=writing {}: {e}; PDF Overlay's rows are left out", out.display());
+            None
+        }
+    }
+}
+
+/// The (context, source) key of a catalog row, or `None` for a comment, a blank line or a row
+/// without three columns (craft-i18n reports those itself).
+fn row_key(line: &str) -> Option<(&str, &str)> {
+    if line.is_empty() || line.starts_with('#') {
+        return None;
+    }
+    let mut columns = line.split('\t');
+    let (context, source, _) = (columns.next()?, columns.next()?, columns.next()?);
+    Some((context, source))
+}
+
+/// See [`overlay_catalog`]: the overlay's rows, the rebranded rows, then the app catalog's rows
+/// neither replaces.
+fn merge_overlay(overlay: &str, shared: &str, app: &str) -> String {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = String::new();
+    let mut push = |out: &mut String, line: &str| {
+        if let Some((context, source)) = row_key(line)
+            && seen.insert((context.to_string(), source.to_string()))
+        {
+            out.push_str(line);
+            out.push('\n');
+        }
+    };
+    for line in overlay.lines() {
+        push(&mut out, line);
+    }
+    for line in app.lines().chain(shared.lines()) {
+        if row_key(line).is_some_and(|(_, source)| source.contains(UPSTREAM_NAME)) {
+            push(&mut out, &line.replace(UPSTREAM_NAME, FORK_NAME));
+        }
+    }
+    for line in app.lines() {
+        push(&mut out, line);
+    }
+    out
 }
 
 /// One embedded locale: its code, its `common.tsv` if it has one, and its PdfCraft catalog.

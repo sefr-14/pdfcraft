@@ -156,6 +156,9 @@ fn other_ways_to_combine_and_other_cards_are_unchanged() {
 
 #[test]
 fn the_cards_are_translated_in_spanish() {
+    if crate::support::skip_without_catalogs("the_cards_are_translated_in_spanish") {
+        return;
+    }
     let h = harness("es");
     for label in ["Combinar archivos", "Comparar archivos"] {
         assert_eq!(cards(&h, label), 1, "{label} card");
