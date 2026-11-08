@@ -181,3 +181,26 @@ fn a_selection_made_before_a_change_is_dropped_and_moves_nothing() {
     h.run_steps(2);
     assert!(selected(&h).is_empty());
 }
+
+/// SYNC.16 (D-A3): upstream's Cut, Copy and Paste take one bookmark and its subtree; the menu of a
+/// selected group shows them disabled, so none of them acts on the group (or on one of it).
+#[test]
+fn cut_copy_and_paste_are_not_offered_for_a_group() {
+    let mut h = harness(NESTED);
+    // Something to paste: B, copied from its own menu.
+    menu(&mut h, "B", "Copy");
+    let clipboard = h.state().bookmark_clipboard.clone();
+    assert!(clipboard.is_some(), "a single bookmark copies");
+    click(&mut h, "a1", Modifiers::NONE);
+    click(&mut h, "a2", Modifiers::COMMAND);
+    for item in ["Cut", "Copy", "Paste"] {
+        menu(&mut h, "a1", item);
+        assert_eq!(outline(&h), "A[a1,a2],B", "{item} changes nothing");
+        assert_eq!(h.state().bookmark_clipboard, clipboard, "{item} leaves the clipboard");
+        assert_eq!(selected(&h), [vec![0, 0], vec![0, 1]], "{item}: the group stays selected");
+        h.key_press(Key::Escape);
+        h.run_steps(2);
+        click(&mut h, "a1", Modifiers::NONE);
+        click(&mut h, "a2", Modifiers::COMMAND);
+    }
+}
