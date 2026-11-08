@@ -12,6 +12,9 @@
 # - The ArtCraft marks are left out of this build (crates/ui-egui/src/widgets.rs), as the
 #   ArtCraft brand licence (docs/brand/LICENSE-brand.txt) requires for published modified versions.
 # - The zip carries the third-party licence texts in a licenses folder (LIC.1; licenses/README.txt).
+# - The interface translations come from storytold/craft-i18n at the commit craft-i18n.rev pins,
+#   with PDF Overlay's own rows over them (SYNC.16); a build without them fails rather than
+#   shipping an English-only app.
 
 name: overlay windows build
 
@@ -40,6 +43,34 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
+      # This fork (SYNC.16): upstream's interface translations live in storytold/craft-i18n
+      # (#6055), and PDF Overlay's own rows are merged over them by crates/ui-egui/build.rs.
+      # Embed the commit craft-i18n.rev pins; without it the build would be English only, so
+      # CRAFT_I18N_REQUIRED makes it fail instead.
+      - name: Read the craft-i18n pin
+        id: i18n
+        shell: bash
+        run: |
+          rev="$(tr -d '[:space:]' < craft-i18n.rev)"
+          if ! [[ "$rev" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::craft-i18n.rev must hold one full commit SHA"
+            exit 1
+          fi
+          echo "rev=$rev" >>"$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: storytold/craft-i18n
+          ref: ${{ steps.i18n.outputs.rev }}
+          path: .craft-i18n
+          persist-credentials: false
+
+      - name: Embed the translations
+        shell: bash
+        run: |
+          echo "CRAFT_I18N_DIR=${{ github.workspace }}\.craft-i18n" >>"$GITHUB_ENV"
+          echo "CRAFT_I18N_REQUIRED=1" >>"$GITHUB_ENV"
 
       - uses: dtolnay/rust-toolchain@stable
         with:
