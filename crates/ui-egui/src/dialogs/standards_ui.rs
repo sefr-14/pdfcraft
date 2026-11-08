@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Standards ▸ PDF/A: what the document declares, verifying it against PDF/A-2b or 3b, and
 //! fixing what can be fixed (Save as PDF/A).
 
@@ -36,7 +37,7 @@ impl PdfCraftApp {
             let left = self.pdfa.issues.as_ref().map_or(0, Vec::len);
             self.notify(if left == 0 {
                 crate::i18n::fmt(
-                    tl!("PdfCraft's checks now find no problems for {level}. This is not a validator result. Save to keep the changes."),
+                    tl!("PDF Overlay's checks now find no problems for {level}. This is not a validator result. Save to keep the changes."),
                     &[("level", level.label())],
                 )
             } else if left == 1 {
@@ -95,7 +96,7 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens) -> bool
                 }
                 Some(v) if v.is_empty() => {
                     ui.label(crate::i18n::fmt(
-                        tl!("PdfCraft's checks found no problems for {level}. This is not a validator result."),
+                        tl!("PDF Overlay's checks found no problems for {level}. This is not a validator result."),
                         &[("level", app.pdfa.level.label())],
                     ));
                 }
