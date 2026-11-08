@@ -21,6 +21,7 @@ mod dedupe;
 mod import;
 mod labels;
 mod outline;
+mod outline_io;
 mod pdfx;
 mod prune;
 mod transition;
@@ -43,6 +44,7 @@ pub use outline::{
 };
 // This fork (BOOKMARK.1): several bookmarks indented or outdented together.
 pub use outline::{MAX_SHIFT, OutlineShape, Shift, ShiftPlan, plan_shift, shift_bookmarks};
+pub use outline_io::{MAX_IMPORT_BOOKMARKS, OutlineNode, OutlineTree, import_outline, outline_tree, unmapped, view_arity};
 pub use transition::{TRANSITION_DIRECTIONS, TRANSITION_STYLES, Transition, TransitionSpec, set_transition};
 pub use view::{InitialView, displays_doc_title, initial_view, set_initial_view};
 

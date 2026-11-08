@@ -40,7 +40,20 @@ pub(super) const THUMB_H: f32 = 320.0;
 
 pub(super) const THUMB_BYTES: usize = 24 * 1024 * 1024;
 
+/// The smallest whole-page allowance ([`page_budget`]).
 pub(super) const PAGE_BYTES: usize = 128 * 1024 * 1024;
+
+/// The largest whole-page allowance ([`page_budget`]).
+#[cfg(not(target_arch = "wasm32"))]
+const MAX_PAGE_BYTES: usize = 384 * 1024 * 1024;
+
+/// The web build's largest whole-page allowance ([`page_budget`]).
+#[cfg(target_arch = "wasm32")]
+const MAX_PAGE_BYTES: usize = 256 * 1024 * 1024;
+
+/// Rasters the size of the largest whole page on screen that the allowance holds between its
+/// limits: the pages on screen and the pages just behind and ahead of them.
+const BUDGET_PAGES: usize = 8;
 
 pub(super) const TILE_BYTES: usize = 128 * 1024 * 1024;
 
@@ -107,6 +120,14 @@ pub(super) fn thumbnail_scale(width: f32, height: f32, density: f32) -> f32 {
     (THUMB_W / width.max(1.0)).min(THUMB_H / height.max(1.0)) * density
 }
 
+/// The whole-page byte allowance when the largest whole-page raster on screen takes `largest`
+/// bytes: [`BUDGET_PAGES`] such rasters, kept between [`PAGE_BYTES`] and [`MAX_PAGE_BYTES`].
+/// The raster's size follows the zoom, the display density and the page; a tiled page is on
+/// screen as a small backdrop, so it does not raise the allowance.
+pub(super) fn page_budget(largest: usize) -> usize {
+    largest.saturating_mul(BUDGET_PAGES).clamp(PAGE_BYTES, MAX_PAGE_BYTES)
+}
+
 impl DocView {
     pub fn raster_memory(&self) -> RasterMemory {
         RasterMemory {
@@ -145,11 +166,17 @@ impl DocView {
     }
 
     /// The page bytes, tile bytes and page count prefetch may use: the whole allowances, or this
-    /// view's share of them while several views are on screen (Tile View). On-screen pages are
-    /// always taken, whatever these say.
-    pub(super) fn prefetch_limits(&self) -> (usize, usize, usize) {
+    /// view's share of them while several views are on screen (Tile View). `pages` is the
+    /// whole-page allowance this frame (upstream's [`page_budget`], which grows with the rasters
+    /// on screen). On-screen pages are always taken, whatever these say.
+    pub(super) fn prefetch_limits(&self, pages: usize) -> (usize, usize, usize) {
         let share = self.budget_share.max(1);
-        (PAGE_BYTES / share, TILE_BYTES / share, (MAX_CACHED_PAGES / share).max(1))
+        (pages / share, self.prefetch_tile_bytes(), (MAX_CACHED_PAGES / share).max(1))
+    }
+
+    /// The tile bytes prefetch may use: [`prefetch_limits`](Self::prefetch_limits)'s second.
+    pub(super) fn prefetch_tile_bytes(&self) -> usize {
+        TILE_BYTES / self.budget_share.max(1)
     }
 
     pub fn render_pending(&self) -> bool {
@@ -161,6 +188,13 @@ impl DocView {
         let mut k: Vec<(u64, u32, u32)> = self.tiles.keys().filter(|key| key.0 == page).map(|key| (key.1, key.2, key.3)).collect();
         k.sort_unstable();
         k
+    }
+
+    /// The pages with a cached whole-page raster, in page order (diagnostics and tests).
+    pub fn cached_pages_debug(&self) -> Vec<usize> {
+        let mut pages: Vec<usize> = self.pages.keys().copied().collect();
+        pages.sort_unstable();
+        pages
     }
 
     /// Re-render every page and text layer (the document's appearance changed, e.g. a layer
@@ -378,7 +412,17 @@ impl DocView {
         let mut tile_tags = HashSet::new();
         let mut grid = Vec::new();
         let (mut page_bytes, mut tile_bytes) = (0usize, 0usize);
-        let (page_limit, tile_limit, max_pages) = self.prefetch_limits();
+        let demand = requests
+            .iter()
+            .filter(|r| {
+                r.kind == RequestKind::Pixels && r.tile.is_none() && r.tag & (GRID_TAG | PRINT_TAG) == 0 && self.frame_visible.contains(&r.page)
+            })
+            .filter_map(|r| {
+                let p = info.pages.get(r.page)?;
+                Some(rgba_bytes(device_pixels(p.width, r.scale) as usize, device_pixels(p.height, r.scale) as usize))
+            })
+            .fold(0, usize::max);
+        let (page_limit, tile_limit, max_pages) = self.prefetch_limits(self.on_screen_page_budget(demand, None));
         for req in requests.iter().filter(|r| r.kind == RequestKind::Pixels) {
             let Some(p) = info.pages.get(req.page) else { continue };
             // Organize-grid renders: only the cells in view that need one (organize_grid).
@@ -424,6 +468,7 @@ impl DocView {
         // current page first, so turning back a page shows it at once instead of rendering.
         let mut undemanded: Vec<usize> = self.pages.keys().copied().filter(|p| !pages.contains(p)).collect();
         undemanded.sort_by_key(|p| p.abs_diff(self.current));
+        self.frame_demanded = pages.clone();
         let mut kept = pages.len();
         for page in undemanded {
             let bytes = self.pages.get(&page).map_or(0, |p| texture_bytes(&p.tex));
@@ -666,10 +711,10 @@ impl DocView {
             let key = (req.page, req.tag, t.x, t.y);
             self.tiles.remove(&key);
             let retained = self.tiles.values().fold(0usize, |n, tex| n.saturating_add(texture_bytes(tex)));
-            visible || bytes <= self.prefetch_limits().1.saturating_sub(retained)
+            visible || bytes <= self.prefetch_tile_bytes().saturating_sub(retained)
         } else {
             let thumb = req.tag & THUMB_TAG != 0;
-            let page_limit = self.prefetch_limits().0;
+            let page_limit = self.prefetch_limits(self.on_screen_page_budget(if visible { bytes } else { 0 }, Some(req.page))).0;
             let (cache, limit) = if thumb { (&mut self.thumbs, THUMB_BYTES) } else { (&mut self.pages, page_limit) };
             cache.remove(&req.page);
             let mut retained = cache.values().fold(0usize, |n, p| n.saturating_add(texture_bytes(&p.tex)));
@@ -677,7 +722,13 @@ impl DocView {
             // demand estimates. Evict those first, then let the current demand refill them.
             let on_screen = |p: &usize| !thumb && self.frame_visible.contains(p);
             while retained.saturating_add(bytes) > limit {
-                let Some(page) = cache.keys().copied().filter(|p| !on_screen(p)).max_by_key(|p| p.abs_diff(self.current)) else { break };
+                // Pages this frame does not ask for go first, then those behind the scroll, the
+                // farthest from the current page first.
+                let evict_order = |p: &usize| {
+                    let demanded = !thumb && self.frame_demanded.contains(p);
+                    (!demanded, !thumb && super::behind_scroll(self.continuous, self.scroll_dir, self.current, *p), p.abs_diff(self.current))
+                };
+                let Some(page) = cache.keys().copied().filter(|p| !on_screen(p)).max_by_key(evict_order) else { break };
                 if let Some(old) = cache.remove(&page) {
                     retained = retained.saturating_sub(texture_bytes(&old.tex));
                 }
@@ -690,6 +741,19 @@ impl DocView {
         // Exactly the device scale: a raster at any other scale is resampled on screen, which
         // blurs every line and glyph (#260).
         self.zoom * PT * ppp
+    }
+
+    /// The whole-page allowance ([`page_budget`]) for the larger of `demand` and the rasters held
+    /// for the pages on screen other than `except`. A held raster counts while a zoom hold keeps
+    /// it on screen without a request.
+    fn on_screen_page_budget(&self, demand: usize, except: Option<usize>) -> usize {
+        page_budget(
+            self.pages
+                .iter()
+                .filter(|(p, _)| Some(**p) != except && self.frame_visible.contains(p))
+                .map(|(_, p)| texture_bytes(&p.tex))
+                .fold(demand, usize::max),
+        )
     }
 
     /// Set whether the print preview rasters become luminance before upload. Toggling it drops

@@ -1,5 +1,5 @@
 // Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
-use super::{DocView, LayerOp, PdfCraftApp, Pos2, Rect, Vec2};
+use super::{LayerOp, PdfCraftApp, Pos2, Rect, Vec2};
 
 /// A validation badge drawn over a signature widget: the widget rectangle (user space), the verdict it shows, and its hover text.
 pub(crate) struct SignatureBadge {
@@ -46,14 +46,6 @@ pub(super) fn match_on_content(p: &pdfcraft_render::PageInfo, b: [f32; 4], view_
     let y = |f: f32| r.top() - y_shift + f * r.height();
     Some([x(ax.min(bx)), y(ay.min(by)), x(ax.max(bx)), y(ay.max(by))])
 }
-
-/// Suppression window for egui's eased copy of point input.
-///
-/// egui 0.36.2 drains `WheelState::after_events` tail deltas by 90% per 0.1 s.
-pub(super) const SUPPRESS_SECS: f64 = 0.25;
-
-/// Short rolling extension while egui still has an unprocessed wheel tail.
-pub(super) const SUPPRESS_TAIL_SECS: f64 = 0.05;
 
 // Keep the viewer's scroll identity tied to the view instead of its parent UI. `rect` is the
 // page area (this fork, OV11: the rulers take their strips off it). Without `fades` (Show Page
@@ -187,18 +179,4 @@ pub(super) fn glide_interrupted(ui: &egui::Ui) -> bool {
 /// the turn waits until the pages have had the click.
 pub(super) fn presentation_click(ui: &egui::Ui, area: Rect) -> bool {
     ui.rect_contains_pointer(area) && ui.input(|i| i.pointer.primary_clicked())
-}
-
-/// Tile View: a touchpad swipe over one tile leaves egui an eased tail of wheel motion for a
-/// few frames, which the tile under the pointer would otherwise take, even a tile the swipe never
-/// touched once the pointer has moved on. Every tile keeps the latest swipe's suppression window,
-/// so each one ignores that tail and applies only its own wheel events 1:1, whichever of them is
-/// drawn first.
-pub(crate) fn share_wheel_suppression(views: &mut [DocView], now: f64) {
-    let until = views.iter().map(|v| v.precise_scroll_until).fold(0.0f64, f64::max);
-    if until.is_finite() && until > now {
-        for v in views.iter_mut() {
-            v.precise_scroll_until = until;
-        }
-    }
 }

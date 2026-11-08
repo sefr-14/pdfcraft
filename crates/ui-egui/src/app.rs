@@ -105,6 +105,7 @@ impl PdfCraftApp {
             #[cfg(target_os = "linux")]
             desktop_theme_enabled: false,
             scroll_speed: scroll_speed::ScrollSpeed::default(),
+            invert_middle_drag: false,
             animation_effects: motion::AnimationEffects::default(),
             motion: motion::Motion::default(),
             language: i18n::AUTO.to_string(),
@@ -113,7 +114,12 @@ impl PdfCraftApp {
             ui_scale_applied: None,
             flatten_fill_sign_on_save: false,
             fill_text_size: fill_sign::TEXT_SIZE,
+            fill_tool: fill_sign::FillTool::Signature,
             fill_text_color: [0.0; 3],
+            fill_text_border: 0.0,
+            fill_text_border_color: None,
+            fill_text_border_shape: pdfcraft_engine::BorderShape::Rectangle,
+            fill_text_default: fill_sign::TextBorder::NONE,
             dialog: None,
             update_source: None,
             update_installer: None,
@@ -136,6 +142,7 @@ impl PdfCraftApp {
             last_session: Default::default(),
             quit_session: None,
             reload_changed_files: true,
+            update_check_at_start: true,
             show_secured_notice: true,
             always_default_view: false,
             #[cfg(not(target_arch = "wasm32"))]
@@ -204,6 +211,7 @@ impl PdfCraftApp {
             ocr_draft: ocr_ui::OcrDraft::default(),
             ocr_run: None,
             ocr_batch: None,
+            ocr_verify: ocr_verify::OcrVerify::default(),
             run_inline: false,
             custom_actions: Vec::new(),
             wizard: Default::default(),
@@ -211,6 +219,7 @@ impl PdfCraftApp {
             action_files_override: None,
             pdfa: Default::default(),
             compare_old: None,
+            compare_pages: String::new(),
             compare: None,
             overlay: None,
             escape_reserved: false,
@@ -239,8 +248,11 @@ impl PdfCraftApp {
             stamp_draft: Default::default(),
             optimize_draft: OptimizeDraft::default(),
             optimize_run: None,
+            scan_clean_draft: scan_clean_ui::ScanCleanDraft::default(),
+            scan_clean_run: None,
             progress_notice: None,
             page_clipboard: None,
+            comment_clipboard: None,
             grid_drop: None,
             last_snapshot: None,
             last_copied_image: None,
@@ -273,6 +285,7 @@ impl PdfCraftApp {
             control: None,
             bookmark_rename: None,
             comment_delete: None,
+            bookmark_clipboard: None,
             last_opened_url: None,
             pending_link: None,
             pending_full_screen: None,
@@ -500,6 +513,9 @@ impl eframe::App for PdfCraftApp {
         // Notices raised outside `ui` (opened files, OS events, the control channel) translate too.
         let lang = i18n::Lang::from_pref(&self.language);
         i18n::set_current(lang);
+        // Form date fields name months in the date language (Preferences ▸ Date format), which
+        // follows the interface language until one is picked (#5303).
+        pdfcraft_engine::dates::use_form_date_language(self.session.date_language().unwrap_or(lang.code()));
         #[cfg(not(target_arch = "wasm32"))]
         {
             if let Some(worker) = &self.open_worker {
@@ -672,7 +688,16 @@ impl eframe::App for PdfCraftApp {
         self.auto_ocr_scanned_page();
         self.poll_ocr();
         self.poll_optimize();
+        self.poll_scan_clean();
         self.poll_action();
+        // The OCR Verify screen's worker may have finished while no frame was drawn.
+        if self.ocr_verify.phase == workflows::ocr_verify::Phase::Running {
+            workflows::ocr_verify::with_state(self, workflows::ocr_verify::OcrVerify::poll);
+        }
+        // So may a page or region re-read's worker.
+        if self.ocr_verify.reread.is_some() {
+            workflows::ocr_verify::with_state(self, workflows::ocr_verify::OcrVerify::poll_reread);
+        }
         self.process_file_requests();
         #[cfg(not(target_arch = "wasm32"))]
         self.process_picked();
@@ -739,6 +764,20 @@ impl eframe::App for PdfCraftApp {
         self.sync_window_frame(&ctx);
         if self.draws_window_frame() {
             window_controls::resize_edges(&ctx);
+        }
+        if self.ocr_verify.open {
+            // The OCR Verify screen owns the window (its four panes); dialogs and notices
+            // still show above it.
+            workflows::ocr_verify::show(self, ui);
+            dialogs::show(self, &ctx);
+            self.show_progress(&ctx);
+            widgets::toast(self, &ctx);
+            self.finish_render_frame(&ctx);
+            if let Some(mut control) = self.control.take() {
+                control.finish_frame(&ctx, self);
+                self.control = Some(control);
+            }
+            return;
         }
         chrome::tab_strip(self, ui);
         chrome::mode_bar(self, ui);
