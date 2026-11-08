@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! The Comments panel (Acrobat's right-hand comment list; 11-visual-spec §3, audit `a15-*`).
 //!
 //! Header "Comments N" (comments, as Acrobat counts them) with "N replies" under it and search;
@@ -724,6 +725,39 @@ fn legible(c: Color32, t: &Tokens) -> Color32 {
 /// The Comments panel header's filter and sort controls (Acrobat: filter funnel and "…").
 /// The header's "…" (sort, hide all, summary, data exchange) and filter menus; returns a
 /// command to run.
+/// This fork (COMMENTS.1, SYNC.16g): Collapse selected and Expand selected, in the panel's "…"
+/// menu: fold or unfold the page groups of the selected comments (upstream's selection,
+/// [`CommentView::selection`]), each page once; the selection stays. Only the page sort has page
+/// groups: under another sort both are shown disabled, saying why. Nothing in the document changes.
+fn fold_selected(ui: &mut egui::Ui, info: &DocInfo, cv: &mut crate::comments::CommentView) {
+    let selection = cv.selection();
+    let mut pages: Vec<usize> = info.annotations.iter().filter(|a| selection.contains(&(a.page, a.index))).map(|a| a.page).collect();
+    pages.sort_unstable();
+    pages.dedup();
+    if pages.is_empty() {
+        return;
+    }
+    let by_page = cv.sort == SortBy::Page;
+    if !by_page {
+        ui.separator();
+    }
+    let fold = |ui: &mut egui::Ui, label: &str| {
+        ui.add_enabled(by_page, egui::Button::new(tl!(label))).on_disabled_hover_text(tl!("Sort by page to fold page groups"))
+    };
+    if fold(ui, "Collapse selected").clicked() {
+        for p in &pages {
+            if !cv.collapsed_pages.contains(p) {
+                cv.collapsed_pages.push(*p);
+            }
+        }
+        ui.close();
+    }
+    if fold(ui, "Expand selected").clicked() {
+        cv.collapsed_pages.retain(|p| !pages.contains(p));
+        ui.close();
+    }
+}
+
 pub(crate) fn header_controls(ui: &mut egui::Ui, info: &DocInfo, view: &mut DocView, hidden: bool) -> Option<&'static str> {
     let mut command = None;
     let cv = &mut view.comments;
@@ -771,6 +805,8 @@ pub(crate) fn header_controls(ui: &mut egui::Ui, info: &DocInfo, view: &mut DocV
                 ui.close();
             }
         }
+        // This fork (COMMENTS.1, SYNC.16g): fold or unfold the page groups of the selected comments.
+        fold_selected(ui, info, cv);
         ui.separator();
         for (id, label) in [
             ("comment.hide_all", if hidden { tl!("Show all comments") } else { tl!("Hide all comments") }),

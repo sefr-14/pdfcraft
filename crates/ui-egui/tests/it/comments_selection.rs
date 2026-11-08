@@ -155,13 +155,13 @@ fn with_one_card_selected_the_keys_delete_as_before() {
 }
 
 #[test]
-#[ignore = "SYNC.16f: Collapse and Expand selected return over upstream's selection in SYNC.16g"]
 fn collapse_and_expand_selected_fold_the_selected_cards_page_groups() {
     let mut h = harness(cards());
     click(&mut h, "Card A", Modifiers::NONE);
     click(&mut h, "Card C", Modifiers::COMMAND);
     click(&mut h, "Card D", Modifiers::COMMAND);
-    h.get_by_label("Card D").click_secondary();
+    // SYNC.16g: from the panel's "…" menu (upstream's cards have no right-click menu).
+    h.get_by_label("More options").click();
     h.run_steps(2);
     pick(&mut h, "Collapse selected");
     let mut folded = h.state().views[0].comments.collapsed_pages.clone();
