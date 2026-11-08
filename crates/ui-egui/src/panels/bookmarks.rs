@@ -403,6 +403,13 @@ pub(super) fn outline_item(
                             ui.close();
                         }
                     }
+                    // SYNC.16 (D-A3): upstream's Cut, Copy and Paste take one bookmark and what is
+                    // under it; not offered for several.
+                    ui.separator();
+                    for label in ["Cut", "Copy", "Paste"] {
+                        ui.add_enabled(false, egui::Button::new(tl!(label)))
+                            .on_disabled_hover_text(tl!("Cut, Copy and Paste take one bookmark at a time"));
+                    }
                     ui.separator();
                     ui.add_enabled(false, egui::Button::new(tl!("Delete")));
                     return;
