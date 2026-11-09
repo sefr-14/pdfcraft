@@ -30,6 +30,10 @@ pub enum Gesture {
     /// Dragging point `point` of a line, connected lines, a polygon or a cloud (its `points`
     /// before the drag, in user space) to where the pointer is.
     Reshape { page: usize, index: usize, point: usize, points: Vec<[f64; 2]> },
+    /// Copied comments hanging on the pointer as one bundle (their box `bounds` in user space,
+    /// `count` of them, their `outlines` drawn along so the drop can be aimed): a click puts
+    /// their centre there, on the page clicked; Escape or a right-click lets them go.
+    Place { xfdf: String, bounds: [f64; 4], count: usize, outlines: Vec<pdfcraft_engine::CommentOutline> },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -128,14 +132,25 @@ impl CommentView {
 /// Per-document commenting state.
 #[derive(Clone, Debug, Default)]
 pub struct CommentView {
-    /// The selected comment: (page, index in `/Annots`).
+    /// The selected comment: (page, index in `/Annots`). With several selected (`also`), the one
+    /// the handles, the properties and the context menu act on.
     pub selected: Option<(usize, usize)>,
+    /// The other selected comments (⌘/Ctrl-click or ⇧-click on the page adds one, ⇧-click in the
+    /// Comments panel a range): Delete, Copy, Properties and a drag act on them with `selected`.
+    pub also: Vec<(usize, usize)>,
+    /// Copy the selected comments (set by the menus; the app has the clipboard).
+    pub copy_request: bool,
+    /// Paste the copied comments onto this page, centred at this user-space point (set by the
+    /// page's menu, which knows where it was opened).
+    pub paste_request: Option<(usize, [f64; 2])>,
+    /// A notice for the app to show (the page input has no app).
+    pub notice: Option<&'static str>,
+    /// Finish the connected lines, polygon or cloud being drawn (the context menu's Complete).
+    pub finish_request: bool,
     pub gesture: Option<Gesture>,
     /// Drawings just released: shown from their points until the page raster that includes the
     /// committed annotation arrives, so the stroke never vanishes in between (#1858).
     pub(crate) settling: Vec<Settling>,
-    /// Escape ends egui's drag too; ignore its synthetic release until the mouse is up.
-    pub(super) cancelled_drag: bool,
     pub composer: Option<Composer>,
     /// Reply being typed under the selected card.
     pub reply: String,
@@ -176,11 +191,15 @@ pub struct CommentView {
     pub tool_done: bool,
     /// What the inline editor (`editing`) does with the keyboard the next time it is drawn.
     pub(crate) editor_focus: Option<EditorFocus>,
-    /// This fork (COMMENTS.1): the cards selected in the Comments panel, apart from the active
-    /// comment (`selected`), and what the bulk actions act on (see [`super::group`]).
-    pub(crate) group: super::group::Group,
-    /// Delete selected was asked for from the panel: the app confirms it.
-    pub delete_request: bool,
+    /// This fork (SYNC.16h): the document version (`content_version`) the selection's places were
+    /// taken in, or that this view's own edit moved them to. The places, (page, index in
+    /// `/Annots`), name other comments after a change this view didn't make (another tab or tile,
+    /// automation): [`CommentView::expire`] then drops the selection.
+    pub(crate) seen: Option<(u64, usize)>,
+    // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72): the cards selected in the Comments panel,
+    // apart from the active comment, and the panel's Delete selected request.
+    // pub(crate) group: super::group::Group,
+    // pub delete_request: bool,
 }
 
 /// A one-off change to the keyboard focus of the Comments panel's inline editor. The editor
@@ -195,6 +214,77 @@ pub(crate) enum EditorFocus {
 }
 
 impl CommentView {
+    /// Every selected comment, the one the handles belong to first.
+    pub fn selection(&self) -> Vec<(usize, usize)> {
+        let mut all: Vec<(usize, usize)> = self.selected.into_iter().collect();
+        all.extend(self.also.iter().copied().filter(|k| Some(*k) != self.selected));
+        all
+    }
+
+    /// Whether `key` (page, index) is among the selected comments.
+    pub fn is_selected(&self, key: (usize, usize)) -> bool {
+        self.selected == Some(key) || self.also.contains(&key)
+    }
+
+    /// Select `key` alone.
+    pub fn select_only(&mut self, key: (usize, usize)) {
+        self.selected = Some(key);
+        self.also.clear();
+    }
+
+    /// ⇧-click in a list (`order`, as shown): every comment from the one with the handles to
+    /// `key` is selected, and only those, so another ⇧-click from the same comment changes the
+    /// range. Without a comment with the handles, or with either end not in the list, `key` is
+    /// added as by ⌘/Ctrl-click.
+    pub fn select_range(&mut self, order: &[(usize, usize)], key: (usize, usize)) {
+        let ends = self.selected.and_then(|anchor| Some((order.iter().position(|k| *k == anchor)?, order.iter().position(|k| *k == key)?)));
+        let Some((a, b)) = ends else { return self.toggle(key) };
+        let anchor = self.selected;
+        self.also = order.get(a.min(b)..=a.max(b)).unwrap_or_default().iter().copied().filter(|k| Some(*k) != anchor).collect();
+    }
+
+    /// ⌘/Ctrl-click: add `key` to the selection, or take it out again. The handles go to the
+    /// comment clicked last.
+    pub fn toggle(&mut self, key: (usize, usize)) {
+        if self.selected == Some(key) {
+            self.selected = self.also.pop();
+        } else if let Some(at) = self.also.iter().position(|k| *k == key) {
+            self.also.remove(at);
+        } else {
+            if let Some(previous) = self.selected.replace(key) {
+                self.also.push(previous);
+            }
+        }
+    }
+
+    /// Nothing selected.
+    pub fn clear_selection(&mut self) {
+        self.selected = None;
+        self.also.clear();
+    }
+
+    /// This fork (SYNC.16m): selections taken from now on are in document version `now`. Called
+    /// where a view is made for a document (open, create, Duplicate Tab, a revision), before
+    /// anything can select in it, and where a save is known to move no comment.
+    pub(crate) fn stamp(&mut self, now: (u64, usize)) {
+        self.seen = Some(now);
+    }
+
+    /// This fork (SYNC.16h, 16m): the document is version `now`. A selection taken in another
+    /// version (see [`CommentView::seen`]) is dropped, and `true` says so; it is never matched to
+    /// the comments now at its places, which may be others. A selection without a stamp is
+    /// dropped too: nothing says which version its places are from (every view is stamped when it
+    /// is made). Without a selection, places taken from now on are `now`'s.
+    pub(crate) fn expire(&mut self, now: (u64, usize)) -> bool {
+        let held = self.selected.is_some() || !self.also.is_empty();
+        let stale = held && self.seen != Some(now);
+        if stale {
+            self.clear_selection();
+        }
+        self.seen = Some(now);
+        stale
+    }
+
     /// Takes back the last point of a polygon, cloud or connected lines being drawn; the first
     /// point's removal cancels the drawing. Returns whether there was such a drawing.
     pub fn undo_point(&mut self) -> bool {
@@ -234,6 +324,7 @@ impl CommentView {
     /// went too.
     pub(crate) fn annotation_deleted(&mut self, before: &[Annotation], after: &[Annotation], gone: (usize, usize)) {
         self.selected = self.selected.and_then(|k| after_delete(before, after, gone, k));
+        self.also = std::mem::take(&mut self.also).into_iter().filter_map(|k| after_delete(before, after, gone, k)).collect();
         self.editing = self.editing.take().and_then(|(p, i, text)| after_delete(before, after, gone, (p, i)).map(|(p, i)| (p, i, text)));
         if self.editing.is_none() {
             self.editor_focus = None;
@@ -244,16 +335,11 @@ impl CommentView {
     /// page, so a (page, index) held here may now name another one. The selection and the inline
     /// editor close, its unsaved text with it, rather than Save writing that text over whatever
     /// took its place.
-    /// This fork (COMMENTS.1): the cards selected in the Comments panel.
-    pub fn group(&self) -> &super::group::Group {
-        &self.group
-    }
-
     pub(crate) fn history_stepped(&mut self) {
-        self.selected = None;
+        self.clear_selection();
         self.editing = None;
         self.editor_focus = None;
-        self.group.clear();
+        // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72): self.group.clear();
     }
 }
 
@@ -398,7 +484,7 @@ impl PageCx<'_> {
 
     /// The topmost comment under `p`: the one drawn last, in `/Annots` order (inspection lists
     /// comments by position, not in paint order).
-    pub(super) fn hit(&self, p: Pos2) -> Option<&Annotation> {
+    pub(super) fn comment_at(&self, p: Pos2) -> Option<&Annotation> {
         self.comments().filter(|a| self.screen_rects(a).any(|r| r.expand(3.0).contains(p))).max_by_key(|a| a.index)
     }
 

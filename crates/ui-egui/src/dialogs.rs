@@ -21,6 +21,9 @@ pub(super) mod protect;
 pub(super) mod standards_ui;
 pub(super) mod word_count_ui;
 
+#[cfg(test)]
+mod tests;
+
 pub(crate) use prompts::{PromptButton, save_prompt_key};
 use prompts::{full_screen_prompt, link_prompt, password, remote_link_prompt, save_prompt, unlock};
 
@@ -47,8 +50,8 @@ struct Pending {
     field_props_now: bool,
     bulk_field_props_now: bool,
     redact_now: Option<Dialog>,
-    /// This fork (COMMENTS.1): Delete selected (comments) was confirmed.
-    delete_comments_now: bool,
+    // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72): Delete selected (comments) was confirmed.
+    // delete_comments_now: bool,
     import_words: bool,
     print_go: bool,
     revert_now: bool,
@@ -62,6 +65,7 @@ struct Pending {
     open_revision: Option<usize>,
     a11y_now: bool,
     ocr_now: bool,
+    scan_clean_now: bool,
     compare_now: bool,
     images_now: bool,
     stamp_now: bool,
@@ -132,7 +136,7 @@ fn dialogs(app: &mut PdfCraftApp, ctx: &egui::Context) {
             Dialog::Print => 820.0,
             Dialog::FieldProps | Dialog::BulkFieldProps => 600.0,
             Dialog::Preferences => 610.0,
-            Dialog::About => 780.0,
+            Dialog::About => 820.0,
             Dialog::PinTool => 540.0,
             _ => 520.0,
         });
@@ -194,17 +198,17 @@ fn dialog_body(ui: &mut egui::Ui, app: &mut PdfCraftApp, dialog: Dialog, req: &m
                 return false;
             }
         }
-        // This fork (COMMENTS.1).
-        Dialog::DeleteComments => {
-            let Some(d) = app.comment_delete.as_ref() else {
-                req.close = true;
-                return false;
-            };
-            let (ok, cancel) = crate::comments::delete_group::body(ui, d, &t);
-            req.delete_comments_now = ok;
-            req.close = ok || cancel;
-            return false;
-        }
+        // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72):
+        // Dialog::DeleteComments => {
+        //     let Some(d) = app.comment_delete.as_ref() else {
+        //         req.close = true;
+        //         return false;
+        //     };
+        //     let (ok, cancel) = crate::comments::delete_group::body(ui, d, &t);
+        //     req.delete_comments_now = ok;
+        //     req.close = ok || cancel;
+        //     return false;
+        // }
         Dialog::RedactApply => {
             let marks = app.active_ids().and_then(|(_, id)| app.session.get(id)).map_or(0, |d| d.redaction_marks());
             let (ok, cancel) = crate::redact_ui::apply_body(ui, marks, &t);
@@ -401,6 +405,12 @@ fn dialog_body(ui: &mut egui::Ui, app: &mut PdfCraftApp, dialog: Dialog, req: &m
         Dialog::RecognizeText => {
             let (go, cancel) = crate::ocr_ui::body(ui, app, &t);
             req.ocr_now = go;
+            req.close = go || cancel;
+            return false;
+        }
+        Dialog::EnhanceScan => {
+            let (go, cancel) = crate::scan_clean_ui::body(ui, app, &t);
+            req.scan_clean_now = go;
             req.close = go || cancel;
             return false;
         }
@@ -1363,6 +1373,7 @@ fn dialog_signature(ui: &mut egui::Ui, app: &mut PdfCraftApp, req: &mut Pending)
             app.signature = d.saved();
             crate::fill_sign::FillTool::Signature
         };
+        app.fill_tool = tool;
         app.quick_tool = crate::QuickTool::Fill(tool);
         app.toast = None;
     }
@@ -1385,20 +1396,26 @@ fn dialog_preferences(ui: &mut egui::Ui, app: &mut PdfCraftApp, req: &mut Pendin
     // (which only applies when the settings overflow it) opens the dialog at full size.
     // A scrollbar of its own: the floating one lies over the right edge of the theme
     // cards and other full-width rows (#3557).
+    preferences_scroll(ui, max, |ui| preferences::preferences_body(ui, app, &t));
+    req.close = preferences::preferences_buttons(ui);
+    false
+}
+
+fn preferences_scroll(ui: &mut egui::Ui, max: f32, add_contents: impl FnOnce(&mut egui::Ui)) {
     ui.scope(|ui| {
         ui.spacing_mut().scroll.floating = false;
         ui.spacing_mut().scroll.bar_inner_margin = 14.0;
         ui.spacing_mut().scroll.bar_outer_margin = 2.0;
-        ui.style_mut().scroll_animation = egui::style::ScrollAnimation::duration(0.25);
+        if ui.style().scroll_animation != egui::style::ScrollAnimation::none() {
+            ui.style_mut().scroll_animation = egui::style::ScrollAnimation::duration(0.25);
+        }
         egui::ScrollArea::vertical()
             .id_salt("preferences-dialog-scroll")
             .max_height(max)
             .min_scrolled_height(max)
             .animated(true)
-            .show(ui, |ui| preferences::preferences_body(ui, app, &t));
+            .show(ui, add_contents);
     });
-    req.close = preferences::preferences_buttons(ui);
-    false
 }
 
 /// `Dialog::NumberPages` content. Returns `false` when it has its own buttons and no footer is wanted.
@@ -1827,10 +1844,10 @@ fn finish_actions(app: &mut PdfCraftApp, req: &mut Pending) {
 
 /// Redaction, hidden-data and field-properties requests.
 fn finish_redactions_and_fields(app: &mut PdfCraftApp, req: &mut Pending) {
-    // This fork (COMMENTS.1).
-    if std::mem::take(&mut req.delete_comments_now) {
-        app.confirm_delete_comments();
-    }
+    // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72):
+    // if std::mem::take(&mut req.delete_comments_now) {
+    //     app.confirm_delete_comments();
+    // }
     match req.redact_now.take() {
         Some(Dialog::RedactPages) => app.redact_pages(),
         Some(Dialog::RedactSearch) => {
@@ -1974,8 +1991,8 @@ fn finish_close(app: &mut PdfCraftApp, dialog: Dialog, modal_closed: bool, req: 
         // Only now: the number in Preferences can pass through 0 on its way to the one wanted.
         app.recent.truncate(app.recent_limit);
         app.dialog = None;
-        // This fork (COMMENTS.1): a Delete selected that was cancelled.
-        app.comment_delete = None;
+        // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72): a Delete selected that was cancelled.
+        // app.comment_delete = None;
         app.props_draft = None;
         app.view_draft = None;
         app.custom_draft = None;
@@ -2003,6 +2020,9 @@ fn finish_close(app: &mut PdfCraftApp, dialog: Dialog, modal_closed: bool, req: 
     }
     if req.ocr_now {
         app.start_ocr();
+    }
+    if req.scan_clean_now {
+        app.start_scan_clean();
     }
     if req.compare_now {
         app.run_compare();

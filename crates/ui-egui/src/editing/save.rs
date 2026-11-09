@@ -1,5 +1,7 @@
 // Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 use super::{PdfCraftApp, StagingName, staging_suffixes};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::file_filter::AddFilterAnyCase as _;
 
 /// A save held back by [`Dialog::OverwriteChanged`](crate::Dialog::OverwriteChanged): the file
 /// on disk is another version than the document came from (#2166).
@@ -59,7 +61,7 @@ impl PdfCraftApp {
                 (SaveTarget::InPlace, Some(p), _) if !is_mail_temp_copy(&p) => p,
                 _ => {
                     let name = if name.to_ascii_lowercase().ends_with(".pdf") { name } else { format!("{name}.pdf") };
-                    let dialog = rfd::AsyncFileDialog::new().add_filter("PDF", &["pdf"]).set_file_name(name);
+                    let dialog = rfd::AsyncFileDialog::new().add_filter_any_case("PDF", &["pdf"]).set_file_name(name);
                     let dialog = in_document_folder(dialog, doc_path.as_deref());
                     // The bytes are taken once the user has chosen, so edits made meanwhile are saved too.
                     self.ask_one(crate::pickers::Ask::Save(dialog), None, move |app, dest| {
@@ -93,6 +95,8 @@ impl PdfCraftApp {
             match delivered {
                 Ok(()) => {
                     self.sync_doc_prefs();
+                    // This fork (SYNC.16m): saving moves no comment.
+                    let before = self.session.get(id).map(crate::content_version);
                     if self.session.mark_saved(id, bytes, None).is_ok()
                         && let Some(doc) = self.session.get(id)
                     {
@@ -100,6 +104,7 @@ impl PdfCraftApp {
                         self.doc_prefs.rebase(doc);
                     }
                     self.refresh_document_views(id);
+                    self.carry_comment_selections(id, before);
                     // The host reports where the file went (and any failure) itself.
                     if !to_host {
                         self.notify_fmt("Downloaded {name}", &[("name", &name)]);
@@ -237,6 +242,8 @@ impl PdfCraftApp {
         self.watch.known_now(id, dest);
         // Rulers and guides catch up with this frame's edits before the pages are re-based.
         self.sync_doc_prefs();
+        // This fork (SYNC.16m): saving moves no comment.
+        let before = self.session.get(id).map(crate::content_version);
         match self.session.mark_saved(id, bytes, Some(dest.to_string())) {
             Ok(()) => {
                 // Rulers and guides go with the pages as saved, whatever objects a full rewrite
@@ -246,6 +253,7 @@ impl PdfCraftApp {
                 }
                 self.forget_recovery(id);
                 self.refresh_document_views(id);
+                self.carry_comment_selections(id, before);
                 // Saving over a version that changed on disk keeps this one: nothing to ask, in
                 // any of the document's tabs.
                 for view in self.views.iter_mut().filter(|v| v.id == id) {

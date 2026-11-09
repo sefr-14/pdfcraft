@@ -1,0 +1,62 @@
+# This fork (sefr-14/pdfcraft, SYNC.16): PDF Overlay's own rows for this language, read over
+# craft-i18n's pdfcraft.tsv by crates/ui-egui/build.rs (a row here wins). They are the rows the
+# fork's in-repo catalogue held before upstream moved its catalogues to craft-i18n (Main
+# ce9ade4b), less those build.rs now derives: craft-i18n's "PdfCraft" rows with the name
+# written "PDF Overlay". Columns: context, English source, translation.
+	PdfCraft {c} is up to date.	PdfCraft {c} je posodobljen.
+# This fork (sefr-14/pdfcraft): Overlay compare, the command and its All tools item.
+	Overlay compare…	Primerjava s prekrivanjem…
+	Overlay two revisions	Prekrij dve različici
+# This fork (sefr-14/pdfcraft): Duplicate Tab (OV7), the tab menu item and its command.
+	Duplicate tab	Podvoji zavihek
+# This fork (sefr-14/pdfcraft): Tab View and Tile View (OV7.2), the tab menu items and their commands.
+	Tab View	Pogled z zavihki
+	Tab view	Pogled z zavihki
+	Tile View	Pogled ploščic
+	Tile view	Pogled ploščic
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	Iskanje najnovejše gradnje za Windows…
+	Latest available Windows build	Najnovejša razpoložljiva gradnja za Windows
+	Version: {v}	Različica: {v}
+	Built: {date}	Zgrajeno: {date}
+	Artifact: {name}	Artefakt: {name}
+	This copy is version {c}.	Ta kopija je različica {c}.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	GitHub vas lahko za prenos prosi za prijavo. Gradnje se hranijo omejen čas.
+	View build on GitHub	Ogled gradnje na GitHubu
+	View builds on GitHub	Ogled gradenj na GitHubu
+	No successful Windows build was found.	Nobena uspešna gradnja za Windows ni bila najdena.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	Med najnovejšimi uspešnimi gradnjami ni bilo najdene gradnje za Windows za prenos (preverjenih: {n}).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	Preverjene gradnje za Windows so potekle in jih ni več mogoče prenesti (preverjenih: {n}).
+	Older builds weren't checked.	Starejše gradnje niso bile preverjene.
+	Windows builds are listed at {page}.	Gradnje za Windows so navedene na {page}.
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Vpraša GitHub za najnovejšo gradnjo tega forka za Windows. Ničesar se ne prenese ali namesti samodejno.
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	Tanke črte
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	proces v ozadju se je ustavil
+	the page can't be mapped	koordinat strani ni mogoče pretvoriti
+	an internal error stopped it ({reason})	ustavila ga je notranja napaka ({reason})
+	This document can't be read for measuring.	Tega dokumenta ni mogoče prebrati za merjenje.
+	Snapping isn't available on this page: {reason}	Pripenjanje na tej strani ni na voljo: {reason}
+	Reading the drawing for snapping…	Branje risbe za pripenjanje …
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	Ta PDF ne dovoli komentarjev, zato meritev in meril ni mogoče shraniti.
+	This part of the page has a drawing scale PDF Overlay can't read: {reason}. Calibrate to set one.	Ta del strani ima merilo risbe, ki ga PDF Overlay ne zna prebrati: {reason}. Z umerjanjem nastavite merilo.
+	That is the point already placed. Click a different point.	To je že postavljena točka. Kliknite drugo točko.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	Palci (in)
+	Feet (ft)	Čevlji (ft)
+	Feet and inches (ft-in)	Čevlji in palci (ft-in)
+	Centimeters (cm)	Centimetri (cm)
+	Millimeters (mm)	Milimetri (mm)
+	Meters (m)	Metri (m)
+	Known distance	Znana razdalja
+	Nearest 1/8 inch	Na najbližjo 1/8 palca
+	Type a length such as 12'-5 3/8" or 12.5'.	Vnesite dolžino, na primer 12'-5 3/8" ali 12.5'.
+	Type the real distance between the two points.	Vnesite dejansko razdaljo med točkama.
+# This fork (sefr-14/pdfcraft): View > Page display > Rulers and Guides, the ruler units (OV11).
+	Guides	Vodila
+	Points (pt)	Točke (pt)
+# This fork (sefr-14/pdfcraft): guides on the pages, Clear Guides on Page / Clear All Guides (OV11).
+	Clear Guides on Page	Počisti vodila na strani
+	Clear All Guides	Počisti vsa vodila
+	This page already has as many guides as PDF Overlay keeps.	Ta stran že ima toliko vodil, kot jih PDF Overlay hrani.

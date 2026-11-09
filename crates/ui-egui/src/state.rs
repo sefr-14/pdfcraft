@@ -137,8 +137,8 @@ pub enum Dialog {
     RedactSearch,
     RedactProps,
     RedactApply,
-    /// This fork (COMMENTS.1): Delete selected (comments) confirmation.
-    DeleteComments,
+    // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72): Delete selected (comments) confirmation.
+    // DeleteComments,
     /// File ▸ Print.
     Print,
     /// File ▸ Revert confirmation.
@@ -169,6 +169,8 @@ pub enum Dialog {
     AccessibilityOptions,
     /// Scan & OCR ▸ Recognize text.
     RecognizeText,
+    /// Scan & OCR ▸ Enhance scanned file.
+    EnhanceScan,
     /// The JavaScript console (⌘J).
     JsConsole,
     /// Document JavaScripts.
@@ -232,6 +234,14 @@ pub struct PagePropsDraft {
     pub pages: Vec<usize>,
     pub before: Option<pdfcraft_engine::TabOrder>,
     pub tab_order: Option<pdfcraft_engine::TabOrder>,
+}
+
+/// Copied comments: their XFDF (each with its replies), for `Edit::PasteComments`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CommentClip {
+    pub xfdf: String,
+    /// How many comments (replies not counted) were copied.
+    pub count: usize,
 }
 
 /// Copied pages: their document's name and bytes (as it was when copied) and the pages.

@@ -37,6 +37,8 @@ mod comment_pin;
 mod comments;
 // This fork (COMMENTS.1).
 mod comments_selection;
+// This fork (SYNC.16): Delete after the comments' places moved elsewhere.
+mod comments_stale_selection;
 mod compare;
 mod content;
 mod control;
@@ -80,7 +82,9 @@ mod recent_files;
 mod recovery;
 mod redact;
 mod reload;
+mod scan_clean;
 mod script_noop;
+mod scroll_prefetch;
 mod side_panels;
 mod signing;
 mod stamps;

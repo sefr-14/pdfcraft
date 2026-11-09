@@ -24,7 +24,7 @@ pub use shift::{MAX_SHIFT, OutlineShape, Shift, ShiftPlan, plan_shift, shift_boo
 
 /// Deepest level a listing enters (the top level is 0). Bookmarks deeper than this are not
 /// listed; edits still reach them by path.
-const LIST_DEPTH: usize = 32;
+pub(crate) const LIST_DEPTH: usize = 32;
 
 /// Deepest name-tree node read when looking up named destinations.
 const NAME_TREE_DEPTH: usize = 32;
@@ -86,7 +86,7 @@ pub enum OutlineError {
     CannotOutdent(Vec<usize>),
     /// BOOKMARK.1: a group Indent would nest a bookmark deeper than bookmarks are listed.
     #[error("bookmark {0:?} would be nested deeper than bookmarks are listed")]
-    TooDeep(Vec<usize>),
+    GroupTooDeep(Vec<usize>),
     /// BOOKMARK.1: the outline links a bookmark from two places, in a loop, or to something that
     /// isn't a bookmark, so moving bookmarks together could leave its links inconsistent.
     #[error("the outline links a bookmark more than once, in a loop, or to something that isn't a bookmark; these bookmarks can't be moved together")]
@@ -94,6 +94,14 @@ pub enum OutlineError {
     /// BOOKMARK.1: more bookmarks in one group move than [`shift::MAX_SHIFT`].
     #[error("too many bookmarks to move at once")]
     TooMany,
+    #[error("there are no bookmarks to add")]
+    NothingToImport,
+    #[error("the bookmark at {0:?} has a view that is not a known destination type with its values")]
+    BadView(Vec<usize>),
+    #[error("bookmarks may nest at most {0} levels deep")]
+    TooDeep(usize),
+    #[error("at most {0} bookmarks can be added at once")]
+    TooManyBookmarks(usize),
     #[error("{0}")]
     Organize(#[from] OrganizeError),
     #[error("{0}")]
@@ -471,7 +479,7 @@ impl From<OutlineError> for OrganizeError {
 
 /// Make `kids` the children of `parent`, in order: rewires `/Parent`, `/Prev`, `/Next`,
 /// `/First` and `/Last`.
-fn relink(doc: &mut Document, parent: ObjRef, kids: &[ObjRef]) -> Result<()> {
+pub(crate) fn relink(doc: &mut Document, parent: ObjRef, kids: &[ObjRef]) -> Result<()> {
     for (i, k) in kids.iter().enumerate() {
         put(doc, *k, b"Parent", Some(Object::Ref(parent)))?;
         put(doc, *k, b"Prev", i.checked_sub(1).map(|p| Object::Ref(kids[p])))?;
@@ -495,7 +503,7 @@ struct Counting {
 
 /// Recompute every `/Count` (§12.3.3: open items count their visible descendants, closed items
 /// the negative of what opening them would show; the root counts all visible items).
-fn recount(doc: &mut Document) -> Result<()> {
+pub(crate) fn recount(doc: &mut Document) -> Result<()> {
     let Some(root) = outline_root(doc) else { return Ok(()) };
     let mut seen = HashSet::from([root]);
     let kids = children_of(doc, root, &mut seen);
@@ -736,7 +744,7 @@ pub fn move_bookmark(doc: &mut Document, from: &[usize], to_parent: &[usize], in
 
 /// Open `parent` so a bookmark just added or moved into it shows (the root is always open).
 /// Only the sign of `/Count` matters here: [`recount`] sets its value.
-fn show_children(doc: &mut Document, parent: ObjRef, parent_path: &[usize]) -> Result<()> {
+pub(crate) fn show_children(doc: &mut Document, parent: ObjRef, parent_path: &[usize]) -> Result<()> {
     if !parent_path.is_empty() {
         open_item(doc, parent)?;
     }

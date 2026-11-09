@@ -461,7 +461,7 @@ fn the_wheel_over_the_overlay_wizard_moves_no_tile() {
 #[test]
 fn tile_view_shows_the_hotbar_over_the_active_tile() {
     let mut h = two_tiles();
-    let bar = |h: &Harness<'static, PdfCraftApp>| h.ctx.memory(|m| m.area_rect(egui::Id::unique("custom-hotbar")));
+    let bar = |h: &Harness<'static, PdfCraftApp>| h.ctx.memory(|m| m.area_rect(egui::Id::unique("quick-bar")));
     for active in [0, 1] {
         h.state_mut().active = Some(active);
         h.run_steps(4);

@@ -1,0 +1,112 @@
+# This fork (sefr-14/pdfcraft, SYNC.16): PDF Overlay's own rows for this language, read over
+# craft-i18n's pdfcraft.tsv by crates/ui-egui/build.rs (a row here wins). They are the rows the
+# fork's in-repo catalogue held before upstream moved its catalogues to craft-i18n (Main
+# ce9ade4b), less those build.rs now derives: craft-i18n's "PdfCraft" rows with the name
+# written "PDF Overlay". Columns: context, English source, translation.
+# This fork (sefr-14/pdfcraft): Overlay compare, the command and its All tools item.
+	Overlay compare…	Comparar por superposición…
+	Overlay two revisions	Superponer dos revisiones
+# This fork (sefr-14/pdfcraft): Duplicate Tab (OV7), the tab menu item and its command.
+	Duplicate tab	Duplicar pestaña
+# This fork (sefr-14/pdfcraft): Tab View and Tile View (OV7.2), the tab menu items and their commands.
+	Tab View	Vista de pestañas
+	Tab view	Vista de pestañas
+	Tile View	Vista en mosaico
+	Tile view	Vista en mosaico
+# This fork (sefr-14/pdfcraft): Help > Check for updates offers an approved build and installs it (UPD.1).
+	updates aren't available in this version of PDF Overlay	las actualizaciones no están disponibles en esta versión de PDF Overlay
+	Installing updates isn't supported in this version.	Esta versión no admite instalar actualizaciones.
+	PDF Overlay — Update available	PDF Overlay — Actualización disponible
+	Checking for updates…	Buscando actualizaciones…
+	PDF Overlay is up to date.	PDF Overlay está actualizado.
+	Latest approved version: {v}	Última versión aprobada: {v}
+	A newer approved Windows x64 build of PDF Overlay is available.	Hay disponible una compilación aprobada más reciente de PDF Overlay para Windows x64.
+	The application will download and verify the update, then restart to install it. Documents and preferences will be preserved.	La aplicación descargará y verificará la actualización y después se reiniciará para instalarla. Se conservarán los documentos y las preferencias.
+	Version {v}, approved {date}	Versión {v}, aprobada el {date}
+	Remind me in:	Recordármelo en:
+	1 day	1 día
+	1 week	1 semana
+	1 month	1 mes
+	Update and Restart	Actualizar y reiniciar
+	Remind me later	Recordármelo más tarde
+	Update and Restart isn't available: {why}	Actualizar y reiniciar no está disponible: {why}
+	Downloading and verifying PDF Overlay {v}…	Descargando y verificando PDF Overlay {v}…
+	Nothing is changed until PDF Overlay restarts.	No se cambia nada hasta que PDF Overlay se reinicie.
+	The update is ready, but PDF Overlay can't restart yet:	La actualización está lista, pero PDF Overlay aún no puede reiniciarse:
+	Overlay compare is still working.	La comparación por superposición sigue en curso.
+	A background task (printing, optimizing…) is still running.	Una tarea en segundo plano (impresión, optimización…) sigue en curso.
+	A document is still opening.	Todavía se está abriendo un documento.
+	Other PDF Overlay windows or the command-line tool are running from this folder ({n}). Close them first.	Hay otras ventanas de PDF Overlay o la herramienta de línea de comandos en ejecución desde esta carpeta ({n}). Ciérrelas primero.
+	PDF Overlay will close and restart to finish the update.	PDF Overlay se cerrará y se reiniciará para terminar la actualización.
+	Couldn't update: {e}	No se pudo actualizar: {e}
+	Nothing was installed.	No se instaló nada.
+	The update was cancelled.	Se canceló la actualización.
+	The update was cancelled. Nothing was installed.	Se canceló la actualización. No se instaló nada.
+	PDF Overlay was updated.	PDF Overlay se actualizó.
+	The update couldn't be completed.	No se pudo completar la actualización.
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	Líneas finas
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	el proceso en segundo plano se detuvo
+	the page can't be mapped	no se pueden convertir las coordenadas de la página
+	an internal error stopped it ({reason})	lo detuvo un error interno ({reason})
+	This document can't be read for measuring.	No se puede leer este documento para medir.
+	Snapping isn't available on this page: {reason}	El ajuste no está disponible en esta página: {reason}
+	Reading the drawing for snapping…	Leyendo el dibujo para el ajuste…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	Este PDF no permite comentarios, así que no se pueden guardar medidas ni escalas.
+	This part of the page has a drawing scale PDF Overlay can't read: {reason}. Calibrate to set one.	Esta parte de la página tiene una escala de dibujo que PDF Overlay no puede leer: {reason}. Calibre para definir una.
+	That is the point already placed. Click a different point.	Ese es el punto ya colocado. Haga clic en otro punto.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	Pulgadas (in)
+	Feet (ft)	Pies (ft)
+	Feet and inches (ft-in)	Pies y pulgadas (ft-in)
+	Centimeters (cm)	Centímetros (cm)
+	Millimeters (mm)	Milímetros (mm)
+	Meters (m)	Metros (m)
+	Nearest 1/8 inch	Al 1/8 de pulgada más cercano
+	Type a length such as 12'-5 3/8" or 12.5'.	Escriba una longitud como 12'-5 3/8" o 12.5'.
+	Type the real distance between the two points.	Escriba la distancia real entre los dos puntos.
+# This fork (sefr-14/pdfcraft): Measure panel drawing scale equation and common scales (MEASURE.1, MEASURE.2).
+	Drawing distance	Distancia en el dibujo
+	Actual distance	Distancia real
+	Two-point calibration	Calibración con dos puntos
+	Metric	Métrico
+	Imperial	Imperial
+# This fork (sefr-14/pdfcraft): View > Page display > Rulers and Guides, the ruler units (OV11).
+	Points (pt)	Puntos (pt)
+# This fork (sefr-14/pdfcraft): guides on the pages, Clear Guides on Page / Clear All Guides (OV11).
+	Clear Guides on Page	Borrar guías de la página
+	Clear All Guides	Borrar todas las guías
+	This page already has as many guides as PDF Overlay keeps.	Esta página ya tiene tantas guías como guarda PDF Overlay.
+# This fork (sefr-14/pdfcraft): its own name and links, not upstream's ArtCraft community (LIC.1).
+	Report a problem	Informar de un problema
+	Upstream PdfCraft on GitHub	PdfCraft original en GitHub
+# This fork (sefr-14/pdfcraft): Reduce File Size and Optimize PDF save like Save As (COMPRESS.1).
+	The document changed while it was being optimized, so nothing was saved. Run it again to include your latest changes.	El documento cambió mientras se optimizaba, así que no se guardó nada. Vuelve a ejecutarlo para incluir tus últimos cambios.
+	{name} is open in another tab. Close it or choose another name.	{name} está abierto en otra pestaña. Ciérralo o elige otro nombre.
+	{name} changed on disk since it was opened, so nothing was saved. Choose another name to keep both.	{name} cambió en el disco desde que se abrió, así que no se guardó nada. Elige otro nombre para conservar ambos.
+# This fork (sefr-14/pdfcraft): tool keys H, P and the pairs D I, D L, R C (KEY.1).
+	Hand (P)	Mano (P)
+	P / Space (hold)	P / Espacio (mantener)
+	{a}, then {b}	{a}, luego {b}
+# This fork (sefr-14/pdfcraft): bookmark multiselection, group Indent and Outdent (BOOKMARK.1).
+	Indent bookmarks	Aumentar sangría de marcadores
+	Outdent bookmarks	Reducir sangría de marcadores
+	The first bookmark at its level has nothing above it to go under	El primer marcador de su nivel no tiene ninguno encima bajo el que colocarse
+	A top-level bookmark can't move out a level	Un marcador de nivel superior no puede subir de nivel
+	Too deeply nested to show in the panel	Demasiado anidado para mostrarse en el panel
+	These bookmarks can't be moved together	Estos marcadores no se pueden mover juntos
+# This fork (sefr-14/pdfcraft): Comments multiselection, Delete, Collapse and Expand selected (COMMENTS.1).
+	Delete selected ({n})	Eliminar seleccionados ({n})
+	Collapse selected	Contraer seleccionados
+	Expand selected	Expandir seleccionados
+	Sort by page to fold page groups	Ordene por página para contraer los grupos de páginas
+	Some of these comments can't be deleted: one is locked, or the document doesn't allow it	Algunos de estos comentarios no se pueden eliminar: uno está bloqueado o el documento no lo permite
+	Delete {comments} and {replies}?	¿Eliminar {comments} y {replies}?
+	Their pop-ups go with them. You can undo this.	Sus notas emergentes también se eliminan. Puede deshacerlo.
+	Couldn't delete the comments: {error}	No se pudieron eliminar los comentarios: {error}
+	The comments changed. Review the selection and try again.	Los comentarios cambiaron. Revise la selección e inténtelo de nuevo.
+# This fork (sefr-14/pdfcraft): a comment selection dropped because the document changed (SYNC.16).
+	The document changed, so the selected comments were deselected. Select them again.	El documento cambió, así que los comentarios seleccionados se deseleccionaron. Vuelva a seleccionarlos.
+# This fork (sefr-14/pdfcraft): Cut, Copy and Paste not offered for several bookmarks (SYNC.16).
+	Cut, Copy and Paste take one bookmark at a time	Cortar, Copiar y Pegar toman un marcador cada vez

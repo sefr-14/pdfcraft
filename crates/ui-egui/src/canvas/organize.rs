@@ -282,7 +282,15 @@ pub(super) struct GridAccess {
     pub(super) tools: bool,
 }
 
-pub(super) fn organize_grid(view: &mut DocView, info: &DocInfo, access: GridAccess, show_page_edge_shadows: bool, ui: &mut egui::Ui, t: &Tokens) {
+pub(super) fn organize_grid(
+    view: &mut DocView,
+    info: &DocInfo,
+    access: GridAccess,
+    show_page_edge_shadows: bool,
+    invert_middle: bool,
+    ui: &mut egui::Ui,
+    t: &Tokens,
+) {
     let GridAccess { editable, dirty, unobstructed, tools } = access;
     let ppp = ui.ctx().pixels_per_point();
     // The page image scales with the zoom; the padding and the page number don't.
@@ -298,7 +306,7 @@ pub(super) fn organize_grid(view: &mut DocView, info: &DocInfo, access: GridAcce
     let viewport = ui.available_rect_before_wrap();
     view.viewport_screen = viewport;
     let auto_delta = if unobstructed {
-        view.auto_scroll.update(ui, viewport, true)
+        view.auto_scroll.update(ui, viewport, true, invert_middle)
     } else {
         view.auto_scroll.cancel();
         Vec2::ZERO

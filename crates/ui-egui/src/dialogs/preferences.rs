@@ -23,14 +23,12 @@ pub(crate) const PREFERENCES_MIN_SCROLL: f32 = 60.0;
 ///
 /// Draws a rounded container with options inside. The active option is highlighted
 /// with the accent colour. Emits AccessKit RadioButton widget info with the option's label.
-#[expect(dead_code, reason = "convenience helpers for non-searched segmented pill controls")]
 pub fn segmented_pill_choice<T: PartialEq + Copy>(ui: &mut egui::Ui, t: &Tokens, current: &mut T, options: &[(T, &str)]) -> bool {
     let with_a11y: Vec<(T, &str, &str)> = options.iter().map(|&(v, l)| (v, l, l)).collect();
     segmented_pill_choice_a11y(ui, t, current, &with_a11y)
 }
 
 /// A segmented pill selection bar with separate accessibility labels.
-#[expect(dead_code, reason = "convenience helpers for non-searched segmented pill controls")]
 pub fn segmented_pill_choice_a11y<T: PartialEq + Copy>(ui: &mut egui::Ui, t: &Tokens, current: &mut T, options: &[(T, &str, &str)]) -> bool {
     segmented_pill_choice_a11y_query(ui, t, current, options, "").0
 }
@@ -662,6 +660,10 @@ fn card_general(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens, ctx: &mut 
     ctx.checkbox(ui, &mut app.restore_last_view, tl!("Restore the last view (page, zoom and page display) when a document is opened again"), t);
     #[cfg(not(target_arch = "wasm32"))]
     ctx.checkbox(ui, &mut app.reload_changed_files, tl!("Reload documents when their files change on disk"), t);
+    // This fork (UPD.1, SYNC.16): no "Check for updates when PdfCraft starts" here. Upstream's
+    // setting drives craft-update's check at start, which this fork leaves out; PDF Overlay checks
+    // on its own only when a "Remind me later" reminder comes due (`platform/updates.rs`). The
+    // setting is still read and written, so settings files keep it.
     ctx.checkbox(ui, &mut app.show_secured_notice, tl!("Show a notice when a document is secured"), t);
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -760,7 +762,11 @@ fn card_documents_and_view(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens,
     });
     ctx.label_secondary(ui, tl!("For page sizes and margins."), t);
     ui.add_space(6.0);
+    scrolling(ui, app, t, ctx);
+}
 
+/// The scroll speed and the middle button's direction, in Card 3.
+fn scrolling(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens, ctx: &mut PrefSearchContext) {
     ui.horizontal(|ui| {
         ctx.label_primary(ui, tl!("Scroll speed (mouse wheel and arrow keys)"), t);
         ctx.pill_choice(
@@ -774,6 +780,9 @@ fn card_documents_and_view(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens,
             ],
         );
     });
+    ui.add_space(6.0);
+    ctx.checkbox(ui, &mut app.invert_middle_drag, tl!("Invert middle-button drag"), t);
+    ctx.label_secondary(ui, tl!("Panning or auto-scrolling with the middle (wheel) button moves the page the other way."), t);
 }
 
 /// Content for Card 4: Identity

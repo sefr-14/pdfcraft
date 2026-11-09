@@ -25,6 +25,7 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
     let mut compare_action: Option<crate::compare_ui::PanelAction> = None;
     let mut bm_rename = app.bookmark_rename.clone();
     let bm_editable = app.session.get(id).is_some_and(|d| d.allows_assembly() && d.read_only_reason.is_none());
+    let bm_can_paste = app.bookmark_clipboard.is_some();
     // Prepare a form is open: the Fields panel orders tabs.
     let preparing = app.is_preparing();
     {
@@ -89,7 +90,7 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                         }
                         // Right to left: close, "…", filter, search (Acrobat's order left to right).
                         if panel == RightPanel::Comments {
-                            panel_command = crate::comments_panel::header_controls(ui, doc, view, doc.comments_hidden(), comment_allowed);
+                            panel_command = crate::comments_panel::header_controls(ui, &doc.info, view, doc.comments_hidden());
                         }
                         if panel == RightPanel::Comments
                             && icons::button(ui, "search", 26.0, view.comments.search.is_some(), tl!("Search comments")).clicked()
@@ -110,6 +111,10 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                                 }
                                 if bm_editable && ui.button(tl!("New bookmarks from text styles…")).clicked() {
                                     bm_action = Some(BmAction::FromTextStyles);
+                                    ui.close();
+                                }
+                                if bm_editable && ui.add_enabled(bm_can_paste, egui::Button::new(tl!("Paste bookmarks"))).clicked() {
+                                    bm_action = Some(BmAction::Paste { parent: Vec::new(), index: usize::MAX });
                                     ui.close();
                                 }
                                 if !info.outline.is_empty() {
@@ -212,6 +217,7 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                             action: &mut bm_action,
                             rename: &mut bm_rename,
                             editable: bm_editable,
+                            can_paste: bm_can_paste,
                             current: view.current,
                             expand: bm_expand,
                             matches: &bookmark_matches,
@@ -431,10 +437,10 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
         }
         None => {}
     }
-    // This fork (COMMENTS.1): Delete selected, confirmed first.
-    if app.views.get_mut(index).is_some_and(|v| std::mem::take(&mut v.comments.delete_request)) {
-        app.ask_delete_comments();
-    }
+    // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72): Delete selected, confirmed first.
+    // if app.views.get_mut(index).is_some_and(|v| std::mem::take(&mut v.comments.delete_request)) {
+    //     app.ask_delete_comments();
+    // }
     if let Some((p, i)) = app.views.get_mut(index).and_then(|v| v.comments.default_request.take()) {
         app.make_comment_default(p, i);
     }

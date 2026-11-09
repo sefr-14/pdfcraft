@@ -32,7 +32,7 @@ fn new_text_typed(v: &crate::DocView) -> bool {
 }
 
 /// Keeps the pages (or comment) the user acted on selected, where they now are. `annots_before`
-/// is a deleted annotation's page's annotations before the delete (empty for other edits).
+/// is the page's annotations before a delete or a paste of comments (empty for other edits).
 fn select_after_edit(
     view: &mut crate::DocView,
     edit: &Edit,
@@ -62,11 +62,12 @@ fn select_after_edit(
                     crate::QuickTool::Comment(crate::comments::CommentTool::Ink | crate::comments::CommentTool::FreehandHighlight)
                 ) =>
         {
-            view.comments.selected = None;
+            view.comments.clear_selection();
         }
         Edit::AddAnnotation(a) => {
-            // Select the new comment (appended last among the page's comments).
+            // Select the new comment alone (appended last among the page's comments).
             let newest = info.annotations.iter().filter(|x| x.page == a.page && !x.is_reply()).map(|x| x.index).max();
+            view.comments.clear_selection();
             view.comments.selected = newest.map(|n| (a.page, n));
             view.comments.reveal = true;
             // A new highlight opens its note for typing straight away, as in Acrobat,
@@ -91,7 +92,27 @@ fn select_after_edit(
             if view.comments.editing.is_none() {
                 view.comments.editor_focus = None;
             }
-            view.comments.group.clear();
+            view.comments.also.clear();
+            // COMMENTS.1 fallback (inactive, SYNC.16; f3ccab72): view.comments.group.clear();
+        }
+        // A group moved together stays selected (its positions don't change), so it
+        // can be moved or copied again; anything else in a batch clears the selection.
+        Edit::Batch { edits, .. } if edits.iter().all(|e| matches!(e, Edit::MoveAnnotation { .. })) => {}
+        Edit::Batch { .. } => view.comments.clear_selection(),
+        // The copies the paste added (and nothing that was there before): select them all.
+        Edit::PasteComments { page, .. } => {
+            let mut new: Vec<(usize, usize)> = info
+                .annotations
+                .iter()
+                .filter(|x| x.page == *page && !x.is_reply() && !annots_before.iter().any(|b| b.name == x.name))
+                .map(|x| (*page, x.index))
+                .collect();
+            view.comments.clear_selection();
+            if !new.is_empty() {
+                view.comments.selected = Some(new.remove(0));
+                view.comments.also = new;
+                view.comments.reveal = true;
+            }
         }
         _ => {}
     }
@@ -128,7 +149,66 @@ fn form_edit_pages(
     (changed_pages, unbaked)
 }
 
+/// This fork (SYNC.16h): said when a comment selection is dropped because the document changed
+/// other than by this view's own edit (another tab or tile, automation, Revert, a reload).
+pub(crate) const STALE_COMMENTS: &str = "The document changed, so the selected comments were deselected. Select them again.";
+
+/// This fork (SYNC.16h): whether `edit` can move comments to other places, (page, index in
+/// `/Annots`), without `select_after_edit` remapping the selection: page structure, flattening,
+/// redaction, sanitizing, imports, erasing ink, and a batch of any of them. A selection doesn't
+/// survive these.
+fn moves_comment_places(edit: &Edit) -> bool {
+    match edit {
+        Edit::DeletePages { .. }
+        | Edit::MovePages { .. }
+        | Edit::ReversePages { .. }
+        | Edit::InsertBlankPage { .. }
+        | Edit::DuplicatePages { .. }
+        | Edit::ReplacePages { .. }
+        | Edit::InsertPagesFrom { .. }
+        | Edit::EraseInk { .. }
+        | Edit::ApplyRedactions { .. }
+        | Edit::ImportData { .. }
+        | Edit::RemoveHidden { .. }
+        | Edit::Sanitize
+        | Edit::XfaToStatic
+        | Edit::Flatten { .. }
+        | Edit::FlattenFillSign => true,
+        Edit::Batch { edits, .. } => edits.iter().any(moves_comment_places),
+        _ => false,
+    }
+}
+
 impl PdfCraftApp {
+    /// This fork (SYNC.16h): at the start of each pass, after `sync_shared_views` and after the
+    /// control channel's edits: every view drops a comment selection taken in another version of
+    /// its document. The active view's is said.
+    pub(crate) fn expire_comment_selections(&mut self) {
+        let mut said = false;
+        for (i, view) in self.views.iter_mut().enumerate() {
+            let Some(doc) = self.session.get(view.id) else { continue };
+            if view.comments.expire(crate::content_version(doc)) && self.active == Some(i) {
+                said = true;
+            }
+        }
+        if said {
+            self.notify_tr(STALE_COMMENTS);
+        }
+    }
+
+    /// This fork (SYNC.16m): document `id` was just saved. Saving writes the same comments in the
+    /// same places, but gives the document a new working buffer, so a new version: the views
+    /// whose comment selection was current just before (`before`) keep it as current now. One
+    /// already stale stays stale.
+    pub(crate) fn carry_comment_selections(&mut self, id: pdfcraft_engine::DocId, before: Option<(u64, usize)>) {
+        let (Some(before), Some(now)) = (before, self.session.get(id).map(crate::content_version)) else { return };
+        for view in self.views.iter_mut().filter(|v| v.id == id) {
+            if view.comments.seen == Some(before) {
+                view.comments.stamp(now);
+            }
+        }
+    }
+
     /// Apply an edit to the active document. Returns `true` on success; failures are shown.
     pub fn apply_edit(&mut self, edit: Edit) -> bool {
         let Some((i, id)) = self.active_ids() else { return false };
@@ -159,8 +239,18 @@ impl PdfCraftApp {
         };
         // A deletion moves the comments after it on the page: these say where the selected one,
         // and the one open in the panel's editor, went.
+        // This fork (SYNC.16h): a selection taken in another version of the document goes before
+        // this edit's own remapping could move it onto other comments.
+        if let (Some(doc), Some(view)) = (self.session.get(id), self.views.get_mut(i))
+            && view.comments.expire(crate::content_version(doc))
+        {
+            self.notify_tr(STALE_COMMENTS);
+        }
         let annots_before = match (&edit, self.session.get(id)) {
-            (Edit::DeleteAnnotation { page, .. }, Some(d)) => d.info.annotations.iter().filter(|a| a.page == *page).cloned().collect(),
+            // A paste selects what it adds: the page's comments before it are the ones it didn't.
+            (Edit::DeleteAnnotation { page, .. } | Edit::PasteComments { page, .. }, Some(d)) => {
+                d.info.annotations.iter().filter(|a| a.page == *page).cloned().collect()
+            }
             // This fork (COMMENTS.1): every page's, to find the active comment again by its object.
             (Edit::DeleteAnnotations { .. }, Some(d)) => d.info.annotations.clone(),
             _ => Vec::new(),
@@ -209,6 +299,12 @@ impl PdfCraftApp {
                 }
                 // Keep the pages the user acted on selected, where they now are.
                 select_after_edit(view, &edit, info, &annots_before, self.quick_tool);
+                // This fork (SYNC.16h): the selection's places are this version's now, unless the
+                // edit moved comments without remapping the selection.
+                if moves_comment_places(&edit) {
+                    view.comments.clear_selection();
+                }
+                view.comments.seen = Some(crate::content_version(doc));
                 if let (Some((target, ambiguous_before)), Edit::EditPageImage { page, .. }) = (target_arrange_image, &edit) {
                     let page_images = doc.page_images(*page);
                     re_resolve_image_selection(view, *page, &target, ambiguous_before, &page_images);
@@ -830,7 +926,8 @@ impl PdfCraftApp {
         }
         let author = self.comment_prefs.author.clone();
         let rotation = self.session.get(id).map_or(0, |doc| crate::comments::page_rotation(&doc.info, tb.page));
-        let edit = crate::fill_sign::typed_with_color(tb.page, tb.at, &text, tb.size, rotation, &author, tb.color);
+        let look = crate::fill_sign::TypedLook { color: tb.color, border: tb.border };
+        let edit = crate::fill_sign::typed_with(tb.page, tb.at, &text, tb.size, rotation, &author, look);
         if self.apply_edit(edit) {
             if let Some(view) = self.views.get_mut(i) {
                 view.fill_text = None;
@@ -969,7 +1066,10 @@ fn comment_page(edit: &Edit) -> Option<usize> {
         | Edit::ResizeAnnotation { page, .. }
         | Edit::StyleAnnotation { page, .. }
         | Edit::FillAnnotation { page, .. }
+        | Edit::PartOpacity { page, .. }
         | Edit::FontSizeAnnotation { page, .. }
+        | Edit::BorderColorAnnotation { page, .. }
+        | Edit::BorderShapeAnnotation { page, .. }
         | Edit::SetAnnotationInfo { page, .. } => Some(*page),
         _ => None,
     }
@@ -1049,6 +1149,23 @@ impl PdfCraftApp {
             }
             // Handled before the match.
             A::IndentSelected | A::OutdentSelected => return,
+            A::Copy(path) => {
+                self.copy_bookmark(id, &path);
+                return;
+            }
+            A::Cut(path) => match self.copy_bookmark(id, &path) {
+                Some(false) => Edit::DeleteBookmark { path },
+                // Paste could not bring back what the copy left out, so the bookmarks stay.
+                Some(true) => {
+                    self.notify_tr("Bookmarks nested too deep to list could not be copied, so nothing was cut.");
+                    return;
+                }
+                None => return,
+            },
+            A::Paste { parent, index } => {
+                self.paste_bookmarks(id, parent, index);
+                return;
+            }
             A::FromStructure => {
                 self.right = Some(crate::RightPanel::Bookmarks);
                 Edit::BookmarksFromStructure
@@ -1093,6 +1210,45 @@ impl PdfCraftApp {
                 (Some(moved), Some(now)) => view.bookmarks.select_moved(moved, now),
                 _ => view.bookmarks.clear(),
             }
+        }
+    }
+}
+
+impl PdfCraftApp {
+    /// Put the bookmark at `path` and its subtree on the bookmark clipboard. `Some(true)` when
+    /// bookmarks nested too deep to list were left out; `None` if it could not be read (the reason
+    /// is shown).
+    fn copy_bookmark(&mut self, id: pdfcraft_engine::DocId, path: &[usize]) -> Option<bool> {
+        match self.session.outline_tree(id, path) {
+            Some(Ok(tree)) => {
+                if tree.truncated {
+                    self.notify_tr("Bookmarks nested too deep to list were left out of the copy.");
+                }
+                self.bookmark_clipboard = Some(tree.nodes);
+                Some(tree.truncated)
+            }
+            Some(Err(e)) => {
+                self.notify_error(e);
+                None
+            }
+            None => None,
+        }
+    }
+
+    /// Paste the bookmark clipboard as one undoable edit. Bookmarks whose page this document lacks
+    /// arrive without a destination, and the toast says how many.
+    fn paste_bookmarks(&mut self, id: pdfcraft_engine::DocId, parent: Vec<usize>, index: usize) {
+        let Some(bookmarks) = self.bookmark_clipboard.clone() else { return };
+        let pages = self.session.get(id).map_or(0, |d| d.info.pages.len());
+        let unmapped = pdfcraft_engine::outline_unmapped(&bookmarks, pages).len();
+        if self.apply_edit(Edit::ImportBookmarks { parent, index, bookmarks, replace: false }) && unmapped > 0 {
+            let n = u64::try_from(unmapped).unwrap_or(u64::MAX);
+            self.notify(crate::i18n::trn(
+                crate::i18n::current(),
+                n,
+                "{n} pasted bookmark points past the last page of this document and has no destination.",
+                "{n} pasted bookmarks point past the last page of this document and have no destination.",
+            ));
         }
     }
 }
@@ -1198,6 +1354,9 @@ mod revert_draft_tests {
     /// interface language; a drawable value says nothing.
     #[test]
     fn a_value_its_font_cannot_draw_is_kept_and_explained() {
+        if !crate::i18n::needs_catalogs() {
+            return;
+        }
         let mut app = app();
         let fill =
             |app: &mut PdfCraftApp, text: &str| app.apply_edit(Edit::SetFieldValue { name: "name".into(), value: FieldValue::Text(text.into()) });

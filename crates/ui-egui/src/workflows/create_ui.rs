@@ -2,6 +2,8 @@
 //! Create a PDF (blank, from images, from text) and Reduce File Size (execution plan M10.2,
 //! M11.1). Opening an image or a text file converts it to a new, unsaved PDF, as Acrobat does.
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::file_filter::AddFilterAnyCase as _;
 use std::sync::Arc;
 
 use crate::PdfCraftApp;
@@ -127,8 +129,10 @@ impl PdfCraftApp {
         let id = self.session.open_new(name, bytes).map_err(|e| e.to_string())?;
         // The reading-colours preference is app-wide: the newly created document starts with it.
         self.session.set_reading_colors(id, self.reading_colors);
-        let info = &self.session.get(id).ok_or("the new document could not be opened")?.info;
-        let mut view = crate::DocView::new(id, info, self.view_defaults);
+        let doc = self.session.get(id).ok_or("the new document could not be opened")?;
+        let mut view = crate::DocView::new(id, &doc.info, self.view_defaults);
+        // This fork (SYNC.16m): its comment selection starts in this version of the document.
+        view.comments.stamp(crate::content_version(doc));
         if self.full_screen {
             view.enter_presentation();
         }
@@ -180,7 +184,7 @@ impl PdfCraftApp {
         #[cfg(not(target_arch = "wasm32"))]
         {
             let dialog = rfd::AsyncFileDialog::new()
-                .add_filter(tl!("Images"), &["png", "jpg", "jpeg", "tif", "tiff", "gif", "bmp", "jp2", "j2k", "jpx"])
+                .add_filter_any_case(tl!("Images"), &["png", "jpg", "jpeg", "tif", "tiff", "gif", "bmp", "jp2", "j2k", "jpx"])
                 .set_title(tl!("Choose images"));
             self.ask(crate::pickers::Ask::Files(dialog), None, |app, files| {
                 let mut images = Vec::new();
@@ -353,7 +357,7 @@ impl PdfCraftApp {
             match self.save_override.clone() {
                 Some(p) => write(self, p),
                 None => {
-                    let dialog = rfd::AsyncFileDialog::new().add_filter("PDF", &["pdf"]).set_file_name(&name);
+                    let dialog = rfd::AsyncFileDialog::new().add_filter_any_case("PDF", &["pdf"]).set_file_name(&name);
                     let dialog = crate::editing::in_document_folder(dialog, folder.as_deref());
                     self.ask_one(crate::pickers::Ask::Save(dialog), None, move |app, p| write(app, p.to_string_lossy().into_owned()));
                 }
