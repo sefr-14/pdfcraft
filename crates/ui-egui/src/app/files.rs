@@ -292,7 +292,9 @@ impl PdfCraftApp {
                 None
             };
         }
-        let view = DocView::new(id, &doc.info, self.view_defaults);
+        let mut view = DocView::new(id, &doc.info, self.view_defaults);
+        // This fork (SYNC.16m): its comment selection starts in this version of the document.
+        view.comments.stamp(crate::content_version(doc));
         self.views.push(view);
         if activate {
             self.active = Some(self.views.len() - 1);

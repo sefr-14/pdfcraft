@@ -95,6 +95,8 @@ impl PdfCraftApp {
             match delivered {
                 Ok(()) => {
                     self.sync_doc_prefs();
+                    // This fork (SYNC.16m): saving moves no comment.
+                    let before = self.session.get(id).map(crate::content_version);
                     if self.session.mark_saved(id, bytes, None).is_ok()
                         && let Some(doc) = self.session.get(id)
                     {
@@ -102,6 +104,7 @@ impl PdfCraftApp {
                         self.doc_prefs.rebase(doc);
                     }
                     self.refresh_document_views(id);
+                    self.carry_comment_selections(id, before);
                     // The host reports where the file went (and any failure) itself.
                     if !to_host {
                         self.notify_fmt("Downloaded {name}", &[("name", &name)]);
@@ -239,6 +242,8 @@ impl PdfCraftApp {
         self.watch.known_now(id, dest);
         // Rulers and guides catch up with this frame's edits before the pages are re-based.
         self.sync_doc_prefs();
+        // This fork (SYNC.16m): saving moves no comment.
+        let before = self.session.get(id).map(crate::content_version);
         match self.session.mark_saved(id, bytes, Some(dest.to_string())) {
             Ok(()) => {
                 // Rulers and guides go with the pages as saved, whatever objects a full rewrite
@@ -248,6 +253,7 @@ impl PdfCraftApp {
                 }
                 self.forget_recovery(id);
                 self.refresh_document_views(id);
+                self.carry_comment_selections(id, before);
                 // Saving over a version that changed on disk keeps this one: nothing to ask, in
                 // any of the document's tabs.
                 for view in self.views.iter_mut().filter(|v| v.id == id) {

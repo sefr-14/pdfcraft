@@ -150,8 +150,8 @@ fn form_edit_pages(
 }
 
 /// This fork (SYNC.16h): said when a comment selection is dropped because the document changed
-/// elsewhere (another tab or tile, automation).
-pub(crate) const STALE_COMMENTS: &str = "The document changed elsewhere, so the selected comments were deselected. Select them again.";
+/// other than by this view's own edit (another tab or tile, automation, Revert, a reload).
+pub(crate) const STALE_COMMENTS: &str = "The document changed, so the selected comments were deselected. Select them again.";
 
 /// This fork (SYNC.16h): whether `edit` can move comments to other places, (page, index in
 /// `/Annots`), without `select_after_edit` remapping the selection: page structure, flattening,
@@ -193,6 +193,19 @@ impl PdfCraftApp {
         }
         if said {
             self.notify_tr(STALE_COMMENTS);
+        }
+    }
+
+    /// This fork (SYNC.16m): document `id` was just saved. Saving writes the same comments in the
+    /// same places, but gives the document a new working buffer, so a new version: the views
+    /// whose comment selection was current just before (`before`) keep it as current now. One
+    /// already stale stays stale.
+    pub(crate) fn carry_comment_selections(&mut self, id: pdfcraft_engine::DocId, before: Option<(u64, usize)>) {
+        let (Some(before), Some(now)) = (before, self.session.get(id).map(crate::content_version)) else { return };
+        for view in self.views.iter_mut().filter(|v| v.id == id) {
+            if view.comments.seen == Some(before) {
+                view.comments.stamp(now);
+            }
         }
     }
 

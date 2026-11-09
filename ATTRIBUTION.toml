@@ -3120,7 +3120,7 @@ licence = "MIT OR Apache-2.0"
 licence_file = "LICENSE-MIT"
 kind = "translation"
 usage = "Spanish UI strings of this fork, merged over craft-i18n's by crates/ui-egui/build.rs"
-sha256 = "4f6dedc15a5c3133c9a9a28b01a1c1602dcb46401e901d9e10fa0ed6601df54f"
+sha256 = "6b1222462b3509453f076bb9383b716c904382e49a7cc9dcb276d60b98492655"
 
 [[asset]]
 path = "crates/ui-egui/src/i18n/overlay/fi.tsv"

@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Multi-document page operations: Combine Files, Insert Pages from File, Extract Pages, Split.
 //!
 //! Files are picked asynchronously and used on a later frame: desktop builds through `pickers`
@@ -884,6 +885,8 @@ impl PdfCraftApp {
                 self.session.set_reading_colors(id, self.reading_colors);
                 let Some(doc) = self.session.get(id) else { return };
                 let mut view = crate::DocView::new(id, &doc.info, self.view_defaults);
+                // This fork (SYNC.16m): its comment selection starts in this version of the document.
+                view.comments.stamp(crate::content_version(doc));
                 if self.full_screen {
                     view.enter_presentation();
                 }

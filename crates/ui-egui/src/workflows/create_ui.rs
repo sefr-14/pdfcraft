@@ -129,8 +129,10 @@ impl PdfCraftApp {
         let id = self.session.open_new(name, bytes).map_err(|e| e.to_string())?;
         // The reading-colours preference is app-wide: the newly created document starts with it.
         self.session.set_reading_colors(id, self.reading_colors);
-        let info = &self.session.get(id).ok_or("the new document could not be opened")?.info;
-        let mut view = crate::DocView::new(id, info, self.view_defaults);
+        let doc = self.session.get(id).ok_or("the new document could not be opened")?;
+        let mut view = crate::DocView::new(id, &doc.info, self.view_defaults);
+        // This fork (SYNC.16m): its comment selection starts in this version of the document.
+        view.comments.stamp(crate::content_version(doc));
         if self.full_screen {
             view.enter_presentation();
         }

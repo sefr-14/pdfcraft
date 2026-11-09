@@ -43,6 +43,8 @@ impl crate::PdfCraftApp {
         let mut view = source.duplicate(&doc.info, instance);
         // The source is up to date (it refreshes itself), and so is the copy of its caches.
         view.content_seen = Some(version);
+        // This fork (SYNC.16m): its comment selection starts in this version of the document.
+        view.comments.stamp(version);
         if let Some(source) = self.views.get_mut(index) {
             source.content_seen = Some(version);
         }

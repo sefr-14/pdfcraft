@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Use a certificate (execution plan M9.6): Digitally sign and Certify (drag a rectangle, or
 //! click an empty signature field), the Sign with a Digital ID / Configure New Digital ID /
 //! Sign as dialogs, the Signatures panel, and the signature message bar.
@@ -599,6 +600,8 @@ impl PdfCraftApp {
                 self.session.set_reading_colors(new, self.reading_colors);
                 let Some(doc) = self.session.get(new) else { return };
                 let mut view = DocView::new(new, &doc.info, self.view_defaults);
+                // This fork (SYNC.16m): its comment selection starts in this version of the document.
+                view.comments.stamp(crate::content_version(doc));
                 if self.full_screen {
                     view.enter_presentation();
                 }
@@ -651,6 +654,8 @@ impl PdfCraftApp {
                 self.session.set_reading_colors(new, self.reading_colors);
                 let Some(doc) = self.session.get(new) else { return };
                 let mut view = DocView::new(new, &doc.info, self.view_defaults);
+                // This fork (SYNC.16m): its comment selection starts in this version of the document.
+                view.comments.stamp(crate::content_version(doc));
                 if self.full_screen {
                     view.enter_presentation();
                 }

@@ -263,14 +263,21 @@ impl CommentView {
         self.also.clear();
     }
 
-    /// This fork (SYNC.16h): the document is version `now`. A selection taken in another version
-    /// (see [`CommentView::seen`]) is dropped, and `true` says so; it is never matched to the
-    /// comments now at its places, which may be others. Without a selection, places taken from
-    /// now on are `now`'s. A view that has seen no version yet (a selection set before its first
-    /// pass) takes `now` as the selection's.
+    /// This fork (SYNC.16m): selections taken from now on are in document version `now`. Called
+    /// where a view is made for a document (open, create, Duplicate Tab, a revision), before
+    /// anything can select in it, and where a save is known to move no comment.
+    pub(crate) fn stamp(&mut self, now: (u64, usize)) {
+        self.seen = Some(now);
+    }
+
+    /// This fork (SYNC.16h, 16m): the document is version `now`. A selection taken in another
+    /// version (see [`CommentView::seen`]) is dropped, and `true` says so; it is never matched to
+    /// the comments now at its places, which may be others. A selection without a stamp is
+    /// dropped too: nothing says which version its places are from (every view is stamped when it
+    /// is made). Without a selection, places taken from now on are `now`'s.
     pub(crate) fn expire(&mut self, now: (u64, usize)) -> bool {
         let held = self.selected.is_some() || !self.also.is_empty();
-        let stale = held && self.seen.is_some_and(|seen| seen != now);
+        let stale = held && self.seen != Some(now);
         if stale {
             self.clear_selection();
         }
