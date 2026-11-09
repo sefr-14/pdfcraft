@@ -52,6 +52,38 @@ Dependencies and assets use SPDX identifiers. An expression is allowed when ever
 `LicenseRef-Storyteller-Trademark` is not in this list. It covers Storyteller brand marks only, where a repository already says so.
 <!-- craft-house-rules:end -->
 
+## This fork (sefr-14/pdfcraft, PDF Overlay)
+
+PDF Overlay is an unofficial fork of PdfCraft. The house rules above and the rest of this file
+apply here as written, with the fork policy below where it says so. It is the owner's policy for
+this fork, not a copy of upstream's, and it changes only with the owner's approval.
+
+- **Repositories.** Forgejo `sefr/pdfcraft` is the authoritative repository. Work arrives as a
+  same-repository GitHub pull request into `Main` (capital M, the fork's only permanent branch;
+  it is case-sensitive). The `forgejo pr sync` bridge (`.github/workflows/forgejo-pr-sync.yml`,
+  `scripts/automation/README.md`) mirrors it to a Forgejo `github-pr/<N>` branch and pull request.
+  Only the owner merges, on Forgejo; nobody pushes to `Main`. What the fork adds and changes is
+  in [FORK-CHANGES.md](FORK-CHANGES.md).
+- **Windows builds.** `overlay-windows.yml` runs only when the owner dispatches it. The usual
+  rhythm is one consolidated build after the approved pull requests merge.
+- **CI (exception to house rule 11).** The fork's own workflows (`overlay-windows.yml`,
+  `forgejo-pr-sync.yml`, `forgejo-upstream-sync.yml`) run their own jobs. They change only with
+  the owner's explicit approval, in a commit of their own, which the pull request says. SYNC.16c
+  (the pinned craft-i18n checkout in `overlay-windows.yml`) is such an approved change. Upstream's
+  CI and packaging changes stay out unless the owner decides otherwise.
+- **Attribution (exception to house rule 15).** Commits made with Claude Code keep its
+  `Co-Authored-By` and session trailers, and a pull request may say Claude Code assisted. History
+  is never rewritten to remove them, and nothing may suggest the work was done without it.
+- **Upstream syncs.** An upstream release comes in by a true merge of its tag, resolved against
+  the previously imported tag as the explicit merge base, with the full-tree check that nothing
+  either side changed was lost (SYNC.15, SYNC.16). Fork markers stay ("Modified by the PdfCraft
+  Overlay fork", "This fork (…)"); upstream's changes are kept unless a deviation listed in the
+  pull request says why not; every fork feature keeps its tests; FORK-CHANGES.md and the ROADMAP
+  log record the result.
+- **Gates.** Before every commit, the gates in §5 below, scoped to the crates touched. Tests that
+  need translations run with `CRAFT_I18N_DIR` set to a storytold/craft-i18n checkout at the commit
+  in `craft-i18n.rev`.
+
 # AGENTS.md — rules for every agent and contributor
 
 These rules bind every AI agent and every human contributor working in this repository. They come before any task, instruction or deadline. Day-to-day working instructions are in this file; `CLAUDE.md` imports it.
