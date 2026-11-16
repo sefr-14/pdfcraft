@@ -10,16 +10,16 @@
 //!
 //! One document can show in both panes at once (page 2 beside page 40): two views with one
 //! `DocId`. The document, its edits and its undo history are the session's, so an edit made in one
-//! view is the other's too ([`PdfCraftApp::settle_panes`] refreshes the other view), while each view
-//! keeps its own scroll, zoom and selection. Closing one of them closes only that view.
+//! view is the other's too (`PdfCraftApp::sync_shared_views`, this fork's one refresh for Duplicate
+//! Tab and split view, refreshes the other view), while each view keeps its own scroll, zoom and
+//! selection. Closing one of them closes only that view. This fork: a view split view would close
+//! (ending split view, or a tab moved to a pane that shows its document) is kept, as a tab of its
+//! own, while it holds typing not in the document yet, so nothing typed is lost.
 //!
 //! Nothing here is kept across restarts: the second pane's tabs are ordinary tabs, so the last
 //! session reopens them in the one strip, unsplit.
 
-use std::collections::{HashMap, HashSet};
-
 use egui::{Pos2, Rect, Sense, Stroke, vec2};
-use pdfcraft_engine::DocId;
 
 use crate::theme::Tokens;
 use crate::{CloseRequest, PdfCraftApp};
@@ -93,8 +93,6 @@ pub struct Panes {
     /// The main tab strip and the page area, last frame.
     pub(crate) main_strip: Option<Rect>,
     pub(crate) page_rect: Option<Rect>,
-    /// Each open document's edit generation as last seen.
-    generations: HashMap<DocId, u64>,
     /// The pane being drawn now (for what belongs to one pane only).
     pub(crate) drawing: Place,
     /// Where a dragged tab would land, painted over the page area this frame.
@@ -211,7 +209,11 @@ impl PdfCraftApp {
                 self.unsplit();
             }
         }
-        self.sync_views();
+        // Tabs that show a document changed through another of its tabs catch up here, where
+        // upstream's split view refreshed them: after `begin_render_frame`, so a view caught up
+        // this frame drops the demand it collects for it (#3149). This fork's `sync_shared_views`
+        // (Duplicate Tab) keeps each view's place, zoom and history: one refresh for both features.
+        self.sync_shared_views();
         if let Some(v) = self.active.and_then(|i| self.views.get_mut(i)) {
             self.panes.focus = v.pane.place;
             if v.pane.shown_seq != self.panes.top_seq || self.panes.top_seq == 0 {
@@ -219,33 +221,6 @@ impl PdfCraftApp {
                 v.pane.shown_seq = self.panes.top_seq;
             }
         }
-    }
-
-    /// A document changed through one of its views (an edit, Undo, a reload): its other view
-    /// starts afresh at the same place, as after a reload.
-    fn sync_views(&mut self) {
-        let mut seen = HashSet::new();
-        for k in 0..self.views.len() {
-            let Some(id) = self.views.get(k).map(|v| v.id) else { continue };
-            if !seen.insert(id) {
-                continue;
-            }
-            let Some(doc) = self.session.get(id) else { continue };
-            let generation = doc.edit_generation();
-            let before = self.panes.generations.insert(id, generation);
-            if before.is_none_or(|g| g == generation) {
-                continue;
-            }
-            // The view the change came through: the active one, else the first (as the code that
-            // made the change finds a document's tab).
-            let acting = self.active.filter(|&a| self.views.get(a).is_some_and(|v| v.id == id)).unwrap_or(k);
-            for (j, v) in self.views.iter_mut().enumerate() {
-                if j != acting && v.id == id {
-                    v.follow_document(&doc.info);
-                }
-            }
-        }
-        self.panes.generations.retain(|id, _| seen.contains(id));
     }
 
     /// Move tab `from` along its strip: `to` is where it lands among the strip's tabs (`slots`, the
@@ -342,7 +317,8 @@ impl PdfCraftApp {
     }
 
     /// End split view: the second pane's tabs join the main strip, except second views of
-    /// documents the main pane has open already, which close.
+    /// documents the main pane has open already, which close, unless they hold typing of their own
+    /// (this fork): those join the strip too, as a duplicate tab would.
     pub fn unsplit(&mut self) {
         self.panes.split = None;
         for i in (0..self.views.len()).rev() {
@@ -350,7 +326,7 @@ impl PdfCraftApp {
             if place != Place::Second {
                 continue;
             }
-            if self.views.iter().any(|v| v.id == id && v.pane.place == Place::Main) {
+            if self.views.iter().any(|v| v.id == id && v.pane.place == Place::Main) && !self.has_unsaved_typing(i) {
                 self.drop_view(i);
             } else if let Some(v) = self.views.get_mut(i) {
                 v.pane.place = Place::Main;
@@ -359,7 +335,8 @@ impl PdfCraftApp {
     }
 
     /// Move tab `index` to `place` and make it active. A pane that shows its document already
-    /// keeps the view it has, and the moving one closes. Returns the tab's index afterwards.
+    /// keeps the view it has, and the moving one closes, unless it holds typing of its own (this
+    /// fork): then it moves too. Returns the tab's index afterwards.
     pub fn move_tab_to(&mut self, index: usize, place: Place) -> Option<usize> {
         let (id, key, from) = self.views.get(index).map(|v| (v.id, v.view_key(), v.pane.place))?;
         if from == place {
@@ -369,7 +346,9 @@ impl PdfCraftApp {
         if place == Place::Second && self.panes.split.is_none() {
             self.panes.split = Some(Split::new(false));
         }
-        if let Some(there) = self.views.iter().position(|v| v.id == id && v.pane.place == place && v.view_key() != key) {
+        if let Some(there) = self.views.iter().position(|v| v.id == id && v.pane.place == place && v.view_key() != key)
+            && !self.has_unsaved_typing(index)
+        {
             let keep = self.views.get(there).map(|v| v.view_key());
             self.drop_view(index);
             self.active = keep.and_then(|k| self.tab_with_key(k));

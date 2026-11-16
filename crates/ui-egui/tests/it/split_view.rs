@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Split view (`view.split-window`): a tab's menu splits right or down, ⌘\ splits the current
 //! document and ends split view again, each pane keeps its own zoom, the same document in both
 //! panes is one document (one edit, one Undo), the pane last clicked is the one menus and keys act
@@ -222,32 +223,10 @@ fn split_again_or_closing_a_panes_last_tab_ends_split_view() {
     assert!(h.state().panes.split.is_none());
     assert_eq!(h.state().views.len(), 1);
     assert!(h.state().session.get(h.state().views[0].id).unwrap().dirty, "its edit is still there");
-    // Typing a view holds of its own (not in the document yet) goes into the document as the view
-    // closes, as clicking away would put it (this fork: Duplicate Tab's rule for every view of a
-    // document shown twice, `duplicate_tab_tests::typing_in_a_closing_duplicate_goes_into_the_document`;
-    // upstream asks instead). The view asked about closes, not the other.
-    h.key_press_modifiers(Modifiers::COMMAND, Key::Backslash);
-    h.run_steps(3);
-    let second = h.state().views.iter().position(|v| v.place() == Place::Second).unwrap();
-    let (first_key, id) = (h.state().views[0].view_key(), h.state().views[0].id);
-    let typed = pdfcraft_ui_egui::fill_sign::TypeBox {
-        page: 0,
-        at: [40.0, 40.0],
-        text: "typed".into(),
-        size: 10.0,
-        color: [0.0; 3],
-        border: Default::default(),
-        focus: false,
-    };
-    h.state_mut().views[second].fill_text = Some(typed);
-    let annotations = h.state().session.get(id).unwrap().info.annotations.len();
-    h.state_mut().request_close_tab(second);
-    assert!(h.state().close_request.is_none(), "nothing to ask: the typing is in the document");
-    h.run_steps(3);
-    assert_eq!(h.state().views.len(), 1);
-    assert_eq!(h.state().session.get(id).unwrap().info.annotations.len(), annotations + 1, "the typed text is a comment now");
-    assert_eq!(h.state().views[0].view_key(), first_key, "the view asked about closed, the other stayed");
-    assert!(h.state().session.get(id).unwrap().dirty, "the document and its edit are still open");
+    // Upstream goes on to type into one view and close it, expecting a question about the typing
+    // and Don't save to drop it. This fork commits a closing view's typing into the shared document
+    // instead (Duplicate Tab's rule, for every view of a document shown twice): see
+    // `closing_either_pane_with_pending_typing_keeps_the_text_once`, and the related tests below.
 }
 
 #[test]
@@ -316,4 +295,154 @@ fn closing_the_second_panes_tab_from_its_strip_keeps_the_program_running() {
     h.run_steps(3);
     assert!(h.state().panes.split.is_none());
     assert_eq!(h.state().views.len(), 1);
+}
+
+// ── This fork (SYNC.17): split view with Duplicate Tab's close rule and Tile View ─────────────
+
+/// Fill & Sign text typed in `tab` and not committed yet.
+fn type_in(h: &mut Harness<'static, PdfCraftApp>, tab: usize, text: &str) {
+    h.state_mut().views[tab].fill_text = Some(pdfcraft_ui_egui::fill_sign::TypeBox {
+        page: 0,
+        at: [40.0, 40.0],
+        text: text.into(),
+        size: 10.0,
+        color: [0.0; 3],
+        border: Default::default(),
+        focus: false,
+    });
+}
+
+/// How many annotations document `id` has, and how many of them hold `text`.
+fn notes(h: &Harness<'static, PdfCraftApp>, id: pdfcraft_engine::DocId, text: &str) -> (usize, usize) {
+    let doc = h.state().session.get(id).unwrap();
+    let all = &doc.info.annotations;
+    (all.len(), all.iter().filter(|a| a.contents.as_deref() == Some(text)).count())
+}
+
+/// Closing a view of a document the other pane also shows, with Fill & Sign text typed in it and
+/// not committed: the text goes into the document, once, as clicking away would put it, and
+/// nothing is asked. Upstream asks and drops the text on Don't save; this fork never drops typed
+/// text (Duplicate Tab's rule, `duplicate_tab_tests::typing_in_a_closing_duplicate_goes_into_the_document`).
+/// Committing is not saving: the document is marked changed and its file's bytes are as they were;
+/// one Undo takes the text back out and Redo puts it back; the view that stays shows it. Both
+/// panes, second and main.
+#[test]
+fn closing_either_pane_with_pending_typing_keeps_the_text_once() {
+    for close_second in [true, false] {
+        let mut h = harness(&["a.pdf"]);
+        h.key_press_modifiers(Modifiers::COMMAND, Key::Backslash);
+        h.run_steps(3);
+        assert!(h.state().panes.split.is_some());
+        let id = h.state().views[0].id;
+        let saved = h.state().session.get(id).unwrap().saved_bytes();
+        let (before, _) = notes(&h, id, "typed");
+        let closing = h.state().views.iter().position(|v| (v.place() == Place::Second) == close_second).unwrap();
+        let staying = h.state().views[1 - closing].view_key();
+        type_in(&mut h, closing, "typed");
+        h.state_mut().request_close_tab(closing);
+        h.run_steps(3);
+        assert!(h.state().close_request.is_none(), "nothing to ask: the typing is in the document (second pane: {close_second})");
+        assert_eq!(h.state().views.len(), 1, "only the view asked about closed");
+        assert_eq!(h.state().views[0].view_key(), staying, "the other view stayed");
+        assert_eq!(notes(&h, id, "typed"), (before + 1, 1), "the text is in the document once");
+        let doc = h.state().session.get(id).unwrap();
+        assert!(doc.dirty, "the document is marked changed");
+        assert_eq!(doc.saved_bytes(), saved, "and nothing was written: committing isn't saving");
+        assert!(h.state().views[0].fill_text.is_none());
+        // The view that stays shows the document as it is now.
+        assert!(h.state().views[0].comments.selection().iter().all(|&(p, i)| doc.info.annotations.iter().any(|a| (a.page, a.index) == (p, i))));
+        assert!(h.state_mut().execute("edit.undo"));
+        h.run_steps(2);
+        assert_eq!(notes(&h, id, "typed"), (before, 0), "Undo takes the text out");
+        assert!(h.state_mut().execute("edit.redo"));
+        h.run_steps(2);
+        assert_eq!(notes(&h, id, "typed"), (before + 1, 1), "Redo puts it back, once");
+    }
+}
+
+/// The last view of a document, with typing pending, still asks before closing, split or not:
+/// with no other view, the document itself would close.
+#[test]
+fn closing_the_last_view_with_pending_typing_still_asks() {
+    let mut h = harness(&["a.pdf", "b.pdf"]);
+    let a = index(&h, "a.pdf");
+    h.state_mut().split_tab(a, false);
+    h.run_steps(3);
+    let a = index(&h, "a.pdf");
+    assert_eq!(h.state().views[a].place(), Place::Second);
+    let id = h.state().views[a].id;
+    type_in(&mut h, a, "typed");
+    h.state_mut().request_close_tab(a);
+    h.run_steps(2);
+    assert_eq!(h.state().close_request, Some(pdfcraft_ui_egui::CloseRequest::Tab(h.state().views[a].key)), "asked about");
+    let ctx = h.ctx.clone();
+    h.state_mut().resolve_close(&ctx, None);
+    h.run_steps(2);
+    assert!(h.state().session.get(id).is_some(), "Cancel keeps the document open");
+    assert_eq!(h.state().views[index(&h, "a.pdf")].fill_text.as_ref().map(|t| t.text.as_str()), Some("typed"), "with its text");
+}
+
+/// Ending split view, or dragging a tab into the pane that shows its document, closes a second
+/// view of it upstream. A view with typing pending stays (as a tab of its own) rather than lose
+/// it; one without closes as upstream's does.
+#[test]
+fn ending_split_view_keeps_a_view_with_pending_typing() {
+    let mut h = harness(&["a.pdf"]);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Backslash);
+    h.run_steps(3);
+    let second = h.state().views.iter().position(|v| v.place() == Place::Second).unwrap();
+    type_in(&mut h, second, "kept");
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Backslash);
+    h.run_steps(3);
+    assert!(h.state().panes.split.is_none());
+    assert_eq!(h.state().views.len(), 2, "the view with typing stayed");
+    assert_eq!(places(&h), [Place::Main, Place::Main]);
+    assert!(h.state().views.iter().any(|v| v.fill_text.as_ref().is_some_and(|t| t.text == "kept")), "with its text");
+    // Without typing, ⌘\ twice leaves one view, as upstream's does.
+    let mut h = harness(&["a.pdf"]);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Backslash);
+    h.run_steps(3);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Backslash);
+    h.run_steps(3);
+    assert_eq!(h.state().views.len(), 1);
+    // A tab with typing moved to the pane that shows its document goes there too.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Backslash);
+    h.run_steps(3);
+    let second = h.state().views.iter().position(|v| v.place() == Place::Second).unwrap();
+    type_in(&mut h, second, "moved");
+    let moved = h.state_mut().move_tab_to(second, Place::Main).expect("the tab");
+    h.run_steps(2);
+    assert_eq!(h.state().views[moved].fill_text.as_ref().map(|t| t.text.as_str()), Some("moved"));
+    assert_eq!(h.state().views.len(), 2);
+}
+
+/// Split view, Duplicate Tab and Tile View together: a duplicate of a tab shown in split view, then
+/// Tile View and back. Every view keeps its own key and page, an edit made through one reaches all
+/// of them, and none of the features closes another's views.
+#[test]
+fn split_view_duplicate_tab_and_tile_view_work_together() {
+    let mut h = harness(&["a.pdf"]);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Backslash);
+    h.run_steps(3);
+    assert_eq!(h.state().views.len(), 2);
+    h.state_mut().duplicate_view(0);
+    h.run_steps(3);
+    assert_eq!(h.state().views.len(), 3);
+    let keys: std::collections::HashSet<u64> = h.state().views.iter().map(|v| v.view_key()).collect();
+    assert_eq!(keys.len(), 3, "three views, three keys");
+    let id = h.state().views[0].id;
+    h.state_mut().views[2].go_to_page(2);
+    h.run_steps(3);
+    h.state_mut().set_view_layout(pdfcraft_ui_egui::ViewLayout::Tiles);
+    h.run_steps(6);
+    assert_eq!(h.state().views.len(), 3, "Tile View closes no view");
+    assert!(h.state_mut().execute("page.rotate"));
+    h.run_steps(4);
+    let version = h.state().session.get(id).unwrap().edit_generation();
+    assert!(h.state().views.iter().all(|v| v.content_seen().is_some_and(|(g, _)| g == version)), "every view caught up with the edit");
+    h.state_mut().set_view_layout(pdfcraft_ui_egui::ViewLayout::Tabs);
+    h.run_steps(4);
+    assert_eq!(h.state().views.len(), 3, "back in Tab View, every view is still there");
+    assert_eq!(h.state().views[2].current, 2, "the duplicate kept its page");
+    assert!(h.state().panes.split.is_some(), "and split view is still on");
 }

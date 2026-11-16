@@ -886,8 +886,6 @@ impl PdfCraftApp {
         self.motion.begin_pass(&ctx, self.animation_effects);
         // One-time 0.36 -> 0.37 panel persistence migration, before any panel stores or reads state.
         migrate_panel_state(ui);
-        // Tabs that show a document changed through another of its tabs catch up first.
-        self.sync_shared_views();
         // Rulers and guides follow opened, changed, saved and closed documents (OV11).
         self.sync_doc_prefs();
         if self.doc_prefs.changed() {

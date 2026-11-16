@@ -1402,15 +1402,6 @@ impl DocView {
         self.links.selected = None;
     }
 
-    /// Another view of this document changed it (split view: an edit, Undo,
-    /// a reload): start afresh as a reload does, keeping the reader's place, so nothing here
-    /// points into the old version.
-    pub(crate) fn follow_document(&mut self, info: &DocInfo) {
-        let continuous = self.continuous;
-        self.document_replaced(info);
-        self.continuous = continuous;
-    }
-
     /// A second view of this document (split view), showing what this one shows.
     pub(crate) fn twin(&self, info: &DocInfo) -> Self {
         let mut v = Self::new(self.id, info, ViewDefaults::default());
@@ -1428,6 +1419,12 @@ impl DocView {
         v.scripts_off_noted = self.scripts_off_noted;
         v.goto = Some((self.current, 0.0));
         v
+    }
+
+    /// The document version this view shows (see `PdfCraftApp::sync_shared_views`), for tests and
+    /// the control channel (this fork, OV7).
+    pub fn content_seen(&self) -> Option<(u64, usize)> {
+        self.content_seen
     }
 
     /// The key that tells this view apart from another view of the same document (split view):
