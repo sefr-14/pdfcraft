@@ -22,6 +22,10 @@ use crate::{OrganizeError, walk};
 mod shift;
 pub use shift::{MAX_SHIFT, OutlineShape, Shift, ShiftPlan, plan_shift, shift_bookmarks};
 
+// This fork (BOOKMARK.DND.1): several bookmarks moved to one place together.
+mod relocate;
+pub use relocate::{MovePlan, move_bookmarks, plan_move, preview_move_bookmarks};
+
 /// Deepest level a listing enters (the top level is 0). Bookmarks deeper than this are not
 /// listed; edits still reach them by path.
 pub(crate) const LIST_DEPTH: usize = 32;

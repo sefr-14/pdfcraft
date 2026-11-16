@@ -44,7 +44,7 @@ pub enum Shift {
 /// root; [`OutlineShape::add`] appends the others. A shape built this way is always a tree.
 #[derive(Clone, Debug)]
 pub struct OutlineShape {
-    kids: Vec<Vec<usize>>,
+    pub(super) kids: Vec<Vec<usize>>,
 }
 
 impl Default for OutlineShape {
@@ -68,12 +68,12 @@ impl OutlineShape {
         Some(id)
     }
 
-    fn len(&self) -> usize {
+    pub(super) fn len(&self) -> usize {
         self.kids.len()
     }
 
     /// The node at `path`, walking child indices from the root.
-    fn node(&self, path: &[usize]) -> Option<usize> {
+    pub(super) fn node(&self, path: &[usize]) -> Option<usize> {
         path.iter().try_fold(0usize, |node, &i| self.kids.get(node)?.get(i).copied())
     }
 }
@@ -90,14 +90,14 @@ pub struct ShiftPlan {
 
 /// Each node's parent, depth (the root's children are at 0), place in outline order and height
 /// (how many levels lie below it), for the nodes reachable from the root.
-struct Layout {
-    parent: Vec<usize>,
-    depth: Vec<usize>,
-    order: Vec<usize>,
-    height: Vec<usize>,
+pub(super) struct Layout {
+    pub(super) parent: Vec<usize>,
+    pub(super) depth: Vec<usize>,
+    pub(super) order: Vec<usize>,
+    pub(super) height: Vec<usize>,
 }
 
-fn layout(shape: &OutlineShape) -> Layout {
+pub(super) fn layout(shape: &OutlineShape) -> Layout {
     let n = shape.len();
     let (mut parent, mut depth, mut order, mut height): (Vec<usize>, Vec<usize>, Vec<usize>, Vec<usize>) =
         (vec![0; n], vec![0; n], vec![usize::MAX; n], vec![0; n]);
@@ -136,13 +136,10 @@ fn layout(shape: &OutlineShape) -> Layout {
     Layout { parent, depth, order, height }
 }
 
-/// Plan moving the bookmarks at `paths` together (see the module docs). Pure: `shape` is not
-/// changed. Refused, with the first offending path, when any of them can't move.
-pub fn plan_shift(shape: &OutlineShape, paths: &[Vec<usize>], shift: Shift) -> Result<ShiftPlan> {
-    if paths.len() > MAX_SHIFT {
-        return Err(OutlineError::TooMany);
-    }
-    let lay = layout(shape);
+/// The bookmarks a group move takes, from the `paths` it was asked for: each picked node once,
+/// without those under another picked one (they move with it), in outline order, each with the
+/// path that named it. Refused when a path names no bookmark.
+pub(super) fn picked_roots<'a>(shape: &OutlineShape, lay: &Layout, paths: &'a [Vec<usize>]) -> Result<Vec<(usize, &'a Vec<usize>)>> {
     // The picked nodes, each with the path it was asked for.
     let mut picks: Vec<(usize, &Vec<usize>)> = Vec::with_capacity(paths.len());
     let mut picked = HashSet::new();
@@ -172,6 +169,42 @@ pub fn plan_shift(shape: &OutlineShape, paths: &[Vec<usize>], shift: Shift) -> R
         true
     });
     picks.sort_by_key(|&(node, _)| lay.order.get(node).copied().unwrap_or(usize::MAX));
+    Ok(picks)
+}
+
+/// The paths of the `moving` nodes in the child lists `kids` (node 0 is the root), from one walk
+/// in outline order.
+pub(super) fn paths_of(kids: &[Vec<usize>], moving: &HashSet<usize>) -> Vec<Vec<usize>> {
+    let mut new_paths = Vec::with_capacity(moving.len());
+    let mut stack: Vec<(usize, Vec<usize>)> =
+        kids.first().map(|k| k.iter().enumerate().rev().map(|(i, &n)| (n, vec![i])).collect()).unwrap_or_default();
+    let mut seen = HashSet::new();
+    while let Some((node, path)) = stack.pop() {
+        if !seen.insert(node) {
+            continue;
+        }
+        if let Some(list) = kids.get(node) {
+            for (i, &kid) in list.iter().enumerate().rev() {
+                let mut p = path.clone();
+                p.push(i);
+                stack.push((kid, p));
+            }
+        }
+        if moving.contains(&node) {
+            new_paths.push(path);
+        }
+    }
+    new_paths
+}
+
+/// Plan moving the bookmarks at `paths` together (see the module docs). Pure: `shape` is not
+/// changed. Refused, with the first offending path, when any of them can't move.
+pub fn plan_shift(shape: &OutlineShape, paths: &[Vec<usize>], shift: Shift) -> Result<ShiftPlan> {
+    if paths.len() > MAX_SHIFT {
+        return Err(OutlineError::TooMany);
+    }
+    let lay = layout(shape);
+    let mut picks = picked_roots(shape, &lay, paths)?;
     if shift == Shift::Out {
         picks.reverse();
     }
@@ -221,27 +254,8 @@ pub fn plan_shift(shape: &OutlineShape, paths: &[Vec<usize>], shift: Shift) -> R
         changed.insert(p);
         changed.insert(to);
     }
-    // The moved bookmarks' new paths, from one walk of the new shape in outline order.
     let moving: HashSet<usize> = picks.iter().map(|&(node, _)| node).collect();
-    let mut new_paths = Vec::with_capacity(moving.len());
-    let mut stack: Vec<(usize, Vec<usize>)> =
-        kids.first().map(|k| k.iter().enumerate().rev().map(|(i, &n)| (n, vec![i])).collect()).unwrap_or_default();
-    let mut seen = HashSet::new();
-    while let Some((node, path)) = stack.pop() {
-        if !seen.insert(node) {
-            continue;
-        }
-        if let Some(list) = kids.get(node) {
-            for (i, &kid) in list.iter().enumerate().rev() {
-                let mut p = path.clone();
-                p.push(i);
-                stack.push((kid, p));
-            }
-        }
-        if moving.contains(&node) {
-            new_paths.push(path);
-        }
-    }
+    let new_paths = paths_of(&kids, &moving);
     let lists = changed.into_iter().map(|n| (n, kids.get(n).cloned().unwrap_or_default())).collect();
     Ok(ShiftPlan { lists, opened: opened.into_iter().collect(), paths: new_paths })
 }
@@ -255,7 +269,7 @@ pub fn plan_shift(shape: &OutlineShape, paths: &[Vec<usize>], shift: Shift) -> R
 /// `/First` or `/Next` that isn't a reference to a dictionary. A group move rewrites links, and on
 /// such an outline that would either drop data the file has or leave it inconsistent. `null` is
 /// the same as no link. Each object is met once, so the walk is no longer than the outline.
-fn read_tree(doc: &Document, root: ObjRef) -> Result<(OutlineShape, Vec<ObjRef>)> {
+pub(super) fn read_tree(doc: &Document, root: ObjRef) -> Result<(OutlineShape, Vec<ObjRef>)> {
     let mut shape = OutlineShape::new();
     let mut refs = vec![root];
     let mut seen = HashSet::from([root]);
@@ -315,4 +329,4 @@ pub fn shift_bookmarks(doc: &mut Document, paths: &[Vec<usize>], shift: Shift) -
 }
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;

@@ -9,7 +9,7 @@ use super::{Shift, shift_bookmarks};
 use crate::OutlineError;
 
 /// A classic-xref PDF from object bodies (object i+1 = bodies[i]).
-fn build(bodies: &[String]) -> Vec<u8> {
+pub(in crate::outline) fn build(bodies: &[String]) -> Vec<u8> {
     let mut out = b"%PDF-1.7\n".to_vec();
     let mut offsets = Vec::new();
     for (i, b) in bodies.iter().enumerate() {
@@ -25,12 +25,12 @@ fn build(bodies: &[String]) -> Vec<u8> {
     out
 }
 
-fn open(bytes: Vec<u8>) -> Document {
+pub(in crate::outline) fn open(bytes: Vec<u8>) -> Document {
     Document::open(Arc::new(bytes)).expect("opens")
 }
 
 /// A one-page document without bookmarks.
-fn blank() -> Document {
+pub(in crate::outline) fn blank() -> Document {
     open(build(&[
         "<< /Type /Catalog /Pages 2 0 R >>".into(),
         "<< /Type /Pages /Kids [3 0 R] /Count 1 /MediaBox [0 0 300 400] >>".into(),
@@ -40,7 +40,7 @@ fn blank() -> Document {
 
 /// A one-page document whose outline root is object 3 and whose bookmarks are `items`, as
 /// objects 5, 6, … in order (object 4 is the page).
-fn outline_with(items: &[&str]) -> Document {
+pub(in crate::outline) fn outline_with(items: &[&str]) -> Document {
     let mut b: Vec<String> = vec![
         "<< /Type /Catalog /Pages 2 0 R /Outlines 3 0 R >>".into(),
         "<< /Type /Pages /Kids [4 0 R] /Count 1 /MediaBox [0 0 300 400] >>".into(),
@@ -52,7 +52,7 @@ fn outline_with(items: &[&str]) -> Document {
 }
 
 /// Bookmarks from a spec like `"A[a1,a2],B"`: top-level titles, children in brackets.
-fn tree(spec: &str) -> Document {
+pub(in crate::outline) fn tree(spec: &str) -> Document {
     let mut d = blank();
     let mut path: Vec<usize> = vec![0];
     let mut title = String::new();
@@ -88,7 +88,7 @@ fn tree(spec: &str) -> Document {
 }
 
 /// The outline as a spec, the reverse of [`tree`].
-fn spec(d: &Document) -> String {
+pub(in crate::outline) fn spec(d: &Document) -> String {
     let b = crate::bookmarks(d);
     fn level(b: &[crate::Bookmark], at: &mut usize, depth: usize) -> Vec<String> {
         let mut out = Vec::new();
@@ -102,7 +102,7 @@ fn spec(d: &Document) -> String {
     level(&b, &mut 0, 0).join(",")
 }
 
-fn bytes(d: &Document) -> Vec<u8> {
+pub(in crate::outline) fn bytes(d: &Document) -> Vec<u8> {
     write_full(d, &SaveOptions::default()).expect("writes")
 }
 
@@ -273,16 +273,16 @@ fn a_group_move_rewrites_only_links_and_keeps_everything_else() {
 // ── The group equals moving its bookmarks one at a time ─────────────────────────────────────────
 
 /// A small xorshift: deterministic, no dependency.
-struct Rng(u64);
+pub(in crate::outline) struct Rng(pub(in crate::outline) u64);
 
 impl Rng {
-    fn next(&mut self) -> u64 {
+    pub(in crate::outline) fn next(&mut self) -> u64 {
         self.0 ^= self.0 << 13;
         self.0 ^= self.0 >> 7;
         self.0 ^= self.0 << 17;
         self.0
     }
-    fn below(&mut self, n: usize) -> usize {
+    pub(in crate::outline) fn below(&mut self, n: usize) -> usize {
         if n == 0 { 0 } else { (self.next() % n as u64) as usize }
     }
 }
@@ -333,7 +333,7 @@ fn one_at_a_time(d: &mut Document, paths: &[Vec<usize>], shift: Shift) -> bool {
 }
 
 /// Every outline object's links and count, by title (titles are unique here).
-fn links(d: &Document) -> Vec<(String, Vec<Option<String>>, Option<i64>)> {
+pub(in crate::outline) fn links(d: &Document) -> Vec<(String, Vec<Option<String>>, Option<i64>)> {
     let listed = crate::bookmarks(d);
     let root = d.get(d.root().unwrap()).as_dict().unwrap().reference(b"Outlines");
     let mut name: HashMap<ObjRef, String> = listed.iter().map(|b| (b.obj, b.title.clone())).collect();
