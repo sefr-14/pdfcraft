@@ -360,6 +360,7 @@ impl PdfCraftApp {
 
     /// The rest of [`Self::commit_saved_file`] once `bytes` are written at `dest`: the document
     /// becomes that file, as saved.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn commit_written_file(&mut self, id: pdfcraft_engine::DocId, dest: &str, bytes: std::sync::Arc<Vec<u8>>, announce: bool) -> bool {
         // Our own write is not a change on disk to reload (#431).
         self.watch.known_now(id, dest);
