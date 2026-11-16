@@ -109,7 +109,6 @@ impl DocView {
         self.goto_point = None;
         self.goto = Some((page, 0.0));
         // Any jump replaces a pending Find step; the steps set theirs after this.
-        self.reveal_match = None;
         self.current = page;
     }
 
@@ -279,11 +278,12 @@ impl DocView {
         to.push(self.current);
         let page = page.min(self.page_count.saturating_sub(1));
         self.goto = Some((page, 0.0));
-        self.reveal_match = None;
         self.current = page;
         self.reset_coarse_state();
-        // A find step's match belongs to the place left, as for any other jump.
+        // A find step's match belongs to the place left, as for any other jump; so does its
+        // pending centring point (this fork, OV12: it would take the view back to the match).
         self.find_hold = None;
+        self.goto_point = None;
         true
     }
 

@@ -103,8 +103,6 @@ impl DocView {
     pub fn rerun_find(&mut self) {
         let Some(f) = self.find.as_mut() else { return };
         f.case_query = f.query.clone();
-        // A step of the old query no longer applies (this fork, OV12).
-        self.reveal_match = None;
         f.matches.clear();
         f.current = None;
         // Refining the query keeps the page the reader started searching from, even when an
@@ -178,9 +176,10 @@ impl DocView {
         let Some(&(p, _)) = f.matches.get(i) else { return };
         f.current = Some(i);
         f.stop_following();
+        let stays = self.match_stays(i);
         self.go_to_page(p);
         self.goto_point = None;
-        self.reveal(i, p);
+        self.reveal(p, stays);
     }
 
     /// Move to the next/previous match.
@@ -195,23 +194,40 @@ impl DocView {
         f.current = Some(next);
         f.stop_following();
         let p = f.matches[next].0;
+        let stays = self.match_stays(next);
         // Only explicit search navigation joins history; background refresh uses flash_match alone.
         self.go_to_page(p);
         self.goto_point = None;
-        self.reveal(next, p);
+        self.reveal(p, stays);
     }
 
-    /// An explicit Find step to match `i` on page `p` (this fork, OV12): the match is brought
-    /// near the viewport's centre, at the same zoom, unless it is already in the middle half.
-    /// Without the page's text (not read yet) the page is shown as before.
-    fn reveal(&mut self, i: usize, p: usize) {
-        match self.match_box(i) {
-            Some(b) => {
-                self.goto = None;
-                self.reveal_match = Some((p, b));
-            }
-            None => self.flash_match(p),
+    /// An explicit Find step to match `i` on page `p`: upstream's `flash_match` brings the match
+    /// to the middle of the view at the same zoom (#3530), unless it `stays` (this fork, OV12:
+    /// [`Self::match_stays`]), when the view doesn't move at all.
+    fn reveal(&mut self, p: usize, stays: bool) {
+        if stays {
+            self.goto = None;
+            self.goto_point = None;
+            self.zoom_anchor = None;
+            self.find_hold = None;
+            self.current = p;
+            return;
         }
+        self.flash_match(p);
+    }
+
+    /// Whether a Find step to match `i` leaves the view where it is (this fork, OV12): the match
+    /// was drawn last frame wholly inside the middle half of the view, both ways, and nothing
+    /// else is moving the view this frame (a jump, a zoom, another tab's scroll), so the last
+    /// frame's places still hold.
+    fn match_stays(&self, i: usize) -> bool {
+        let moving = self.goto.is_some() || self.goto_point.is_some() || self.zoom_anchor.is_some() || self.sync_scroll.is_some();
+        let (Some(m), view) = (self.match_screen_rect(i), self.viewport_rect()) else { return false };
+        let within = |lo: f32, hi: f32, from: f32, len: f32| lo >= from + len * 0.25 && hi <= from + len * 0.75;
+        !moving
+            && view.is_positive()
+            && within(m.left(), m.right(), view.left(), view.width())
+            && within(m.top(), m.bottom(), view.top(), view.height())
     }
 
     /// Match `i`'s box in view space: the union of its glyphs' boxes.

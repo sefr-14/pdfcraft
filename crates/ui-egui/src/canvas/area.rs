@@ -28,28 +28,6 @@ pub(crate) fn signature_badges(signatures: &[pdfcraft_engine::SignatureInfo], pa
         .collect()
 }
 
-/// The layout a scroll offset was measured against (this fork, OV12): the content and viewport
-/// sizes, the zoom and the view's turn.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct ScrollFrame {
-    pub(super) content: Vec2,
-    pub(super) viewport: Vec2,
-    pub(super) zoom: f32,
-    pub(super) rotation: u16,
-}
-
-/// A Find match's view-space box `b` on a page laid out at `r` (scroll-content coordinates, its
-/// top `y_shift` above the content's), with its `/Rotate` and the view's turn: the box as
-/// `[x0, y0, x1, y1]` in content coordinates. `None` for a box that isn't finite.
-pub(super) fn match_on_content(p: &pdfcraft_render::PageInfo, b: [f32; 4], view_rotation: u16, r: Rect, y_shift: f32) -> Option<[f32; 4]> {
-    let u = p.view_rect_to_user(b);
-    let [Some(ax), Some(ay)] = p.dest_fraction(Some(u[0]), Some(u[1]), view_rotation) else { return None };
-    let [Some(bx), Some(by)] = p.dest_fraction(Some(u[2]), Some(u[3]), view_rotation) else { return None };
-    let x = |f: f32| r.left() + f * r.width();
-    let y = |f: f32| r.top() - y_shift + f * r.height();
-    Some([x(ax.min(bx)), y(ay.min(by)), x(ax.max(bx)), y(ay.max(by))])
-}
-
 /// The empty signature fields on one page that get a sign tab, as their names and widget
 /// rectangles (user space). Each is unsigned and visible, on this page, with a rectangle that
 /// passes the same screen-space guard as [`signature_badges`]. A click must also be able to sign

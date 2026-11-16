@@ -505,9 +505,7 @@ fn explicit_search_jumps_record_history_and_keep_match_destination() {
             v.go_to_match(0);
         }
         assert_eq!(v.back, vec![0], "explicit search jump must remember its origin");
-        // This fork (OV12): the match is brought near the centre, not to the page top.
-        assert_eq!(v.goto, None, "no page-top jump for a match whose box is known");
-        assert_eq!(v.reveal_match, Some((3, [20.0, 260.0, 60.0, 280.0])), "the match's box to centre");
+        assert_eq!(v.goto, None, "the match's point alone: a zoom that frame cannot put a page-top offset off to the next");
         assert_eq!(v.current, 3);
         assert_eq!(v.current_page_label(None), "4");
         // Chrome refreshes the idle page box; navigation must not overwrite a draft
@@ -530,26 +528,65 @@ fn explicit_search_jumps_record_history_and_keep_match_destination() {
 
 /// OV12: a step to a match whose page text isn't read yet shows its page as before; any other
 /// jump, a new query or a changed document drops a pending step, so an old one never moves
-/// the view later.
+/// the view later. (Since SYNC.17 the step is upstream's centring, `goto_point`, #3530.)
 #[test]
 fn a_pending_find_step_falls_back_or_is_dropped() {
     let mut v = history_search_view();
     v.go_to_match(2);
-    assert_eq!((v.reveal_match, v.goto.map(|g| g.0)), (None, Some(1)), "page 2's text isn't read: its page");
+    assert_eq!((v.goto_point, v.goto.map(|g| g.0)), (None, Some(1)), "page 2's text isn't read: its page");
     v.go_to_match(0);
-    assert!(v.reveal_match.is_some());
+    assert!(v.goto_point.is_some());
     v.go_to_page(4);
-    assert_eq!(v.reveal_match, None, "a page jump replaces it");
+    assert_eq!(v.goto_point, None, "a page jump replaces it");
     v.go_to_match(0);
     assert!(v.view_history(false));
-    assert_eq!(v.reveal_match, None, "Previous view replaces it");
+    assert_eq!(v.goto_point, None, "Previous view replaces it");
     v.go_to_match(0);
+    v.goto_point = None;
     v.rerun_find();
-    assert_eq!(v.reveal_match, None, "a new query drops it");
+    assert_ne!(v.goto_point.map(|g| g.0), Some(4), "a new query's own pick, not the old step");
     v.go_to_match(0);
     let info = thumbnail_info(5);
     v.document_changed(&info);
-    assert_eq!(v.reveal_match, None, "a changed document drops it");
+    assert_eq!(v.goto_point, None, "a changed document drops it");
+}
+
+/// OV12, the fork's rule over upstream's centring (owner decision, SYNC.17): a match drawn last
+/// frame wholly inside the middle half of the view, both ways, leaves the view where it is; one
+/// outside it, or one of a page not on screen, is centred. A view that something else is
+/// moving this frame (a pending jump) doesn't count as settled, so the match is centred.
+#[test]
+fn a_find_step_moves_the_view_only_when_the_match_is_outside_the_middle_half() {
+    use super::xform::PageXform;
+    // Page 3 (index 3) is drawn at 1:1 with its top-left corner at `at`, in a 400 × 400 view at
+    // (0, 0). The match's box is x 20..60, y 260..280 on that page (view space).
+    let drawn = |at: egui::Pos2| {
+        let mut v = history_search_view();
+        v.viewport_screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(400.0, 400.0));
+        let rect = Rect::from_min_size(at, vec2(300.0, 400.0));
+        v.screen_xforms = vec![(3, PageXform { rect, rot: 0, pw: 300.0, ph: 400.0 })];
+        v
+    };
+    // The match at x 160..200, y 160..180: inside the middle half (100..300) both ways.
+    let mut v = drawn(pos2(140.0, -100.0));
+    assert!(v.match_screen_rect(0).is_some_and(|r| r.min == pos2(160.0, 160.0)), "{:?}", v.match_screen_rect(0));
+    v.go_to_match(0);
+    assert_eq!((v.goto, v.goto_point, v.zoom_anchor), (None, None, None), "already in the middle: the view stays");
+    assert_eq!(v.current, 3);
+    assert_eq!(v.back, vec![0], "still a jump of the history");
+    // At x 20..60: inside vertically, not across. Centred.
+    let mut v = drawn(pos2(0.0, -100.0));
+    v.find_step(false);
+    assert!(v.goto_point.is_some_and(|g| g.0 == 3), "outside the middle half: centred");
+    // Inside, but a jump is pending this frame: the last frame's places don't hold.
+    let mut v = drawn(pos2(140.0, -100.0));
+    v.goto = Some((1, 0.0));
+    v.go_to_match(0);
+    assert!(v.goto_point.is_some(), "a view being moved is not settled");
+    // Not on screen: centred, as upstream's step does.
+    let mut v = history_search_view();
+    v.go_to_match(0);
+    assert!(v.goto_point.is_some());
 }
 
 #[test]

@@ -1,7 +1,9 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Find goes to where the match is (#3530): after zooming in or out, every step to a match (⌘G,
 //! ⇧⌘G, a click in the Search panel's results) leaves the highlighted match on screen, near the
 //! middle of the window, on pages larger and smaller than the window, and also when a zoom and a
-//! step land in the same frame.
+//! step land in the same frame. This fork (OV12): a match already in the middle half of the
+//! window, both ways, is left where it is ([`step_and_check`]).
 
 use egui_kittest::Harness;
 use pdfcraft_ui_egui::PdfCraftApp;
@@ -141,6 +143,30 @@ fn assert_match_shown(h: &Harness<'static, PdfCraftApp>, what: &str) {
     }
 }
 
+/// A step (`act`), then the match placed as this fork places it (OV12, the owner's rule over
+/// #3530): a step that left the view where it was (the same scroll and zoom) did so because the
+/// match was already wholly in the middle half of the window, both ways, or because the view
+/// couldn't scroll towards it; any other step centres it, as upstream's does
+/// ([`assert_match_shown`]).
+fn step_and_check(h: &mut Harness<'static, PdfCraftApp>, what: &str, act: impl FnOnce(&mut pdfcraft_ui_egui::DocView)) {
+    let before = (h.state().views[0].scroll_offset(), h.state().views[0].zoom);
+    act(&mut h.state_mut().views[0]);
+    settle(h);
+    let v = &h.state().views[0];
+    let stayed = (v.scroll_offset() - before.0).length() < 0.5 && (v.zoom - before.1).abs() < 1e-6;
+    if !stayed {
+        return assert_match_shown(h, what);
+    }
+    let window = v.viewport_rect();
+    let m = v.find_match_screen_rect().unwrap_or_else(|| panic!("{what}: the match isn't on screen"));
+    let within = |lo: f32, hi: f32, from: f32, len: f32| lo >= from + len * 0.25 - 0.5 && hi <= from + len * 0.75 + 0.5;
+    // Left in the middle half (OV12), or the view had nowhere to go (a page that fits, the
+    // content's ends): upstream's check, which asks for the middle only where the view can scroll.
+    if !(within(m.left(), m.right(), window.left(), window.width()) && within(m.top(), m.bottom(), window.top(), window.height())) {
+        assert_match_shown(h, &format!("{what} (the view stayed)"));
+    }
+}
+
 /// Step through every match forward and back at each zoom, as ⌘G and ⇧⌘G do.
 #[test]
 fn every_match_is_shown_after_zooming() {
@@ -151,9 +177,8 @@ fn every_match_is_shown_after_zooming() {
         settle(&mut h);
         for forward in [true, false] {
             for _ in 0..n {
-                h.state_mut().views[0].find_step(forward);
-                settle(&mut h);
-                assert_match_shown(&h, &format!("zoom {zoom}, step {}", if forward { "forward" } else { "back" }));
+                let what = format!("zoom {zoom}, step {}", if forward { "forward" } else { "back" });
+                step_and_check(&mut h, &what, |v| v.find_step(forward));
             }
         }
     }
@@ -167,9 +192,7 @@ fn search_panel_results_are_shown_after_zooming() {
         h.state_mut().views[0].set_zoom(zoom);
         settle(&mut h);
         for i in (0..needles()).rev() {
-            h.state_mut().views[0].go_to_match(i);
-            settle(&mut h);
-            assert_match_shown(&h, &format!("zoom {zoom}, result {i}"));
+            step_and_check(&mut h, &format!("zoom {zoom}, result {i}"), |v| v.go_to_match(i));
         }
     }
 }
@@ -198,15 +221,14 @@ fn zooming_and_stepping_in_any_order_shows_the_match() {
         if !same_frame {
             settle(&mut h);
         }
+        let what = format!("round {round}{}", if same_frame { " (zoom in the same frame)" } else { "" });
         if next(2) == 0 {
             let i = next(needles() as u32) as usize;
-            h.state_mut().views[0].go_to_match(i);
+            step_and_check(&mut h, &what, |v| v.go_to_match(i));
         } else {
             let forward = next(2) == 0;
-            h.state_mut().views[0].find_step(forward);
+            step_and_check(&mut h, &what, |v| v.find_step(forward));
         }
-        settle(&mut h);
-        assert_match_shown(&h, &format!("round {round}{}", if same_frame { " (zoom in the same frame)" } else { "" }));
     }
 }
 
@@ -293,9 +315,7 @@ fn every_page_display_shows_the_match_after_zooming() {
             h.state_mut().views[0].set_zoom(zoom);
             settle(&mut h);
             for _ in 0..needles() {
-                h.state_mut().views[0].find_step(true);
-                settle(&mut h);
-                assert_match_shown(&h, &format!("{layout:?}, continuous {continuous}, zoom {zoom}"));
+                step_and_check(&mut h, &format!("{layout:?}, continuous {continuous}, zoom {zoom}"), |v| v.find_step(true));
             }
         }
     }

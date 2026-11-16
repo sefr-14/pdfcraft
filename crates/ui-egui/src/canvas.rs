@@ -47,9 +47,7 @@ pub(super) mod zoom_snap;
 
 pub(crate) use area::SignTab;
 pub(crate) use area::signature_badges;
-use area::{
-    ScrollFrame, drawing_edge_pointer, glide_interrupted, match_on_content, page_scroll, presentation_click, run_button, set_layers, zoom_anchor,
-};
+use area::{drawing_edge_pointer, glide_interrupted, page_scroll, presentation_click, run_button, set_layers, zoom_anchor};
 #[cfg(test)]
 use bars::in_size_hint_zone;
 use bars::{Notice, notices, page_size_hint, quick_bar};
@@ -569,10 +567,6 @@ pub struct DocView {
     /// (fractions of the displayed page; `None` leaves that axis to `goto`) to put `rel` points
     /// from the viewport's top-left corner.
     goto_point: Option<(usize, Option<f32>, Option<f32>, Vec2)>,
-    /// Pending Find step (this fork, OV12): the chosen match's page and its view-space box, to
-    /// bring near the viewport's centre without changing zoom (resolved in
-    /// `document_area_with`, against that frame's layout).
-    reveal_match: Option<(usize, [f32; 4])>,
     /// Pending keyboard scrolling, in points down (negative: up): ↓ / ↑, and Page Down /
     /// Page Up where the pages scroll.
     pub key_scroll: f32,
@@ -866,9 +860,6 @@ pub struct DocView {
     /// in-flight ones cannot be cancelled mid-operator. Older tiles and the backdrop stay
     /// stretched meanwhile; fresh tiles go out once the pan settles.
     pub(crate) last_scroll: Vec2,
-    /// What `last_scroll` was measured against (this fork, OV12): a Find step keeps a match where
-    /// it is only if this frame's pages are laid out the same.
-    last_scroll_frame: Option<ScrollFrame>,
     /// The way the view last moved vertically: 1 down, -1 up, 0 before any move and after the
     /// content's size changes (a zoom or a layout change). A jump to a page or a search result
     /// counts as a move. It stays set while the view is still, so the pages prefetched ahead stay
@@ -1109,7 +1100,6 @@ impl DocView {
             goto: None,
             goto_side: None,
             goto_point: None,
-            reveal_match: None,
             key_scroll: 0.0,
             key_side: 0.0,
             side_edges: None,
@@ -1206,7 +1196,6 @@ impl DocView {
             last_scale: 0.0,
             sharp_hold_until: 0.0,
             last_scroll: Vec2::ZERO,
-            last_scroll_frame: None,
             scroll_dir: 0,
             scroll_content: Vec2::ZERO,
             sync_scroll: None,
@@ -1273,7 +1262,6 @@ impl DocView {
         self.area_choice = None;
         self.goto = None;
         self.goto_point = None;
-        self.reveal_match = None;
         self.zoom_anchor = None;
         self.find_hold = None;
         self.flash = None;
@@ -1419,6 +1407,12 @@ impl DocView {
         v.scripts_off_noted = self.scripts_off_noted;
         v.goto = Some((self.current, 0.0));
         v
+    }
+
+    /// Where the page view is scrolled, as last drawn (this fork: tests that tell a Find step that
+    /// left the view alone, OV12, from one that moved it).
+    pub fn scroll_offset(&self) -> Vec2 {
+        self.last_scroll
     }
 
     /// The document version this view shows (see `PdfCraftApp::sync_shared_views`), for tests and
@@ -2821,7 +2815,7 @@ struct ScrollGeometry<'a> {
 /// The page view's scroll area, with the offset this frame's jumps, drags and zoom anchor ask for,
 /// and whether something other than the reader's scrolling places the view this frame (this fork,
 /// OV12: a Find step can't trust where it was last frame then).
-fn page_scroll_area(ui: &egui::Ui, view: &mut DocView, geometry: &ScrollGeometry<'_>) -> (egui::ScrollArea, bool) {
+fn page_scroll_area(ui: &egui::Ui, view: &mut DocView, geometry: &ScrollGeometry<'_>) -> egui::ScrollArea {
     let ScrollGeometry { rects, y_shift, content_w, content_h, avail, middle_gesture, hand, held } = *geometry;
     let mut scroll = egui::ScrollArea::both().auto_shrink([false, false]).scroll_source(egui::scroll_area::ScrollSource {
         drag: if middle_gesture || held {
@@ -2873,7 +2867,6 @@ fn page_scroll_area(ui: &egui::Ui, view: &mut DocView, geometry: &ScrollGeometry
         let max = vec2((content_w - avail.width()).max(0.0), (content_h - avail.height()).max(0.0));
         scroll = scroll.scroll_offset((view.last_scroll - moved).clamp(Vec2::ZERO, max));
     }
-    let moved_this_frame = view.sync_scroll.is_some() || view.zoom_anchor.is_some() || view.goto.is_some() || view.goto_point.is_some();
     if let Some(v) = view.sync_scroll.take() {
         scroll = scroll.scroll_offset(v);
     }
@@ -2923,7 +2916,7 @@ fn page_scroll_area(ui: &egui::Ui, view: &mut DocView, geometry: &ScrollGeometry
             scroll = scroll.horizontal_scroll_offset(target.clamp(0.0, (content_w - w).max(0.0)));
         }
     }
-    (scroll, moved_this_frame)
+    scroll
 }
 
 /// Notes how far and which way the page view scrolled this frame: reader-owned scrolling ends
@@ -3325,41 +3318,6 @@ pub(crate) enum Interaction {
     NavigateOnly,
 }
 
-/// A Find step (this fork, OV12): the match near the viewport's centre, at this zoom. It stays put
-/// when it is already wholly in the middle half of the viewport, judged from where the view was
-/// last frame only if nothing else moves it this frame and the pages are laid out as they were
-/// then; otherwise it is centred.
-fn reveal_find_match(
-    ctx: &egui::Context,
-    mut scroll: egui::ScrollArea,
-    view: &mut DocView,
-    info: &DocInfo,
-    geometry: &ScrollGeometry<'_>,
-    moved_this_frame: bool,
-) -> egui::ScrollArea {
-    let ScrollGeometry { rects, y_shift, content_w, content_h, avail, .. } = *geometry;
-    let reveal = view.reveal_match.take();
-    let placed = reveal.and_then(|(page, b)| match_on_content(info.pages.get(page)?, b, view.rotation, *rects.get(page)?, y_shift));
-    if let Some((page, _)) = reveal.filter(|_| placed.is_none()) {
-        // Not placeable (no such page laid out, a box that isn't finite): the page, as before.
-        view.goto = Some((page, 0.0));
-        ctx.request_repaint();
-    }
-    if let Some([x0, y0, x1, y1]) = placed {
-        let size = avail.size();
-        let (max_x, max_y) = ((content_w - size.x).max(0.0), (content_h - size.y).max(0.0));
-        let frame = ScrollFrame { content: vec2(content_w, content_h), viewport: size, zoom: view.zoom, rotation: view.rotation };
-        let at = view.last_scroll;
-        let settled = !moved_this_frame && view.last_scroll_frame == Some(frame);
-        let in_middle = |lo: f32, hi: f32, from: f32, len: f32| lo >= from + len * 0.25 && hi <= from + len * 0.75;
-        if !(settled && in_middle(x0, x1, at.x, size.x) && in_middle(y0, y1, at.y, size.y)) {
-            let centre = pos2(x0 * 0.5 + x1 * 0.5, y0 * 0.5 + y1 * 0.5);
-            scroll = scroll.scroll_offset(vec2((centre.x - size.x / 2.0).clamp(0.0, max_x), (centre.y - size.y / 2.0).clamp(0.0, max_y)));
-        }
-    }
-    scroll
-}
-
 /// Where the `shown` pages sit in the scroll content, as how far the content starts into the
 /// layout and how tall it is. Scrolling continuously every page scrolls; otherwise only the
 /// current row does, the content being its bounding box plus margins. Pages that fit a view
@@ -3550,7 +3508,7 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
     // holds the press, and the page view doesn't pan.
     let hand_guides = tools && unobstructed && app.quick_tool == QuickTool::Hand && !middle_gesture;
     let held = crate::guides::before_pages(view, &app.doc_prefs, doc.id, hand_guides);
-    let (mut scroll, moved_this_frame) = page_scroll_area(
+    let mut scroll = page_scroll_area(
         ui,
         view,
         &ScrollGeometry { rects: &rects, y_shift, content_w, content_h, avail, middle_gesture, hand: app.quick_tool == QuickTool::Hand, held },
@@ -3617,14 +3575,6 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
     view.move_background.prepare(ui.ctx(), doc, &view.content, scale);
 
     scroll = refine_goto_point(scroll, view, &ScrollGeometry { rects: &rects, y_shift, content_w, content_h, avail, middle_gesture, hand, held });
-    scroll = reveal_find_match(
-        ui.ctx(),
-        scroll,
-        view,
-        info,
-        &ScrollGeometry { rects: &rects, y_shift, content_w, content_h, avail, middle_gesture, hand, held },
-        moved_this_frame,
-    );
     let selection_wheel = view.selection_drag && navigation_enabled && unobstructed && !single_paging && ui.rect_contains_pointer(avail);
     let prepare_tab_order = (preparing && view.prepare.show_tab_numbers).then(|| crate::forms_ui::tab_order(&form, info));
     let env = PageEnv {
@@ -3766,9 +3716,6 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
     // the workers cannot cancel mid-operator. Fresh tiles go out once the pan settles;
     // pages with nothing on screen yet still queue.
     let pan_held = track_scroll(ui, view, &out, glide);
-    // What `last_scroll` was measured against (this fork, OV12).
-    view.last_scroll_frame =
-        Some(ScrollFrame { content: vec2(content_w, content_h), viewport: avail.size(), zoom: view.zoom, rotation: view.rotation });
     plan_renders(ui, view, info, out.inner, &RenderPlan { visible_pages: &visible_pages, tag, scale, sharp_held, pan_held, hand });
 
     // Everything below is the active view's: the find bar, editors, composers, the floating

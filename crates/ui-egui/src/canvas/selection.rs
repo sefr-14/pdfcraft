@@ -90,7 +90,11 @@ impl DocView {
     /// Where the current Find match is on screen this frame: its glyphs' boxes joined, if its
     /// page is on screen and its text is loaded (UI tests and automation; this fork, OV12).
     pub fn find_match_screen_rect(&self) -> Option<Rect> {
-        let i = self.find.as_ref()?.current?;
+        self.match_screen_rect(self.find.as_ref()?.current?)
+    }
+
+    /// Where match `i` was drawn last frame, if its page was on screen and its text is loaded.
+    pub(super) fn match_screen_rect(&self, i: usize) -> Option<Rect> {
         let (page, _) = self.find.as_ref()?.matches.get(i)?;
         let (_, xf) = self.screen_xforms.iter().find(|(p, _)| p == page)?;
         Some(xf.view_rect(self.match_box(i)?))
