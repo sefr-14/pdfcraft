@@ -363,39 +363,10 @@ impl PdfCraftApp {
                 self.notify_tr(EDITED_DURING_OPTIMIZE);
                 return;
             }
-            let write = move |app: &mut Self, path: String| {
-                // Edits made while the save dialog was open aren't in the result either.
-                if app.edited_since(id, generation) {
-                    app.notify_tr(EDITED_DURING_OPTIMIZE);
-                    return;
-                }
-                if app.refuse_open_destination(id, &path) {
-                    return;
-                }
-                let own = app.session.get(id).and_then(|d| d.path.as_deref()).is_some_and(|p| crate::same_file(p, &path));
-                if own && app.watch.disk_differs(id, &path, app.session.get(id).map(|d| d.saved_bytes())) {
-                    app.notify_fmt(
-                        "{name} changed on disk since it was opened, so nothing was saved. Choose another name to keep both.",
-                        &[("name", &short_name(&path))],
-                    );
-                    return;
-                }
-                // As Save does (#1698): bytes that don't reopen as this document are not written.
-                if let Err(e) = app.session.check_save(id, &bytes) {
-                    app.notify_fmt("Couldn't save {name}: {e}", &[("name", &short_name(&path)), ("e", &e.to_string())]);
-                    return;
-                }
-                if app.commit_saved_file(id, &path, bytes, false) {
-                    saved(app, path);
-                }
-            };
+            let job = OptimizedSave { id, generation, bytes, name, folder, saved: Box::new(saved) };
             match destination.or_else(|| self.save_override.clone()) {
-                Some(p) => write(self, p),
-                None => {
-                    let dialog = rfd::AsyncFileDialog::new().add_filter_any_case("PDF", &["pdf"]).set_file_name(&name);
-                    let dialog = crate::editing::in_document_folder(dialog, folder.as_deref());
-                    self.ask_one(crate::pickers::Ask::Save(dialog), None, move |app, p| write(app, p.to_string_lossy().into_owned()));
-                }
+                Some(p) => self.save_optimized_to(job, p),
+                None => self.ask_where_to_save_optimized(job),
             }
         }
         // The web build downloads the result; the document stays as it is.
@@ -408,6 +379,75 @@ impl PdfCraftApp {
                 Ok(()) => saved(self, name),
                 Err(e) => self.notify_fmt("Couldn't download {name}: {e}", &[("name", &name), ("e", &e.to_string())]),
             }
+        }
+    }
+}
+
+/// An optimized result waiting to be saved as the document (this fork, COMPRESS.1): its
+/// document and the edit generation its snapshot was taken at, the bytes, the suggested name and
+/// folder, and what to report once it is saved.
+#[cfg(not(target_arch = "wasm32"))]
+struct OptimizedSave {
+    id: pdfcraft_engine::DocId,
+    generation: u64,
+    bytes: Arc<Vec<u8>>,
+    name: String,
+    folder: Option<String>,
+    saved: SavedReport,
+}
+
+/// What reports an optimized result saved at its place.
+#[cfg(not(target_arch = "wasm32"))]
+type SavedReport = Box<dyn FnOnce(&mut PdfCraftApp, String) + Send>;
+
+#[cfg(not(target_arch = "wasm32"))]
+impl PdfCraftApp {
+    /// Ask where the optimized result goes, then save it there ([`Self::save_optimized_to`]).
+    fn ask_where_to_save_optimized(&mut self, job: OptimizedSave) {
+        let dialog = rfd::AsyncFileDialog::new().add_filter_any_case("PDF", &["pdf"]).set_file_name(&job.name);
+        let dialog = crate::editing::in_document_folder(dialog, job.folder.as_deref());
+        self.ask_one(crate::pickers::Ask::Save(dialog), None, move |app, p| app.save_optimized_to(job, p.to_string_lossy().into_owned()));
+    }
+
+    /// Save the optimized result at `path` as the document, as Save As does (COMPRESS.1). Nothing
+    /// is saved over edits made since the snapshot, over another open document's file, over the
+    /// document's own file when that changed on disk, or when the bytes don't reopen as this
+    /// document. A place that can't be written (gone, read-only) loses nothing: the user is asked
+    /// for another until it is written or the question is cancelled (upstream's choose-first
+    /// Reduce File Size, SYNC.17).
+    fn save_optimized_to(&mut self, job: OptimizedSave, path: String) {
+        let id = job.id;
+        // Edits made while the save dialog was open aren't in the result either.
+        if self.edited_since(id, job.generation) {
+            self.notify_tr(EDITED_DURING_OPTIMIZE);
+            return;
+        }
+        if self.refuse_open_destination(id, &path) {
+            return;
+        }
+        let own = self.session.get(id).and_then(|d| d.path.as_deref()).is_some_and(|p| crate::same_file(p, &path));
+        if own && self.watch.disk_differs(id, &path, self.session.get(id).map(|d| d.saved_bytes())) {
+            self.notify_fmt(
+                "{name} changed on disk since it was opened, so nothing was saved. Choose another name to keep both.",
+                &[("name", &short_name(&path))],
+            );
+            return;
+        }
+        // As Save does (#1698): bytes that don't reopen as this document are not written.
+        if let Err(e) = self.session.check_save(id, &job.bytes) {
+            self.notify_fmt("Couldn't save {name}: {e}", &[("name", &short_name(&path)), ("e", &e.to_string())]);
+            return;
+        }
+        if self.session.get(id).is_none() {
+            self.notify_tr("The document was closed before it could be saved.");
+            return;
+        }
+        if let Err(e) = crate::editing::write_atomically(&path, &job.bytes) {
+            self.notify_fmt("Couldn't write {path}: {e}", &[("path", &path), ("e", &e.to_string())]);
+            return self.ask_where_to_save_optimized(job);
+        }
+        if self.commit_written_file(id, &path, job.bytes.clone(), false) {
+            (job.saved)(self, path);
         }
     }
 }

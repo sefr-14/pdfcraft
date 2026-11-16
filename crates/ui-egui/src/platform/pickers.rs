@@ -549,6 +549,62 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// This fork (COMPRESS.1, SYNC.17): a compression that fails writes nothing at the place
+    /// chosen first, says why, and leaves the document, its file and its tab as they were.
+    #[test]
+    fn a_failed_compression_writes_nothing_and_keeps_the_document() {
+        let (mut app, dir) = reducing("failed");
+        let (_, id) = app.active_ids().unwrap();
+        let (bytes, name, path) = {
+            let doc = app.session.get(id).unwrap();
+            (doc.bytes.clone(), doc.name.clone(), doc.path.clone())
+        };
+        let generation = app.session.get(id).unwrap().edit_generation();
+        let out = dir.join("notes (reduced).pdf");
+        let failed = Err(pdfcraft_engine::EditError::Optimize("the image stream is damaged".into()));
+        app.save_optimized(id, crate::optimize_ui::OptimizeKind::Reduce, generation, failed, Some(out.to_string_lossy().into_owned()));
+        let told = app.toast.as_ref().map(|t| t.0.clone()).unwrap_or_default();
+        assert!(told.starts_with("Couldn't optimize the file") && told.contains("damaged"), "{told}");
+        assert!(!out.exists(), "nothing written");
+        let doc = app.session.get(id).unwrap();
+        assert!(Arc::ptr_eq(&doc.bytes, &bytes) && doc.name == name && doc.path == path && !doc.dirty, "the document is as it was");
+        assert_eq!(app.views.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// This fork (COMPRESS.1) with upstream's choose-first Reduce File Size (SYNC.17): after a
+    /// place that can't be written, the place that works becomes the document, as Save As does:
+    /// its name and path, nothing unsaved, the unsaved edit in it, and one tab.
+    #[test]
+    fn the_place_that_works_after_one_that_doesnt_becomes_the_document() {
+        let (mut app, dir) = reducing("rebind");
+        let (_, id) = app.active_ids().unwrap();
+        let note = pdfcraft_engine::Edit::AddAnnotation(pdfcraft_engine::NewAnnotation {
+            page: 0,
+            shape: pdfcraft_engine::Shape::Note { at: [100.0, 600.0], icon: pdfcraft_engine::NoteIcon::Comment },
+            style: Default::default(),
+            contents: "Unsaved".into(),
+            author: "Reviewer".into(),
+        });
+        assert!(app.apply_edit(note));
+        let (gone, good) = (dir.join("gone").join("notes (reduced).pdf"), dir.join("notes (reduced).pdf"));
+        app.pick_override = Some(vec![gone.to_string_lossy().into_owned()]);
+        app.run_inline = true;
+        app.reduce_file_size();
+        app.pick_override = Some(vec![good.to_string_lossy().into_owned()]);
+        app.process_picked();
+        assert_eq!(app.session.get(id).unwrap().name, "notes.pdf", "nothing changed yet");
+        app.process_picked();
+        let doc = app.session.get(id).unwrap();
+        assert_eq!((doc.path.as_deref(), doc.name.as_str(), doc.dirty), (good.to_str(), "notes (reduced).pdf", false));
+        assert!(doc.info.annotations.iter().any(|a| a.contents.as_deref() == Some("Unsaved")), "the edit is in it");
+        let mut again = pdfcraft_engine::Session::new();
+        let reopened = again.open("check.pdf", None, Arc::new(std::fs::read(&good).unwrap()), None).unwrap();
+        assert!(again.get(reopened).unwrap().info.annotations.iter().any(|a| a.contents.as_deref() == Some("Unsaved")), "and in the file");
+        assert_eq!(app.views.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Minutes of work aren't lost because the place chosen first has gone bad.
     #[test]
     fn a_reduced_copy_that_cant_be_written_where_chosen_asks_again() {
