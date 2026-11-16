@@ -10,16 +10,16 @@ licence text without a copyright line. The pdfcraft-* crates are PdfCraft's own 
 LICENSE-APACHE, NOTICE).
 
 Overview
-  MIT License (MIT): 419
+  MIT License (MIT): 424
+  Unicode License v3 (Unicode-3.0): 28
   ISC License (ISC): 26
-  Unicode License v3 (Unicode-3.0): 26
   Apache License 2.0 (Apache-2.0): 19
-  BSD 3-Clause "New" or "Revised" License (BSD-3-Clause): 12
+  BSD 3-Clause "New" or "Revised" License (BSD-3-Clause): 13
   Boost Software License 1.0 (BSL-1.0): 2
+  zlib License (Zlib): 2
   BSD 2-Clause "Simplified" License (BSD-2-Clause): 1
   SIL Open Font License 1.1 (OFL-1.1): 1
   Ubuntu Font Licence v1.0 (Ubuntu-font-1.0): 1
-  zlib License (Zlib): 1
 
 ================================================================================
 Apache License 2.0 (Apache-2.0)
@@ -1766,6 +1766,8 @@ BSD 3-Clause "New" or "Revised" License (BSD-3-Clause)
 Used by:
   - winprint 0.2.1 <https://github.com/ArcticLampyrid/winprint.rs/>
     authors: ArcticLampyrid <ArcticLampyrid@outlook.com>
+  - winprint 0.2.1 <https://github.com/ArcticLampyrid/winprint.rs/>
+    authors: ArcticLampyrid <ArcticLampyrid@outlook.com>
 
 BSD 3-Clause License
 
@@ -3206,6 +3208,12 @@ Used by:
     authors: The Rust Project Developers
   - num-traits 0.2.19 <https://github.com/rust-num/num-traits>
     authors: The Rust Project Developers
+  - regex-automata 0.4.18 <https://github.com/rust-lang/regex>
+    authors: The Rust Project Developers; Andrew Gallant <jamslam@gmail.com>
+  - regex-syntax 0.8.11 <https://github.com/rust-lang/regex>
+    authors: The Rust Project Developers; Andrew Gallant <jamslam@gmail.com>
+  - regex 1.13.1 <https://github.com/rust-lang/regex>
+    authors: The Rust Project Developers; Andrew Gallant <jamslam@gmail.com>
 
 Copyright (c) 2014 The Rust Project Developers
 
@@ -6656,6 +6664,36 @@ SOFTWARE.
 MIT License (MIT)
 
 Used by:
+  - thread-priority 3.1.1 <https://github.com/iddm/thread-priority>
+    authors: Victor Polevoy <fx@thefx.co>
+
+MIT License
+
+Copyright (c) 2017 Victor Polevoy
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+================================================================================
+MIT License (MIT)
+
+Used by:
   - tiff 0.11.3 <https://github.com/image-rs/image-tiff>
     authors: The image-rs Developers
 
@@ -7263,12 +7301,12 @@ SOFTWARE.
 MIT License (MIT)
 
 Used by:
+  - craft-print 0.1.0 <https://github.com/storytold/craft-libs>
   - craft-docpath 0.1.0 <https://github.com/storytold/craft-libs>
   - craft-fonts-build 0.1.0 <https://github.com/storytold/craft-libs>
   - craft-i18n 0.1.0 <https://github.com/storytold/craft-libs>
   - craft-keymap 0.1.0 <https://github.com/storytold/craft-libs>
   - craft-menu 0.1.0 <https://github.com/storytold/craft-libs>
-  - craft-print 0.1.0 <https://github.com/storytold/craft-libs>
   - craft-quit 0.1.0 <https://github.com/storytold/craft-libs>
   - craft-ui 0.1.0 <https://github.com/storytold/craft-libs>
   - ecolor 0.37.0 <https://github.com/emilk/egui>
@@ -7289,38 +7327,38 @@ Used by:
     authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
   - epaint 0.37.0 <https://github.com/emilk/egui/tree/main/crates/epaint>
     authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
-  - pdfcraft 0.18.0
-  - pdfcraft-a11y 0.18.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-annot 0.18.0
-  - pdfcraft-audit 0.18.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-compare 0.18.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-content 0.18.0
-  - pdfcraft-cos 0.18.0
-  - pdfcraft-create 0.18.0
-  - pdfcraft-crypt 0.18.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-edit 0.18.0
-  - pdfcraft-engine 0.18.0
-  - pdfcraft-export 0.18.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-filters 0.18.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-fonts 0.18.0
-  - pdfcraft-forms 0.18.0
-  - pdfcraft-geom 0.18.0
-  - pdfcraft-js 0.18.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-measure 0.18.0
-  - pdfcraft-model 0.18.0
-  - pdfcraft-ocr 0.18.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-optimize 0.18.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-organize 0.18.0
-  - pdfcraft-overlay 0.18.0
-  - pdfcraft-platform 0.18.0
-  - pdfcraft-preflight 0.18.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-print 0.18.0
-  - pdfcraft-redact 0.18.0
-  - pdfcraft-render 0.18.0
-  - pdfcraft-sign 0.18.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-ui-egui 0.18.0
-  - pdfcraft-xfa 0.18.0 <https://github.com/storytold/pdfcraft>
-  - pdfcraft-xfdf 0.18.0
+  - pdfcraft 0.21.1
+  - pdfcraft-a11y 0.21.1 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-annot 0.21.1
+  - pdfcraft-audit 0.21.1 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-compare 0.21.1 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-content 0.21.1
+  - pdfcraft-cos 0.21.1
+  - pdfcraft-create 0.21.1
+  - pdfcraft-crypt 0.21.1 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-edit 0.21.1
+  - pdfcraft-engine 0.21.1
+  - pdfcraft-export 0.21.1 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-filters 0.21.1 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-fonts 0.21.1
+  - pdfcraft-forms 0.21.1
+  - pdfcraft-geom 0.21.1
+  - pdfcraft-js 0.21.1 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-measure 0.21.1
+  - pdfcraft-model 0.21.1
+  - pdfcraft-ocr 0.21.1 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-optimize 0.21.1 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-organize 0.21.1
+  - pdfcraft-overlay 0.21.1
+  - pdfcraft-platform 0.21.1
+  - pdfcraft-preflight 0.21.1 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-print 0.21.1
+  - pdfcraft-redact 0.21.1
+  - pdfcraft-render 0.21.1
+  - pdfcraft-sign 0.21.1 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-ui-egui 0.21.1
+  - pdfcraft-xfa 0.21.1 <https://github.com/storytold/pdfcraft>
+  - pdfcraft-xfdf 0.21.1
   - accesskit 0.25.1 <https://github.com/AccessKit/accesskit>
     authors: The AccessKit contributors
   - accesskit_consumer 0.39.1 <https://github.com/AccessKit/accesskit>
@@ -8203,6 +8241,8 @@ THE SOFTWARE.
 MIT License (MIT)
 
 Used by:
+  - aho-corasick 1.1.5 <https://github.com/BurntSushi/aho-corasick>
+    authors: Andrew Gallant <jamslam@gmail.com>
   - byteorder-lite 0.1.0 <https://github.com/image-rs/byteorder-lite>
   - memchr 2.8.3 <https://github.com/BurntSushi/memchr>
     authors: Andrew Gallant <jamslam@gmail.com>; bluss
@@ -8953,6 +8993,10 @@ Used by:
     authors: The ICU4X Project Developers
   - icu_provider_blob 2.3.0 <https://github.com/unicode-org/icu4x>
     authors: The ICU4X Project Developers
+  - icu_segmenter 2.3.0 <https://github.com/unicode-org/icu4x>
+    authors: The ICU4X Project Developers
+  - icu_segmenter_data 2.3.0 <https://github.com/unicode-org/icu4x>
+    authors: The ICU4X Project Developers
   - litemap 0.8.3 <https://github.com/unicode-org/icu4x>
     authors: The ICU4X Project Developers
   - potential_utf 0.1.6 <https://github.com/unicode-org/icu4x>
@@ -9022,6 +9066,33 @@ SPDX-License-Identifier: Unicode-3.0
 
 Portions of ICU4X may have been adapted from ICU4C and/or ICU4J.
 ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation and others.
+
+
+================================================================================
+zlib License (Zlib)
+
+Used by:
+  - zlib-rs 0.6.8 <https://github.com/trifectatechfoundation/zlib-rs>
+
+(C) 2024 Trifecta Tech Foundation 
+
+This software is provided 'as-is', without any express or implied
+warranty. In no event will the authors be held liable for any damages
+arising from the use of this software.
+
+Permission is granted to anyone to use this software for any purpose,
+including commercial applications, and to alter it and redistribute it
+freely, subject to the following restrictions:
+
+1. The origin of this software must not be misrepresented; you must not
+   claim that you wrote the original software. If you use this software
+   in a product, an acknowledgment in the product documentation would be
+   appreciated but is not required.
+
+2. Altered source versions must be plainly marked as such, and must not be
+   misrepresented as being the original software.
+
+3. This notice may not be removed or altered from any source distribution.
 
 
 ================================================================================
