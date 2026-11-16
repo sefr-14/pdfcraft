@@ -446,3 +446,32 @@ fn split_view_duplicate_tab_and_tile_view_work_together() {
     assert_eq!(h.state().views[2].current, 2, "the duplicate kept its page");
     assert!(h.state().panes.split.is_some(), "and split view is still on");
 }
+
+/// H1 with split view: each pane has its hotbar (upstream's); the main one, at the default in
+/// the left margin, stays in the left pane and clear of the right one; KEY.1's P and the bar's Hand (P) button pick the Hand tool,
+/// and V the Select tool, while split.
+#[test]
+fn the_hotbar_and_tool_keys_work_in_split_view() {
+    use pdfcraft_ui_egui::QuickTool;
+    let mut h = harness(&["a.pdf"]);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Backslash);
+    h.run_steps(4);
+    assert!(h.state().panes.split.is_some());
+    let bar = h.ctx.memory(|m| m.area_rect(egui::Id::unique("quick-bar"))).expect("the hotbar is shown");
+    let second = h.state().views.iter().position(|v| v.place() == Place::Second).unwrap();
+    let right = h.state().views[second].viewport_rect();
+    assert!(!bar.intersects(right), "{bar:?} stays out of the right pane {right:?}");
+    h.key_press(Key::P);
+    h.run_steps(2);
+    assert_eq!(h.state().quick_tool, QuickTool::Hand, "P picks Hand");
+    h.key_press(Key::V);
+    h.run_steps(2);
+    assert_eq!(h.state().quick_tool, QuickTool::Select, "V picks Select");
+    // Each pane has its own hotbar (upstream's split view); the left one's button.
+    let buttons: Vec<_> = h.get_all_by_label("Hand (P)").collect();
+    assert_eq!(buttons.len(), 2, "one hotbar per pane");
+    let left = buttons.into_iter().min_by(|a, b| a.rect().left().total_cmp(&b.rect().left())).unwrap();
+    left.click();
+    h.run_steps(2);
+    assert_eq!(h.state().quick_tool, QuickTool::Hand, "the bar's button picks Hand");
+}

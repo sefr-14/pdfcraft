@@ -1156,6 +1156,56 @@ mod tests {
         assert!(!app.hotbar.vertical);
     }
 
+    /// H1 (SYNC.17, the owner's decision): upstream's margin default is for new installations
+    /// only. A hotbar a PDF Overlay user has (saved by Main: no `placed` key), whether it stayed
+    /// at SYNC.15's bottom-right default or was moved or docked, keeps its place, orientation and
+    /// tools after the upgrade, and so does a restart after that.
+    #[test]
+    fn an_upgrade_keeps_the_hotbar_where_pdf_overlay_had_it() {
+        for saved in [
+            r#"{"hotbar":{"tools":["comment.ink"],"position":[1.0,1.0],"vertical":false,"button_size":32.0,"dock":null}}"#,
+            r#"{"hotbar":{"tools":[],"position":[0.25,0.75],"vertical":true,"button_size":40.0,"dock":null}}"#,
+            r#"{"hotbar":{"tools":[],"position":[1.0,1.0],"vertical":false,"button_size":32.0,"dock":"bottom","full_side":true}}"#,
+        ] {
+            let before: serde_json::Value = serde_json::from_str(saved).unwrap();
+            let mut app = PdfCraftApp::new();
+            app.restore(saved);
+            let bar = &app.hotbar;
+            assert!(bar.placed, "{saved}: the saved spot counts as the user's");
+            assert_eq!(serde_json::json!(bar.position), before["hotbar"]["position"], "{saved}");
+            assert_eq!(bar.vertical, before["hotbar"]["vertical"].as_bool().unwrap(), "{saved}");
+            assert_eq!(bar.dock.as_deref(), before["hotbar"]["dock"].as_str(), "{saved}");
+            assert_eq!(serde_json::json!(bar.tools), before["hotbar"]["tools"], "{saved}");
+            let mut again = PdfCraftApp::new();
+            again.restore(&app.persist());
+            assert_eq!((again.hotbar.position, again.hotbar.vertical, again.hotbar.placed), (bar.position, bar.vertical, true), "{saved}");
+        }
+        // No saved hotbar: a new installation gets upstream's default, in the margin.
+        let fresh = PdfCraftApp::new();
+        assert_eq!((fresh.hotbar.position, fresh.hotbar.vertical, fresh.hotbar.placed), ([0.0, 0.0], true, false));
+    }
+
+    /// H1: the default hotbar keeps clear of this fork's rulers (OV11) in the margin it floats in.
+    #[test]
+    fn the_default_hotbar_keeps_clear_of_the_rulers() {
+        use egui_kittest::Harness;
+        let bytes = pdfcraft_engine::Session::new().create_blank(792.0, 612.0, 1).unwrap();
+        let mut h = Harness::builder().with_size(vec2(1400.0, 900.0)).build_eframe(move |_| {
+            let mut app = PdfCraftApp::new();
+            app.set_option("language", "en").unwrap();
+            app.open_bytes("sheet.pdf", None, bytes.as_ref().clone()).unwrap();
+            app
+        });
+        h.run_steps(4);
+        h.state_mut().set_option("rulers", "on").unwrap();
+        h.run_steps(6);
+        let bar = h.ctx.memory(|m| m.area_rect(egui::Id::unique("quick-bar"))).expect("the hotbar is shown");
+        let inside = h.state().views[0].viewport_rect();
+        assert!(inside.contains_rect(bar), "{bar:?} inside the page area the rulers leave, {inside:?}");
+        let page = h.state().views[0].page_screen_rect(0).expect("the page is drawn");
+        assert!(bar.right() <= page.left(), "{bar:?} in the margin left of the sheet {page:?}");
+    }
+
     #[test]
     fn hotbar_search_matches_translated_and_canonical_labels() {
         if !crate::i18n::needs_catalogs() {
