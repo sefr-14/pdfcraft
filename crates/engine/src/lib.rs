@@ -153,6 +153,8 @@ use bookmarks::outline_rows;
 pub use bookmarks::{BookmarkPage, BookmarkRow};
 // This fork (BOOKMARK.1): what a group Indent or Outdent would do, for the Bookmarks panel.
 pub use bookmarks::preview_shift;
+// This fork (BOOKMARK.DND.1): what moving a group of bookmarks would do, and its result.
+pub use bookmarks::{BookmarkMove, preview_move};
 use comments::comment_list;
 pub use comments::{SummarySort, comment_kind, comment_summary, comment_type_name};
 // This fork (COMMENTS.1): deleting several comments at once.
@@ -213,6 +215,9 @@ mod tests;
 // This fork (BOOKMARK.1): group Indent and Outdent through the session.
 #[cfg(test)]
 mod bookmark_shift_tests;
+// This fork (BOOKMARK.DND.1): moving a group of bookmarks through the session.
+#[cfg(test)]
+mod bookmark_move_tests;
 // This fork (COMMENTS.1): comment identity and deleting several comments at once.
 #[cfg(test)]
 mod comment_bulk_tests;

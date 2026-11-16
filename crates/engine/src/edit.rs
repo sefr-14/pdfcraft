@@ -113,6 +113,17 @@ pub enum Edit {
         paths: Vec<Vec<usize>>,
         outdent: bool,
     },
+    /// This fork (BOOKMARK.DND.1): move several bookmarks together, as one change, to child `index`
+    /// of `to_parent`, counted in that list as it is before the move (past the end appends).
+    /// Those under another one move with it; the group arrives in outline order; each bookmark
+    /// keeps its object and everything on it. All or nothing
+    /// ([`pdfcraft_organize::move_bookmarks`]). [`crate::Session::move_bookmarks`] applies it and
+    /// leaves no undo step when the bookmarks are already there.
+    MoveBookmarks {
+        paths: Vec<Vec<usize>>,
+        to_parent: Vec<usize>,
+        index: usize,
+    },
     /// Point a bookmark at another page.
     SetBookmarkPage {
         path: Vec<usize>,
