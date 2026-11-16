@@ -759,15 +759,15 @@ pub(crate) fn keys(ctx: &egui::Context, keys: PageKeys, view: &mut DocView, info
     if escape && keys.pressed(ctx, egui::Key::Escape) {
         // One step back per press: cancel the gesture, then deselect, then drop the tool (a
         // comment tool, or a Fill & Sign one: its Text tool would otherwise open a box at every
-        // click with no way out by the keyboard). This fork (COMMENTS.1): deselecting drops the
-        // active comment and the cards selected in the panel together, in one press.
+        // click with no way out by the keyboard).
         let cancelled = if cv.gesture.take().is_some() {
             true
         } else {
             let active = cv.selected.is_some();
             cv.clear_selection();
-            let group = cv.group.clear();
-            active || group
+            // COMMENTS.1 fallback (inactive, SYNC.17; f3ccab72): deselecting also dropped the cards
+            // selected in the panel, `let group = cv.group.clear(); active || group`.
+            active
         };
         let dropped = !cancelled && matches!(tool, QuickTool::Comment(_) | QuickTool::Fill(_));
         if dropped {
@@ -778,14 +778,10 @@ pub(crate) fn keys(ctx: &egui::Context, keys: PageKeys, view: &mut DocView, info
             keys.take(ctx, egui::Key::Escape);
         }
     }
-    // This fork (COMMENTS.1): with several cards selected in the panel, the keys delete nothing
-    // (not even the active comment); Delete selected, which asks first, deletes them.
-    if allowed
-        && !measuring
-        && cv.group.len() < 2
-        && cv.selected.is_some()
-        && (keys.pressed(ctx, egui::Key::Delete) || keys.pressed(ctx, egui::Key::Backspace))
-    {
+    // COMMENTS.1 fallback (inactive, SYNC.17; f3ccab72): with several cards selected in the panel
+    // the keys deleted nothing, `&& cv.group.len() < 2`; upstream's Delete and Backspace delete
+    // every selected comment.
+    if allowed && !measuring && cv.selected.is_some() && (keys.pressed(ctx, egui::Key::Delete) || keys.pressed(ctx, egui::Key::Backspace)) {
         view.pending_edit = delete_selected(cv, info);
     }
 }
