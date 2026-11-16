@@ -235,6 +235,8 @@ impl Automation {
                 let paths = a.paths("paths")?;
                 self.apply(&a, Edit::ShiftBookmarks { paths, outdent: name == "bookmark_outdent" })?
             }
+            // This fork (BOOKMARK.DND.1).
+            "bookmark_move_group" => self.bookmark_move_group(&a)?,
             "bookmark_set_page" => {
                 let (path, page) = (a.path("path")?, self.page(&a)?);
                 self.apply(&a, Edit::SetBookmarkPage { path, page })?

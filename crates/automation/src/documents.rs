@@ -536,6 +536,26 @@ impl Automation {
         self.applied(a)
     }
 
+    /// This fork (BOOKMARK.DND.1), `bookmark_move_group`: move several bookmarks to one place, or
+    /// with `dry_run` only say where they would go. Paths are 1-based here and in the result.
+    pub(crate) fn bookmark_move_group(&mut self, a: &Args) -> Result<Value> {
+        let id = self.doc(a)?.id;
+        let paths = a.paths("paths")?;
+        let to_parent = a.opt_path("parent")?.unwrap_or_default();
+        let index = match a.opt_int("position")? {
+            None => usize::MAX,
+            Some(p) if p >= 1 => usize::try_from(p - 1).unwrap_or(usize::MAX),
+            Some(_) => return Err(ToolError::InvalidArgs("`position` must be 1 or more (1 = before the parent's first bookmark)".into())),
+        };
+        let dry_run = a.opt_bool("dry_run")?.unwrap_or(false);
+        let moved = self.session.move_bookmarks(id, &paths, &to_parent, index, dry_run).map_err(failed)?;
+        let mut out = self.applied(a)?;
+        out["paths"] = json!(moved.paths.iter().map(|p| p.iter().map(|i| i.saturating_add(1)).collect::<Vec<_>>()).collect::<Vec<_>>());
+        out["changed"] = json!(moved.changed);
+        out["dry_run"] = json!(dry_run);
+        Ok(out)
+    }
+
     /// `text_prepare`: make a page's grouped text editable, with what that edit itself prepared,
     /// repaired and left grouped.
     pub(crate) fn prepare_text(&mut self, a: &Args, page: usize) -> Result<Value> {

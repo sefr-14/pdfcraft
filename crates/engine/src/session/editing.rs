@@ -124,6 +124,35 @@ fn sync_script_history(doc: &Document, previous: &pdfcraft_cos::Document, restor
 }
 
 impl Session {
+    /// This fork (BOOKMARK.DND.1): move the bookmarks at `paths` together to child `index` of
+    /// `to_parent` (see [`Edit::MoveBookmarks`]), or with `dry_run` only say what that would do.
+    ///
+    /// The document itself is checked first, with the checks the edit makes. A dry run, a refusal
+    /// and a move to where the bookmarks already are all leave the document exactly as it was: no
+    /// change, no undo step, not marked edited. Otherwise the move is one undo step.
+    pub fn move_bookmarks(
+        &mut self,
+        id: DocId,
+        paths: &[Vec<usize>],
+        to_parent: &[usize],
+        index: usize,
+        dry_run: bool,
+    ) -> Result<crate::BookmarkMove, EditError> {
+        let edit = Edit::MoveBookmarks { paths: paths.to_vec(), to_parent: to_parent.to_vec(), index };
+        let doc = self.doc_mut(id)?;
+        let reason = doc.read_only_reason.clone().unwrap_or_default();
+        let editor = doc.editor.as_ref().ok_or(EditError::ReadOnly(reason))?;
+        if let Some(p) = editor.cos.permissions() {
+            check_permission(&edit, &p)?;
+        }
+        let plan = pdfcraft_organize::preview_move_bookmarks(&editor.cos, paths, to_parent, index)?;
+        let result = crate::BookmarkMove { paths: plan.paths, changed: !plan.unchanged };
+        if !dry_run && result.changed {
+            self.apply(id, edit)?;
+        }
+        Ok(result)
+    }
+
     /// Apply an edit. On success the previous state is undoable and the view data is refreshed.
     pub fn apply(&mut self, id: DocId, edit: Edit) -> Result<(), EditError> {
         self.apply_reporting(id, edit).map(|_| ())

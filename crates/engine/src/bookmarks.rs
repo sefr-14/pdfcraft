@@ -72,6 +72,23 @@ pub fn preview_shift(
     paths: &[Vec<usize>],
     outdent: bool,
 ) -> Result<Vec<Vec<usize>>, pdfcraft_organize::OutlineError> {
+    let shape = shape_of(items);
+    let shift = if outdent { pdfcraft_organize::Shift::Out } else { pdfcraft_organize::Shift::In };
+    pdfcraft_organize::plan_shift(&shape, paths, shift).map(|plan| plan.paths)
+}
+
+/// This fork (BOOKMARK.DND.1): what moving a group of bookmarks does, or would do.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BookmarkMove {
+    /// The moved bookmarks' paths afterwards, in outline order (those that moved under another
+    /// moved bookmark are not listed: they went with it).
+    pub paths: Vec<Vec<usize>>,
+    /// `false` when the bookmarks are already there, in that order: nothing is written.
+    pub changed: bool,
+}
+
+/// The viewer's outline `items` as a shape the group planners work on.
+fn shape_of(items: &[pdfcraft_render::OutlineItem]) -> pdfcraft_organize::OutlineShape {
     let mut shape = pdfcraft_organize::OutlineShape::new();
     // Each viewer item once, with the node it hangs from; an explicit stack, no recursion.
     let mut todo: Vec<(usize, &pdfcraft_render::OutlineItem)> = items.iter().rev().map(|i| (0, i)).collect();
@@ -79,6 +96,19 @@ pub fn preview_shift(
         let Some(node) = shape.add(parent) else { continue };
         todo.extend(item.children.iter().rev().map(|c| (node, c)));
     }
-    let shift = if outdent { pdfcraft_organize::Shift::Out } else { pdfcraft_organize::Shift::In };
-    pdfcraft_organize::plan_shift(&shape, paths, shift).map(|plan| plan.paths)
+    shape
+}
+
+/// This fork (BOOKMARK.DND.1): what moving the bookmarks at `paths` of the viewer's outline
+/// `items` to child `index` of `to_parent` would do, without doing it (`index` is counted in that
+/// list as it is now; past the end appends). The panel uses it to show where a drag may drop. It
+/// is a preview: `items` is the viewer's window of the outline, so the move itself
+/// ([`crate::Session::move_bookmarks`]) checks the document again and decides.
+pub fn preview_move(
+    items: &[pdfcraft_render::OutlineItem],
+    paths: &[Vec<usize>],
+    to_parent: &[usize],
+    index: usize,
+) -> Result<BookmarkMove, pdfcraft_organize::OutlineError> {
+    pdfcraft_organize::plan_move(&shape_of(items), paths, to_parent, index).map(|plan| BookmarkMove { paths: plan.paths, changed: !plan.unchanged })
 }

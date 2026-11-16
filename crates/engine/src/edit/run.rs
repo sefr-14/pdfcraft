@@ -26,6 +26,7 @@ pub(crate) fn check_permission(edit: &Edit, p: &pdfcraft_cos::Permissions) -> Re
         | Edit::DeleteBookmark { .. }
         | Edit::MoveBookmark { .. }
         | Edit::ShiftBookmarks { .. }
+        | Edit::MoveBookmarks { .. }
         | Edit::SetBookmarkPage { .. }
         | Edit::SetBookmarkColor { .. }
         | Edit::SetBookmarkStyle { .. }
@@ -578,6 +579,9 @@ pub(crate) fn run_edit(doc: &mut pdfcraft_cos::Document, edit: &Edit, cx: &mut E
         Edit::ShiftBookmarks { paths, outdent } => {
             let shift = if *outdent { pdfcraft_organize::Shift::Out } else { pdfcraft_organize::Shift::In };
             pdfcraft_organize::shift_bookmarks(doc, paths, shift)?;
+        }
+        Edit::MoveBookmarks { paths, to_parent, index } => {
+            pdfcraft_organize::move_bookmarks(doc, paths, to_parent, *index)?;
         }
         Edit::SetBookmarkPage { path, page } => pdfcraft_organize::set_bookmark_page(doc, path, *page)?,
         Edit::SetBookmarkColor { path, color } => pdfcraft_organize::set_bookmark_color(doc, path, *color)?,

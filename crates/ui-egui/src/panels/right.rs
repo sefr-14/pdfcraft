@@ -204,6 +204,10 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                         // is dropped; Escape over the panel clears it.
                         let stamp = crate::content_version(doc);
                         view.bookmarks.expire(stamp);
+                        // BOOKMARK.DND.1: Escape during a drag gives the drag up and keeps the selection.
+                        if view.bookmarks.dragging() && (modal || ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))) {
+                            view.bookmarks.cancel_drag();
+                        }
                         // Not while a title is being renamed: its own Escape cancels the rename
                         // (egui unfocuses the field before the panel runs).
                         if !modal
@@ -216,6 +220,7 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                             view.bookmarks.clear();
                         }
                         let mut shown = Vec::new();
+                        let mut rows = Vec::new();
                         let mut ctx = OutlineCtx {
                             nav: &mut nav,
                             action: &mut bm_action,
@@ -230,6 +235,7 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                             shown: &mut shown,
                             stamp,
                             partial: info.outline_more,
+                            rows: &mut rows,
                         };
                         if ctx.searching && bookmark_matches.is_empty() && !info.outline.is_empty() {
                             ui.label(tl!("No matches."));
@@ -238,6 +244,8 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                             outline_item(ui, &t, info, item, &[i], info.outline.len(), &mut ctx);
                         }
                         view.bookmarks.finish_frame(shown);
+                        // This fork (BOOKMARK.DND.1): where a drag would drop, and the drop.
+                        super::bookmarks::drag_frame(ui, &t, info, &mut view.bookmarks, &rows, stamp, &mut bm_action);
                         if info.outline_more {
                             ui.label(tl!("Some bookmarks are not shown here: the panel lists a limited number, nested a limited depth."));
                         }

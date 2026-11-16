@@ -1,5 +1,5 @@
 // Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
-use super::{DocInfo, Nav, OutlineItem, Rect, Sense, Tokens, icons, pos2, theme, vec2};
+use super::{DocInfo, Nav, OutlineItem, Rect, Sense, Stroke, Tokens, icons, pos2, theme, vec2};
 
 /// What the user asked to do with a bookmark (applied after the panel is drawn).
 #[derive(Clone, Debug, PartialEq)]
@@ -33,6 +33,15 @@ pub enum BmAction {
         parent: Vec<usize>,
         index: usize,
     },
+    /// This fork (BOOKMARK.DND.1): a drag was dropped. Move the bookmarks at `paths` together to
+    /// child `index` of `parent` (counted in that list as it is; past the end appends), if the
+    /// document is still the version (`stamp`) the drag began in.
+    MoveTo {
+        paths: Vec<Vec<usize>>,
+        parent: Vec<usize>,
+        index: usize,
+        stamp: (u64, usize),
+    },
     /// Bookmarks from the tagged headings, under a new first "Untitled" bookmark.
     FromStructure,
     /// Open New bookmarks from text styles, to choose a style per bookmark level (#1693).
@@ -57,7 +66,31 @@ pub struct BookmarkSelection {
     seen: Option<(u64, usize)>,
     /// Bookmarks whose rows open on the next frame (the new parents after a group move).
     reveal: std::collections::HashSet<Vec<usize>>,
+    /// BOOKMARK.DND.1: the bookmarks being dragged, if any.
+    drag: Option<BookmarkDrag>,
 }
+
+/// This fork (BOOKMARK.DND.1): bookmarks being dragged in the panel.
+#[derive(Clone, Debug)]
+struct BookmarkDrag {
+    /// What moves: the selection when the drag began on a selected row, else that row alone.
+    paths: Vec<Vec<usize>>,
+    /// The document version the drag began in; the paths mean nothing in another.
+    stamp: (u64, usize),
+    /// The closed bookmark the pointer rests on, and since when (egui time): it opens after
+    /// [`HOVER_OPENS_AFTER`].
+    hover: Option<(Vec<usize>, f64)>,
+}
+
+/// How long a dragged bookmark rests on a closed one before it opens, in seconds.
+const HOVER_OPENS_AFTER: f64 = 0.7;
+
+/// The part of a row, from each edge, that means "before" or "after" it; the middle means "into".
+const EDGE_BAND: f32 = 0.25;
+
+/// How near the panel's top or bottom edge a drag scrolls it, and by how much a frame.
+const DRAG_SCROLL_EDGE: f32 = 40.0;
+const DRAG_SCROLL_STEP: f32 = 10.0;
 
 impl BookmarkSelection {
     /// The selected paths, in outline order (the order of paths is outline order).
@@ -88,10 +121,34 @@ impl BookmarkSelection {
         self.seen = None;
     }
 
+    /// BOOKMARK.DND.1: whether bookmarks are being dragged.
+    pub fn dragging(&self) -> bool {
+        self.drag.is_some()
+    }
+
+    /// BOOKMARK.DND.1: give up a drag; nothing moves.
+    pub(crate) fn cancel_drag(&mut self) {
+        self.drag = None;
+    }
+
+    /// BOOKMARK.DND.1: a drag begins on the row at `path`. A selected row takes the whole
+    /// selection with it; any other row goes alone and becomes the selection.
+    fn start_drag(&mut self, path: &[usize], now: (u64, usize)) {
+        self.expire(now);
+        if !self.contains(path) {
+            self.only(path, now);
+        }
+        self.drag = Some(BookmarkDrag { paths: self.paths(), stamp: now, hover: None });
+    }
+
     /// Drop the selection when the document is no longer the version it was made in.
     pub(crate) fn expire(&mut self, now: (u64, usize)) {
         if self.seen.is_some_and(|seen| seen != now) {
             self.clear();
+        }
+        // A drag's paths are of the version it began in, too.
+        if self.drag.as_ref().is_some_and(|d| d.stamp != now) {
+            self.drag = None;
         }
     }
 
@@ -168,6 +225,225 @@ fn shift_refusal(e: &pdfcraft_engine::OutlineError) -> &'static str {
     }
 }
 
+/// This fork (BOOKMARK.DND.1): why a drag can't be dropped where the pointer is.
+fn move_refusal(e: &pdfcraft_engine::OutlineError) -> &'static str {
+    use pdfcraft_engine::OutlineError as E;
+    match e {
+        E::IntoItself => tl!("A bookmark can't go inside itself"),
+        E::GroupTooDeep(_) => tl!("Too deeply nested to show in the panel"),
+        _ => tl!("These bookmarks can't be moved together"),
+    }
+}
+
+/// This fork (BOOKMARK.DND.1): a bookmark row as drawn this frame, for a drag to aim at.
+pub(super) struct DragRow {
+    pub(super) path: Vec<usize>,
+    pub(super) rect: Rect,
+    /// The id its open state is kept under.
+    id: egui::Id,
+    /// It has bookmarks under it that are not shown.
+    closed: bool,
+}
+
+/// Which part of a row the pointer is on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Band {
+    /// The top quarter: before the row, at its level.
+    Before,
+    /// The middle half: under the row, as its last child.
+    Onto,
+    /// The bottom quarter: after the row and everything under it, at the row's level.
+    After,
+}
+
+/// The row a drag at height `y` aims at, and which part of it. `rows` are the rows drawn, top to
+/// bottom, each with its path. Above the first row is before it; below the last is after the
+/// top-level bookmark it belongs to, so at the end of the outline. A gap between rows belongs to
+/// the row above it.
+pub(super) fn drop_at(rows: &[(&[usize], Rect)], y: f32) -> Option<(usize, Band)> {
+    let (_, first) = rows.first()?;
+    let (_, last) = rows.last()?;
+    if !y.is_finite() {
+        return None;
+    }
+    if y < first.top() {
+        return Some((0, Band::Before));
+    }
+    if y >= last.bottom() {
+        // The last row's top-level ancestor: the last row whose path is one long.
+        let top = rows.iter().rposition(|(path, _)| path.len() == 1)?;
+        return Some((top, Band::After));
+    }
+    // The last row that starts at or above `y`.
+    let at = rows.iter().rposition(|(_, r)| r.top() <= y)?;
+    let (_, rect) = rows.get(at)?;
+    let part = if rect.height() > 0.0 { (y - rect.top()) / rect.height() } else { 0.5 };
+    let band = if part < EDGE_BAND {
+        Band::Before
+    } else if part >= 1.0 - EDGE_BAND {
+        Band::After
+    } else {
+        Band::Onto
+    };
+    Some((at, band))
+}
+
+/// Where a drop on `band` of the row at `path` puts bookmarks: the parent, and the position in
+/// its list as it is now. After a row is after everything under it, whether or not that shows:
+/// the next position at the row's own level.
+pub(super) fn drop_target(path: &[usize], band: Band) -> Option<(Vec<usize>, usize)> {
+    let (&i, parent) = path.split_last()?;
+    Some(match band {
+        Band::Before => (parent.to_vec(), i),
+        Band::After => (parent.to_vec(), i.saturating_add(1)),
+        Band::Onto => (path.to_vec(), usize::MAX),
+    })
+}
+
+/// The last row drawn under row `at` (itself when nothing under it shows).
+fn subtree_end(rows: &[(&[usize], Rect)], at: usize) -> usize {
+    let Some((path, _)) = rows.get(at) else { return at };
+    let under = rows.iter().skip(at.saturating_add(1)).take_while(|(p, _)| p.len() > path.len() && p.starts_with(path)).count();
+    at.saturating_add(under)
+}
+
+/// How many of `paths` move on their own: those not under another of them.
+fn roots(paths: &[Vec<usize>]) -> usize {
+    paths.iter().filter(|p| !paths.iter().any(|q| q.len() < p.len() && p.starts_with(q))).count()
+}
+
+/// The x a row at `depth` starts its title at, in a row whose left edge is `left`.
+fn title_x(left: f32, depth: usize) -> f32 {
+    left + depth as f32 * 16.0 + 20.0
+}
+
+/// This fork (BOOKMARK.DND.1): while bookmarks are dragged, show where they would go, open a
+/// closed bookmark the pointer rests on, scroll near the panel's edges, and on release ask for the
+/// move. `rows` are the rows drawn this frame, top to bottom.
+///
+/// The top quarter of a row is before it, the bottom quarter after it and everything under it,
+/// and the middle under it as its last child. A place the bookmarks can't go, or already are,
+/// takes no drop.
+pub(super) fn drag_frame(
+    ui: &mut egui::Ui,
+    t: &Tokens,
+    info: &DocInfo,
+    sel: &mut BookmarkSelection,
+    rows: &[DragRow],
+    stamp: (u64, usize),
+    action: &mut Option<BmAction>,
+) {
+    let Some(drag) = sel.drag.as_mut() else { return };
+    let (released, down) = ui.input(|i| (i.pointer.primary_released(), i.pointer.primary_down()));
+    // The document changed under the drag, or the button was let go somewhere this panel didn't
+    // see: there is nothing to drop.
+    if drag.stamp != stamp || (!released && !down) {
+        sel.drag = None;
+        return;
+    }
+    let clip = ui.clip_rect();
+    let pointer = ui.input(|i| i.pointer.interact_pos());
+    let spans: Vec<(&[usize], Rect)> = rows.iter().map(|r| (r.path.as_slice(), r.rect)).collect();
+    // Only inside the list: a release anywhere else drops nothing.
+    let aim = pointer.filter(|p| clip.contains(*p)).and_then(|p| drop_at(&spans, p.y));
+    let target = aim.and_then(|(at, band)| {
+        let row = rows.get(at)?;
+        let (parent, index) = drop_target(&row.path, band)?;
+        Some((at, band, parent, index))
+    });
+    // What the move would do, as the viewer's outline tells it; a window that leaves bookmarks
+    // out can't tell, and the move itself decides.
+    let verdict = target.as_ref().map(|(_, _, parent, index)| {
+        if info.outline_more { Ok(true) } else { pdfcraft_engine::preview_move(&info.outline, &drag.paths, parent, *index).map(|m| m.changed) }
+    });
+    let mut cursor = egui::CursorIcon::Grabbing;
+    if let (Some((at, band, _, _)), Some(verdict), Some(row)) = (target.as_ref(), verdict.as_ref(), target.as_ref().and_then(|x| rows.get(x.0))) {
+        let depth = row.path.len().saturating_sub(1);
+        let x = title_x(row.rect.left(), depth) - 4.0;
+        let stroke = Stroke::new(2.0, t.accent);
+        match verdict {
+            Ok(true) => match band {
+                Band::Onto => {
+                    ui.painter().rect_stroke(row.rect.shrink(1.0), 6, stroke, egui::StrokeKind::Inside);
+                }
+                Band::Before => {
+                    drop_line(ui, x, row.rect.right(), row.rect.top(), stroke);
+                }
+                Band::After => {
+                    // After everything shown under the row, at the row's own indent: a line
+                    // shorter-indented than the rows above it, joined to its row.
+                    let end = rows.get(subtree_end(&spans, *at)).map_or(row.rect, |r| r.rect);
+                    if end.bottom() > row.rect.bottom() {
+                        ui.painter().line_segment([pos2(x, row.rect.bottom()), pos2(x, end.bottom())], stroke);
+                    }
+                    drop_line(ui, x, row.rect.right(), end.bottom(), stroke);
+                }
+            },
+            // Already there: nothing to show, nothing to drop.
+            Ok(false) => {}
+            Err(e) => {
+                cursor = egui::CursorIcon::NotAllowed;
+                if let Some(p) = pointer {
+                    drag_note(ui, t, p + vec2(14.0, 34.0), move_refusal(e), theme::regular(12.0), t.text);
+                }
+            }
+        }
+    }
+    ui.ctx().set_cursor_icon(cursor);
+    if let Some(p) = pointer {
+        let n = roots(&drag.paths);
+        if n > 1 {
+            let what = crate::i18n::fmt(tl!("{n} bookmarks"), &[("n", &n.to_string())]);
+            drag_note(ui, t, p + vec2(14.0, 12.0), &what, theme::medium(12.0), t.accent_text);
+        }
+        if p.y < clip.top() + DRAG_SCROLL_EDGE && clip.x_range().contains(p.x) {
+            ui.scroll_with_delta(vec2(0.0, DRAG_SCROLL_STEP));
+        } else if p.y > clip.bottom() - DRAG_SCROLL_EDGE && clip.x_range().contains(p.x) {
+            ui.scroll_with_delta(vec2(0.0, -DRAG_SCROLL_STEP));
+        }
+        ui.ctx().request_repaint();
+    }
+    // A closed bookmark the pointer rests on opens, so the drag can go under what it holds. Only
+    // the panel's own fold state: nothing is written to the document.
+    let resting = aim.and_then(|(at, _)| rows.get(at)).filter(|r| r.closed && !drag.paths.iter().any(|p| r.path.starts_with(p)));
+    let now = ui.input(|i| i.time);
+    match (resting, drag.hover.as_ref()) {
+        (Some(row), Some((path, since))) if *path == row.path => {
+            if now - since >= HOVER_OPENS_AFTER {
+                ui.data_mut(|d| d.insert_temp(row.id, true));
+                drag.hover = None;
+            }
+        }
+        (Some(row), _) => drag.hover = Some((row.path.clone(), now)),
+        (None, _) => drag.hover = None,
+    }
+    if !released {
+        return;
+    }
+    let paths = std::mem::take(&mut drag.paths);
+    sel.drag = None;
+    if let (Some((_, _, parent, index)), Some(Ok(true))) = (target, verdict) {
+        *action = Some(BmAction::MoveTo { paths, parent, index, stamp });
+    }
+}
+
+/// A short note beside the pointer during a drag, on its own plate above the rows so it reads
+/// whatever it is over.
+fn drag_note(ui: &egui::Ui, t: &Tokens, at: egui::Pos2, text: &str, font: egui::FontId, color: egui::Color32) {
+    let painter = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("bookmark-drag-note")));
+    let galley = painter.layout_no_wrap(text.to_owned(), font, color);
+    let plate = Rect::from_min_size(at, galley.size()).expand2(vec2(6.0, 3.0));
+    painter.rect(plate, 4, t.panel, Stroke::new(1.0, t.divider), egui::StrokeKind::Outside);
+    painter.galley(at, galley, color);
+}
+
+/// The line a drop before or after a row shows: from `x`, the level the bookmarks would be at,
+/// to the row's right edge, with a dot at its start.
+fn drop_line(ui: &egui::Ui, x: f32, right: f32, y: f32, stroke: Stroke) {
+    ui.painter().line_segment([pos2(x, y), pos2(right - 4.0, y)], stroke);
+    ui.painter().circle_filled(pos2(x, y), 3.0, stroke.color);
+}
+
 /// Matching titles plus their ancestors, keeping document paths rather than filtered indexes.
 /// `query` is folded with [`pdfcraft_render::text::fold_case`], as titles are here.
 pub(super) fn outline_matches(items: &[OutlineItem], query: &str) -> std::collections::HashSet<Vec<usize>> {
@@ -212,6 +488,8 @@ pub(super) struct OutlineCtx<'a> {
     pub(super) stamp: (u64, usize),
     /// Whether the viewer's outline leaves bookmarks out (the group preview can't tell then).
     pub(super) partial: bool,
+    /// BOOKMARK.DND.1: the rows drawn so far this frame, for a drag to aim at.
+    pub(super) rows: &'a mut Vec<DragRow>,
 }
 
 /// The destination page label gets its own right-aligned column in a bookmark row; drawing
@@ -346,7 +624,21 @@ pub(super) fn outline_item(
         job.wrap.max_width = wrap_w;
         let galley = ui.fonts_mut(|f| f.layout_job(job));
         let h = (galley.size().y + 12.0).max(28.0);
-        let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), h), Sense::click());
+        // This fork (BOOKMARK.DND.1): a row can be dragged where bookmarks can be edited.
+        let draggable = cx.editable && cx.rename.is_none();
+        let sense = if draggable { Sense::click_and_drag() } else { Sense::click() };
+        let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), h), sense);
+        cx.rows.push(DragRow { path: path.to_vec(), rect, id, closed: !item.children.is_empty() && !open });
+        if draggable && cx.searching {
+            // A search hides the bookmarks between the ones it shows, so a place among these
+            // rows isn't a place in the outline: nothing is dragged, and the row says why.
+            if resp.dragged_by(egui::PointerButton::Primary) {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::NotAllowed);
+                resp.show_tooltip_text(tl!("Clear the search to rearrange bookmarks"));
+            }
+        } else if draggable && resp.drag_started_by(egui::PointerButton::Primary) {
+            cx.sel.start_drag(path, cx.stamp);
+        }
         resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &item.title));
         theme::Press::track(ui, &resp).wash(ui, rect, 6, cx.sel.contains(path));
         let x0 = rect.left() + indent;
@@ -651,5 +943,87 @@ mod rename_field {
         });
         output.drop_without_applying_deltas();
         assert_eq!(cursor_range(&ctx, id), Some((3, 3)), "the user's caret is kept");
+    }
+}
+
+/// This fork (BOOKMARK.DND.1): where a drag aims.
+#[cfg(test)]
+mod drop_places {
+    use super::{Band, Rect, drop_at, drop_target, pos2, roots, subtree_end};
+
+    /// Rows 30 high from y = 100, with these paths.
+    fn rows(paths: &[&'static [usize]]) -> Vec<(&'static [usize], Rect)> {
+        paths
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (*p, Rect::from_min_max(pos2(0.0, 100.0 + 30.0 * i as f32), pos2(200.0, 130.0 + 30.0 * i as f32))))
+            .collect()
+    }
+
+    /// A[a1,a2],B as drawn with A open.
+    const OPEN: &[&[usize]] = &[&[0], &[0, 0], &[0, 1], &[1]];
+
+    #[test]
+    fn a_row_has_a_quarter_before_a_half_onto_and_a_quarter_after() {
+        let r = rows(OPEN);
+        // Row 1 (a1) spans 130..160: quarters at 137.5 and 152.5.
+        assert_eq!(drop_at(&r, 130.0), Some((1, Band::Before)));
+        assert_eq!(drop_at(&r, 137.0), Some((1, Band::Before)));
+        assert_eq!(drop_at(&r, 138.0), Some((1, Band::Onto)));
+        assert_eq!(drop_at(&r, 152.0), Some((1, Band::Onto)));
+        assert_eq!(drop_at(&r, 153.0), Some((1, Band::After)));
+        assert_eq!(drop_at(&r, 159.9), Some((1, Band::After)));
+        assert_eq!(drop_at(&r, 160.0), Some((2, Band::Before)));
+    }
+
+    #[test]
+    fn above_the_list_is_before_the_first_row_and_below_it_is_the_end_of_the_outline() {
+        let r = rows(OPEN);
+        assert_eq!(drop_at(&r, 0.0), Some((0, Band::Before)));
+        // Below the last row: after the last top-level bookmark.
+        assert_eq!(drop_at(&r, 500.0), Some((3, Band::After)));
+        // When the last row is a child, that is still after its top-level bookmark, not after it.
+        let nested = rows(&[&[0], &[1], &[1, 0], &[1, 0, 0]]);
+        assert_eq!(drop_at(&nested, 500.0), Some((1, Band::After)));
+        assert_eq!(drop_at(&[], 120.0), None);
+        assert_eq!(drop_at(&r, f32::NAN), None);
+    }
+
+    /// A gap between two rows belongs to the row above it, as that row's last part.
+    #[test]
+    fn a_gap_between_rows_belongs_to_the_row_above() {
+        let mut r = rows(&[&[0], &[1]]);
+        r[1].1 = r[1].1.translate(egui::vec2(0.0, 6.0));
+        assert_eq!(drop_at(&r, 133.0), Some((0, Band::After)));
+    }
+
+    #[test]
+    fn the_target_is_a_parent_and_a_place_in_its_list_as_it_is() {
+        assert_eq!(drop_target(&[2], Band::Before), Some((vec![], 2)));
+        assert_eq!(drop_target(&[2], Band::After), Some((vec![], 3)));
+        assert_eq!(drop_target(&[2], Band::Onto), Some((vec![2], usize::MAX)));
+        assert_eq!(drop_target(&[0, 1], Band::Before), Some((vec![0], 1)));
+        // After a bookmark is at its own level whatever is under it.
+        assert_eq!(drop_target(&[0], Band::After), Some((vec![], 1)));
+        assert_eq!(drop_target(&[], Band::Onto), None);
+        assert_eq!(drop_target(&[usize::MAX], Band::After), Some((vec![], usize::MAX)));
+    }
+
+    /// The line for "after" goes under everything shown beneath the row.
+    #[test]
+    fn the_end_of_a_rows_subtree_is_its_last_shown_descendant() {
+        let r = rows(&[&[0], &[0, 0], &[0, 0, 0], &[0, 1], &[1], &[1, 0]]);
+        assert_eq!(subtree_end(&r, 0), 3);
+        assert_eq!(subtree_end(&r, 1), 2);
+        assert_eq!(subtree_end(&r, 3), 3);
+        assert_eq!(subtree_end(&r, 4), 5);
+        assert_eq!(subtree_end(&r, 99), 99);
+    }
+
+    #[test]
+    fn a_bookmark_under_another_dragged_one_isnt_counted_twice() {
+        assert_eq!(roots(&[vec![0], vec![0, 1], vec![2]]), 2);
+        assert_eq!(roots(&[vec![1, 0], vec![1, 1]]), 2);
+        assert_eq!(roots(&[]), 0);
     }
 }

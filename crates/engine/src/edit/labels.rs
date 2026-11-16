@@ -212,6 +212,7 @@ impl Edit {
             Edit::MoveBookmark { .. } => Label::of("Move bookmark"),
             Edit::ShiftBookmarks { outdent: false, .. } => Label::of("Indent bookmarks"),
             Edit::ShiftBookmarks { outdent: true, .. } => Label::of("Outdent bookmarks"),
+            Edit::MoveBookmarks { .. } => Label::of("Move bookmarks"),
             Edit::SetBookmarkPage { .. } => Label::of("Set bookmark destination"),
             // The bookmark Style and Colour menus' own names, already said in every language.
             Edit::SetBookmarkColor { .. } => Label::of("Colour"),
