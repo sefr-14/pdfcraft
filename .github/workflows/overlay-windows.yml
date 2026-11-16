@@ -137,7 +137,8 @@ jobs:
                          'assets\icons\LICENSE-lucide.txt', 'assets\fonts\OFL-Inter.txt',
                          'assets\fonts\OFL-JetBrainsMono.txt', 'assets\fonts\OFL-DancingScript.txt',
                          'vendor\hayro-interpret\assets\LICENSE_FOXIT',
-                         'vendor\hayro-interpret\assets\CGATS_LICENSE.txt') { Copy-Item $f $lic }
+                         'vendor\hayro-interpret\assets\CGATS_LICENSE.txt',
+                         'licenses\ICU4X-LICENSE.txt', 'licenses\prc-rs-LICENSE.txt') { Copy-Item $f $lic }
           Copy-Item vendor\hayro-cmap\assets\LICENSE.txt "$lic\LICENSE-adobe-cmaps.txt"
           Copy-Item assets\app-icon\LICENSE.txt "$lic\LICENSE-app-icon.txt"
           Copy-Item licenses\epaint_default_fonts\*.txt "$lic\epaint_default_fonts"
