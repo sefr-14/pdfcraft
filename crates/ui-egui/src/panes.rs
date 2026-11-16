@@ -214,6 +214,9 @@ impl PdfCraftApp {
         // this frame drops the demand it collects for it (#3149). This fork's `sync_shared_views`
         // (Duplicate Tab) keeps each view's place, zoom and history: one refresh for both features.
         self.sync_shared_views();
+        // Then a comment selection taken in another version of its document goes (SYNC.16h,
+        // SYNC.17): one this view's own edits haven't kept current.
+        self.expire_comment_selections();
         if let Some(v) = self.active.and_then(|i| self.views.get_mut(i)) {
             self.panes.focus = v.pane.place;
             if v.pane.shown_seq != self.panes.top_seq || self.panes.top_seq == 0 {
@@ -300,6 +303,8 @@ impl PdfCraftApp {
         }
         let Some(doc) = self.session.get(id) else { return };
         let mut twin = view.twin(&doc.info);
+        // This fork (SYNC.16m, SYNC.17): its comment selection starts in this version of the document.
+        twin.comments.stamp(crate::content_version(doc));
         twin.pane.place = place;
         twin.pane.placed = true;
         self.views.push(twin);

@@ -171,7 +171,67 @@ fn form_edit_pages(
     (changed_pages, unbaked)
 }
 
+/// This fork (SYNC.16h, SYNC.17): what the active view says when a stale comment selection was
+/// dropped.
+pub(crate) const STALE_COMMENTS: &str = "The document changed, so the selected comments were deselected. Select them again.";
+
+/// This fork (SYNC.16h, SYNC.17): whether `edit` can move comments to other places, (page, index
+/// in `/Annots`), without `select_after_edit` remapping the selection: page structure,
+/// flattening, redaction, sanitizing, imports, erasing ink, and a batch of any of them. A
+/// selection doesn't survive these. (Upstream's slot check after the edit can't tell: a page
+/// moved in this view keeps every slot's kind, name and count.)
+fn moves_comment_places(edit: &Edit) -> bool {
+    match edit {
+        Edit::DeletePages { .. }
+        | Edit::MovePages { .. }
+        | Edit::ReversePages { .. }
+        | Edit::InsertBlankPage { .. }
+        | Edit::DuplicatePages { .. }
+        | Edit::ReplacePages { .. }
+        | Edit::InsertPagesFrom { .. }
+        | Edit::EraseInk { .. }
+        | Edit::ApplyRedactions { .. }
+        | Edit::ImportData { .. }
+        | Edit::RemoveHidden { .. }
+        | Edit::Sanitize
+        | Edit::XfaToStatic
+        | Edit::Flatten { .. }
+        | Edit::FlattenFillSign => true,
+        Edit::Batch { edits, .. } => edits.iter().any(moves_comment_places),
+        _ => false,
+    }
+}
+
 impl PdfCraftApp {
+    /// This fork (SYNC.16h, SYNC.17): at the start of each pass, after the document's other views
+    /// caught up (`sync_shared_views`) and after the control channel's edits: every view drops a
+    /// comment selection taken in another version of its document. The active view's is said.
+    pub(crate) fn expire_comment_selections(&mut self) {
+        let mut said = false;
+        for (i, view) in self.views.iter_mut().enumerate() {
+            let Some(doc) = self.session.get(view.id) else { continue };
+            if view.comments.expire(crate::content_version(doc)) && self.active == Some(i) {
+                said = true;
+            }
+        }
+        if said {
+            self.notify_tr(STALE_COMMENTS);
+        }
+    }
+
+    /// This fork (SYNC.16m, SYNC.17): document `id` was just saved. Saving writes the same
+    /// comments in the same places, but gives the document a new working buffer, so a new
+    /// version: the views whose comment selection was current just before (`before`) keep it as
+    /// current now. One already stale stays stale.
+    pub(crate) fn carry_comment_selections(&mut self, id: pdfcraft_engine::DocId, before: Option<(u64, usize)>) {
+        let (Some(before), Some(now)) = (before, self.session.get(id).map(crate::content_version)) else { return };
+        for view in self.views.iter_mut().filter(|v| v.id == id) {
+            if view.comments.seen == Some(before) {
+                view.comments.stamp(now);
+            }
+        }
+    }
+
     /// Apply an edit to the active document. Returns `true` on success; failures are shown.
     pub fn apply_edit(&mut self, edit: Edit) -> bool {
         let Some((i, id)) = self.active_ids() else { return false };
@@ -200,6 +260,13 @@ impl PdfCraftApp {
         } else {
             (None, 0, false, None)
         };
+        // This fork (SYNC.16h, SYNC.17): a selection taken in another version of the document goes
+        // before this edit's own remapping could move it onto other comments.
+        if let (Some(doc), Some(view)) = (self.session.get(id), self.views.get_mut(i))
+            && view.comments.expire(crate::content_version(doc))
+        {
+            self.notify_tr(STALE_COMMENTS);
+        }
         // A deletion moves the comments after it on the page: these say where the selected one,
         // and the one open in the panel's editor, went.
         let annots_before = match (&edit, self.session.get(id)) {
@@ -270,6 +337,12 @@ impl PdfCraftApp {
                 }
                 // Keep the pages the user acted on selected, where they now are.
                 select_after_edit(view, &edit, info, &annots_before, self.quick_tool);
+                // This fork (SYNC.16h, SYNC.17): the selection's places are this version's now,
+                // unless the edit moved comments without remapping the selection.
+                if moves_comment_places(&edit) {
+                    view.comments.clear_selection();
+                }
+                view.comments.seen = Some(crate::content_version(doc));
                 if let (Some((target, ambiguous_before)), Edit::EditPageImage { page, .. }) = (target_arrange_image, &edit) {
                     let page_images = doc.page_images(*page);
                     re_resolve_image_selection(view, *page, &target, ambiguous_before, &page_images);

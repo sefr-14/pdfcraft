@@ -921,3 +921,63 @@ fn comment_marker_wins_over_an_overlapping_body_for_pick_and_hover() {
     super::input::describe(&hidden, &mut view);
     assert!(view.cursor.resolve(&ctx, QuickTool::Select).is_none());
 }
+
+/// SYNC.16h, 16m (SYNC.17): a held selection is kept only in the version it was stamped in; one without a
+/// stamp is dropped (nothing says which version its places are from); an empty one takes the
+/// version as its own.
+#[test]
+fn expire_keeps_only_a_selection_stamped_in_this_version() {
+    use super::CommentView;
+    let (v1, v2) = ((1, 7), (2, 7));
+    let mut cv = CommentView::default();
+    cv.select_only((0, 1));
+    assert!(cv.expire(v1), "no stamp: dropped");
+    assert!(cv.selection().is_empty());
+    assert!(!cv.expire(v1), "empty: nothing to drop");
+    cv.select_only((0, 1));
+    assert!(!cv.expire(v1), "stamped in this version (the empty pass took it): kept");
+    assert_eq!(cv.selection(), [(0, 1)]);
+    assert!(cv.expire(v2), "another version: dropped");
+    assert!(cv.selection().is_empty());
+    let mut cv = CommentView::default();
+    cv.stamp(v2);
+    cv.toggle((0, 2));
+    assert!(!cv.expire(v2), "stamped when made: kept");
+}
+
+/// SYNC.16m (SYNC.17): every view made for a document outside tests is stamped there, so a selection made
+/// before its first pass knows its version.
+#[test]
+fn every_view_made_for_a_document_is_stamped() {
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut missing = Vec::new();
+    let mut made = 0;
+    let mut stack = vec![src.clone()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let name = path.to_string_lossy().into_owned();
+            if !name.ends_with(".rs") || name.contains("test") || name.ends_with("canvas.rs") || name.contains("comments1_fallback") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).unwrap();
+            let lines: Vec<&str> = text.lines().collect();
+            for (n, line) in lines.iter().enumerate() {
+                // The app's views take its defaults; tests make theirs with `ViewDefaults::default()`.
+                if line.contains("DocView::new(") && line.contains("self.view_defaults") {
+                    made += 1;
+                    let next: String = lines.iter().skip(n).take(6).copied().collect::<Vec<_>>().join("\n");
+                    if !next.contains(".comments.stamp(") {
+                        missing.push(format!("{}:{}", name.trim_start_matches(src.to_string_lossy().as_ref()), n + 1));
+                    }
+                }
+            }
+        }
+    }
+    assert!(made >= 5, "{made} views made");
+    assert!(missing.is_empty(), "views made without a comment stamp: {missing:?}");
+}

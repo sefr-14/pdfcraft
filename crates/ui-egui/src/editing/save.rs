@@ -147,10 +147,13 @@ impl PdfCraftApp {
             match delivered {
                 Ok(()) => {
                     self.sync_doc_prefs();
+                    // This fork (SYNC.16m, SYNC.17): saving moves no comment.
+                    let before = self.session.get(id).map(crate::content_version);
                     // As the native save does: what was saved isn't asked about again (#2149).
                     let saved = self.session.mark_saved(id, bytes, None).is_ok();
                     if saved {
                         self.placed_signatures.remove(&id);
+                        self.carry_comment_selections(id, before);
                     }
                     if saved && let Some(doc) = self.session.get(id) {
                         // Its pages as saved, whatever objects they have now (OV11).
@@ -366,8 +369,11 @@ impl PdfCraftApp {
         self.watch.known_now(id, dest);
         // Rulers and guides catch up with this frame's edits before the pages are re-based.
         self.sync_doc_prefs();
+        // This fork (SYNC.16m, SYNC.17): saving moves no comment.
+        let before = self.session.get(id).map(crate::content_version);
         match self.session.mark_saved(id, bytes, Some(dest.to_string())) {
             Ok(()) => {
+                self.carry_comment_selections(id, before);
                 // Rulers and guides go with the pages as saved, whatever objects a full rewrite
                 // gave them (this fork, OV11).
                 if let Some(doc) = self.session.get(id) {

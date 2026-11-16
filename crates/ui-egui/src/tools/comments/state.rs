@@ -213,6 +213,13 @@ pub struct CommentView {
     pub tool_done: bool,
     /// What the inline editor (`editing`) does with the keyboard the next time it is drawn.
     pub(crate) editor_focus: Option<EditorFocus>,
+    /// This fork (SYNC.16h, SYNC.17): the document version (`content_version`) the selection's
+    /// places were taken in, or that this view's own edit moved them to. Upstream's slot check
+    /// ([`CommentView::document_changed`]) runs after the edits a view sees; an edit it doesn't
+    /// (automation, the control channel) or one that keeps every slot's kind and name while
+    /// moving the comments (a page moved in this view) leaves the places naming other comments:
+    /// [`CommentView::expire`] then drops the selection.
+    pub(crate) seen: Option<(u64, usize)>,
     // COMMENTS.1 fallback (inactive, SYNC.17; f3ccab72): the cards selected in the Comments panel,
     // apart from the active comment, and the panel's Delete selected request.
     // pub(crate) group: super::group::Group,
@@ -364,6 +371,28 @@ impl CommentView {
         self.selected = None;
         self.also.clear();
         self.member = None;
+    }
+
+    /// This fork (SYNC.16m, SYNC.17): selections taken from now on are in document version `now`.
+    /// Called where a view is made for a document (open, create, Duplicate Tab, a revision),
+    /// before anything can select in it, and where a save is known to move no comment.
+    pub(crate) fn stamp(&mut self, now: (u64, usize)) {
+        self.seen = Some(now);
+    }
+
+    /// This fork (SYNC.16h, 16m, SYNC.17): the document is version `now`. A selection taken in
+    /// another version (see [`CommentView::seen`]) is dropped, and `true` says so; it is never
+    /// matched to the comments now at its places, which may be others. A selection without a
+    /// stamp is dropped too: nothing says which version its places are from (every view is
+    /// stamped when it is made). Without a selection, places taken from now on are `now`'s.
+    pub(crate) fn expire(&mut self, now: (u64, usize)) -> bool {
+        let held = self.selected.is_some() || !self.also.is_empty();
+        let stale = held && self.seen != Some(now);
+        if stale {
+            self.clear_selection();
+        }
+        self.seen = Some(now);
+        stale
     }
 
     /// What Delete acts on: the group member clicked, while its group is still the selection,
