@@ -760,7 +760,7 @@ impl Walker<'_> {
                         self.pending_detail = Some(format!("\"{}\" (U+{:04X}) in {what}", c.escape_debug(), u32::from(c)));
                         return Err(Outcome::Unresolved(Rule::AnnotationUndrawableText));
                     }
-                    match pdfcraft_annot::appearance::build(d) {
+                    match pdfcraft_annot::appearance::build(src, d) {
                         Some(stream) => (self.copy.add(Object::Stream(stream)), AppearanceSource::Generated),
                         None if *missing => return excluded(Exclusion::NoAppearance),
                         None => return excluded(Exclusion::UnusableAppearance(why.clone())),

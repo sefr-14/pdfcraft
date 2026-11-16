@@ -1,8 +1,8 @@
 // Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 use super::find::Follow;
 use super::{
-    Arc, Color32, DocInfo, DocView, HashSet, PRINT_TAG, PT, PageText, Range, RenderPool, RenderRequest, RequestKind, TextureHandle, TextureOptions,
-    device_pixels,
+    Arc, Color32, DocInfo, DocView, HashSet, PRINT_TAG, PT, PageText, Range, RenderPool, RenderRequest, RequestKind, TextLink, TextureHandle,
+    TextureOptions, device_pixels,
 };
 
 pub(super) const THUMB_TAG: u64 = 1 << 63;
@@ -40,7 +40,20 @@ pub(super) const THUMB_H: f32 = 320.0;
 
 pub(super) const THUMB_BYTES: usize = 24 * 1024 * 1024;
 
+/// The smallest whole-page allowance ([`page_budget`]).
 pub(super) const PAGE_BYTES: usize = 128 * 1024 * 1024;
+
+/// The largest whole-page allowance ([`page_budget`]).
+#[cfg(not(target_arch = "wasm32"))]
+const MAX_PAGE_BYTES: usize = 384 * 1024 * 1024;
+
+/// The web build's largest whole-page allowance ([`page_budget`]).
+#[cfg(target_arch = "wasm32")]
+const MAX_PAGE_BYTES: usize = 256 * 1024 * 1024;
+
+/// Rasters the size of the largest whole page on screen that the allowance holds between its
+/// limits: the pages on screen and the pages just behind and ahead of them.
+const BUDGET_PAGES: usize = 8;
 
 pub(super) const TILE_BYTES: usize = 128 * 1024 * 1024;
 
@@ -107,6 +120,14 @@ pub(super) fn thumbnail_scale(width: f32, height: f32, density: f32) -> f32 {
     (THUMB_W / width.max(1.0)).min(THUMB_H / height.max(1.0)) * density
 }
 
+/// The whole-page byte allowance when the largest whole-page raster on screen takes `largest`
+/// bytes: [`BUDGET_PAGES`] such rasters, kept between [`PAGE_BYTES`] and [`MAX_PAGE_BYTES`].
+/// The raster's size follows the zoom, the display density and the page; a tiled page is on
+/// screen as a small backdrop, so it does not raise the allowance.
+pub(super) fn page_budget(largest: usize) -> usize {
+    largest.saturating_mul(BUDGET_PAGES).clamp(PAGE_BYTES, MAX_PAGE_BYTES)
+}
+
 impl DocView {
     pub fn raster_memory(&self) -> RasterMemory {
         RasterMemory {
@@ -119,6 +140,12 @@ impl DocView {
             thumbnail_demand: self.thumb_demand.len(),
             pending_requests: self.last_queue.len(),
         }
+    }
+
+    /// Pages whose content was cut at the renderer's limits, so part of each is not drawn and
+    /// its text is incomplete (#623; for automation; 0-based, in order).
+    pub fn cut_pages(&self) -> Vec<usize> {
+        self.cut_pages.iter().copied().collect()
     }
 
     /// Pages that could not be rendered, with the reason (for automation; 0-based pages).
@@ -145,11 +172,17 @@ impl DocView {
     }
 
     /// The page bytes, tile bytes and page count prefetch may use: the whole allowances, or this
-    /// view's share of them while several views are on screen (Tile View). On-screen pages are
-    /// always taken, whatever these say.
-    pub(super) fn prefetch_limits(&self) -> (usize, usize, usize) {
+    /// view's share of them while several views are on screen (Tile View). `pages` is the
+    /// whole-page allowance this frame (upstream's [`page_budget`], which grows with the rasters
+    /// on screen). On-screen pages are always taken, whatever these say.
+    pub(super) fn prefetch_limits(&self, pages: usize) -> (usize, usize, usize) {
         let share = self.budget_share.max(1);
-        (PAGE_BYTES / share, TILE_BYTES / share, (MAX_CACHED_PAGES / share).max(1))
+        (pages / share, self.prefetch_tile_bytes(), (MAX_CACHED_PAGES / share).max(1))
+    }
+
+    /// The tile bytes prefetch may use: [`prefetch_limits`](Self::prefetch_limits)'s second.
+    pub(super) fn prefetch_tile_bytes(&self) -> usize {
+        TILE_BYTES / self.budget_share.max(1)
     }
 
     pub fn render_pending(&self) -> bool {
@@ -161,6 +194,13 @@ impl DocView {
         let mut k: Vec<(u64, u32, u32)> = self.tiles.keys().filter(|key| key.0 == page).map(|key| (key.1, key.2, key.3)).collect();
         k.sort_unstable();
         k
+    }
+
+    /// The pages with a cached whole-page raster, in page order (diagnostics and tests).
+    pub fn cached_pages_debug(&self) -> Vec<usize> {
+        let mut pages: Vec<usize> = self.pages.keys().copied().collect();
+        pages.sort_unstable();
+        pages
     }
 
     /// Re-render every page and text layer (the document's appearance changed, e.g. a layer
@@ -184,6 +224,7 @@ impl DocView {
         self.texts.clear();
         self.text_failed.clear();
         self.errors.clear();
+        self.cut_pages.clear();
         self.slow_pages.clear();
         self.waiting_since.clear();
         self.last_queue.clear();
@@ -227,6 +268,7 @@ impl DocView {
         self.texts.remove(&page);
         self.text_failed.remove(&page);
         self.errors.remove(&page);
+        self.cut_pages.remove(&page);
         self.last_queue.clear();
         if self.selection.is_some_and(|s| s.page == page) {
             self.selection = None;
@@ -241,6 +283,12 @@ impl DocView {
     /// The whole-page raster on screen for `page` (the low-res backdrop of a tiled page), if any.
     pub(crate) fn page_raster(&self, page: usize) -> Option<egui::TextureId> {
         self.pages.get(&page).map(|p| p.tex.id())
+    }
+
+    /// The size of `page`'s whole-page raster, when one is drawn and up to date (not waiting for
+    /// its replacement after a change; tests and automation).
+    pub fn drawn_page_size(&self, page: usize) -> Option<[usize; 2]> {
+        self.pages.get(&page).filter(|p| p.tag != STALE_TAG).map(|p| p.tex.size())
     }
 
     /// Whether `page`'s whole-page raster (a tiled page's backdrop too) is still the one from
@@ -263,6 +311,37 @@ impl DocView {
 
     pub(crate) fn page_text(&self, page: usize) -> Option<Arc<PageText>> {
         self.texts.get(&page).cloned()
+    }
+
+    /// Finds the addresses written as plain text on `page` (#4207): once per text layer, and only
+    /// once the page's text is known. The addresses of text layers that were dropped or replaced
+    /// are forgotten.
+    pub(crate) fn refresh_text_links(&mut self, page: usize) {
+        let texts = &self.texts;
+        self.text_links.retain(|p, (t, _)| texts.get(p).is_some_and(|current| Arc::ptr_eq(current, t)));
+        if self.text_links.contains_key(&page) {
+            return;
+        }
+        if let Some(text) = self.texts.get(&page).cloned() {
+            let found: Arc<[TextLink]> = pdfcraft_engine::text_links::find_text_links(&text).into();
+            self.text_links.insert(page, (text, found));
+        }
+    }
+
+    /// The address written as plain text on `page` under the view-space point `(x, y)` (#4207),
+    /// with its index among the page's, unless a link annotation lies over it: the annotation is
+    /// what the document asks for there. Only addresses [`Self::refresh_text_links`] found count.
+    pub(crate) fn text_link_at(&self, info: &DocInfo, page: usize, x: f32, y: f32) -> Option<(usize, &TextLink)> {
+        let (_, links) = self.text_links.get(&page)?;
+        let page_info = info.pages.get(page)?;
+        let (index, hit) = links.iter().enumerate().find(|(_, l)| l.contains(x, y))?;
+        let covered = info.links.iter().any(|l| l.page == page && hit.covered_by(page_info, l.rect));
+        (!covered).then_some((index, hit))
+    }
+
+    /// The address of the `index`-th text link found on `page` (#4207).
+    pub(crate) fn text_link_uri(&self, page: usize, index: usize) -> Option<String> {
+        self.text_links.get(&page).and_then(|(_, links)| links.get(index)).map(|l| l.uri.clone())
     }
 
     /// Whether `page`'s text layer has arrived from the renderer. Selecting text, the I-beam and
@@ -320,9 +399,10 @@ impl DocView {
     }
 
     /// [`Self::suspend_rendering`] for a hidden view whose document another tab is showing
-    /// (Duplicate Tab): the textures go, but the document's render pool is left alone, since its
-    /// queue and finished results now belong to the tab on screen. Returns whether this view had
-    /// requests in the pool, which that tab then has to replace with its own.
+    /// (Duplicate Tab), or another view on screen renders through the same pool (split view): its
+    /// rasters and its demand go, but the document's render pool is left alone, since its queue
+    /// and finished results now belong to the view on screen. Returns whether this view had
+    /// requests in the pool, which that view then has to replace with its own.
     pub(crate) fn release_textures(&mut self) -> bool {
         self.begin_render_frame();
         self.pages.clear();
@@ -339,6 +419,7 @@ impl DocView {
         self.move_background = Default::default();
         let queued = !self.last_queue.is_empty();
         self.last_queue.clear();
+        self.pane.shared = false;
         queued
     }
 
@@ -378,7 +459,17 @@ impl DocView {
         let mut tile_tags = HashSet::new();
         let mut grid = Vec::new();
         let (mut page_bytes, mut tile_bytes) = (0usize, 0usize);
-        let (page_limit, tile_limit, max_pages) = self.prefetch_limits();
+        let demand = requests
+            .iter()
+            .filter(|r| {
+                r.kind == RequestKind::Pixels && r.tile.is_none() && r.tag & (GRID_TAG | PRINT_TAG) == 0 && self.frame_visible.contains(&r.page)
+            })
+            .filter_map(|r| {
+                let p = info.pages.get(r.page)?;
+                Some(rgba_bytes(device_pixels(p.width, r.scale) as usize, device_pixels(p.height, r.scale) as usize))
+            })
+            .fold(0, usize::max);
+        let (page_limit, tile_limit, max_pages) = self.prefetch_limits(self.on_screen_page_budget(demand, None));
         for req in requests.iter().filter(|r| r.kind == RequestKind::Pixels) {
             let Some(p) = info.pages.get(req.page) else { continue };
             // Organize-grid renders: only the cells in view that need one (organize_grid).
@@ -424,6 +515,7 @@ impl DocView {
         // current page first, so turning back a page shows it at once instead of rendering.
         let mut undemanded: Vec<usize> = self.pages.keys().copied().filter(|p| !pages.contains(p)).collect();
         undemanded.sort_by_key(|p| p.abs_diff(self.current));
+        self.frame_demanded = pages.clone();
         let mut kept = pages.len();
         for page in undemanded {
             let bytes = self.pages.get(&page).map_or(0, |p| texture_bytes(&p.tex));
@@ -456,7 +548,12 @@ impl DocView {
                 && !self.errors.contains_key(&r.page)
         });
         if visible_mains_pending {
-            // Caches are kept; demand is re-evaluated next frame once pixels arrive.
+            // Caches are kept; demand is re-evaluated next frame once pixels arrive. Thumbnails
+            // nothing shows any more (their panel closed) go now, though: no consumer is waiting.
+            if self.thumb_demand.is_empty() {
+                self.thumbs.clear();
+                self.stale_thumbs.clear();
+            }
             return queue;
         }
         let thumbs = self.thumbnail_requests(info, ppp);
@@ -520,7 +617,10 @@ impl DocView {
             return;
         }
         let queue = self.prepare_render_queue(info, ctx.pixels_per_point());
-        if std::mem::take(&mut self.requeue) || queue != self.last_queue {
+        // A Duplicate Tab view hidden (`requeue`), or a view sharing the pool's queue with another
+        // view of the document last frame (split view): the queue was both views'.
+        let (requeue, shared) = (std::mem::take(&mut self.requeue), std::mem::take(&mut self.pane.shared));
+        if requeue || shared || queue != self.last_queue {
             pool.set_queue(queue.clone());
             self.last_queue = queue;
         }
@@ -532,25 +632,69 @@ impl DocView {
         }
     }
 
+    /// [`DocView::finish_render_frame`] for several views of one document on screen at once (split
+    /// view), `group` in `views`: the document's one render pool works for
+    /// all of them, and a request they share (the same page at the same scale) is rendered once
+    /// and handed to each.
+    pub(crate) fn finish_shared_render_frame(ctx: &egui::Context, info: &DocInfo, pool: &RenderPool, views: &mut [DocView], group: &[usize]) {
+        // As for one view (#3149): an edit after the canvases collected demand leaves its scales
+        // and indexes on the old pages, in every view of the document (the pool's queue is theirs).
+        if group.iter().any(|&i| views.get(i).is_some_and(|v| v.frame_geometry_changed)) {
+            for &i in group {
+                if let Some(view) = views.get_mut(i) {
+                    view.begin_render_frame();
+                    view.last_queue.clear();
+                }
+            }
+            pool.set_queue(Vec::new());
+            ctx.request_repaint();
+            return;
+        }
+        let ppp = ctx.pixels_per_point();
+        let mut changed = false;
+        let mut union: Vec<RenderRequest> = Vec::new();
+        for &i in group {
+            let Some(view) = views.get_mut(i) else { continue };
+            let queue = view.prepare_render_queue(info, ppp);
+            changed |= !view.pane.shared || queue != view.last_queue;
+            for r in &queue {
+                if !union.contains(r) {
+                    union.push(*r);
+                }
+            }
+            view.last_queue = queue;
+            view.pane.shared = true;
+        }
+        if changed {
+            pool.set_queue(union);
+        }
+        // A result can go to both views, so one view holding its rasters holds them for both.
+        if !group.iter().any(|&i| views.get(i).is_some_and(|v| v.hold_rasters)) {
+            receive_batch(pool, |r| {
+                let wanting: Vec<usize> =
+                    group.iter().copied().filter(|&i| views.get(i).is_some_and(|v| v.last_queue.contains(&r.request))).collect();
+                let Some((&last, rest)) = wanting.split_last() else { return 0 };
+                let mut uploaded = 0usize;
+                for &i in rest {
+                    if let Some(view) = views.get_mut(i) {
+                        uploaded = uploaded.saturating_add(view.receive_result(ctx, copy_result(&r)));
+                    }
+                }
+                if let Some(view) = views.get_mut(last) {
+                    uploaded = uploaded.saturating_add(view.receive_result(ctx, r));
+                }
+                uploaded
+            });
+        }
+        if group.iter().any(|&i| views.get(i).is_some_and(|v| !v.last_queue.is_empty())) {
+            ctx.request_repaint_after(std::time::Duration::from_millis(30));
+        }
+    }
+
     /// Pull a bounded batch of current results into textures. Demand is committed first, so
     /// offscreen results and obsolete scale/configuration tags never allocate a ColorImage.
     pub fn receive(&mut self, ctx: &egui::Context, pool: &RenderPool) {
-        let budget = if pool.is_inline() { 1 } else { RESULTS_PER_FRAME };
-        let mut uploaded = 0usize;
-        #[cfg(not(target_arch = "wasm32"))]
-        let started = std::time::Instant::now();
-        for _ in 0..budget {
-            let Some(r) = pool.try_recv() else { break };
-            uploaded = uploaded.saturating_add(self.receive_result(ctx, r));
-            // One whole-page upload may exceed the frame allowance; it must still progress.
-            if uploaded >= UPLOAD_BYTES_PER_FRAME {
-                break;
-            }
-            #[cfg(not(target_arch = "wasm32"))]
-            if started.elapsed() >= std::time::Duration::from_millis(4) {
-                break;
-            }
-        }
+        receive_batch(pool, |r| self.receive_result(ctx, r));
     }
 
     pub(super) fn receive_result(&mut self, ctx: &egui::Context, r: pdfcraft_render::RenderedPage) -> usize {
@@ -558,6 +702,10 @@ impl DocView {
             return 0;
         }
         ctx.request_repaint();
+        // Whether drawn or read for its text, a page cut at the limits is named (#623).
+        if r.warnings.contains(&pdfcraft_render::RenderWarning::ContentTruncated) {
+            self.cut_pages.insert(r.request.page);
+        }
         if r.request.kind == RequestKind::Text {
             match r.text {
                 Some(t) => {
@@ -666,10 +814,10 @@ impl DocView {
             let key = (req.page, req.tag, t.x, t.y);
             self.tiles.remove(&key);
             let retained = self.tiles.values().fold(0usize, |n, tex| n.saturating_add(texture_bytes(tex)));
-            visible || bytes <= self.prefetch_limits().1.saturating_sub(retained)
+            visible || bytes <= self.prefetch_tile_bytes().saturating_sub(retained)
         } else {
             let thumb = req.tag & THUMB_TAG != 0;
-            let page_limit = self.prefetch_limits().0;
+            let page_limit = self.prefetch_limits(self.on_screen_page_budget(if visible { bytes } else { 0 }, Some(req.page))).0;
             let (cache, limit) = if thumb { (&mut self.thumbs, THUMB_BYTES) } else { (&mut self.pages, page_limit) };
             cache.remove(&req.page);
             let mut retained = cache.values().fold(0usize, |n, p| n.saturating_add(texture_bytes(&p.tex)));
@@ -677,7 +825,13 @@ impl DocView {
             // demand estimates. Evict those first, then let the current demand refill them.
             let on_screen = |p: &usize| !thumb && self.frame_visible.contains(p);
             while retained.saturating_add(bytes) > limit {
-                let Some(page) = cache.keys().copied().filter(|p| !on_screen(p)).max_by_key(|p| p.abs_diff(self.current)) else { break };
+                // Pages this frame does not ask for go first, then those behind the scroll, the
+                // farthest from the current page first.
+                let evict_order = |p: &usize| {
+                    let demanded = !thumb && self.frame_demanded.contains(p);
+                    (!demanded, !thumb && super::behind_scroll(self.continuous, self.scroll_dir, self.current, *p), p.abs_diff(self.current))
+                };
+                let Some(page) = cache.keys().copied().filter(|p| !on_screen(p)).max_by_key(evict_order) else { break };
                 if let Some(old) = cache.remove(&page) {
                     retained = retained.saturating_sub(texture_bytes(&old.tex));
                 }
@@ -690,6 +844,19 @@ impl DocView {
         // Exactly the device scale: a raster at any other scale is resampled on screen, which
         // blurs every line and glyph (#260).
         self.zoom * PT * ppp
+    }
+
+    /// The whole-page allowance ([`page_budget`]) for the larger of `demand` and the rasters held
+    /// for the pages on screen other than `except`. A held raster counts while a zoom hold keeps
+    /// it on screen without a request.
+    fn on_screen_page_budget(&self, demand: usize, except: Option<usize>) -> usize {
+        page_budget(
+            self.pages
+                .iter()
+                .filter(|(p, _)| Some(**p) != except && self.frame_visible.contains(p))
+                .map(|(_, p)| texture_bytes(&p.tex))
+                .fold(demand, usize::max),
+        )
     }
 
     /// Set whether the print preview rasters become luminance before upload. Toggling it drops
@@ -716,6 +883,44 @@ impl DocView {
                 self.frame_queue.push(RenderRequest { page, kind: RequestKind::Pixels, tile: None, scale, tag, preview: false });
             }
         }
+    }
+}
+
+/// Take a bounded batch of finished renders from `pool` and hand each to `receive`, which
+/// returns the bytes it uploaded: at most a few results, one frame's upload allowance, and 4 ms
+/// a frame.
+fn receive_batch(pool: &RenderPool, mut receive: impl FnMut(pdfcraft_render::RenderedPage) -> usize) {
+    let budget = if pool.is_inline() { 1 } else { RESULTS_PER_FRAME };
+    let mut uploaded = 0usize;
+    #[cfg(not(target_arch = "wasm32"))]
+    let started = std::time::Instant::now();
+    for _ in 0..budget {
+        let Some(r) = pool.try_recv() else { break };
+        uploaded = uploaded.saturating_add(receive(r));
+        // One whole-page upload may exceed the frame allowance; it must still progress.
+        if uploaded >= UPLOAD_BYTES_PER_FRAME {
+            break;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        if started.elapsed() >= std::time::Duration::from_millis(4) {
+            break;
+        }
+    }
+}
+
+/// A copy of a render result, for a second view of the document that asked for the same request
+/// (split view). Not `Clone` on purpose: page rasters are large, and this is the one place they
+/// are copied.
+fn copy_result(r: &pdfcraft_render::RenderedPage) -> pdfcraft_render::RenderedPage {
+    pdfcraft_render::RenderedPage {
+        request: r.request,
+        width: r.width,
+        height: r.height,
+        rgba: r.rgba.clone(),
+        error: r.error.clone(),
+        text: r.text.clone(),
+        warnings: r.warnings.clone(),
+        millis: r.millis,
     }
 }
 

@@ -39,7 +39,7 @@ impl PdfCraftApp {
                 let step = if measuring && view.measure.calibrating() && view.measure.known_field == Some(field) {
                     view.measure.cancel_calibration()
                 } else {
-                    field == canvas::find_input_id() && view.find.take().is_some()
+                    field == view.find_input_id() && view.find.take().is_some()
                 };
                 if step {
                     take(ctx);
@@ -86,7 +86,7 @@ impl PdfCraftApp {
                 return;
             }
         }
-        if canvas::escape_view(view) {
+        if canvas::escape_view(view, ctx) {
             take(ctx);
             return;
         }

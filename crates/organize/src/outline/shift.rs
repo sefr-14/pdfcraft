@@ -189,7 +189,7 @@ pub fn plan_shift(shape: &OutlineShape, paths: &[Vec<usize>], shift: Shift) -> R
                 let above = at.checked_sub(1).and_then(|i| siblings.get(i).copied()).ok_or_else(|| OutlineError::CannotIndent(path.clone()))?;
                 let deepest = lay.depth.get(node).copied().unwrap_or(0).saturating_add(1).saturating_add(lay.height.get(node).copied().unwrap_or(0));
                 if deepest > LIST_DEPTH {
-                    return Err(OutlineError::TooDeep(path.clone()));
+                    return Err(OutlineError::GroupTooDeep(path.clone()));
                 }
                 if let Some(list) = kids.get_mut(p) {
                     list.remove(at);

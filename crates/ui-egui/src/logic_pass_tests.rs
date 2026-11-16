@@ -70,7 +70,7 @@ fn one_escape_takes_one_step_across_logic_passes() {
         f.focus = false;
     }
     h.run_steps(2);
-    h.ctx.memory_mut(|m| m.surrender_focus(crate::canvas::find_input_id()));
+    h.ctx.memory_mut(|m| m.surrender_focus(h.state().views[0].find_input_id()));
     h.state_mut().views[0].all_text = true;
     h.run_steps(2);
     let key = |pressed| egui::Event::Key { key: egui::Key::Escape, physical_key: None, pressed, repeat: false, modifiers: egui::Modifiers::NONE };

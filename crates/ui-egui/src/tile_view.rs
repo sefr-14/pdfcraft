@@ -61,10 +61,9 @@ pub(crate) fn area(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
     if n == 0 {
         return;
     }
-    // The eased tail of a touchpad swipe over one tile must not scroll another, whichever of
-    // them is drawn first.
-    let now = ui.input(|i| i.time);
-    crate::canvas::share_wheel_suppression(&mut app.views, now);
+    // The eased tail of a touchpad swipe over one tile must not scroll another, whichever of them
+    // is drawn first: the canvas clears egui's retained wheel state for the whole window once it
+    // has used a swipe (upstream's `canvas::wheel_reset`, since v0.19.0), so no tile gets it.
     let rect = ui.available_rect_before_wrap();
     let (tile_w, row_w) = column_width(rect.width(), n);
     // Bring the active tile into view when it changes (a tab click, Ctrl+Tab, a duplicate).

@@ -93,8 +93,8 @@ pub(crate) fn dialog_rows() -> Vec<(String, String)> {
 impl PdfCraftApp {
     /// The tool keys and Space for Hand (see the module docs), for view `i`, from `logic`.
     pub(crate) fn tool_keys(&mut self, i: usize, ctx: &egui::Context) {
-        let (now, space, clicked, modified) =
-            ctx.input(|input| (input.time, input.key_down(Key::Space), input.pointer.any_pressed(), !input.modifiers.is_none()));
+        let (now, clicked, modified) = ctx.input(|input| (input.time, input.pointer.any_pressed(), !input.modifiers.is_none()));
+        let space = crate::page_keys::PageKeys::held(ctx, Key::Space);
         if let Some(previous) = self.space_hand
             && !space
         {
@@ -110,7 +110,10 @@ impl PdfCraftApp {
             && self.views.get(i).is_some_and(|v| v.forms.focus.is_none())
             && !craft_menu::bar::is_open(ctx)
             && !craft_menu::bar::is_focused(ctx)
-            && !egui::Popup::is_any_open(ctx);
+            && !egui::Popup::is_any_open(ctx)
+            // Nor while something covers the pages (upstream's page keys, SYNC.17): the hotbar's
+            // tools window, a prompt, the OCR Verify screen.
+            && !self.page_keys.over();
         // A pair waiting too long, in another view, behind a dialog or a click, is dropped.
         if self.pending_keys.is_some_and(|p| now - p.at > SEQUENCE_TIMEOUT || p.view != view || !free || clicked) {
             self.pending_keys = None;

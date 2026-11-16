@@ -202,11 +202,11 @@ fn a_group_moves_down_to_the_deepest_listed_level_and_no_further() {
     assert_eq!(listed.last().map(|b| b.title.as_str()), Some("D30"));
     // One level more would be depth 33.
     let mut d = deep_after(32, false);
-    assert_eq!(refused(&mut d, &[vec![1]], Shift::In), OutlineError::TooDeep(vec![1]));
+    assert_eq!(refused(&mut d, &[vec![1]], Shift::In), OutlineError::GroupTooDeep(vec![1]));
     // Refused whole beside a pick that could move.
     let mut d = deep_after(32, true);
     crate::add_bookmark(&mut d, &[], 3, "Z", 0).unwrap();
-    assert!(matches!(refused(&mut d, &[vec![3], vec![2]], Shift::In), OutlineError::TooDeep(_)));
+    assert!(matches!(refused(&mut d, &[vec![3], vec![2]], Shift::In), OutlineError::GroupTooDeep(_)));
 }
 
 /// Regression (BOOKMARK.1 review): the same bookmark object under two parents, only one of which

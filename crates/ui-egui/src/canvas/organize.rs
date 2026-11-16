@@ -5,6 +5,7 @@ use super::{
     Align2, Color32, CornerRadius, DocInfo, DocView, Edit, Pos2, Rect, RenderRequest, RequestKind, Sense, Stroke, Tokens, Vec2, ViewAction,
     device_pixels, icons, pos2, theme, vec2, widgets,
 };
+use crate::page_keys::PageKeys;
 
 /// How far a sharp grid render may be from the size drawn before it is redone: a pinch changes
 /// the size on every frame, and a slightly soft or slightly large image is fine meanwhile.
@@ -93,7 +94,7 @@ pub(crate) fn grid_page_rect(cell: Rect, page: Vec2) -> Rect {
 }
 
 /// The organize toolbar: page operations on the selection (Acrobat's Organize Pages bar).
-fn organize_toolbar(view: &mut DocView, info: &DocInfo, editable: bool, dirty: bool, unobstructed: bool, ui: &mut egui::Ui, t: &Tokens) {
+fn organize_toolbar(view: &mut DocView, info: &DocInfo, editable: bool, dirty: bool, keys: PageKeys, ui: &mut egui::Ui, t: &Tokens) {
     let targets = view.target_pages();
     let n = info.pages.len();
     let (first, last) = (targets.first().copied().unwrap_or(0), targets.last().copied().unwrap_or(0));
@@ -154,19 +155,12 @@ fn organize_toolbar(view: &mut DocView, info: &DocInfo, editable: bool, dirty: b
     });
     // Keys act on the selection unless a text field or a dialog has them (Delete under
     // Preferences deleted the selected pages).
-    if editable && unobstructed && !ui.ctx().egui_wants_keyboard_input() {
-        use egui::{Key, Modifiers};
-        let (del, esc) = ui.input_mut(|i| {
-            (
-                i.consume_key(Modifiers::NONE, Key::Delete) || i.consume_key(Modifiers::NONE, Key::Backspace),
-                i.consume_key(Modifiers::NONE, Key::Escape),
-            )
-        });
+    if editable && !ui.ctx().egui_wants_keyboard_input() {
+        use egui::Key;
+        let ctx = ui.ctx();
+        let (del, esc) = (keys.take(ctx, Key::Delete) || keys.take(ctx, Key::Backspace), keys.take(ctx, Key::Escape));
         // ⌘C / ⌘X / ⌘V copy, cut and paste pages (egui delivers them as clipboard events).
-        let (copy, cut, paste) = ui.input(|i| {
-            let any = |f: &dyn Fn(&egui::Event) -> bool| i.events.iter().any(f);
-            (any(&|e| matches!(e, egui::Event::Copy)), any(&|e| matches!(e, egui::Event::Cut)), any(&|e| matches!(e, egui::Event::Paste(_))))
-        });
+        let crate::page_keys::Clipboard { copy, cut, paste } = keys.clipboard(ctx);
         if copy || cut {
             view.pending_action = Some(ViewAction::CopyPages { cut });
         }
@@ -282,7 +276,17 @@ pub(super) struct GridAccess {
     pub(super) tools: bool,
 }
 
-pub(super) fn organize_grid(view: &mut DocView, info: &DocInfo, access: GridAccess, show_page_edge_shadows: bool, ui: &mut egui::Ui, t: &Tokens) {
+#[allow(clippy::too_many_arguments)]
+pub(super) fn organize_grid(
+    view: &mut DocView,
+    info: &DocInfo,
+    access: GridAccess,
+    keys: PageKeys,
+    show_page_edge_shadows: bool,
+    invert_middle: bool,
+    ui: &mut egui::Ui,
+    t: &Tokens,
+) {
     let GridAccess { editable, dirty, unobstructed, tools } = access;
     let ppp = ui.ctx().pixels_per_point();
     // The page image scales with the zoom; the padding and the page number don't.
@@ -291,14 +295,15 @@ pub(super) fn organize_grid(view: &mut DocView, info: &DocInfo, access: GridAcce
     let reveal = view.grid_reveal.take();
     let mut open_page = None;
     if tools {
-        organize_toolbar(view, info, editable, dirty, unobstructed, ui, t);
+        organize_toolbar(view, info, editable, dirty, keys, ui, t);
     } else {
-        ui.add_enabled_ui(false, |ui| organize_toolbar(view, info, editable, dirty, false, ui, t));
+        // Another tile's toolbar (OV7.3): shown, but neither its buttons nor its keys act.
+        ui.add_enabled_ui(false, |ui| organize_toolbar(view, info, editable, dirty, keys.also(true), ui, t));
     }
     let viewport = ui.available_rect_before_wrap();
     view.viewport_screen = viewport;
     let auto_delta = if unobstructed {
-        view.auto_scroll.update(ui, viewport, true)
+        view.auto_scroll.update(ui, viewport, true, invert_middle)
     } else {
         view.auto_scroll.cancel();
         Vec2::ZERO
