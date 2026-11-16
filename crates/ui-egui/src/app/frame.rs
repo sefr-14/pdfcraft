@@ -6,6 +6,7 @@ impl PdfCraftApp {
     pub(super) fn show_progress(&mut self, ctx: &egui::Context) {
         if widgets::progress_notice(self, ctx) {
             self.cancel_optimize();
+            self.cancel_scan_clean();
         }
     }
 
@@ -105,10 +106,11 @@ impl PdfCraftApp {
         self.finish_document_copy(ctx);
         // The Combine grid's thumbnails, whichever tab shows (renders under way still finish).
         self.combine_thumbs_frame(ctx);
-        // Retire hidden documents before admitting the visible document's textures, so the
+        // Retire hidden documents before admitting the visible documents' textures, so the
         // three cache limits apply to the application, regardless of how many tabs are open.
-        // Side by side: the comparison's old file renders alongside the active one. In Tile View
-        // every tile on screen renders, and the active view too (OV7.2).
+        // On screen: the active tab, the comparison's old file side by side with it, and what
+        // split view's other pane shows. In Tile View every tile on screen renders, and the active
+        // view too (this fork, OV7.2).
         let tiled = self.tiled();
         let displayed: Vec<usize> = if tiled {
             let mut shown = self.tile_frame.clone();
@@ -117,12 +119,12 @@ impl PdfCraftApp {
             shown.dedup();
             shown
         } else {
-            let partner = self.active.and_then(|i| compare_ui::side_by_side(self, i)).map(|(old, _)| old);
-            self.active.into_iter().chain(partner).collect()
+            self.views_on_screen()
         };
         let shown: Vec<DocId> = displayed.iter().filter_map(|&i| self.views.get(i).map(|v| v.id)).collect();
-        // A hidden tab of a document another tab shows (Duplicate Tab) must leave the shared
-        // render pool alone: suspending would clear the shown tab's queue and drain its results.
+        // A hidden tab of a document another tab shows (Duplicate Tab, split view) must leave the
+        // shared render pool alone: suspending would clear the shown tab's queue and drain its
+        // results.
         let mut requeue: Vec<DocId> = Vec::new();
         for (i, view) in self.views.iter_mut().enumerate() {
             if !displayed.contains(&i)
@@ -145,14 +147,21 @@ impl PdfCraftApp {
             }
             done.push(id);
             let Some(doc) = self.session.get(id) else { continue };
-            // A document in several tiles hands its render pool one queue for all of them.
-            let mut group: Vec<&mut DocView> =
-                self.views.iter_mut().enumerate().filter(|(j, v)| v.id == id && displayed.contains(j)).map(|(_, v)| v).collect();
-            for view in group.iter_mut() {
-                view.budget_share = share;
-                view.requeue |= requeue.contains(&id);
+            let group: Vec<usize> = displayed.iter().copied().filter(|&k| self.views.get(k).is_some_and(|v| v.id == id)).collect();
+            for &k in &group {
+                if let Some(view) = self.views.get_mut(k) {
+                    view.budget_share = share;
+                    view.requeue |= requeue.contains(&id);
+                }
             }
-            match group.as_mut_slice() {
+            if group.len() > 1 && !tiled {
+                // Two views of the document in split view's panes: upstream's shared queue.
+                DocView::finish_shared_render_frame(ctx, &doc.info, &doc.renderer, &mut self.views, &group);
+                continue;
+            }
+            // A document in several tiles hands its render pool one queue for all of them (OV7.2).
+            let mut views: Vec<&mut DocView> = self.views.iter_mut().enumerate().filter(|(j, _)| group.contains(j)).map(|(_, v)| v).collect();
+            match views.as_mut_slice() {
                 [view] => view.finish_render_frame(ctx, &doc.info, &doc.renderer),
                 views => canvas::finish_shared_render_frame(views, ctx, &doc.info, &doc.renderer),
             }

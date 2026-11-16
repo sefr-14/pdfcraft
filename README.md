@@ -1,7 +1,7 @@
 <!-- Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history. -->
 > [!IMPORTANT]
 > **This is PDF Overlay, an unofficial fork of [PdfCraft](https://github.com/storytold/pdfcraft), originally developed by the ArtCraft team.**
-> It is based on PdfCraft 0.18.0 (upstream tag `v0.18.0`, 3936f93) and adds an overlay compare for revisions of drawing sets,
+> It is based on PdfCraft 0.21.1 (upstream tag `v0.21.1`, b503b2e) and adds an overlay compare for revisions of drawing sets,
 > plus tools for reviewing engineering drawings. It is not made, endorsed or supported by the ArtCraft team or the PdfCraft
 > project. See [About this fork](#about-this-fork).
 
@@ -46,9 +46,11 @@ This repository, [sefr-14/pdfcraft](https://github.com/sefr-14/pdfcraft), is an 
 [storytold/pdfcraft](https://github.com/storytold/pdfcraft), based on PdfCraft by the ArtCraft team.
 It is not made, endorsed or supported by them, so report problems with the fork here, not upstream.
 
-Translations: upstream PdfCraft's labels keep all their translations, with the product name shown as
-PDF Overlay in every language. This fork's own labels are kept in English and Spanish; in other
-languages they may show in English.
+Translations: upstream PdfCraft's labels keep all their translations (from storytold/craft-i18n,
+pinned in `craft-i18n.rev`), with the product name shown as PDF Overlay in every language. This
+fork's own labels are kept in English and Spanish, many in other languages too
+(`crates/ui-egui/src/i18n/overlay/`); where one has no translation it shows in English. A build
+without `CRAFT_I18N_DIR` set to a craft-i18n checkout is English only.
 
 **What it adds: Overlay compare.** The Overlay button in the mode bar (also All tools › Compare
 files › Overlay two revisions) compares two revisions of a drawing set. A six-step wizard pairs the

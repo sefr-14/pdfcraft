@@ -89,3 +89,28 @@ fn a_locked_reply_keeps_every_comment() {
     assert!(delete_annotations(&mut d, &[at(3, 7), at(0, 4)]).is_err());
     assert_eq!(crate::summaries(&d).len(), 4, "B stays too");
 }
+
+/// SYNC.17: several comments deleted at once follow upstream's rules for one (v0.21.1's
+/// `delete_annotation`): Replace Text's strikeout takes the caret it is grouped under, the two
+/// being one comment; and a group's subordinate whose primary goes stays, as a comment of its
+/// own, without its `/IRT` (and keeps `/RT /Group`, as Acrobat does).
+#[test]
+fn a_deletion_of_several_follows_upstreams_group_rules() {
+    const CARET: &str = "<< /Type /Annot /Subtype /Caret /Rect [0 0 9 9] /Contents (new words) >>"; // 4
+    const STRIKE: &str = "<< /Type /Annot /Subtype /StrikeOut /Rect [0 0 9 9] /IT /StrikeOutTextEdit /RT /Group /IRT 4 0 R >>"; // 5
+    const PRIMARY: &str = "<< /Type /Annot /Subtype /Square /Rect [0 0 9 9] /Contents (primary) >>"; // 6
+    const MEMBER: &str = "<< /Type /Annot /Subtype /Circle /Rect [0 0 9 9] /IRT 6 0 R /RT /Group >>"; // 7
+    let names = |d: &Document| crate::summaries(d).iter().map(|s| s.subtype.clone()).collect::<Vec<_>>();
+    // The strikeout named: the caret goes with it.
+    let mut d = page(&[CARET, STRIKE, PRIMARY, MEMBER, B]);
+    let set = delete_annotations(&mut d, &[at(1, 5), at(4, 8)]).unwrap();
+    assert_eq!(set.removed.iter().map(|r| r.1).collect::<Vec<_>>(), [0, 1, 4], "the caret, the strikeout and B");
+    assert_eq!(names(&d), ["Square", "Circle", "Text"], "the group and the inline comment stay");
+    // The primary named: its subordinate stays, released from it.
+    let mut d = page(&[CARET, STRIKE, PRIMARY, MEMBER, B]);
+    delete_annotations(&mut d, &[at(2, 6)]).unwrap();
+    assert_eq!(names(&d), ["Caret", "StrikeOut", "Circle", "Text", "Text"], "only the primary goes");
+    let member = d.get(pdfcraft_cos::ObjRef::new(7, 0));
+    let member = member.as_dict().unwrap();
+    assert!(member.get(b"IRT").is_none() && member.name(b"RT") == Some(&b"Group"[..]), "a comment of its own: {member:?}");
+}

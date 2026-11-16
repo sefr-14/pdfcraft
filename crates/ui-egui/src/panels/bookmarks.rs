@@ -24,6 +24,15 @@ pub enum BmAction {
     IndentSelected,
     /// This fork (BOOKMARK.1): outdent the selected bookmarks together.
     OutdentSelected,
+    /// Copy the bookmark and everything under it to the bookmark clipboard.
+    Copy(Vec<usize>),
+    /// Copy it, then delete it (one undo step: only the delete changes the document).
+    Cut(Vec<usize>),
+    /// Paste the bookmark clipboard under `parent` at `index` (past the end appends).
+    Paste {
+        parent: Vec<usize>,
+        index: usize,
+    },
     /// Bookmarks from the tagged headings, under a new first "Untitled" bookmark.
     FromStructure,
     /// Open New bookmarks from text styles, to choose a style per bookmark level (#1693).
@@ -154,7 +163,7 @@ fn shift_refusal(e: &pdfcraft_engine::OutlineError) -> &'static str {
     match e {
         E::CannotIndent(_) => tl!("The first bookmark at its level has nothing above it to go under"),
         E::CannotOutdent(_) => tl!("A top-level bookmark can't move out a level"),
-        E::TooDeep(_) => tl!("Too deeply nested to show in the panel"),
+        E::GroupTooDeep(_) => tl!("Too deeply nested to show in the panel"),
         _ => tl!("These bookmarks can't be moved together"),
     }
 }
@@ -189,6 +198,8 @@ pub(super) struct OutlineCtx<'a> {
     pub(super) action: &'a mut Option<BmAction>,
     pub(super) rename: &'a mut Option<(Vec<usize>, String)>,
     pub(super) editable: bool,
+    /// The bookmark clipboard holds something to paste.
+    pub(super) can_paste: bool,
     pub(super) current: usize,
     /// Expand all (`Some(usize::MAX)`), collapse all (`Some(0)`) or expand to a depth, this frame.
     pub(super) expand: Option<usize>,
@@ -227,6 +238,24 @@ pub(crate) fn ellipsized_prefix(text: &str, mut fits: impl FnMut(&str) -> bool) 
             return candidate;
         }
     }
+}
+
+/// The inline rename field (#5529). On the frame it takes focus it selects the whole title, so
+/// typing replaces the old text at once; later frames leave the user's own caret and selection
+/// alone. Same pattern as the zoom box in `chrome.rs`.
+fn rename_field(ui: &mut egui::Ui, text: &mut String, id: egui::Id) -> egui::Response {
+    let first_frame = !ui.memory(|m| m.has_focus(id));
+    let resp = ui.add(crate::widgets::line(text).desired_width(ui.available_width() - 8.0).id(id));
+    if !resp.has_focus() && !resp.lost_focus() {
+        if first_frame {
+            let mut state = egui::TextEdit::load_state(ui.ctx(), id).unwrap_or_default();
+            let all = egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(text.chars().count()));
+            state.cursor.set_char_range(Some(all));
+            state.store(ui.ctx(), id);
+        }
+        resp.request_focus();
+    }
+    resp
 }
 
 /// How a bookmark's title is drawn: in its own style and colour (ISO 32000-2 §12.3.3, Tables 151
@@ -284,11 +313,7 @@ pub(super) fn outline_item(
         ui.horizontal(|ui| {
             ui.add_space(x_text);
             crate::widgets::begin_dialog(ui);
-            let edit = crate::widgets::line(text).desired_width(ui.available_width() - 8.0).id(id.with("rename"));
-            let resp = ui.add(edit);
-            if !resp.has_focus() && !resp.lost_focus() {
-                resp.request_focus();
-            }
+            let resp = rename_field(ui, text, id.with("rename"));
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 cancel = true;
             } else if resp.lost_focus() {
@@ -350,8 +375,11 @@ pub(super) fn outline_item(
                 cx.sel.range_to(path, cx.stamp);
             } else {
                 cx.sel.only(path, cx.stamp);
-                if let Some(p) = item.page {
-                    *cx.nav = Some(Nav::Dest(p, item.view));
+                match (item.page, &item.action) {
+                    (Some(p), _) => *cx.nav = Some(Nav::Dest(p, item.view)),
+                    // A web address, another PDF or a layer change, as a link runs it.
+                    (None, Some(action)) => *cx.nav = Some(Nav::Action(action.clone())),
+                    (None, None) => {}
                 }
             }
         }
@@ -392,6 +420,13 @@ pub(super) fn outline_item(
                             ui.close();
                         }
                     }
+                    // SYNC.16, SYNC.17 (D-A3): upstream's Cut, Copy and Paste take one bookmark and what is
+                    // under it; not offered for several.
+                    ui.separator();
+                    for label in ["Cut", "Copy", "Paste"] {
+                        ui.add_enabled(false, egui::Button::new(tl!(label)))
+                            .on_disabled_hover_text(tl!("Cut, Copy and Paste take one bookmark at a time"));
+                    }
                     ui.separator();
                     ui.add_enabled(false, egui::Button::new(tl!("Delete")));
                     return;
@@ -430,6 +465,11 @@ pub(super) fn outline_item(
                 pick(ui, tl!("Move down"), i + 1 < siblings, BmAction::MoveDown(path.to_vec()));
                 pick(ui, tl!("Indent"), i > 0, BmAction::Indent(path.to_vec()));
                 pick(ui, tl!("Outdent"), depth > 0, BmAction::Outdent(path.to_vec()));
+                ui.separator();
+                pick(ui, tl!("Cut"), true, BmAction::Cut(path.to_vec()));
+                pick(ui, tl!("Copy"), true, BmAction::Copy(path.to_vec()));
+                let parent = path.get(..depth).unwrap_or_default().to_vec();
+                pick(ui, tl!("Paste"), cx.can_paste, BmAction::Paste { parent, index: i.saturating_add(1) });
                 ui.separator();
                 pick(ui, tl!("Delete"), true, BmAction::Delete(path.to_vec()));
                 if let Some(a) = styled {
@@ -529,6 +569,7 @@ mod bookmark_filter {
             title: title.into(),
             page: Some(0),
             view: pdfcraft_render::DestView::Top,
+            action: None,
             children,
             open: true,
             color: None,
@@ -547,5 +588,68 @@ mod bookmark_filter {
         // A child match keeps its parent: [0] and [0, 0].
         assert_eq!(outline_matches(&outline, &fold("KIŞ")).len(), 2);
         assert!(outline_matches(&outline, &fold("izmir")).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod rename_field {
+    use super::rename_field as field;
+
+    fn cursor_range(ctx: &egui::Context, id: egui::Id) -> Option<(usize, usize)> {
+        egui::TextEdit::load_state(ctx, id)
+            .and_then(|s| s.cursor.char_range())
+            .map(|r| (r.primary.index.0.min(r.secondary.index.0), r.primary.index.0.max(r.secondary.index.0)))
+    }
+
+    /// #5529: the rename field opens with the whole title selected, so typing replaces it.
+    #[test]
+    fn first_focus_selects_the_whole_title() {
+        let ctx = egui::Context::default();
+        let id = egui::Id::unique("bm-rename-test");
+        let mut text = String::from("Untitled");
+        for _ in 0..2 {
+            let output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                field(ui, &mut text, id);
+            });
+            output.drop_without_applying_deltas();
+        }
+        assert_eq!(cursor_range(&ctx, id), Some((0, 8)));
+        assert!(ctx.memory(|m| m.has_focus(id)), "the field takes focus");
+    }
+
+    /// A Unicode title is counted in characters, not bytes.
+    #[test]
+    fn a_multibyte_title_is_selected_in_characters() {
+        let ctx = egui::Context::default();
+        let id = egui::Id::unique("bm-rename-unicode");
+        let mut text = String::from("図面（一階平面図）");
+        let output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            field(ui, &mut text, id);
+        });
+        output.drop_without_applying_deltas();
+        assert_eq!(cursor_range(&ctx, id), Some((0, 9)));
+    }
+
+    /// A later frame must not reset the selection the user made; a caret stays a caret.
+    #[test]
+    fn a_later_frame_keeps_the_users_selection() {
+        let ctx = egui::Context::default();
+        let id = egui::Id::unique("bm-rename-keep");
+        let mut text = String::from("Chapter");
+        for _ in 0..2 {
+            let output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                field(ui, &mut text, id);
+            });
+            output.drop_without_applying_deltas();
+        }
+        // The user moves the caret to 3 with no selection.
+        let mut state = egui::TextEdit::load_state(&ctx, id).unwrap_or_default();
+        state.cursor.set_char_range(Some(egui::text::CCursorRange::one(egui::text::CCursor::new(3))));
+        state.store(&ctx, id);
+        let output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            field(ui, &mut text, id);
+        });
+        output.drop_without_applying_deltas();
+        assert_eq!(cursor_range(&ctx, id), Some((3, 3)), "the user's caret is kept");
     }
 }

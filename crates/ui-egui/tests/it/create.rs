@@ -219,7 +219,8 @@ fn reduce_file_size_makes_the_same_tab_the_smaller_file_with_its_unsaved_changes
         left: None,
         top: None
     }));
-    app.views[0].fill_text = Some(TypeBox { page: 0, at: [40.0, 200.0], text: "Typed".into(), size: 10.0, color: [0.0; 3], focus: false });
+    app.views[0].fill_text =
+        Some(TypeBox { page: 0, at: [40.0, 200.0], text: "Typed".into(), size: 10.0, color: [0.0; 3], border: Default::default(), focus: false });
     assert!(app.session.get(id).unwrap().dirty);
     let out = dir.0.join("site plan (reduced).pdf");
     app.save_override = Some(out.to_string_lossy().into_owned());
@@ -294,7 +295,9 @@ fn a_failed_optimized_save_leaves_the_document_as_it_was() {
     let out = dir.0.join("missing folder").join("plan (reduced).pdf");
     app.save_override = Some(out.to_string_lossy().into_owned());
     assert!(app.execute("optimize.reduce"));
-    assert!(toast(&app).starts_with("Couldn't save"), "{}", toast(&app));
+    // A place that can't be written (upstream's wording), and the user is asked for another (the
+    // choose-first Reduce File Size, SYNC.17): the minutes of work aren't lost.
+    assert!(toast(&app).starts_with("Couldn't write"), "{}", toast(&app));
     let doc = app.session.get(id).unwrap();
     assert_eq!((doc.path.as_deref(), doc.name.as_str(), doc.dirty), (dir.0.join("plan.pdf").to_str(), "plan.pdf", true));
     assert_eq!(notes_in(&app, id), ["Unsaved"]);
@@ -342,7 +345,11 @@ fn optimizing_harness(dir: &ReduceDir, pick: Option<Vec<String>>) -> egui_kittes
     h
 }
 
+/// Run frames until Reduce File Size has asked where to save (it asks first, since SYNC.17), its
+/// run has started on the answer, and finished.
 fn finish_run(h: &mut egui_kittest::Harness<'static, PdfCraftApp>) {
+    // The save dialog's answer arrives on a later frame.
+    h.run_steps(4);
     let start = std::time::Instant::now();
     while h.state().optimize_run.is_some() && start.elapsed() < std::time::Duration::from_secs(30) {
         h.run_steps(1);
@@ -359,7 +366,13 @@ fn edits_made_while_optimizing_are_never_replaced() {
     let mut h = optimizing_harness(&dir, Some(vec![out.to_string_lossy().into_owned()]));
     let id = h.state().views[0].id;
     assert!(h.state_mut().execute("optimize.reduce"));
-    // The worker has its snapshot; this edit comes after it.
+    // The place is chosen first (SYNC.17); then the worker takes its snapshot. This edit comes
+    // after it.
+    let start = std::time::Instant::now();
+    while h.state().optimize_run.is_none() && start.elapsed() < std::time::Duration::from_secs(30) {
+        h.run_steps(1);
+    }
+    assert!(h.state().optimize_run.is_some(), "the run started once the place was chosen");
     assert!(h.state_mut().apply_edit(note("Made meanwhile")));
     finish_run(&mut h);
     assert_eq!(

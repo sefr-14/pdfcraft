@@ -2,8 +2,6 @@
 //! PDF-tab actions. Closed history contains paths only, never bytes or passwords.
 use pdfcraft_engine::DocId;
 
-use crate::canvas::ViewKey;
-
 /// At most this many tabs show one document (Duplicate Tab), so a held shortcut can't fill the
 /// strip with copies of one file.
 pub const MAX_VIEWS_PER_DOCUMENT: usize = 16;
@@ -11,12 +9,20 @@ pub const MAX_VIEWS_PER_DOCUMENT: usize = 16;
 /// Tab actions name the tab by its view, not its document: Duplicate Tab can show one document
 /// in several tabs, and closing one of them must not close another.
 pub(crate) enum Action {
-    Close(ViewKey),
-    Duplicate(ViewKey),
+    /// Close a tab, by its view key (`DocView::view_key`: split view can show one document in two
+    /// tabs).
+    Close(u64),
+    /// This fork (OV7): another view of a tab's document, by the tab's view key.
+    Duplicate(u64),
     /// Tab View or Tile View: how the document area arranges the views, not a change to any file.
     Layout(crate::ViewLayout),
     Reopen,
     Reveal(DocId),
+    /// Split right (or down) with a tab, by its view key.
+    Split {
+        tab: u64,
+        down: bool,
+    },
 }
 
 impl crate::PdfCraftApp {
@@ -41,6 +47,8 @@ impl crate::PdfCraftApp {
         let instance = (2..=u16::MAX).find(|n| !taken.contains(n))?;
         let version = crate::content_version(doc);
         let mut view = source.duplicate(&doc.info, instance);
+        // This fork (SYNC.16m, SYNC.17): its comment selection starts in this version of the document.
+        view.comments.stamp(version);
         // The source is up to date (it refreshes itself), and so is the copy of its caches.
         view.content_seen = Some(version);
         if let Some(source) = self.views.get_mut(index) {
@@ -55,17 +63,22 @@ impl crate::PdfCraftApp {
 
     pub(crate) fn tab_action(&mut self, action: Action) {
         match action {
-            Action::Close(key) => {
-                if let Some(i) = self.view_index(key) {
+            Action::Close(tab) => {
+                if let Some(i) = self.tab_with_key(tab) {
                     self.request_close_tab(i);
                 }
             }
-            Action::Duplicate(key) => {
-                if let Some(i) = self.view_index(key) {
+            Action::Duplicate(tab) => {
+                if let Some(i) = self.tab_with_key(tab) {
                     self.duplicate_view(i);
                 }
             }
             Action::Layout(layout) => self.set_view_layout(layout),
+            Action::Split { tab, down } => {
+                if let Some(i) = self.tab_with_key(tab) {
+                    self.split_tab(i, down);
+                }
+            }
             Action::Reopen => {
                 #[cfg(not(target_arch = "wasm32"))]
                 if let Some(path) = self.closed_tabs.last().cloned() {
@@ -213,7 +226,7 @@ mod tests {
     fn confirmed_close_uses_id_and_cancel_keeps_history_empty() {
         let mut app = crate::PdfCraftApp::new();
         app.open_bytes("first.pdf", Some("/tmp/first.pdf".into()), PDF.to_vec()).unwrap();
-        let (first, first_tab) = (app.views[0].id, app.views[0].key);
+        let (first, first_tab) = (app.views[0].id, app.views[0].view_key());
         app.open_bytes("second.pdf", None, PDF.to_vec()).unwrap();
         app.session.apply(first, pdfcraft_engine::Edit::InsertBlankPage { at: 0, width: 300.0, height: 400.0 }).unwrap();
         app.tab_action(Action::Close(first_tab));

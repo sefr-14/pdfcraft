@@ -1,20 +1,19 @@
 // Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! The Comments panel (Acrobat's right-hand comment list; 11-visual-spec §3, audit `a15-*`).
 //!
-//! Header "Comments N" (comments, as Acrobat counts them) with "N replies" under it and search;
-//! an "Add a comment" box that posts a sticky note on the current page; cards grouped by page.
-//! Selecting a card selects the comment on the page and opens its reply box and "…" menu (Edit,
-//! Set status, Delete), and gives each reply a "…" of its own (Edit, Copy text, Delete). Status
-//! replies show as a badge.
+//! Header "Comments N" (comments) with "N replies" under it and search; an "Add a comment" box
+//! that posts a sticky note on the current page; cards grouped by page. Selecting a card selects
+//! the comment on the page and opens its reply box and "…" menu (Edit, Set status, Delete), and
+//! gives each reply a "…" of its own (Edit, Copy text, Delete). Status replies show as one badge
+//! per reviewer.
 
 use std::collections::HashMap;
 
 use egui::{Align, Color32, CornerRadius, Layout, Sense, Stroke, vec2};
 use pdfcraft_engine::{Edit, NoteIcon, ReviewState, Shape};
-use pdfcraft_render::{Annotation, DocInfo};
+use pdfcraft_render::{Annotation, DocInfo, ReviewStates};
 
 use crate::canvas::DocView;
-use crate::comments::group::CommentKey;
 use crate::comments::{CommentPrefs, CommentTool, SortBy, color32, status_badge};
 use crate::panels::Nav;
 use crate::theme::{self, Tokens};
@@ -42,7 +41,9 @@ pub fn subtype_label(s: &str) -> &str {
 /// The comment type as the panel names it, telling callouts, clouds and replaced text apart by `/IT`.
 pub fn kind_label(a: &Annotation) -> &str {
     match a.intent.as_deref() {
-        Some("StrikeOutTextEdit") => "Replace text",
+        // Replace Text: the caret (`/IT /Replace`) is the group's primary; earlier builds made
+        // the strikeout primary.
+        Some("StrikeOutTextEdit" | "Replace") => "Replace text",
         Some("FreeTextCallout") => "Callout",
         Some("PolygonCloud") => "Cloud",
         Some("FreeTextTypeWriter") => "Typewriter",
@@ -86,21 +87,15 @@ fn check_label(marked: bool) -> &'static str {
     if marked { "Checked" } else { "Unchecked" }
 }
 
-/// The latest checkmark reply in a thread says "Marked".
-pub fn is_marked(thread: &[&Annotation]) -> bool {
-    thread.iter().rev().find(|r| r.is_mark()).is_some_and(|r| r.state.as_deref() == Some("Marked"))
-}
-
-/// The number shown in the header: comments, not their replies or status changes (as Acrobat
-/// counts them).
+/// The number shown in the header: comments, not their replies or status changes.
 pub fn count(info: &DocInfo) -> usize {
     info.annotations.iter().filter(|a| a.is_comment()).count()
 }
 
-/// The replies under the header's count, at any depth: not status changes, checkmarks or a
-/// Replace Text caret (grouped with its strikeout, not a reply to it).
+/// The replies under the header's count, at any depth: not status changes, checkmarks or group
+/// subordinates (`/RT /Group`, such as Replace Text's strikeout: part of the comment, not a reply).
 pub fn reply_count(info: &DocInfo) -> usize {
-    info.annotations.iter().filter(|a| a.is_reply() && a.state.is_none() && !a.grouped).count()
+    info.annotations.iter().filter(|a| a.is_reply() && a.state.is_none() && !a.is_group_member()).count()
 }
 
 fn matches(a: &Annotation, q: &str) -> bool {
@@ -180,15 +175,22 @@ pub(crate) fn show(
     let mut page_counts: HashMap<usize, usize> = HashMap::new();
     // Replies find their parent by reference (`/NM` need not be unique) and keep source order.
     // A reply at any depth joins the thread of the comment it starts from, as comment_list lists
-    // it. A status or checkmark stays with the annotation it was set on (its `/IRT` names it,
-    // ISO 32000-2 §12.5.6.2): one set on a reply, at any depth, is that reply's and not the
-    // comment's, so the card's badge and checkmark leave it out (comment_list reports it on the
-    // reply). Page badges count roots before filtering.
+    // it. Status and checkmark replies are read through `states`: each sets the state of the
+    // annotation its `/IRT` chain refers to past earlier state replies (ISO 32000-2 §12.5.6.3),
+    // so one set on a reply, at any depth, is that reply's and not the comment's, and the card's
+    // badges and checkmark leave it out (comment_list reports it on the reply). Page badges count
+    // roots before filtering. A group (`/RT /Group`, ISO 32000-2 §12.5.6.2) is one comment, its
+    // primary's: a subordinate is no reply, and a reply to one (a status too) is the group's.
     let tops = pdfcraft_render::thread_tops(&info.annotations);
+    let states = ReviewStates::new(&info.annotations);
     for a in &info.annotations {
+        if a.is_group_member() {
+            continue;
+        }
         if let Some(parent) = a.parent {
-            let key = if a.state.is_none() { tops.get(&(a.page, a.index)).copied().unwrap_or(parent) } else { parent };
-            replies.entry(key).or_default().push(a);
+            if a.state.is_none() {
+                replies.entry(tops.get(&(a.page, a.index)).copied().unwrap_or(parent)).or_default().push(a);
+            }
         } else if a.is_comment() {
             let count = page_counts.entry(a.page).or_default();
             *count = count.saturating_add(1);
@@ -196,18 +198,31 @@ pub(crate) fn show(
     }
     let replies_of = |a: &Annotation| -> &[&Annotation] { replies.get(&(a.page, a.index)).map(Vec::as_slice).unwrap_or(&[]) };
     let cv = &view.comments;
-    let status_of =
-        |a: &Annotation| replies_of(a).iter().rev().filter(|r| !r.is_mark()).find_map(|r| r.state.clone()).unwrap_or_else(|| "None".into());
+    // Hidden by the status filter when every reviewer's status is hidden ("None" when nobody set one).
+    let status_hidden = |a: &Annotation| {
+        let all = states.statuses(a);
+        if all.is_empty() {
+            cv.hidden_statuses.iter().any(|s| s == "None")
+        } else {
+            all.iter().all(|(_, s)| cv.hidden_statuses.iter().any(|h| h == s))
+        }
+    };
     let mut roots: Vec<&Annotation> = info
         .annotations
         .iter()
         .filter(|a| a.is_comment())
-        .filter(|a| query.as_deref().is_none_or(|q| matches(a, q) || replies_of(a).iter().any(|r| matches(r, q))))
+        // Search finds a comment by its text, its replies' and the status replies set on any of
+        // them: one set on a reply is that reply's (`states`), but it belongs to this thread.
+        .filter(|a| {
+            query.as_deref().is_none_or(|q| {
+                std::iter::once(*a).chain(replies_of(a).iter().copied()).any(|x| matches(x, q) || states.history(x).iter().any(|r| matches(r, q)))
+            })
+        })
         .filter(|a| !cv.hidden_types.iter().any(|t| t == kind_label(a)))
         .filter(|a| !cv.hidden_authors.contains(&a.author.clone().unwrap_or_default()))
-        .filter(|a| !cv.hidden_statuses.contains(&status_of(a)))
+        .filter(|a| !status_hidden(a))
         .filter(|a| !cv.hidden_colors.contains(&color_key(a)))
-        .filter(|a| !cv.hidden_checks.contains(&check_label(is_marked(replies_of(a))).to_string()))
+        .filter(|a| !cv.hidden_checks.contains(&check_label(states.marked_by(a, &prefs.author)).to_string()))
         .collect();
     let sort = cv.sort;
     match sort {
@@ -234,16 +249,6 @@ pub(crate) fn show(
             SortBy::Date => None,
         }
     };
-    // This fork (COMMENTS.1): the cards selected in the panel follow the active comment when it
-    // changes, and keep only cards still listed; the cards shown, in order, are what a
-    // Shift+Click range runs through (folded page groups' cards are not shown).
-    let stamp = crate::content_version(doc);
-    let active = view.comments.selected.and_then(|(p, i)| info.annotations.iter().find(|a| a.page == p && a.index == i));
-    view.comments.group.follow(active.map(|a| (CommentKey::of(a), a.is_comment())), stamp);
-    let listed: std::collections::HashSet<CommentKey> = roots.iter().map(|a| CommentKey::of(a)).collect();
-    view.comments.group.reconcile(&listed, stamp);
-    let shown: Vec<CommentKey> =
-        roots.iter().filter(|a| !(sort == SortBy::Page && view.comments.collapsed_pages.contains(&a.page))).map(|a| CommentKey::of(a)).collect();
     // A comment selected elsewhere (on the page, or just added) opens its folded group, or the
     // card it should scroll to would not be drawn.
     if view.comments.reveal
@@ -251,6 +256,9 @@ pub(crate) fn show(
     {
         view.comments.collapsed_pages.retain(|&c| c != p);
     }
+    // The cards in the order shown, for a ⇧-click range (folded pages' cards aren't shown).
+    let order: Vec<(usize, usize)> =
+        roots.iter().filter(|a| !(sort == SortBy::Page && view.comments.collapsed_pages.contains(&a.page))).map(|a| (a.page, a.index)).collect();
     let mut page = usize::MAX;
     let mut group: Option<String> = None;
     // A card (or page header) out of view that was measured at this width only takes up its
@@ -291,10 +299,7 @@ pub(crate) fn show(
         // A card with an editor open on it or on a reply is always drawn too (CodeRabbit on
         // #5583): a kept height would show it at its size before the editor opened.
         let editing = view.comments.editing.as_ref().is_some_and(|(p, i, _)| (*p, *i) == key || thread.iter().any(|r| (r.page, r.index) == (*p, *i)));
-        // This fork (COMMENTS.1): and whether it was among the selected cards, or their anchor.
-        let ck = CommentKey::of(a);
-        let grouped = (view.comments.group.contains(&ck), view.comments.group.is_anchor(&ck));
-        let id = ui.scope_id().with(("comment-card", view.id, key, card_signature(a, thread), selected, editing, grouped));
+        let id = ui.scope_id().with(("comment-card", view.id, key, card_signature(a, thread, &states), selected, editing));
         // The selected card is always drawn, so it can scroll itself into view and keep its menu
         // and editor.
         if virtual_list && !selected && !editing && skip_if_hidden(ui, id) {
@@ -302,55 +307,16 @@ pub(crate) fn show(
         }
         let rotation = info.pages.get(a.page).map_or(0, |p| p.rotation);
         let top = ui.cursor().min.y;
-        if let Some(e) = card(ui, view, CardContext { theme: t, annotation: a, rotation, thread, doc, prefs, allowed, nav }) {
+        if let Some(e) =
+            card(ui, view, CardContext { theme: t, annotation: a, rotation, thread, order: &order, states: &states, doc, prefs, allowed, nav })
+        {
             edit = Some(e);
         }
         if virtual_list {
             remember_height(ui, id, top);
         }
     }
-    // This fork (COMMENTS.1): a card clicked this frame, now that the cards shown are known.
-    if let Some((key, modifiers)) = view.comments.group.clicked.take() {
-        view.comments.group.click(key, modifiers, &shown, stamp);
-    }
     edit
-}
-
-/// This fork (COMMENTS.1): Delete, Collapse and Expand selected, for the selected cards (the
-/// group's own menu and the panel's "…" menu). Delete is offered only when the engine's dry run
-/// would delete them; Collapse and Expand fold the selected cards' page groups, which exist only
-/// when the panel is sorted by page.
-pub(crate) fn group_actions(ui: &mut egui::Ui, doc: &pdfcraft_engine::Document, view: &mut DocView, allowed: bool) {
-    let cv = &mut view.comments;
-    let annotations = &doc.info.annotations;
-    let targets = cv.group.targets(annotations);
-    let n = targets.len();
-    let deletable = allowed && !targets.is_empty() && doc.comments_deletion_preview(&targets).is_ok();
-    let label = crate::i18n::fmt(tl!("Delete selected ({n})"), &[("n", &n.to_string())]);
-    let button = ui
-        .add_enabled(deletable, egui::Button::new(label))
-        .on_disabled_hover_text(tl!("Some of these comments can't be deleted: one is locked, or the document doesn't allow it"));
-    if button.clicked() {
-        cv.delete_request = true;
-        ui.close();
-    }
-    let by_page = cv.sort == SortBy::Page;
-    let pages = cv.group.pages(annotations);
-    let fold = |ui: &mut egui::Ui, label: &str| {
-        ui.add_enabled(by_page && !pages.is_empty(), egui::Button::new(tl!(label))).on_disabled_hover_text(tl!("Sort by page to fold page groups"))
-    };
-    if fold(ui, "Collapse selected").clicked() {
-        for p in &pages {
-            if !cv.collapsed_pages.contains(p) {
-                cv.collapsed_pages.push(*p);
-            }
-        }
-        ui.close();
-    }
-    if fold(ui, "Expand selected").clicked() {
-        cv.collapsed_pages.retain(|p| !pages.contains(p));
-        ui.close();
-    }
 }
 
 /// The "Page N" group header with its fold chevron and comment count `n`; a click folds or
@@ -385,14 +351,18 @@ fn page_header(ui: &mut egui::Ui, t: &Tokens, info: &DocInfo, page: usize, n: us
 }
 
 /// What a card's height depends on in the document: the comment and its replies as shown (their
-/// kind, author, text, date, status, colour and lock). Two cards with the same signature lay out
+/// kind, author, text, date, status, colour and lock), and the status and checkmark replies set on
+/// each, which the thread leaves out and `states` reads. Two cards with the same signature lay out
 /// alike at one width.
-fn card_signature(a: &Annotation, thread: &[&Annotation]) -> u64 {
+fn card_signature(a: &Annotation, thread: &[&Annotation], states: &ReviewStates) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     for x in std::iter::once(a).chain(thread.iter().copied()) {
         (&x.subtype, &x.author, &x.contents, &x.modified, &x.state, x.locked).hash(&mut h);
         x.color.map(|c| c.map(f32::to_bits)).hash(&mut h);
+        for r in states.history(x) {
+            (&r.subtype, &r.author, &r.modified, &r.state).hash(&mut h);
+        }
     }
     h.finish()
 }
@@ -432,6 +402,9 @@ struct CardContext<'a> {
     // The clockwise `/Rotate` of the comment's page.
     rotation: u16,
     thread: &'a [&'a Annotation],
+    /// The cards in the order shown, for a ⇧-click range.
+    order: &'a [(usize, usize)],
+    states: &'a ReviewStates<'a>,
     doc: &'a pdfcraft_engine::Document,
     prefs: &'a CommentPrefs,
     allowed: bool,
@@ -439,25 +412,22 @@ struct CardContext<'a> {
 }
 
 fn card(ui: &mut egui::Ui, view: &mut DocView, context: CardContext<'_>) -> Option<Edit> {
-    let CardContext { theme: t, annotation: a, rotation, thread, doc, prefs, allowed, nav } = context;
+    let CardContext { theme: t, annotation: a, rotation, thread, order, states, doc, prefs, allowed, nav } = context;
+    let info = &doc.info;
     let mut edit = None;
     let key = (a.page, a.index);
-    let selected = view.comments.selected == Some(key);
+    let selected = view.comments.is_selected(key);
+    // Several comments may be selected; the reply field (one draft) belongs to the one with
+    // the handles.
+    let primary = view.comments.selected == Some(key);
     let color = a.color.map(|c| color32(c.map(f64::from))).unwrap_or(t.accent);
-    let status = thread.iter().rev().filter(|r| !r.is_mark()).find_map(|r| r.state.as_deref());
-    let marked = is_marked(thread);
-    let replies: Vec<&&Annotation> = thread.iter().filter(|r| r.state.is_none()).collect();
+    // Each reviewer's status, and the checkmark of the reviewer using this copy (prefs.author):
+    // checkmarks are each reviewer's own (ISO 32000-2 Table 174, "marked by the user").
+    let statuses = states.statuses(a);
+    let marked = states.marked_by(a, &prefs.author);
+    let replies: Vec<&&Annotation> = thread.iter().collect();
     let editing = view.comments.editing.as_ref().is_some_and(|(p, i, _)| (*p, *i) == key);
-    // This fork (COMMENTS.1): a card among the selected ones is tinted; their anchor is outlined.
-    let ck = CommentKey::of(a);
-    let (member, anchor) = (view.comments.group.contains(&ck), view.comments.group.is_anchor(&ck));
-    let fill = if selected {
-        t.hover.gamma_multiply(0.7)
-    } else if member {
-        t.accent_soft
-    } else {
-        Color32::TRANSPARENT
-    };
+    let fill = if selected { t.hover.gamma_multiply(0.7) } else { Color32::TRANSPARENT };
     let mut open_menu = false;
     let mut more_rect = None;
     let frame = egui::Frame::NONE
@@ -497,7 +467,7 @@ fn card(ui: &mut egui::Ui, view: &mut DocView, context: CardContext<'_>) -> Opti
                     buttons_left = ui.min_rect().left();
                 });
             });
-            egui::Frame::NONE.inner_margin(egui::Margin { left: 34, right: 0, top: 4, bottom: 0 }).show(ui, |ui| {
+            let body = egui::Frame::NONE.inner_margin(egui::Margin { left: 34, right: 0, top: 4, bottom: 0 }).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 if editing {
                     if let Some(e) = inline_editor(ui, t, view, key, 2) {
@@ -516,11 +486,15 @@ fn card(ui: &mut egui::Ui, view: &mut DocView, context: CardContext<'_>) -> Opti
                         widgets::wrapped_text(ui, body, theme::regular(13.0), t.text, !selected);
                     }
                 }
-                if let Some((icon, label, c)) = status.and_then(status_badge) {
+                // One badge per reviewer, with their name: a state is "for the specified user"
+                // (ISO 32000-2 §12.5.6.3).
+                for (who, state) in &statuses {
+                    let Some((icon, label, c)) = status_badge(state) else { continue };
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
                         ui.add(icons::image(icon, 13.0, c));
-                        ui.label(egui::RichText::new(tl!(label)).font(theme::medium(11.5)).color(c));
+                        let text = if who.is_empty() { tl!(label).to_string() } else { format!("{who}: {}", tl!(label)) };
+                        ui.label(egui::RichText::new(text).font(theme::medium(11.5)).color(c));
                     });
                 }
             });
@@ -568,7 +542,7 @@ fn card(ui: &mut egui::Ui, view: &mut DocView, context: CardContext<'_>) -> Opti
                 }
                 above = me;
             }
-            if selected && allowed {
+            if primary && allowed {
                 ui.add_space(8.0);
                 egui::Frame::NONE.inner_margin(egui::Margin { left: 34, right: 0, top: 0, bottom: 0 }).show(ui, |ui| {
                     // The field fills its line and Post sits right-aligned under it: a field sized
@@ -595,12 +569,9 @@ fn card(ui: &mut egui::Ui, view: &mut DocView, context: CardContext<'_>) -> Opti
             // The header selects the card, except where its buttons are.
             let mut r = head.response.rect;
             r.max.x = r.max.x.min(buttons_left - 2.0);
-            r
+            (r, body.response.rect)
         });
     let rect = frame.response.rect;
-    if anchor {
-        ui.painter().rect_stroke(rect, CornerRadius::same(6), Stroke::new(1.0, t.accent), egui::StrokeKind::Inside);
-    }
     if selected {
         let bar = egui::Rect::from_min_size(rect.min, vec2(4.0, rect.height()));
         ui.painter().rect_filled(bar, CornerRadius { nw: 6, sw: 6, ne: 0, se: 0 }, CARD_ACCENT);
@@ -612,43 +583,40 @@ fn card(ui: &mut egui::Ui, view: &mut DocView, context: CardContext<'_>) -> Opti
     ui.add_space(5.0);
     // The header row selects the card (and shows the comment on the page); unselected cards are
     // clickable everywhere.
-    let hit = if selected { frame.inner } else { rect };
+    let (head, body) = frame.inner;
+    let hit = if selected { head } else { rect };
     let click = ui
         .interact(hit, ui.scope_id().with(("card", key)), Sense::click())
         .on_hover_cursor(egui::CursorIcon::PointingHand)
         .on_hover_text(crate::i18n::fmt(tl!("{kind} — click to show it on the page"), &[("kind", tl!(kind_label(a)))]));
-    // This fork (COMMENTS.1): Ctrl+Click and Shift+Click change only the cards selected in the
-    // panel, never the active comment, the view or the page; a plain click does what it always
-    // did and makes the card the whole selection.
-    let modifiers = ui.input(|i| i.modifiers);
     if click.clicked() {
-        view.comments.group.clicked = Some((ck, modifiers));
-        if !modifiers.command && !modifiers.shift {
-            view.comments.selected = Some(key);
-            view.comments.reply.clear();
-            *nav = Some(Nav::Flash(a.page, a.shown_rect(rotation)));
+        // ⌘/Ctrl-click adds the comment to the selection, as on the page; ⇧-click selects the
+        // cards from the one with the handles to this one, as lists do.
+        let modifiers = ui.input(|i| i.modifiers);
+        if modifiers.shift && !modifiers.command {
+            view.comments.select_range(order, key);
+        } else if modifiers.command {
+            view.comments.toggle(key);
+        } else {
+            view.comments.select_only(key);
         }
+        view.comments.reply.clear();
+        *nav = Some(Nav::Flash(a.page, a.shown_rect(rotation)));
     }
-    // A right-click on one of several selected cards opens their menu; on any other card it makes
-    // that card the selection and opens its own menu, without going to it (or changing the
-    // active comment).
-    if click.secondary_clicked() && !(member && view.comments.group.len() >= 2) {
-        view.comments.group.clicked = Some((ck, egui::Modifiers::NONE));
-    }
-    click.context_menu(|ui| {
-        ui.set_min_width(180.0);
-        if view.comments.group.contains(&ck) && view.comments.group.len() >= 2 {
-            group_actions(ui, doc, view, allowed);
-        } else if let Some(e) = card_items(ui, view, doc, prefs, a, marked) {
-            edit = Some(e);
-        }
-    });
-    if click.double_clicked() && allowed {
+    // On the selected card a double-click on the text edits it too (dragging over it selects
+    // words of it, for copying).
+    let body = (selected && !editing).then(|| ui.interact(body, ui.scope_id().with(("card-body", key)), Sense::click()));
+    if (click.double_clicked() || body.is_some_and(|b| b.double_clicked())) && allowed {
         view.comments.open_editor(a.page, a.index, a.contents.clone().unwrap_or_default());
     }
     let menu_id = ui.scope_id().with(("card-menu", key));
     if open_menu {
         egui::Popup::open_id(ui.ctx(), menu_id);
+    } else if more_rect.is_none() {
+        // The button is drawn on the selected card alone. Without it (Undo deselected the card
+        // with its menu open), egui would keep the menu open with nowhere to show it, and an
+        // open popup holds every page key (`PageKeys`).
+        egui::Popup::close_id(ui.ctx(), menu_id);
     }
     // Hang the menu from the "…" button (a pointer anchor would follow the mouse to the items).
     let anchor = more_rect.map_or(egui::PopupAnchor::PointerFixed, egui::PopupAnchor::ParentRect);
@@ -658,60 +626,49 @@ fn card(ui: &mut egui::Ui, view: &mut DocView, context: CardContext<'_>) -> Opti
         .layout(Layout::top_down_justified(Align::Min))
         .show(|ui| {
             ui.set_min_width(160.0);
-            if let Some(e) = card_items(ui, view, doc, prefs, a, marked) {
-                edit = Some(e);
-            }
-        });
-    edit
-}
-
-/// A card's own menu (its "…" button, or a right-click): what it offers for that comment.
-fn card_items(
-    ui: &mut egui::Ui,
-    view: &mut DocView,
-    doc: &pdfcraft_engine::Document,
-    prefs: &CommentPrefs,
-    a: &Annotation,
-    marked: bool,
-) -> Option<Edit> {
-    let info = &doc.info;
-    let mut edit = None;
-    crate::comments::attachment_items(ui, view, info, a);
-    if ui.button(tl_ctx!("comment menu", "Edit")).clicked() {
-        view.comments.open_editor(a.page, a.index, a.contents.clone().unwrap_or_default());
-        ui.close();
-    }
-    ui.menu_button(tl!("Set status"), |ui| {
-        for s in [ReviewState::None, ReviewState::Accepted, ReviewState::Cancelled, ReviewState::Completed, ReviewState::Rejected] {
-            if ui.button(tl!(s.name())).clicked() {
-                edit = Some(Edit::SetAnnotationStatus { page: a.page, index: a.index, state: s, author: prefs.author.clone() });
+            crate::comments::attachment_items(ui, view, info, a);
+            if ui.button(tl_ctx!("comment menu", "Edit")).clicked() {
+                view.comments.open_editor(a.page, a.index, a.contents.clone().unwrap_or_default());
                 ui.close();
             }
-        }
-    });
-    if ui.button(tl!(if marked { "Remove checkmark" } else { "Mark with checkmark" })).clicked() {
-        edit = Some(Edit::MarkAnnotation { page: a.page, index: a.index, marked: !marked, author: prefs.author.clone() });
-        ui.close();
-    }
-    if ui.button(tl!("Copy text")).clicked() {
-        ui.ctx().copy_text(a.contents.clone().unwrap_or_default());
-        ui.close();
-    }
-    if ui.button(tl!("Properties…")).clicked() {
-        view.comments.props_request = Some((a.page, a.index));
-        ui.close();
-    }
-    if ui.add_enabled(crate::comments::tool_for(a).is_some(), egui::Button::new(tl!("Make Current Properties Default"))).clicked() {
-        view.comments.default_request = Some((a.page, a.index));
-        ui.close();
-    }
-    ui.separator();
-    // A locked reply can't be deleted, so it keeps the comment it answers too.
-    if ui.add_enabled(doc.annotation_deletable(a.page, a.index), egui::Button::new(tl!("Delete"))).clicked() {
-        view.comments.selected = None;
-        edit = Some(Edit::DeleteAnnotation { page: a.page, index: a.index });
-        ui.close();
-    }
+            ui.menu_button(tl!("Set status"), |ui| {
+                for s in [ReviewState::None, ReviewState::Accepted, ReviewState::Cancelled, ReviewState::Completed, ReviewState::Rejected] {
+                    if ui.button(tl!(s.name())).clicked() {
+                        edit = Some(Edit::SetAnnotationStatus { page: a.page, index: a.index, state: s, author: prefs.author.clone() });
+                        ui.close();
+                    }
+                }
+            });
+            if ui.button(tl!(if marked { "Remove checkmark" } else { "Mark with checkmark" })).clicked() {
+                edit = Some(Edit::MarkAnnotation { page: a.page, index: a.index, marked: !marked, author: prefs.author.clone() });
+                ui.close();
+            }
+            if ui.button(tl!("Copy text")).clicked() {
+                ui.ctx().copy_text(a.contents.clone().unwrap_or_default());
+                ui.close();
+            }
+            if ui.button(tl!("Properties…")).clicked() {
+                view.comments.props_request = Some((a.page, a.index));
+                ui.close();
+            }
+            if ui.add_enabled(crate::comments::defaultable(a), egui::Button::new(tl!("Make Current Properties Default"))).clicked() {
+                view.comments.default_request = Some((a.page, a.index));
+                ui.close();
+            }
+            if ui.button(tl!("Copy comment")).clicked() {
+                // The card's comment alone (the page's menu copies the whole selection).
+                view.comments.select_only(key);
+                view.comments.copy_request = true;
+                ui.close();
+            }
+            ui.separator();
+            // A locked reply can't be deleted, so it keeps the comment it answers too.
+            if ui.add_enabled(doc.annotation_deletable(a.page, a.index), egui::Button::new(tl!("Delete"))).clicked() {
+                view.comments.clear_selection();
+                edit = Some(Edit::DeleteAnnotation { page: a.page, index: a.index });
+                ui.close();
+            }
+        });
     edit
 }
 
@@ -799,21 +756,45 @@ fn legible(c: Color32, t: &Tokens) -> Color32 {
     }
 }
 
+/// This fork (COMMENTS.1, SYNC.16g, SYNC.17g): Collapse selected and Expand selected, in the panel's "…"
+/// menu: fold or unfold the page groups of the selected comments (upstream's selection,
+/// [`CommentView::selection`]), each page once; the selection stays. Only the page sort has page
+/// groups: under another sort both are shown disabled, saying why. Nothing in the document changes.
+fn fold_selected(ui: &mut egui::Ui, info: &DocInfo, cv: &mut crate::comments::CommentView) {
+    let selection = cv.selection();
+    let mut pages: Vec<usize> = info.annotations.iter().filter(|a| selection.contains(&(a.page, a.index))).map(|a| a.page).collect();
+    pages.sort_unstable();
+    pages.dedup();
+    if pages.is_empty() {
+        return;
+    }
+    let by_page = cv.sort == SortBy::Page;
+    if !by_page {
+        ui.separator();
+    }
+    let fold = |ui: &mut egui::Ui, label: &str| {
+        ui.add_enabled(by_page, egui::Button::new(tl!(label))).on_disabled_hover_text(tl!("Sort by page to fold page groups"))
+    };
+    if fold(ui, "Collapse selected").clicked() {
+        for p in &pages {
+            if !cv.collapsed_pages.contains(p) {
+                cv.collapsed_pages.push(*p);
+            }
+        }
+        ui.close();
+    }
+    if fold(ui, "Expand selected").clicked() {
+        cv.collapsed_pages.retain(|p| !pages.contains(p));
+        ui.close();
+    }
+}
+
 /// The Comments panel header's filter and sort controls (Acrobat: filter funnel and "…").
 /// The header's "…" (sort, hide all, summary, data exchange) and filter menus; returns a
 /// command to run.
-pub(crate) fn header_controls(
-    ui: &mut egui::Ui,
-    doc: &pdfcraft_engine::Document,
-    view: &mut DocView,
-    hidden: bool,
-    allowed: bool,
-) -> Option<&'static str> {
-    let info = &doc.info;
-    // This fork (COMMENTS.1): the menu starts with the selected cards' actions.
-    let grouped = !view.comments.group.is_empty();
+pub(crate) fn header_controls(ui: &mut egui::Ui, info: &DocInfo, view: &mut DocView, hidden: bool) -> Option<&'static str> {
     let mut command = None;
-    let cv = &view.comments;
+    let cv = &mut view.comments;
     let mut types: Vec<String> = info.annotations.iter().filter(|a| a.is_comment()).map(|a| kind_label(a).to_string()).collect();
     types.sort();
     types.dedup();
@@ -831,11 +812,6 @@ pub(crate) fn header_controls(
     let more = icons::button(ui, "ellipsis", 26.0, false, tl!("More options"));
     egui::Popup::menu(&more).show(|ui| {
         ui.set_min_width(220.0);
-        if grouped {
-            group_actions(ui, doc, view, allowed);
-            ui.separator();
-        }
-        let cv = &mut view.comments;
         ui.label(egui::RichText::new(tl!("Sort by")).small());
         for (s, label) in [
             (SortBy::Page, tl!("Page")),
@@ -863,6 +839,8 @@ pub(crate) fn header_controls(
                 ui.close();
             }
         }
+        // This fork (COMMENTS.1, SYNC.16g): fold or unfold the page groups of the selected comments.
+        fold_selected(ui, info, cv);
         ui.separator();
         for (id, label) in [
             ("comment.hide_all", if hidden { tl!("Show all comments") } else { tl!("Hide all comments") }),
@@ -885,7 +863,6 @@ pub(crate) fn header_controls(
     let filter = icons::button(ui, "filter", 26.0, active, tl!("Filter comments"));
     egui::Popup::menu(&filter).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
         ui.set_min_width(200.0);
-        let cv = &mut view.comments;
         let toggle = |ui: &mut egui::Ui, list: &mut Vec<String>, value: &str, label: &str| {
             let mut shown = !list.iter().any(|x| x == value);
             if ui.add(widgets::checkbox(&mut shown, label)).changed() {

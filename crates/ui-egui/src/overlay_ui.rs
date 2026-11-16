@@ -40,6 +40,11 @@ fn tx(s: &str) -> &str {
 }
 
 /// The mode bar's Overlay button (this fork's one hook in the toolbar).
+/// How much of the mode bar [`toolbar_button`] takes, with the space before it.
+pub(crate) fn toolbar_button_width(ui: &egui::Ui) -> f32 {
+    widgets::ghost_button_width(ui, tx("Overlay")) + 8.0
+}
+
 pub(crate) fn toolbar_button(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
     let tip = tx("Overlay compare: two revisions on one page, each in its own colour");
     if widgets::ghost_button(ui, "blend", tx("Overlay")).on_hover_text(tip).clicked() {

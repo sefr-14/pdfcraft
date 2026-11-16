@@ -2,6 +2,8 @@
 //! Create a PDF (blank, from images, from text) and Reduce File Size (execution plan M10.2,
 //! M11.1). Opening an image or a text file converts it to a new, unsaved PDF, as Acrobat does.
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::file_filter::AddFilterAnyCase as _;
 use std::sync::Arc;
 
 use crate::PdfCraftApp;
@@ -43,9 +45,6 @@ pub(crate) fn image_import_body(ui: &mut egui::Ui, app: &mut PdfCraftApp) -> (bo
     });
     (go, cancel)
 }
-
-/// File types Open accepts besides PDF (converted on open).
-pub use pdfcraft_engine::CONVERTIBLE;
 
 /// What Create ▸ Clipboard found on the clipboard.
 #[derive(Clone, Debug, PartialEq)]
@@ -111,15 +110,23 @@ fn stem(name: &str) -> &str {
 }
 
 impl PdfCraftApp {
-    /// Convert a non-PDF file (image, text) into a new tab. Returns `None` when `bytes` is not
-    /// something Create understands (the caller then tries to open it as a PDF).
+    /// Convert a non-PDF file (image, text, Office document) into a new tab. Returns `None` when
+    /// `bytes` is not something Create understands (the caller then tries to open it as a PDF).
+    /// An Office document blocks while LibreOffice runs: File ▸ Open converts it on the open
+    /// worker instead ([`Self::open_converted_pdf`]), leaving this for startup and inline opens.
     pub(crate) fn open_converted(&mut self, name: &str, bytes: &[u8]) -> Option<Result<(), String>> {
         use pdfcraft_engine::SourceKind;
-        if !matches!(pdfcraft_engine::source_kind(name, bytes), Some(SourceKind::Image | SourceKind::Text)) {
+        if !matches!(pdfcraft_engine::source_kind(name, bytes), Some(SourceKind::Image | SourceKind::Text | SourceKind::Office)) {
             return None;
         }
         let created = self.session.convert_to_pdf(name, &Arc::new(bytes.to_vec())).map(|(_, pdf)| pdf);
-        Some(self.open_created_bytes(&format!("{}.pdf", stem(name)), created.map_err(|e| e.to_string())))
+        Some(self.open_converted_pdf(name, created.map_err(|e| e.to_string())))
+    }
+
+    /// Open `created`, the PDF converted from the file `name`, as a new, unsaved tab named after
+    /// it (`Report.docx` → `Report.pdf`).
+    pub(crate) fn open_converted_pdf(&mut self, name: &str, created: Result<Arc<Vec<u8>>, String>) -> Result<(), String> {
+        self.open_created_bytes(&format!("{}.pdf", stem(name)), created)
     }
 
     fn open_created_bytes(&mut self, name: &str, created: Result<Arc<Vec<u8>>, String>) -> Result<(), String> {
@@ -127,8 +134,10 @@ impl PdfCraftApp {
         let id = self.session.open_new(name, bytes).map_err(|e| e.to_string())?;
         // The reading-colours preference is app-wide: the newly created document starts with it.
         self.session.set_reading_colors(id, self.reading_colors);
-        let info = &self.session.get(id).ok_or("the new document could not be opened")?.info;
-        let mut view = crate::DocView::new(id, info, self.view_defaults);
+        let doc = self.session.get(id).ok_or("the new document could not be opened")?;
+        let mut view = crate::DocView::new(id, &doc.info, self.view_defaults);
+        // This fork (SYNC.16m, SYNC.17): its comment selection starts in this version of the document.
+        view.comments.stamp(crate::content_version(doc));
         if self.full_screen {
             view.enter_presentation();
         }
@@ -180,7 +189,7 @@ impl PdfCraftApp {
         #[cfg(not(target_arch = "wasm32"))]
         {
             let dialog = rfd::AsyncFileDialog::new()
-                .add_filter(tl!("Images"), &["png", "jpg", "jpeg", "tif", "tiff", "gif", "bmp", "jp2", "j2k", "jpx"])
+                .add_filter_any_case(tl!("Images"), &["png", "jpg", "jpeg", "tif", "tiff", "gif", "bmp", "jp2", "j2k", "jpx"])
                 .set_title(tl!("Choose images"));
             self.ask(crate::pickers::Ask::Files(dialog), None, |app, files| {
                 let mut images = Vec::new();
@@ -254,9 +263,39 @@ impl PdfCraftApp {
     }
 
     /// Reduce File Size: write a compacted copy with images downsampled (the open document is
-    /// unchanged). It runs in the background with a progress bar, like the PDF Optimizer.
+    /// unchanged). It asks where to save first, so a heavy file can finish by itself, then runs in
+    /// the background with a progress bar, like the PDF Optimizer.
     pub(crate) fn reduce_file_size(&mut self) {
-        self.start_optimize(crate::optimize_ui::OptimizeKind::Reduce, &pdfcraft_engine::optimize::Settings::default(), &[]);
+        use crate::optimize_ui::OptimizeKind::Reduce;
+        let settings = pdfcraft_engine::optimize::Settings::default();
+        #[cfg(target_arch = "wasm32")]
+        self.start_optimize(Reduce, &settings, &[]);
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            // What can't run says so now, not after asking where to save.
+            if !self.commit_form_typing() {
+                return;
+            }
+            let Some((_, id)) = self.active_ids() else { return };
+            if self.optimize_run.is_some() {
+                self.notify_tr("Optimization is already running");
+                return;
+            }
+            if let Err(e) = self.session.optimize_job(id, &settings, &[]) {
+                let generation = self.session.get(id).map_or(0, |d| d.edit_generation());
+                return self.save_optimized(id, Reduce, generation, Err(e), None);
+            }
+            if let Some(path) = self.save_override.clone() {
+                return self.run_optimize(id, Reduce, &settings, &[], Some(path));
+            }
+            let Some(doc) = self.session.get(id) else { return };
+            let dialog = rfd::AsyncFileDialog::new().add_filter_any_case("PDF", &["pdf"]).set_file_name(optimized_name(&doc.name, Reduce));
+            let dialog = crate::editing::in_document_folder(dialog, doc.path.as_deref());
+            // With the target, a document closed, switched from or edited meanwhile isn't compressed.
+            self.ask_one(crate::pickers::Ask::Save(dialog), Some(id), move |app, path| {
+                app.run_optimize(id, Reduce, &settings, &[], Some(path.to_string_lossy().into_owned()));
+            });
+        }
     }
 
     /// Whether document `id` was edited since its edit generation was `generation` (this fork,
@@ -275,16 +314,18 @@ impl PdfCraftApp {
     /// its snapshot was taken; if it was edited since (during the run or while the dialog was
     /// open), nothing is saved, so those edits are never replaced by an older optimized state.
     /// Nothing is written over another open document's file, nor over the document's own file
-    /// when that changed on disk.
+    /// when that changed on disk. `destination` is where the user chose before the run (Reduce
+    /// File Size asks first); otherwise they are asked now.
     pub(crate) fn save_optimized(
         &mut self,
         id: pdfcraft_engine::DocId,
         kind: crate::optimize_ui::OptimizeKind,
         generation: u64,
         result: Result<(Arc<Vec<u8>>, String), pdfcraft_engine::EditError>,
+        destination: Option<String>,
     ) {
         let Some(doc) = self.session.get(id) else { return };
-        let (before, name) = (doc.bytes.len(), format!("{} ({}).pdf", stem(&doc.name), kind.suffix()));
+        let (before, name) = (doc.bytes.len(), optimized_name(&doc.name, kind));
         #[cfg(not(target_arch = "wasm32"))]
         let folder = doc.path.clone();
         let (bytes, detail) = match result {
@@ -324,48 +365,96 @@ impl PdfCraftApp {
                 self.notify_tr(EDITED_DURING_OPTIMIZE);
                 return;
             }
-            let write = move |app: &mut Self, path: String| {
-                // Edits made while the save dialog was open aren't in the result either.
-                if app.edited_since(id, generation) {
-                    app.notify_tr(EDITED_DURING_OPTIMIZE);
-                    return;
-                }
-                if app.refuse_open_destination(id, &path) {
-                    return;
-                }
-                let own = app.session.get(id).and_then(|d| d.path.as_deref()).is_some_and(|p| crate::same_file(p, &path));
-                if own && app.watch.disk_differs(id, &path, app.session.get(id).map(|d| d.saved_bytes())) {
-                    app.notify_fmt(
-                        "{name} changed on disk since it was opened, so nothing was saved. Choose another name to keep both.",
-                        &[("name", &short_name(&path))],
-                    );
-                    return;
-                }
-                // As Save does (#1698): bytes that don't reopen as this document are not written.
-                if let Err(e) = app.session.check_save(id, &bytes) {
-                    app.notify_fmt("Couldn't save {name}: {e}", &[("name", &short_name(&path)), ("e", &e.to_string())]);
-                    return;
-                }
-                if app.commit_saved_file(id, &path, bytes, false) {
-                    saved(app, path);
-                }
-            };
-            match self.save_override.clone() {
-                Some(p) => write(self, p),
-                None => {
-                    let dialog = rfd::AsyncFileDialog::new().add_filter("PDF", &["pdf"]).set_file_name(&name);
-                    let dialog = crate::editing::in_document_folder(dialog, folder.as_deref());
-                    self.ask_one(crate::pickers::Ask::Save(dialog), None, move |app, p| write(app, p.to_string_lossy().into_owned()));
-                }
+            let job = OptimizedSave { id, generation, bytes, name, folder, saved: Box::new(saved) };
+            match destination.or_else(|| self.save_override.clone()) {
+                Some(p) => self.save_optimized_to(job, p),
+                None => self.ask_where_to_save_optimized(job),
             }
         }
         // The web build downloads the result; the document stays as it is.
         #[cfg(target_arch = "wasm32")]
         let _ = generation;
         #[cfg(target_arch = "wasm32")]
-        match crate::editing::download(&name, &bytes) {
-            Ok(()) => saved(self, name),
-            Err(e) => self.notify_fmt("Couldn't download {name}: {e}", &[("name", &name), ("e", &e.to_string())]),
+        {
+            let _ = destination;
+            match crate::editing::download(&name, &bytes) {
+                Ok(()) => saved(self, name),
+                Err(e) => self.notify_fmt("Couldn't download {name}: {e}", &[("name", &name), ("e", &e.to_string())]),
+            }
         }
     }
+}
+
+/// An optimized result waiting to be saved as the document (this fork, COMPRESS.1): its
+/// document and the edit generation its snapshot was taken at, the bytes, the suggested name and
+/// folder, and what to report once it is saved.
+#[cfg(not(target_arch = "wasm32"))]
+struct OptimizedSave {
+    id: pdfcraft_engine::DocId,
+    generation: u64,
+    bytes: Arc<Vec<u8>>,
+    name: String,
+    folder: Option<String>,
+    saved: SavedReport,
+}
+
+/// What reports an optimized result saved at its place.
+#[cfg(not(target_arch = "wasm32"))]
+type SavedReport = Box<dyn FnOnce(&mut PdfCraftApp, String) + Send>;
+
+#[cfg(not(target_arch = "wasm32"))]
+impl PdfCraftApp {
+    /// Ask where the optimized result goes, then save it there ([`Self::save_optimized_to`]).
+    fn ask_where_to_save_optimized(&mut self, job: OptimizedSave) {
+        let dialog = rfd::AsyncFileDialog::new().add_filter_any_case("PDF", &["pdf"]).set_file_name(&job.name);
+        let dialog = crate::editing::in_document_folder(dialog, job.folder.as_deref());
+        self.ask_one(crate::pickers::Ask::Save(dialog), None, move |app, p| app.save_optimized_to(job, p.to_string_lossy().into_owned()));
+    }
+
+    /// Save the optimized result at `path` as the document, as Save As does (COMPRESS.1). Nothing
+    /// is saved over edits made since the snapshot, over another open document's file, over the
+    /// document's own file when that changed on disk, or when the bytes don't reopen as this
+    /// document. A place that can't be written (gone, read-only) loses nothing: the user is asked
+    /// for another until it is written or the question is cancelled (upstream's choose-first
+    /// Reduce File Size, SYNC.17).
+    fn save_optimized_to(&mut self, job: OptimizedSave, path: String) {
+        let id = job.id;
+        // Edits made while the save dialog was open aren't in the result either.
+        if self.edited_since(id, job.generation) {
+            self.notify_tr(EDITED_DURING_OPTIMIZE);
+            return;
+        }
+        if self.refuse_open_destination(id, &path) {
+            return;
+        }
+        let own = self.session.get(id).and_then(|d| d.path.as_deref()).is_some_and(|p| crate::same_file(p, &path));
+        if own && self.watch.disk_differs(id, &path, self.session.get(id).map(|d| d.saved_bytes())) {
+            self.notify_fmt(
+                "{name} changed on disk since it was opened, so nothing was saved. Choose another name to keep both.",
+                &[("name", &short_name(&path))],
+            );
+            return;
+        }
+        // As Save does (#1698): bytes that don't reopen as this document are not written.
+        if let Err(e) = self.session.check_save(id, &job.bytes) {
+            self.notify_fmt("Couldn't save {name}: {e}", &[("name", &short_name(&path)), ("e", &e.to_string())]);
+            return;
+        }
+        if self.session.get(id).is_none() {
+            self.notify_tr("The document was closed before it could be saved.");
+            return;
+        }
+        if let Err(e) = crate::editing::write_atomically(&path, &job.bytes) {
+            self.notify_fmt("Couldn't write {path}: {e}", &[("path", &path), ("e", &e.to_string())]);
+            return self.ask_where_to_save_optimized(job);
+        }
+        if self.commit_written_file(id, &path, job.bytes.clone(), false) {
+            (job.saved)(self, path);
+        }
+    }
+}
+
+/// The suggested name of an optimized copy of `document` ("notes (reduced).pdf").
+fn optimized_name(document: &str, kind: crate::optimize_ui::OptimizeKind) -> String {
+    format!("{} ({}).pdf", stem(document), kind.suffix())
 }

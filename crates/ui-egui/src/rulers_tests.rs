@@ -479,7 +479,8 @@ fn a_guide_under_the_find_bar_is_not_taken() {
     h.state_mut().quick_tool = QuickTool::Hand;
     h.state_mut().views[0].open_find();
     h.run_steps(4);
-    let bar = h.ctx.memory(|m| m.area_rect(egui::Id::unique("find-bar"))).expect("the find bar is drawn");
+    let key = h.state().views[0].view_key();
+    let bar = h.ctx.memory(|m| m.area_rect(egui::Id::unique(("find-bar", key)))).expect("the find bar is drawn");
     let under = bar.center();
     let (page, xf) = {
         let app = h.state();

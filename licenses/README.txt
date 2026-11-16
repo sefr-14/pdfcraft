@@ -18,6 +18,9 @@ The Windows zip made by .github/workflows/overlay-windows.yml contains a license
   LICENSE-adobe-cmaps.txt  Adobe CMap resources in hayro-cmap (BSD-3-Clause)
   CGATS_LICENSE.txt        the CGATS001Compat colour profile in hayro-interpret (CC0-1.0)
   LICENSE-app-icon.txt     the app icon (MIT OR Apache-2.0)
+  ICU4X-LICENSE.txt        ICU4X's line-breaking data for Thai, Lao, Khmer and Burmese text
+                           (Unicode-3.0), which NOTICE refers to (upstream v0.21.1; SYNC.17)
+  prc-rs-LICENSE.txt       the PRC code table taken from prc-rs (MIT; upstream v0.21.1; SYNC.17)
 
 The zip's top level also has LICENSE-MIT, LICENSE-APACHE, NOTICE and LICENSE-document.txt. Only
 THIRD-PARTY-CRATES.txt and epaint_default_fonts/ are kept in this folder; the workflow copies the

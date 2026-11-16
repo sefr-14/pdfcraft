@@ -1,0 +1,61 @@
+# This fork (sefr-14/pdfcraft, SYNC.16): PDF Overlay's own rows for this language, read over
+# craft-i18n's pdfcraft.tsv by crates/ui-egui/build.rs (a row here wins). They are the rows the
+# fork's in-repo catalogue held before upstream moved its catalogues to craft-i18n (Main
+# ce9ade4b), less those build.rs now derives: craft-i18n's "PdfCraft" rows with the name
+# written "PDF Overlay". Columns: context, English source, translation.
+# This fork (sefr-14/pdfcraft): Overlay compare, the command and its All tools item.
+	Overlay compare…	Порівняння накладанням…
+	Overlay two revisions	Накласти дві редакції
+# This fork (sefr-14/pdfcraft): Duplicate Tab (OV7), the tab menu item and its command.
+	Duplicate tab	Дублювати вкладку
+# This fork (sefr-14/pdfcraft): Tab View and Tile View (OV7.2), the tab menu items and their commands.
+	Tab View	Режим вкладок
+	Tab view	Режим вкладок
+	Tile View	Режим плиток
+	Tile view	Режим плиток
+# This fork (sefr-14/pdfcraft): Help > Check for updates shows this fork's latest Windows build (OV8).
+	Looking for the latest Windows build…	Пошук останньої збірки для Windows…
+	Latest available Windows build	Остання доступна збірка для Windows
+	Version: {v}	Версія: {v}
+	Built: {date}	Зібрано: {date}
+	Artifact: {name}	Артефакт: {name}
+	This copy is version {c}.	Це копія версії {c}.
+	GitHub may ask you to sign in to download it. Builds are kept for a limited time.	Для завантаження GitHub може попросити увійти. Збірки зберігаються обмежений час.
+	View build on GitHub	Відкрити збірку на GitHub
+	View builds on GitHub	Відкрити збірки на GitHub
+	No successful Windows build was found.	Успішної збірки для Windows не знайдено.
+	No downloadable Windows build was found in the most recent successful builds ({n} checked).	Серед останніх успішних збірок не знайдено збірки для Windows, доступної для завантаження (перевірено: {n}).
+	The Windows builds checked have expired and can't be downloaded anymore ({n} checked).	Термін зберігання перевірених збірок для Windows минув, їх більше не можна завантажити (перевірено: {n}).
+	Older builds weren't checked.	Старіші збірки не перевірялися.
+	Windows builds are listed at {page}.	Збірки для Windows перелічено на сторінці {page}.
+	Try again	Спробувати ще раз
+	Asks GitHub for this fork's latest Windows build. Nothing is downloaded or installed automatically.	Запитує в GitHub останню збірку цього форка для Windows. Нічого не завантажується й не встановлюється автоматично.
+# This fork (sefr-14/pdfcraft): View > Page display > Thin lines (OV9).
+	Thin lines	Тонкі лінії
+# This fork (sefr-14/pdfcraft): measuring, snapping and why a click kept nothing (OV10).
+	the worker stopped	фоновий процес зупинився
+	the page can't be mapped	не вдається перерахувати координати сторінки
+	an internal error stopped it ({reason})	його зупинила внутрішня помилка ({reason})
+	This document can't be read for measuring.	Цей документ не вдається прочитати для вимірювання.
+	Snapping isn't available on this page: {reason}	Прив’язка недоступна на цій сторінці: {reason}
+	Reading the drawing for snapping…	Читання креслення для прив’язки…
+	This PDF doesn't allow comments, so measurements and scales can't be saved.	Цей PDF не дозволяє коментарі, тому виміри й масштаби не можна зберегти.
+	This part of the page has a drawing scale PDF Overlay can't read: {reason}. Calibrate to set one.	У цій частині сторінки задано масштаб креслення, який PDF Overlay не може прочитати: {reason}. Виконайте калібрування, щоб задати масштаб.
+	That is the point already placed. Click a different point.	Це вже поставлена точка. Клацніть іншу точку.
+# This fork (sefr-14/pdfcraft): Measure panel units and known distance (OV10).
+	Inches (in)	Дюйми (in)
+	Feet (ft)	Фути (ft)
+	Feet and inches (ft-in)	Фути й дюйми (ft-in)
+	Centimeters (cm)	Сантиметри (cm)
+	Millimeters (mm)	Міліметри (mm)
+	Meters (m)	Метри (m)
+	Known distance	Відома відстань
+	Nearest 1/8 inch	З точністю до 1/8 дюйма
+	Type a length such as 12'-5 3/8" or 12.5'.	Введіть довжину, наприклад 12'-5 3/8" або 12.5'.
+	Type the real distance between the two points.	Введіть реальну відстань між двома точками.
+# This fork (sefr-14/pdfcraft): View > Page display > Rulers and Guides, the ruler units (OV11).
+	Points (pt)	Пункти (pt)
+# This fork (sefr-14/pdfcraft): guides on the pages, Clear Guides on Page / Clear All Guides (OV11).
+	Clear Guides on Page	Очистити напрямні на сторінці
+	Clear All Guides	Очистити всі напрямні
+	This page already has as many guides as PDF Overlay keeps.	На цій сторінці вже стільки напрямних, скільки зберігає PDF Overlay.

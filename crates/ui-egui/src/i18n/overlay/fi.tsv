@@ -1,0 +1,6 @@
+# This fork (sefr-14/pdfcraft, SYNC.16): PDF Overlay's own rows for this language, read over
+# craft-i18n's pdfcraft.tsv by crates/ui-egui/build.rs (a row here wins). They are the rows the
+# fork's in-repo catalogue held before upstream moved its catalogues to craft-i18n (Main
+# ce9ade4b), less those build.rs now derives: craft-i18n's "PdfCraft" rows with the name
+# written "PDF Overlay". Columns: context, English source, translation.
+	The certificate of {} has critical extensions PDF Overlay does not recognize, so it is not used to vouch for {}.	Kohteen {} varmenteessa on kriittisiä laajennuksia, joita PDF Overlay ei tunnista, joten sitä ei käytetä kohteen {} vahvistamiseen.
