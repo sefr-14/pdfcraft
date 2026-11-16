@@ -4827,9 +4827,9 @@ fn hotbar_drag_moves_and_persists_position() {
     let mut h = harness(|_| {});
     let before: serde_json::Value = serde_json::from_str(&h.state().persist()).unwrap();
     let from = h.get_by_label("Drag hotbar").rect().center();
-    // This fork (SYNC.15): the hotbar starts in the bottom-right corner, so the drag goes up and
-    // left (upstream's started at the top centre and went down and right).
-    drag(&mut h, from, from - egui::vec2(90.0, 90.0));
+    // The hotbar starts in the left margin (upstream's default since v0.19.0, adopted in
+    // SYNC.17), so the drag goes down and right.
+    drag(&mut h, from, from + egui::vec2(90.0, 90.0));
     let after: serde_json::Value = serde_json::from_str(&h.state().persist()).unwrap();
     assert_ne!(before["hotbar"]["position"], after["hotbar"]["position"]);
     let mut restored = PdfCraftApp::new();
@@ -4945,7 +4945,7 @@ fn hotbar_docked_left_does_not_override_quick_tools() {
     });
     h.run_steps(5);
     // Controls in the docked bar share one layout, so none may overlap (#5890).
-    let labels = ["Drag hotbar", "Select (V)", "Hand (H)", "Add a sticky note", "Highlight", "Draw", "Fill & Sign: Add signature", "Hotbar settings"];
+    let labels = ["Drag hotbar", "Select (V)", "Hand (P)", "Add a sticky note", "Highlight", "Draw", "Fill & Sign: Add signature", "Hotbar settings"];
     let rects: Vec<_> = labels.iter().map(|&label| h.get_by_label(label).rect()).collect();
     for (i, a) in rects.iter().enumerate() {
         for (j, b) in rects.iter().enumerate().skip(i + 1) {
@@ -5002,7 +5002,7 @@ fn hotbar_settings_menu_closes_on_click_outside() {
     h.get_by_label("Hotbar settings").click();
     h.run_steps(3);
     assert!(h.query_by_label("Close menu").is_some());
-    h.get_by_label("Hand (H)").click();
+    h.get_by_label("Hand (P)").click();
     h.run_steps(3);
     assert!(h.query_by_label("Close menu").is_none());
     assert_eq!(h.state().quick_tool, QuickTool::Hand);
@@ -5846,9 +5846,10 @@ fn undo_with_a_card_menu_open_leaves_the_page_keys() {
     assert_eq!(comments(&h).len(), 1, "Undo took the second square back");
     assert_eq!(h.state().views[0].comments.selected, None, "and deselected the first");
     assert!(!egui::Popup::is_any_open(&h.ctx), "the menu closed with its card's button");
-    h.key_press(egui::Key::H);
+    // This fork (KEY.1): P picks the Hand tool (H is Highlight).
+    h.key_press(egui::Key::P);
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Hand, "H picks the Hand tool");
+    assert_eq!(h.state().quick_tool, QuickTool::Hand, "P picks the Hand tool");
 }
 
 /// ⌘C with a menu of the menu bar open is the menu's: the selected comment isn't copied.

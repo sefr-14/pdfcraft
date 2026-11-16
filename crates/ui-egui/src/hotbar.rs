@@ -1191,7 +1191,9 @@ mod tests {
         // The unified bar (#5909) is drawn in the quick bar's area.
         let bar = area("quick-bar").expect("the hotbar is shown");
         assert!(page_area.contains_rect(bar), "{bar:?} in {page_area:?}");
-        let find = area("find-bar").expect("the find bar is open");
+        // Upstream keys the find bar by its view (split view can show two).
+        let key = h.state().views[0].view_key();
+        let find = h.ctx.memory(|m| m.area_rect(egui::Id::unique(("find-bar", key)))).expect("the find bar is open");
         assert!(!bar.intersects(find), "{bar:?} clear of the find bar {find:?}");
         let page = h.state().views[0].page_screen_rect(0).expect("the page is drawn");
         assert!(bar.right() <= page.left(), "{bar:?} in the margin left of the sheet {page:?}");

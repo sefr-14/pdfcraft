@@ -1,4 +1,7 @@
-//! Release and source Flatpaks must allow release checks and host update helpers.
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
+//! Release and source Flatpaks must agree on their permissions. Upstream's also allow release
+//! checks and its host update helper (craft-update); this fork leaves craft-update out (SYNC.13),
+//! so its Flatpaks update through flatpak and are granted neither (the manifests say why).
 fn finish_args(manifest: &str) -> Vec<&str> {
     manifest
         .split("finish-args:")
@@ -19,9 +22,10 @@ fn flatpak_update_permissions() {
     ];
     let args = manifests.map(finish_args);
     assert_eq!(args[0], args[1], "source and release permissions must agree");
+    // This fork (SYNC.17): upstream's updater permissions stay out with its updater.
     for permissions in args {
-        for required in ["--share=network", "--talk-name=org.freedesktop.Flatpak"] {
-            assert!(permissions.contains(&required), "missing update permission: {required}");
+        for upstream_only in ["--share=network", "--talk-name=org.freedesktop.Flatpak"] {
+            assert!(!permissions.contains(&upstream_only), "upstream's update permission {upstream_only} without its updater");
         }
     }
 }

@@ -775,7 +775,7 @@ pub(crate) fn keys(ctx: &egui::Context, keys: PageKeys, view: &mut DocView, info
         }
         // Taken: nothing else reacts to the same press (this fork, OV11).
         if cancelled || dropped {
-            ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+            keys.take(ctx, egui::Key::Escape);
         }
     }
     // This fork (COMMENTS.1): with several cards selected in the panel, the keys delete nothing

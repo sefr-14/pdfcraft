@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Viewer preferences applied when a document opens (ISO 32000-2 §12.2, Table 147): hiding the
 //! toolbars, menu and window controls in its tab, with F8 to bring them back; fitting and
 //! centring the window; and the zoom a one-page-at-a-time layout opens at.
@@ -75,14 +76,14 @@ fn a_document_that_hides_the_interface_opens_without_it_and_f8_brings_it_back() 
     assert_eq!(shown(&h), (false, false, false), "the toolbar, menu and rail are hidden");
     assert_eq!(h.state().hidden_interface(), HiddenInterface::ALL);
     // The quick-action bar is a toolbar too.
-    assert!(h.query_by_label_contains("Hand (H)").is_none());
+    assert!(h.query_by_label_contains("Hand (P)").is_none());
     // The tab strip stays: the tabs and Home are still there.
     h.get_by_label("Home");
 
     h.key_press(egui::Key::F8);
     h.run_steps(3);
     assert_eq!(shown(&h), (true, true, true), "F8 shows them");
-    h.get_by_label_contains("Hand (H)");
+    h.get_by_label_contains("Hand (P)");
     h.key_press(egui::Key::F8);
     h.run_steps(3);
     assert_eq!(shown(&h), (false, false, false), "and hides them again");
