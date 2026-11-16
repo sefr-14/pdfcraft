@@ -2264,7 +2264,7 @@ fn a_cut_page_is_named_beside_an_xfa_form_notice() {
     h.get_by_label_contains("XFA data are kept in step");
     h.state_mut().views[0].cut_pages.insert(0);
     h.run_steps(2);
-    h.get_by_label_contains("Page 1 holds more content than PdfCraft can read");
+    h.get_by_label_contains("Page 1 holds more content than PDF Overlay can read");
     h.get_by_label_contains("XFA data are kept in step");
 }
 
@@ -2286,7 +2286,7 @@ fn a_page_found_cut_after_a_dismissal_is_still_named() {
     h.state_mut().views[0].notice_dismissed = true;
     h.state_mut().views[0].cut_pages.insert(0);
     h.run_steps(2);
-    h.get_by_label_contains("Page 1 holds more content than PdfCraft can read");
+    h.get_by_label_contains("Page 1 holds more content than PDF Overlay can read");
     h.get_by_label("Dismiss").click();
     h.run_steps(2);
     assert!(h.query_by_label_contains("holds more content").is_none(), "the cut-page notice can be dismissed");
@@ -2297,7 +2297,7 @@ fn a_page_found_cut_after_a_dismissal_is_still_named() {
     assert!(h.query_by_label_contains("holds more content").is_none(), "the dismissed page stays dismissed");
     h.state_mut().views[0].cut_pages.insert(1);
     h.run_steps(2);
-    h.get_by_label_contains("2 pages hold more content than PdfCraft can read, page 1 first");
+    h.get_by_label_contains("2 pages hold more content than PDF Overlay can read, page 1 first");
 }
 
 /// Ctrl+wheel zooms a visible window that another application has focus over, as plain

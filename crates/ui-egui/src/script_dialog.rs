@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Script prompts suspend the document worker, never the egui event loop.
 use crate::PdfCraftApp;
 use pdfcraft_engine::{
@@ -202,7 +203,7 @@ impl PdfCraftApp {
                 }
                 Prompt::Text { title, question, password, label, .. } => {
                     if *password {
-                        ui.label(tl!("This request comes from the document, not PdfCraft. Only enter a password if you trust this document."));
+                        ui.label(tl!("This request comes from the document, not PDF Overlay. Only enter a password if you trust this document."));
                     }
                     if !title.is_empty() {
                         ui.label(title);

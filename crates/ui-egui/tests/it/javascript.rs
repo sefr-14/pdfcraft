@@ -1,3 +1,4 @@
+// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
 //! Acrobat JavaScript in the shell (egui_kittest): the console, Document JavaScripts, a button
 //! script and Preferences ▸ JavaScript.
 
@@ -301,7 +302,7 @@ fn native_script_prompts_show_an_app_owned_caption() {
         wait_for(&mut h, body);
         assert!(h.query_by_label("This document's script is asking").is_some(), "{script}");
         assert_eq!(
-            h.query_by_label("This request comes from the document, not PdfCraft. Only enter a password if you trust this document.").is_some(),
+            h.query_by_label("This request comes from the document, not PDF Overlay. Only enter a password if you trust this document.").is_some(),
             script.contains("bPassword:true"),
             "{script}"
         );
