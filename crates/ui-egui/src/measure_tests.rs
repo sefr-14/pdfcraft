@@ -1097,3 +1097,167 @@ fn apply_scale_is_the_primary_action_and_keeps_its_size_and_disabled_look() {
     h.run_steps(3);
     assert_eq!(h.state().session.get(id).unwrap().edit_generation(), edits, "and it can't be used");
 }
+
+// ── The snapping worker (OV10), over upstream's own snapping reader (SYNC.17) ──────────────────
+//
+// v0.21.1 brought a second reader of a page's lines for snapping (`load_paths`); this fork keeps
+// OV10's worker, so upstream's six tests of its reader went with it. What each checked is held
+// here or above, against the worker:
+// - a small file read on the window's thread, a large one on a thread; a small file past a
+//   frame's limits on a thread: OV10 reads every page on its worker, never on the window's
+//   thread (`no_point_is_placed_while_the_drawing_is_read_for_snapping`,
+//   `a_click_while_the_lines_load_waits_for_them`), and caps a dense sheet itself
+//   (`hidden_layers_and_dense_sheets_snap_as_they_are_shown`);
+// - one read at a time: one read per page and drawing version
+//   (`each_page_and_drawing_version_is_read_once`);
+// - a read that stops is an error: `a_snapping_worker_that_stops_says_so_and_the_next_version_reads_again`;
+// - the reading message goes once the drawing is read, and clicks wait only with snapping on:
+//   `no_point_is_placed_while_the_drawing_is_read_for_snapping`.
+
+/// Screen position of user-space point (`x`, `y`) on page `page` of view `view`.
+fn at_page(h: &Harness<'static, PdfCraftApp>, view: usize, page: usize, x: f32, y: f32) -> Pos2 {
+    let app = h.state();
+    let v = &app.views[view];
+    let r = v.page_screen_rect(page).expect("page on screen");
+    let info = &app.session.get(v.id).unwrap().info.pages[page];
+    let [vx, vy] = info.user_to_view(x, y);
+    pos2(r.left() + vx / info.width * r.width(), r.top() + vy / info.height * r.height())
+}
+
+/// The worker reads a page's lines once per drawing version: hovering for many frames, or a
+/// measurement kept on the page (a comment, which doesn't change what the page draws), reads
+/// nothing again; an edit that changes the drawing (a page turned) reads it again, and snapping
+/// follows it; another page is a read of its own, and the first page's lines are kept.
+#[test]
+fn each_page_and_drawing_version_is_read_once() {
+    let (mut h, id) = harness(plain());
+    tool(&mut h, Tool::Distance);
+    settle_at(&mut h, 0, 351.0, 51.0);
+    assert_eq!(h.state().views[0].measure.snapped, Some(([350.0, 50.0], SnapKind::Endpoint)));
+    assert_eq!(h.state().views[0].measure.lines_read, 1);
+    h.run_steps(20);
+    assert_eq!(h.state().views[0].measure.lines_read, 1, "hovering reads nothing again");
+    click_at(&mut h, 0, 100.0, 100.0);
+    click_at(&mut h, 0, 300.0, 200.0);
+    assert_eq!(kept(&h, id), 1);
+    settle_at(&mut h, 0, 351.0, 51.0);
+    assert_eq!(h.state().views[0].measure.lines_read, 1, "a measurement kept doesn't change the drawing");
+    // The page turned over: its drawing is another version.
+    assert!(h.state_mut().apply_edit(pdfcraft_engine::Edit::RotatePages { pages: vec![0], degrees: 180 }));
+    h.run_steps(4);
+    settle_at(&mut h, 0, 351.0, 51.0);
+    assert_eq!(h.state().views[0].measure.lines_read, 2, "a changed drawing is read again");
+    assert_eq!(h.state().views[0].measure.snapped, Some(([350.0, 50.0], SnapKind::Endpoint)), "and snapped to as it is now");
+    // A second page: a read of its own.
+    assert!(h.state_mut().apply_edit(pdfcraft_engine::Edit::DuplicatePages { pages: vec![0], at: None }));
+    h.run_steps(4);
+    settle_at(&mut h, 0, 351.0, 51.0);
+    let before = h.state().views[0].measure.lines_read;
+    h.state_mut().views[0].go_to_page(1);
+    h.run_steps(6);
+    let p = at_page(&h, 0, 1, 351.0, 51.0);
+    settle(&mut h, p);
+    assert_eq!(h.state().views[0].measure.lines_read, before + 1, "page 2 is read once");
+    assert_eq!(h.state().views[0].measure.snapped, Some(([350.0, 50.0], SnapKind::Endpoint)), "and snaps on page 2");
+    h.state_mut().views[0].go_to_page(0);
+    h.run_steps(6);
+    settle_at(&mut h, 0, 351.0, 51.0);
+    assert_eq!(h.state().views[0].measure.lines_read, before + 1, "page 1's lines were kept");
+}
+
+/// A worker that stops without an answer (upstream's `a_snapping_read_that_stops_is_an_error`):
+/// the page says snapping isn't available and why, nothing waits for it any more, and a click
+/// places its point where it is. The next version of the drawing is read again and snaps.
+#[test]
+fn a_snapping_worker_that_stops_says_so_and_the_next_version_reads_again() {
+    let (mut h, id) = harness(plain());
+    tool(&mut h, Tool::Distance);
+    let tx = {
+        let app = h.state_mut();
+        let doc = app.session.get(id).unwrap();
+        app.views[0].measure.hold_snapping(doc, 0)
+    };
+    drop(tx);
+    let p = at(&h, 0, 351.0, 51.0);
+    h.hover_at(p);
+    h.run_steps(3);
+    assert!(!h.state_mut().views[0].measure.snapping_loading(), "nothing waits for a stopped worker");
+    let error = h.state().views[0].measure.error.clone().unwrap_or_default();
+    assert!(error.contains("Snapping isn't available on this page") && error.contains("the worker stopped"), "{error}");
+    click(&mut h, p);
+    let points = h.state().views[0].measure.points.clone();
+    assert!(points.len() == 1 && close(points[0], [351.0, 51.0], 1.0) && points[0] != [350.0, 50.0], "placed where it is: {points:?}");
+    h.state_mut().views[0].measure.cancel();
+    assert!(h.state_mut().apply_edit(pdfcraft_engine::Edit::RotatePages { pages: vec![0], degrees: 180 }));
+    h.run_steps(4);
+    settle_at(&mut h, 0, 351.0, 51.0);
+    assert_eq!(h.state().views[0].measure.snapped, Some(([350.0, 50.0], SnapKind::Endpoint)), "the next version is read and snaps");
+}
+
+/// A read the view no longer wants: its answer, arriving after the drawing changed, is never
+/// taken for the new version's lines (the new version has a read of its own), and a worker whose
+/// view was closed finishes quietly (its answer goes nowhere).
+#[test]
+fn a_late_or_unwanted_read_never_stands_in_for_the_current_drawing() {
+    let (mut h, id) = harness(plain());
+    tool(&mut h, Tool::Distance);
+    let stale = {
+        let app = h.state_mut();
+        let doc = app.session.get(id).unwrap();
+        app.views[0].measure.hold_snapping(doc, 0)
+    };
+    assert!(h.state_mut().apply_edit(pdfcraft_engine::Edit::RotatePages { pages: vec![0], degrees: 180 }));
+    h.run_steps(4);
+    // The old version's answer: another drawing altogether (no lines at all).
+    let blank = Session::new().create_blank(400.0, 300.0, 1).unwrap();
+    stale.send(Snapper::read(blank, None, 0, &HashSet::new())).unwrap();
+    settle_at(&mut h, 0, 351.0, 51.0);
+    assert_eq!(h.state().views[0].measure.snapped, Some(([350.0, 50.0], SnapKind::Endpoint)), "the current drawing's own lines");
+    // A read held for a tab that then closes: sending its answer neither fails loudly nor lands anywhere.
+    let orphan = {
+        let app = h.state_mut();
+        let doc = app.session.get(id).unwrap();
+        app.views[0].measure.hold_snapping(doc, 0)
+    };
+    h.state_mut().close_tab(0);
+    h.run_steps(2);
+    assert!(h.state().views.is_empty());
+    assert!(orphan.send(Err("late".into())).is_err(), "nobody is listening any more");
+}
+
+/// Two views of one document (Duplicate Tab) read and keep their lines each: one still waiting
+/// for its read holds up neither the other view's snapping nor its own once the answer comes.
+#[test]
+fn each_view_of_a_document_snaps_with_its_own_read() {
+    let mut h = harness_with(1600.0, |app| {
+        app.open_bytes("plan.pdf", None, plain()).unwrap();
+        app.duplicate_view(0);
+        app.active = Some(1);
+    });
+    let id = h.state().views[0].id;
+    tool(&mut h, Tool::Distance);
+    let held = {
+        let app = h.state_mut();
+        let doc = app.session.get(id).unwrap();
+        app.views[0].measure.hold_snapping(doc, 0)
+    };
+    // The active view, the duplicate, reads and snaps while the first view's read is held.
+    let p = at(&h, 1, 351.0, 51.0);
+    h.hover_at(p);
+    for _ in 0..200 {
+        h.run_steps(1);
+        if h.state().views[1].measure.snapped.is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    assert_eq!(h.state().views[1].measure.snapped, Some(([350.0, 50.0], SnapKind::Endpoint)));
+    assert!(h.state_mut().views[0].measure.snapping_loading(), "the first view's read is still its own, and still held");
+    let bytes = h.state().session.get(id).unwrap().bytes.clone();
+    held.send(Snapper::read(bytes, None, 0, &HashSet::new())).unwrap();
+    h.state_mut().active = Some(0);
+    h.run_steps(4);
+    settle_at(&mut h, 0, 351.0, 51.0);
+    assert_eq!(h.state().views[0].measure.snapped, Some(([350.0, 50.0], SnapKind::Endpoint)));
+    assert_eq!(h.state().views[0].measure.lines_read, 0, "the held read was the first view's only one");
+}
