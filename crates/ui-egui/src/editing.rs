@@ -1387,6 +1387,11 @@ impl PdfCraftApp {
             self.shift_selected_bookmarks(action == A::OutdentSelected);
             return;
         }
+        // This fork (BOOKMARK.DND.1): a drag dropped in the panel.
+        if let A::MoveTo { paths, parent, index, stamp } = action {
+            self.move_bookmarks_to(paths, parent, index, stamp);
+            return;
+        }
         let Some((i, id)) = self.active_ids() else { return };
         let current = self.views[i].current;
         let parent_of = |p: &[usize]| p[..p.len() - 1].to_vec();
@@ -1433,7 +1438,7 @@ impl PdfCraftApp {
                 Edit::MoveBookmark { from: path, to_parent: grand, index: at }
             }
             // Handled before the match.
-            A::IndentSelected | A::OutdentSelected => return,
+            A::IndentSelected | A::OutdentSelected | A::MoveTo { .. } => return,
             A::Copy(path) => {
                 self.copy_bookmark(id, &path);
                 return;
@@ -1494,6 +1499,50 @@ impl PdfCraftApp {
             match (moved, now) {
                 (Some(moved), Some(now)) => view.bookmarks.select_moved(moved, now),
                 _ => view.bookmarks.clear(),
+            }
+        }
+    }
+}
+
+impl PdfCraftApp {
+    /// This fork (BOOKMARK.DND.1): move the bookmarks at `paths` of the active document together
+    /// to child `index` of `parent` (counted in that list as it is; past the end appends), as one
+    /// undoable change. Each bookmark keeps everything it has: this is a move of the bookmarks
+    /// themselves, never a cut and a paste.
+    ///
+    /// Nothing happens, and a message says so, when the document is no longer the version
+    /// (`stamp`) the paths were taken in: they may name other bookmarks now. A place the
+    /// bookmarks can't go changes nothing and shows why; a place they already are changes
+    /// nothing and adds no undo step. Afterwards the moved bookmarks are selected where they
+    /// went, and their new parent opens.
+    pub fn move_bookmarks_to(&mut self, paths: Vec<Vec<usize>>, parent: Vec<usize>, index: usize, stamp: (u64, usize)) {
+        let Some((i, id)) = self.active_ids() else { return };
+        let Some(doc) = self.session.get(id) else { return };
+        if crate::content_version(doc) != stamp {
+            if let Some(view) = self.views.get_mut(i) {
+                view.bookmarks.clear();
+            }
+            self.notify_tr("The bookmarks changed, so nothing was moved. Select them again.");
+            return;
+        }
+        // The document's own answer first: what a drop to the same place, or one that can't be
+        // made, would do is nothing, and that must not become an undo step.
+        let moved = match self.session.move_bookmarks(id, &paths, &parent, index, true) {
+            Ok(moved) if moved.changed => moved,
+            Ok(_) => return,
+            Err(e) => {
+                self.notify_error(e);
+                return;
+            }
+        };
+        if !self.apply_edit(Edit::MoveBookmarks { paths, to_parent: parent, index }) {
+            return;
+        }
+        let now = self.session.get(id).map(crate::content_version);
+        if let Some(view) = self.views.get_mut(i) {
+            match now {
+                Some(now) => view.bookmarks.select_moved(moved.paths, now),
+                None => view.bookmarks.clear(),
             }
         }
     }

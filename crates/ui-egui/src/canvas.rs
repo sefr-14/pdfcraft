@@ -1049,6 +1049,8 @@ impl DocView {
         }
         self.org_drag = None;
         self.panel_drag = None;
+        // This fork (BOOKMARK.DND.1).
+        self.bookmarks.cancel_drag();
         self.selection_drag = false;
         self.router.cancel();
         self.auto_scroll.cancel();
@@ -1268,6 +1270,8 @@ impl DocView {
         // Thumbnail drags hold page indexes from before the change.
         self.panel_drag = None;
         self.org_drag = None;
+        // This fork (BOOKMARK.DND.1): a bookmark drag holds paths from before the change.
+        self.bookmarks.cancel_drag();
         self.comments.document_changed(info);
         self.reset_coarse_state();
     }

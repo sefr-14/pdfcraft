@@ -110,3 +110,9 @@
 	The document changed, so the selected comments were deselected. Select them again.	El documento cambió, así que los comentarios seleccionados se deseleccionaron. Vuelva a seleccionarlos.
 # This fork (sefr-14/pdfcraft): Cut, Copy and Paste not offered for several bookmarks (SYNC.16, SYNC.17).
 	Cut, Copy and Paste take one bookmark at a time	Cortar, Copiar y Pegar toman un marcador cada vez
+# This fork (sefr-14/pdfcraft): dragging bookmarks to reorder and re-nest them (BOOKMARK.DND.1).
+	Move bookmarks	Mover marcadores
+	{n} bookmarks	{n} marcadores
+	A bookmark can't go inside itself	Un marcador no puede colocarse dentro de sí mismo
+	Clear the search to rearrange bookmarks	Borre la búsqueda para reorganizar los marcadores
+	The bookmarks changed, so nothing was moved. Select them again.	Los marcadores cambiaron, así que no se movió nada. Vuelva a seleccionarlos.
