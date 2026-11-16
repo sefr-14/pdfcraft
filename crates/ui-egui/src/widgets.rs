@@ -194,6 +194,13 @@ pub fn ghost_button(ui: &mut egui::Ui, icon: &str, label: &str) -> Response {
     ghost_button_sized(ui, icon, label, 30.0)
 }
 
+/// How wide [`ghost_button`] draws `label`: its text, the icon and the padding (this fork: the
+/// mode bar's Overlay button is counted when the bar folds).
+pub fn ghost_button_width(ui: &egui::Ui, label: &str) -> f32 {
+    let t = Tokens::get(ui.ctx());
+    ui.fonts_mut(|f| f.layout_no_wrap(label.to_owned(), theme::medium(13.0), t.text).size().x) + 38.0
+}
+
 /// [`ghost_button`] at a given height (the macOS title bar is shorter than the tab strip elsewhere).
 pub fn ghost_button_sized(ui: &mut egui::Ui, icon: &str, label: &str, height: f32) -> Response {
     let t = Tokens::get(ui.ctx());
