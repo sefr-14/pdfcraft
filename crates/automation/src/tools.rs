@@ -483,6 +483,22 @@ pub fn tools() -> Vec<ToolDef> {
             "Move each bookmark out a level, to straight after its parent, as one undoable step; the bookmarks after it at its old level stay. Bookmarks under another one listed move with it; listed siblings keep their order. Refused whole, changing nothing, if any of them is at the top level or the outline links a bookmark more than once.",
         )
         .with(schema(json!({ "doc": doc(), "paths": paths("The bookmarks to outdent") }), &["doc", "paths"])),
+        // This fork (BOOKMARK.DND.1): several bookmarks moved to one place together.
+        t(
+            "bookmark_move_group",
+            "Move bookmarks together",
+            "Move several bookmarks, each with the bookmarks under it, to one place as one undoable step: under `parent` (the top level when omitted), before the bookmark now at `position` there (last when omitted). They arrive together in outline order, whatever order they are listed in; a bookmark under another one listed moves with it. Each keeps its destination, action, colour, style and every other entry. With `dry_run` nothing is changed: the result says where they would go. Returns their new paths and whether anything changed (`changed` is false, and no undo step is added, when they are already there). Refused whole, changing nothing, if a path or the parent names no bookmark, the parent is one of the bookmarks or under one, a bookmark would end deeper than 33 levels (the top level is the first), or the outline links a bookmark more than once.",
+        )
+        .with(schema(
+            json!({
+                "doc": doc(),
+                "paths": paths("The bookmarks to move"),
+                "parent": path("New parent (omit for the top level)"),
+                "position": { "type": "integer", "minimum": 1, "description": "1-based position among the parent's children as they are now, before anything moves: the bookmarks go before the one at this position (default, or past the end: last)." },
+                "dry_run": { "type": "boolean", "description": "Only report what the move would do; the document, its undo history and its unsaved-changes state are left as they are (default false)." }
+            }),
+            &["doc", "paths"],
+        )),
         t("bookmark_set_page", "Set a bookmark's page", "Point a bookmark at another page. Undoable.")
             .with(schema(json!({ "doc": doc(), "path": path("The bookmark"), "page": { "type": "integer", "minimum": 1 } }), &["doc", "path", "page"])),
         t(

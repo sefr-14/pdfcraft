@@ -9,6 +9,8 @@ mod backdrop;
 mod batch;
 mod batch_failures;
 mod batch_secrets;
+// This fork (BOOKMARK.DND.1).
+mod bookmark_move_group;
 // This fork (BOOKMARK.1).
 mod bookmark_shift;
 mod button_caption;
