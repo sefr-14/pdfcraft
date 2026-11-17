@@ -1,9 +1,10 @@
-# SCRATCH-BRANCH ONLY (scratch/tab-window-w0), never on Main: this copy of the fork's Windows
-# workflow builds the disposable TAB.WINDOW.1 W0 spike (w0-spike/) instead of the app, so the
-# owner can dispatch it on the scratch branch and download a test package. GitHub runs the copy
-# of a workflow_dispatch workflow at the ref the run is dispatched on, and this file name exists
-# on the default branch, so dispatching on scratch/tab-window-w0 runs this file.
-# Main's overlay-windows.yml is unchanged. The owner approved this change in its own commit.
+# Scratch-only Windows feasibility workflow for TAB.WINDOW.1 W0; not for Main.
+#
+# This copy of the fork's Windows workflow, on scratch/tab-window-w0 only, builds the disposable
+# W0 spike (w0-spike/) instead of the app, as a test package for Windows. GitHub runs the copy of
+# a workflow_dispatch workflow at the ref the run is dispatched on, and this file name exists on
+# the default branch, so dispatching on scratch/tab-window-w0 runs this file. Main's
+# overlay-windows.yml is a different file and is not changed by this branch.
 #
 # - Builds w0-spike (its own Cargo.lock and empty [workspace]) for x86_64-pc-windows-msvc.
 # - No secrets; read-only token; no tag, no release. The artifact holds the spike exe, the
@@ -55,11 +56,17 @@ jobs:
         working-directory: w0-spike
         run: cargo build --release --locked --bins --target "$TARGET"
 
-      - name: Check the exe exists (it opens windows, so it is not run here)
+      # With --target, Cargo writes the exe under target\<triple>\release, not target\release.
+      # It opens windows, so it is not run here; check it is there and plausibly complete.
+      - name: Check the built exe
         shell: pwsh
-        working-directory: w0-spike
         run: |
-          if (-not (Test-Path "target\$env:TARGET\release\w0-spike.exe")) { throw 'w0-spike.exe missing' }
+          $ErrorActionPreference = 'Stop'
+          $exe = "w0-spike\target\$env:TARGET\release\w0-spike.exe"
+          if (-not (Test-Path -PathType Leaf $exe)) { throw "w0-spike.exe missing at $exe" }
+          $size = (Get-Item $exe).Length
+          if ($size -lt 1MB) { throw "w0-spike.exe is only $size bytes" }
+          "w0-spike.exe: $size bytes at $exe"
 
       # The test scripts can't be parsed on the Linux machine that wrote them: parse them here
       # with Windows PowerShell's own parser, so a syntax error fails the build, not the test run.
@@ -84,12 +91,34 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $dir = "dist\$env:PACKAGE"
+          # Built at target\<triple>\release; packaged at target\release, where
+          # windows\run.ps1 looks (<package>\target\release\w0-spike.exe).
+          $built = "w0-spike\target\$env:TARGET\release\w0-spike.exe"
           New-Item -ItemType Directory -Force -Path "$dir\target\release" | Out-Null
-          Copy-Item "w0-spike\target\$env:TARGET\release\w0-spike.exe" "$dir\target\release\"
+          Copy-Item $built "$dir\target\release\w0-spike.exe"
           Copy-Item -Recurse w0-spike\windows "$dir\windows"
           Copy-Item w0-spike\W0-REPORT.md, LICENSE-MIT, LICENSE-APACHE $dir
           "commit $env:GITHUB_SHA" | Set-Content -Encoding ascii "$dir\COMMIT.txt"
+          # Every file the Windows run needs must be there and non-empty before zipping.
+          $required = @('target\release\w0-spike.exe', 'windows\run.ps1', 'windows\collect.ps1',
+                        'windows\build.ps1', 'windows\CHECKLIST.md', 'windows\README.md',
+                        'W0-REPORT.md', 'LICENSE-MIT', 'LICENSE-APACHE', 'COMMIT.txt')
+          foreach ($f in $required) {
+            $p = Join-Path $dir $f
+            if (-not (Test-Path -PathType Leaf $p)) { throw "package is missing $f" }
+            if ((Get-Item $p).Length -le 0) { throw "package file $f is empty" }
+          }
           Compress-Archive -Path $dir -DestinationPath "dist\$env:PACKAGE.zip" -Force
+          # Reopen the zip and check the same files are inside it, under the package folder.
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path "dist\$env:PACKAGE.zip"))
+          try {
+            $names = $zip.Entries | ForEach-Object { $_.FullName -replace '\\', '/' }
+            foreach ($f in $required) {
+              $want = "$env:PACKAGE/" + ($f -replace '\\', '/')
+              if ($names -notcontains $want) { throw "zip is missing $want" }
+            }
+          } finally { $zip.Dispose() }
           $hash = (Get-FileHash -Algorithm SHA256 "dist\$env:PACKAGE.zip").Hash.ToLowerInvariant()
           "$hash  $env:PACKAGE.zip" | Set-Content -Encoding ascii "dist\$env:PACKAGE.zip.sha256"
           "SHA-256 $hash  $env:PACKAGE.zip"
