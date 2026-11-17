@@ -32,8 +32,12 @@ branch would run when dispatched on that branch, with Main's copy untouched.
 **Chosen by the owner, subject to review of the exact change.** It is applied on the scratch branch
 as its own commit ("W0 spike: scratch-only Windows build of the spike (fork workflow change,
 option A)"), with one addition to the first draft: a step that parses the `.ps1` scripts with
-Windows PowerShell's parser, since they could not be parsed where they were written. The patch
-below is that commit's diff. Nothing is pushed or dispatched until the owner approves.
+Windows PowerShell's parser, since they could not be parsed where they were written. A corrective commit then made
+the header neutral, named the exe's build path (`target\x86_64-pc-windows-msvc\release`) and its
+packaged path (`target\release`, where `run.ps1` looks), and added checks that the exe and every
+required file are present and non-empty in the package and in the zip. The patch here is the
+whole change from Main's file to the final file, so applying it to Main's copy reproduces the
+scratch branch's file exactly. Nothing is pushed or dispatched until the owner approves.
 
 `A-scratch-branch-overlay-windows.patch` replaces the scratch branch's copy so that it builds
 `w0-spike` for `x86_64-pc-windows-msvc` and uploads a zip artifact. Main is not touched.
