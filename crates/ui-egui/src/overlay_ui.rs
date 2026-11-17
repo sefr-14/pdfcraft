@@ -12,7 +12,7 @@
 //! changed. Rendering and generation run off the UI thread, so a large drawing doesn't freeze the
 //! window.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
@@ -371,6 +371,11 @@ impl Picks {
         self.a.is_empty() && self.b.is_empty()
     }
 
+    /// Points, or typed values: something that places the pair.
+    fn has_data(&self) -> bool {
+        !self.is_empty() || self.manual.is_some()
+    }
+
     /// Point pairs in finished rounds.
     fn done(&self) -> usize {
         self.rounds.last().map_or(0, |r| r.0)
@@ -435,12 +440,91 @@ impl Picks {
     }
 }
 
+/// A matched pair: (A page, B page). A page is in at most one row, so the pages name the row.
+type PairKey = (usize, usize);
+
+/// OVERLAY.ALIGN.PAGE.1 (this fork): the two snapshots an alignment's points were picked on, each
+/// as (edit generation, file identity). Points picked on one version of a document are never
+/// applied to another without the user's review.
+type Stamp = [(u64, usize); 2];
+
+/// OVERLAY.ALIGN.PAGE.1: the main alignment, the default for every matched pair. Its points are
+/// picked on one pair (`on`), against the snapshots in `stamp`.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct MainAlign {
+    picks: Picks,
+    on: Option<PairKey>,
+    stamp: Option<Stamp>,
+}
+
+/// OVERLAY.ALIGN.PAGE.1: one pair's own alignment, picked on that pair against `stamp`.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Own {
+    picks: Picks,
+    stamp: Option<Stamp>,
+}
+
+/// Whether the main alignment can be used.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MainState {
+    /// No points: pairs are placed by their sheet match alone (the engine's identity placement).
+    Empty,
+    /// Picked on a current pair, against the current snapshots.
+    Current,
+    /// A document was refreshed since the points were picked: they wait for review.
+    Refreshed,
+    /// The pair the points were picked on is no longer matched.
+    ReferenceGone,
+}
+
+/// A pair's own alignment, where it is on the checklist.
+enum OwnState {
+    Applied(Registration),
+    /// No points yet, or a round of points not finished.
+    Pending,
+    /// The engine refuses the points.
+    Invalid(String),
+    /// A document was refreshed since the points were picked.
+    Stale,
+}
+
+/// What a pair is placed with, for the step's checklist, Preview and Generate.
+#[derive(Clone, Debug, PartialEq)]
+enum PairStatus {
+    /// The main alignment.
+    Main,
+    /// No main alignment: the sheet match alone.
+    Placed,
+    /// Its own alignment.
+    Own,
+    /// Its own alignment isn't finished: the main alignment (or the sheet match) is used.
+    OwnPending,
+    /// Its own alignment is refused (the reason): the main alignment is used.
+    OwnInvalid(String),
+    /// Its own alignment waits for review after a document changed: the main alignment is used.
+    OwnStale,
+}
+
+/// Which alignment the picker edits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Target {
+    Main,
+    Own(PairKey),
+}
+
 /// A pair's registration, as the engine fitted or the user typed it.
 struct Registration {
     matrix: Matrix,
     note: RegistrationNote,
     /// The residual report of the picks, when there are enough to check.
     report: Option<FitReport>,
+}
+
+impl Registration {
+    /// No registration: the pair as its sheet match places it.
+    fn placed() -> Registration {
+        Registration { matrix: Matrix::IDENTITY, note: RegistrationNote::PLACED, report: None }
+    }
 }
 
 struct FitReport {
@@ -855,8 +939,18 @@ pub struct Wizard {
     /// is shared: an override is never carried to another pair. A page is in at most one row
     /// (step 2 refuses duplicates), so the pages name the row.
     allow_different: HashSet<(usize, usize)>,
-    pub same_alignment_for_all: bool,
-    aligns: HashMap<(usize, usize), Picks>,
+    /// OVERLAY.ALIGN.PAGE.1: the main alignment, used by every pair without a valid own one.
+    main: MainAlign,
+    /// The checklist: pairs that need their own alignment, with it. At most one per pair.
+    own: BTreeMap<PairKey, Own>,
+    /// Own alignments set aside because their pair's match changed; one comes back only when
+    /// the same match returns against the same snapshots.
+    parked: BTreeMap<PairKey, Own>,
+    /// Own alignments of pairs taken off the checklist, kept so ticking the pair again brings
+    /// them back. Never applied.
+    unticked: BTreeMap<PairKey, Own>,
+    /// Open the checklist on the next frame (Preview's "Adjust this pair's alignment").
+    reveal_checklist: bool,
     align_pair: usize,
     /// Why the last click on a drawing placed no point.
     align_note: Option<String>,
@@ -921,8 +1015,11 @@ impl Wizard {
             same_sheet_for_all: true,
             sheets: HashMap::new(),
             allow_different: HashSet::new(),
-            same_alignment_for_all: true,
-            aligns: HashMap::new(),
+            main: MainAlign::default(),
+            own: BTreeMap::new(),
+            parked: BTreeMap::new(),
+            unticked: BTreeMap::new(),
+            reveal_checklist: false,
             align_pair: 0,
             align_note: None,
             views: [View::default(); 2],
@@ -1040,6 +1137,24 @@ impl Wizard {
 
     fn sync_pairs(&mut self) {
         self.pairs = self.pairing.rows();
+        // OVERLAY.ALIGN.PAGE.1 (O-A6): an own alignment whose match is gone is set aside whole
+        // (an unfinished one too); one whose match is back, against the same snapshots, returns.
+        let current: HashSet<PairKey> = self.pairs.iter().filter_map(Pair::pages).collect();
+        let gone: Vec<PairKey> = self.own.keys().filter(|k| !current.contains(k)).copied().collect();
+        for k in gone {
+            if let Some(o) = self.own.remove(&k) {
+                self.parked.insert(k, o);
+            }
+        }
+        self.unticked.retain(|k, _| current.contains(k));
+        let stamp = self.stamp();
+        let back: Vec<PairKey> =
+            self.parked.iter().filter(|(k, o)| current.contains(k) && (o.stamp.is_none() || o.stamp == stamp)).map(|(k, _)| *k).collect();
+        for k in back {
+            if let Some(o) = self.parked.remove(&k) {
+                self.own.insert(k, o);
+            }
+        }
         self.align_pair = self.align_pair.min(self.pairs.len().saturating_sub(1));
         self.preview.pair = self.preview.pair.min(self.pairs.len().saturating_sub(1));
     }
@@ -1296,8 +1411,10 @@ impl Wizard {
                     &[("n", &n), ("pages", &pages)],
                 ));
             }
-            let key = self.align_key(pair);
-            if self.aligns.get(&key).is_none_or(|a| a.pairs().is_empty()) {
+            // The points that place this pair: its own when they are applied, else the main ones.
+            let own_applied = matches!(self.own_state(pair), Some(OwnState::Applied(_)));
+            let points = if own_applied { self.own.get(&pair).map_or(0, |o| o.picks.pairs().len()) } else { self.main.picks.pairs().len() };
+            if points == 0 {
                 return Some(crate::i18n::fmt(
                     tx("Output page {n} ({pages}): different sheet sizes need reference points."),
                     &[("n", &n), ("pages", &pages)],
@@ -1362,10 +1479,6 @@ impl Wizard {
 
     // ── Alignment ──
 
-    fn align_key(&self, pair: (usize, usize)) -> (usize, usize) {
-        if self.same_alignment_for_all { self.first_pair().unwrap_or(pair) } else { pair }
-    }
-
     fn limits(&mut self, pair: (usize, usize)) -> Option<(Limits, Matrix)> {
         let (pa, pb) = pair;
         let sa = self.a.as_mut()?.size(pa)?;
@@ -1380,11 +1493,184 @@ impl Wizard {
         Some((Limits { diag_a: diag(sa), diag_b: diag(sb) * factor, settings: Settings::default() }, k))
     }
 
-    /// The registration the overlay uses for `pair`: the fit of its picks (those of the first
-    /// pair while the alignment is shared), or the typed values; none without picks.
-    fn registration(&mut self, pair: (usize, usize)) -> Result<Registration, String> {
-        let key = self.align_key(pair);
-        let align = self.aligns.get(&key).cloned().unwrap_or_default();
+    /// The two snapshots as they are now: what new points are stamped with.
+    fn stamp(&self) -> Option<Stamp> {
+        let sig = |s: &Snapshot| (s.generation, Arc::as_ptr(&s.bytes) as usize);
+        Some([sig(self.a.as_ref()?), sig(self.b.as_ref()?)])
+    }
+
+    /// Whether the main alignment can be used (derived: undoing a re-pairing makes it usable
+    /// again with nothing to confirm).
+    fn main_state(&self) -> MainState {
+        if !self.main.picks.has_data() {
+            return MainState::Empty;
+        }
+        if !self.pairs.iter().filter_map(Pair::pages).any(|p| Some(p) == self.main.on) {
+            return MainState::ReferenceGone;
+        }
+        if self.main.stamp != self.stamp() {
+            return MainState::Refreshed;
+        }
+        MainState::Current
+    }
+
+    /// The pair the main alignment's points are on: where they were picked, else the first
+    /// matched pair.
+    fn main_pair(&self) -> Option<PairKey> {
+        match self.main.on {
+            Some(p) if self.main.picks.has_data() => Some(p),
+            _ => self.first_pair(),
+        }
+    }
+
+    /// The main alignment, for a pair that uses it; why not, when it can't be used.
+    fn main_registration(&mut self) -> Result<Registration, String> {
+        match self.main_state() {
+            MainState::Empty => Ok(Registration::placed()),
+            MainState::ReferenceGone => Err(tx(
+                "The main alignment was set on a pair that is no longer matched. Restore that match, or clear the main alignment and set it again.",
+            )
+            .into()),
+            MainState::Refreshed => Err(tx(
+                "A document changed since the main alignment's points were picked. Check them on the drawings and confirm them, or clear them.",
+            )
+            .into()),
+            MainState::Current => {
+                if self.main.picks.open() {
+                    return Err(tx("The main alignment's reference points aren't finished. Select the remaining points, or undo them.").into());
+                }
+                let (picks, on) = (self.main.picks.clone(), self.main.on);
+                match on {
+                    Some(on) => self.fit(&picks, on),
+                    None => Ok(Registration::placed()),
+                }
+            }
+        }
+    }
+
+    /// `pair`'s own alignment, when it is on the checklist.
+    fn own_state(&mut self, pair: PairKey) -> Option<OwnState> {
+        let own = self.own.get(&pair)?.clone();
+        if !own.picks.has_data() || own.picks.open() {
+            return Some(OwnState::Pending);
+        }
+        if own.stamp != self.stamp() {
+            return Some(OwnState::Stale);
+        }
+        Some(match self.fit(&own.picks, pair) {
+            Ok(r) => OwnState::Applied(r),
+            Err(e) => OwnState::Invalid(e),
+        })
+    }
+
+    /// What `pair` is placed with and why: its own alignment when that is complete, valid and
+    /// current; otherwise the main alignment, or without one the sheet match alone. An error when
+    /// the pair would have to use a main alignment that can't be used: that pair is blocked, and
+    /// no other.
+    fn effective(&mut self, pair: PairKey) -> Result<(Registration, PairStatus), String> {
+        let own = self.own_state(pair);
+        if let Some(OwnState::Applied(mut r)) = own {
+            r.note.own = true;
+            return Ok((r, PairStatus::Own));
+        }
+        let main_empty = self.main_state() == MainState::Empty;
+        let r = self.main_registration()?;
+        let status = match own {
+            None if main_empty => PairStatus::Placed,
+            None => PairStatus::Main,
+            Some(OwnState::Pending) => PairStatus::OwnPending,
+            Some(OwnState::Invalid(e)) => PairStatus::OwnInvalid(e),
+            Some(OwnState::Stale) => PairStatus::OwnStale,
+            Some(OwnState::Applied(_)) => PairStatus::Own,
+        };
+        Ok((r, status))
+    }
+
+    /// The registration the overlay uses for `pair` (see [`Wizard::effective`]).
+    fn registration(&mut self, pair: PairKey) -> Result<Registration, String> {
+        self.effective(pair).map(|(r, _)| r)
+    }
+
+    /// The status of `pair` as one line for the checklist, Preview and Generate.
+    fn status_text(&mut self, pair: PairKey) -> String {
+        match self.effective(pair) {
+            Err(e) => crate::i18n::fmt(tx("Blocked: {e}"), &[("e", &e)]),
+            Ok((_, PairStatus::Main)) => tx("Main alignment").into(),
+            Ok((_, PairStatus::Placed)) => tx("Placed by its sheet match (no main alignment)").into(),
+            Ok((_, PairStatus::Own)) => tx("Own alignment").into(),
+            Ok((_, PairStatus::OwnPending)) => tx("Own alignment not finished: the main alignment is used").into(),
+            Ok((_, PairStatus::OwnInvalid(e))) => crate::i18n::fmt(tx("Own alignment not valid ({e}): the main alignment is used"), &[("e", &e)]),
+            Ok((_, PairStatus::OwnStale)) => tx("Own alignment needs review: the main alignment is used").into(),
+        }
+    }
+
+    /// The alignment the picker edits while `pair` is on show.
+    fn target(&self, pair: PairKey) -> Target {
+        if self.own.contains_key(&pair) { Target::Own(pair) } else { Target::Main }
+    }
+
+    /// The pair whose drawings the picker shows for `target`.
+    fn target_pair(&self, target: Target, shown: PairKey) -> PairKey {
+        match target {
+            Target::Own(p) => p,
+            Target::Main => self.main_pair().unwrap_or(shown),
+        }
+    }
+
+    fn picks_of(&self, target: Target) -> Picks {
+        match target {
+            Target::Main => self.main.picks.clone(),
+            Target::Own(p) => self.own.get(&p).map(|o| o.picks.clone()).unwrap_or_default(),
+        }
+    }
+
+    /// Store `picks` for `target`, picked on `on`. Only a real change restamps them: drawing the
+    /// step never confirms points that wait for review.
+    fn set_picks(&mut self, target: Target, picks: Picks, on: PairKey) {
+        if self.picks_of(target) == picks {
+            return;
+        }
+        let stamp = if picks.has_data() { self.stamp() } else { None };
+        match target {
+            Target::Main => {
+                self.main.on = picks.has_data().then_some(on);
+                self.main.picks = picks;
+                self.main.stamp = stamp;
+            }
+            Target::Own(p) => {
+                let o = self.own.entry(p).or_default();
+                o.picks = picks;
+                o.stamp = stamp;
+            }
+        }
+    }
+
+    /// Put `pair` on the checklist, with the own alignment it had when it was taken off.
+    fn tick(&mut self, pair: PairKey) {
+        if !self.own.contains_key(&pair) {
+            let o = self.unticked.remove(&pair).unwrap_or_default();
+            self.own.insert(pair, o);
+        }
+    }
+
+    /// Take `pair` off the checklist: it uses the main alignment again. Its points are kept
+    /// aside (never applied) in case it is ticked again.
+    fn untick(&mut self, pair: PairKey) {
+        if let Some(o) = self.own.remove(&pair) {
+            self.unticked.insert(pair, o);
+        }
+    }
+
+    /// Remove `pair`'s own alignment altogether: it uses the main alignment again.
+    fn remove_own(&mut self, pair: PairKey) {
+        self.own.remove(&pair);
+        self.unticked.remove(&pair);
+    }
+
+    /// Fit `align`, picked on `key`: the fit of its finished rounds, or the typed values; none
+    /// without picks.
+    fn fit(&mut self, align: &Picks, key: PairKey) -> Result<Registration, String> {
+        let align = align.clone();
         let Some((limits, k)) = self.limits(key) else { return Err(tx("The pages can't be read for alignment.").into()) };
         let picks: Vec<PointPair> = align
             .pairs()
@@ -1394,7 +1680,7 @@ impl Wizard {
                 PointPair::new(Point::new(x, y), *a)
             })
             .collect();
-        let note = |kind, f: Option<&FitReport>| RegistrationNote { kind, rms_mm: f.map(|f| f.rms_mm), max_mm: f.map(|f| f.max_mm) };
+        let note = |kind, f: Option<&FitReport>| RegistrationNote { kind, rms_mm: f.map(|f| f.rms_mm), max_mm: f.map(|f| f.max_mm), own: false };
         if let Some(sim) = align.manual {
             let report = (picks.len() >= 2).then(|| FitReport::of(&pdfcraft_overlay::report(sim, &picks, &limits), Some(sim)));
             let kind = if report.is_some() { RegistrationKind::Similarity } else { RegistrationKind::Matrix };
@@ -1420,23 +1706,11 @@ impl Wizard {
     }
 
     fn alignment_problem(&mut self) -> Option<String> {
-        let pairs: Vec<(usize, usize)> = self.pairs.iter().filter_map(Pair::pages).collect();
-        let mut seen = HashSet::new();
-        for pair in pairs {
-            let key = self.align_key(pair);
-            if !seen.insert(key) {
-                continue;
-            }
-            if self.aligns.get(&key).is_some_and(Picks::open) {
+        for (row, pair) in self.matched_rows() {
+            if let Err(e) = self.effective(pair) {
                 return Some(crate::i18n::fmt(
-                    tx("Pair A {a} / B {b}: the reference points aren't finished. Select the remaining points, or undo them."),
-                    &[("a", &(key.0 + 1).to_string()), ("b", &(key.1 + 1).to_string())],
-                ));
-            }
-            if let Err(e) = self.registration(pair) {
-                return Some(crate::i18n::fmt(
-                    tx("Pair A {a} / B {b}: {e}"),
-                    &[("a", &(key.0 + 1).to_string()), ("b", &(key.1 + 1).to_string()), ("e", &e)],
+                    tx("Output page {n} ({pages}): {e}"),
+                    &[("n", &(row + 1).to_string()), ("pages", &self.pair_name(pair)), ("e", &e)],
                 ));
             }
         }
@@ -2395,16 +2669,15 @@ fn sheet_alignment(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
     if !pairs.iter().any(|(i, _)| *i == w.align_pair) {
         w.align_pair = first_row;
     }
-    ui.horizontal_wrapped(|ui| {
-        if w.match_sheets {
+    if w.match_sheets {
+        ui.horizontal_wrapped(|ui| {
             ui.add(widgets::checkbox(&mut w.same_sheet_for_all, tx("Use the first pair's sheet size for every pair")));
-        }
-        ui.add(widgets::checkbox(&mut w.same_alignment_for_all, tx("Use the first pair's alignment for every pair")));
-    });
+        });
+    }
     // One pair at a time while either setting is per pair, or while a pair's sheets differ: its
     // override is its own (OV6.9), so each such pair must be reachable.
     let any_differ = pairs.iter().any(|(_, k)| w.sheets_differ(*k));
-    let per_pair = !w.same_alignment_for_all || (w.match_sheets && !w.same_sheet_for_all) || any_differ;
+    let per_pair = !w.own.is_empty() || (w.match_sheets && !w.same_sheet_for_all) || any_differ;
     if per_pair {
         let current = w.align_pair;
         let mut chosen = None;
@@ -2446,7 +2719,78 @@ fn sheet_alignment(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
     ui.add_space(4.0);
     sheet_size_section(w, ui, t, pair);
     ui.add_space(6.0);
+    own_checklist(w, ui, t);
+    ui.add_space(6.0);
     alignment_section(w, ui, t, pair);
+}
+
+/// OVERLAY.ALIGN.PAGE.1 (this fork): the pairs that need their own alignment. Every pair uses
+/// the main alignment; a ticked pair gets its own (three points on Old, then the same on New),
+/// used once it is complete and valid. Nothing is ticked for the user: sheet sizes, scaling,
+/// rotation and crop never put a pair on the list by themselves.
+fn own_checklist(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
+    let open = std::mem::take(&mut w.reveal_checklist).then_some(true);
+    egui::CollapsingHeader::new(RichText::new(tx("Pairs that need their own alignment")).strong())
+        .id_salt("overlay-own-checklist")
+        .default_open(!w.own.is_empty())
+        .open(open)
+        .show(ui, |ui| checklist_rows(w, ui, t));
+}
+
+fn checklist_rows(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
+    let pairs = w.matched_rows();
+    muted(
+        ui,
+        t,
+        tx(
+            "Every pair uses the main alignment. Tick a pair to give it its own; until that is complete and valid, the pair keeps the main alignment.",
+        ),
+    );
+    let mut show = None;
+    for (row, pair) in pairs {
+        let mut on = w.own.contains_key(&pair);
+        let name = crate::i18n::fmt(tx("Output page {n}: {pages}"), &[("n", &(row + 1).to_string()), ("pages", &w.pair_name(pair))]);
+        let status = w.status_text(pair);
+        let blocked = w.effective(pair).is_err();
+        ui.horizontal(|ui| {
+            if ui.add(widgets::checkbox(&mut on, &name)).changed() {
+                if on {
+                    w.tick(pair);
+                    show = Some(row);
+                } else {
+                    w.untick(pair);
+                }
+            }
+            let colour = if blocked {
+                Color32::from_rgb(200, 60, 40)
+            } else if matches!(w.effective(pair), Ok((_, PairStatus::OwnPending | PairStatus::OwnInvalid(_) | PairStatus::OwnStale))) {
+                Color32::from_rgb(200, 110, 20)
+            } else {
+                t.text_muted
+            };
+            ui.label(RichText::new(status).color(colour));
+            if w.own.contains_key(&pair) && w.align_pair != row && ui.button(tx("Edit")).on_hover_text(name.clone()).clicked() {
+                show = Some(row);
+            }
+        });
+    }
+    if let Some(row) = show {
+        w.align_pair = row;
+    }
+    // O-A6: own alignments whose match changed are set aside, never applied to another pair.
+    if !w.parked.is_empty() {
+        let names: Vec<String> = w.parked.keys().map(|k| w.pair_name(*k)).collect();
+        ui.colored_label(
+            Color32::from_rgb(200, 110, 20),
+            crate::i18n::fmt(
+                tx("Set aside because their match changed: {pairs}. Those pages now use the main alignment. An own alignment comes back if its match is restored."),
+                &[("pairs", &names.join("; "))],
+            ),
+        );
+        if ui.button(tx("Discard set-aside alignments")).clicked() {
+            w.parked.clear();
+        }
+    }
 }
 
 /// A displayed sheet's physical size (after `/UserUnit`): "105.8 × 70.6 mm (300 × 200 pt)".
@@ -2577,15 +2921,92 @@ fn alignment_section(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, pair: (usize
             &[("key", crate::commands::command_modifier_label(ui.ctx()))],
         ),
     );
-    let key = w.align_key(pair);
+    // OVERLAY.ALIGN.PAGE.1: a ticked pair edits its own alignment; any other edits the main one,
+    // on the pair its points are picked on.
+    let target = w.target(pair);
+    let key = w.target_pair(target, pair);
+    let row_of = |w: &Wizard, k: PairKey| w.matched_rows().iter().find(|(_, p)| *p == k).map_or(0, |(r, _)| r + 1);
+    match target {
+        Target::Main => {
+            ui.label(
+                RichText::new(crate::i18n::fmt(
+                    tx("Main alignment, for every pair without its own · picked on output page {n}: {pages}"),
+                    &[("n", &row_of(w, key).to_string()), ("pages", &w.pair_name(key))],
+                ))
+                .strong(),
+            );
+            match w.main_state() {
+                MainState::ReferenceGone => {
+                    let gone = w.main.on.map(|k| w.pair_name(k)).unwrap_or_default();
+                    ui.colored_label(
+                        Color32::from_rgb(200, 60, 40),
+                        crate::i18n::fmt(
+                            tx("The main alignment was set on {pages}, which is no longer matched. Restore that match in step 2, or clear the main alignment and set it again. Pairs that would use it can't go on."),
+                            &[("pages", &gone)],
+                        ),
+                    );
+                    if ui.button(tx("Clear the main alignment")).clicked() {
+                        w.main = MainAlign::default();
+                    }
+                    return;
+                }
+                MainState::Refreshed => {
+                    ui.colored_label(
+                        Color32::from_rgb(200, 110, 20),
+                        tx("A document changed since these points were picked. Check them on the drawings below, then confirm them or clear them. Until then, pairs that would use the main alignment can't go on."),
+                    );
+                    ui.horizontal(|ui| {
+                        if ui.button(tx("Points still correct")).clicked() {
+                            w.main.stamp = w.stamp();
+                        }
+                        if ui.button(tx("Clear the main alignment")).clicked() {
+                            w.main = MainAlign::default();
+                        }
+                    });
+                }
+                MainState::Empty | MainState::Current => {}
+            }
+        }
+        Target::Own(p) => {
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(crate::i18n::fmt(
+                        tx("Own alignment for output page {n}: {pages}"),
+                        &[("n", &row_of(w, p).to_string()), ("pages", &w.pair_name(p))],
+                    ))
+                    .strong(),
+                );
+                if ui.button(tx("Remove own alignment")).clicked() {
+                    w.remove_own(p);
+                }
+            });
+            if !w.own.contains_key(&p) {
+                return;
+            }
+            let status = w.status_text(p);
+            ui.label(RichText::new(status).color(t.text_muted));
+            if matches!(w.own_state(p), Some(OwnState::Stale)) {
+                ui.colored_label(
+                    Color32::from_rgb(200, 110, 20),
+                    tx("A document changed since these points were picked. Check them on the drawings below, then confirm them or pick them again."),
+                );
+                if ui.button(tx("Points still correct")).clicked()
+                    && let Some(stamp) = w.stamp()
+                    && let Some(o) = w.own.get_mut(&p)
+                {
+                    o.stamp = Some(stamp);
+                }
+            }
+        }
+    }
     let (old, new) = w.old_new();
-    let mut align = w.aligns.get(&key).cloned().unwrap_or_default();
+    let mut align = w.picks_of(target);
     let expect = align.expect(old);
     let role = |side: Side| if side == old { tx("Old") } else { tx("New") };
     // Where the user is: which drawing takes the next point, and which one. Two lines of fixed
     // height, so the drawings never move under the pointer between clicks.
     let status = if !align.open() && align.done() > 0 {
-        if w.registration(pair).is_ok() { tx("Alignment calculated.").to_string() } else { tx("Alignment not calculated: see below.").to_string() }
+        if w.fit(&align, key).is_ok() { tx("Alignment calculated.").to_string() } else { tx("Alignment not calculated: see below.").to_string() }
     } else {
         match expect.of {
             Some(of) => crate::i18n::fmt(
@@ -2745,14 +3166,14 @@ fn alignment_section(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, pair: (usize
             tx("Affine alignment changes the drawing's proportions. Use it only for stretched or skewed scans; the output records it."),
         );
     }
-    w.aligns.insert(key, align.clone());
+    w.set_picks(target, align.clone(), key);
     ui.add_space(6.0);
-    let differ = w.sheets_differ(pair);
-    match w.registration(pair) {
+    let differ = w.sheets_differ(key);
+    match w.fit(&align, key) {
         Err(e) => {
             ui.colored_label(Color32::from_rgb(200, 60, 40), e);
         }
-        Ok(r) => registration_readout(w, ui, t, key, &r, &align, differ),
+        Ok(r) => registration_readout(w, ui, t, target, key, &r, &align, differ),
     }
 }
 
@@ -2826,7 +3247,8 @@ fn snap_marker(painter: &egui::Painter, at: Pos2, kind: SnapKind) {
     painter.galley(corner, galley, colour);
 }
 
-fn registration_readout(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, key: (usize, usize), r: &Registration, align: &Picks, differ: bool) {
+#[allow(clippy::too_many_arguments)]
+fn registration_readout(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, target: Target, key: PairKey, r: &Registration, align: &Picks, differ: bool) {
     let m = r.matrix.0;
     let scale = m[0].hypot(m[1]);
     let rotation = m[1].atan2(m[0]).to_degrees();
@@ -2894,14 +3316,16 @@ fn registration_readout(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens, key: (usi
         changed |= ui.add(egui::DragValue::new(&mut rot).speed(0.001).range(-180.0..=180.0).max_decimals(4)).changed();
         ui.label(tx("Scale"));
         changed |= ui.add(egui::DragValue::new(&mut s).speed(0.0001).range(0.05..=20.0).max_decimals(6)).changed();
-        if ui.add_enabled(align.manual.is_some(), egui::Button::new(tx("Back to the fit"))).clicked()
-            && let Some(a) = w.aligns.get_mut(&key)
-        {
+        if ui.add_enabled(align.manual.is_some(), egui::Button::new(tx("Back to the fit"))).clicked() {
+            let mut a = w.picks_of(target);
             a.manual = None;
+            w.set_picks(target, a, key);
         }
     });
     if changed && let Some(sim) = Similarity::new(s, rot.to_radians(), x * PT_PER_MM, y * PT_PER_MM) {
-        w.aligns.entry(key).or_default().manual = Some(sim);
+        let mut a = w.picks_of(target);
+        a.manual = Some(sim);
+        w.set_picks(target, a, key);
     }
 }
 
@@ -2961,6 +3385,24 @@ fn preview_step(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
             ))
             .color(t.text_muted),
         );
+    }
+    // OVERLAY.ALIGN.PAGE.1 (O-A4): what this pair is placed with, and a way back to the Alignment
+    // step on this very pair (no picking here).
+    if let Some(row) = w.pairs.get(w.preview.pair).copied()
+        && let Some(pages) = row.pages()
+    {
+        let status = w.status_text(pages);
+        let pending = !matches!(w.effective(pages), Ok((_, PairStatus::Main | PairStatus::Placed | PairStatus::Own)));
+        ui.horizontal(|ui| {
+            let colour = if pending { Color32::from_rgb(200, 110, 20) } else { t.text_muted };
+            ui.label(RichText::new(status).color(colour));
+            if ui.button(tx("Adjust this pair's alignment")).clicked() {
+                w.tick(pages);
+                w.reveal_checklist = true;
+                w.align_pair = w.preview.pair;
+                w.step = Step::SheetAlignment;
+            }
+        });
     }
     if let Some(e) = &w.preview.error {
         if let Some(items) = w.preview.unresolved.clone() {
@@ -3096,6 +3538,27 @@ fn generate_step(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
     ui.add_space(8.0);
     // What will be written, before it is: one output page per row of step 2.
     ui.label(RichText::new(summary_text(w)).strong());
+    // OVERLAY.ALIGN.PAGE.1: which pages use their own alignment, and which have one not applied.
+    let (mut own, mut pending) = (Vec::new(), Vec::new());
+    for (row, pair) in w.matched_rows() {
+        match w.effective(pair) {
+            Ok((_, PairStatus::Own)) => own.push((row + 1).to_string()),
+            Ok((_, PairStatus::OwnPending | PairStatus::OwnInvalid(_) | PairStatus::OwnStale)) => pending.push((row + 1).to_string()),
+            _ => {}
+        }
+    }
+    if !own.is_empty() {
+        ui.label(crate::i18n::fmt(tx("Output pages with their own alignment: {pages}"), &[("pages", &own.join(", "))]));
+    }
+    if !pending.is_empty() {
+        ui.colored_label(
+            Color32::from_rgb(200, 110, 20),
+            crate::i18n::fmt(
+                tx("Output pages whose own alignment isn't applied (not finished, not valid or waiting for review), so they use the main alignment: {pages}"),
+                &[("pages", &pending.join(", "))],
+            ),
+        );
+    }
     let (old, new) = w.old_new();
     for (side, role, other) in [(old, "Old", new), (new, "New", old)] {
         let only: Vec<String> = w
@@ -3164,6 +3627,16 @@ fn generate_step(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
         ui.add(egui::TextEdit::multiline(&mut text).font(egui::TextStyle::Monospace).desired_width(f32::INFINITY).desired_rows(12).interactive(true));
     }
 }
+
+// This fork (OVERLAY.ALIGN.PAGE.1, A1): the alignment as it is, measured against known geometry.
+#[cfg(test)]
+mod align_characterisation;
+// This fork (OVERLAY.ALIGN.PAGE.1, A1): the full numbers, over the whole placement transform.
+#[cfg(test)]
+mod align_findings;
+// This fork (OVERLAY.ALIGN.PAGE.1): which alignment each pair is placed with.
+#[cfg(test)]
+mod align_resolution;
 
 #[cfg(test)]
 mod picks_tests {

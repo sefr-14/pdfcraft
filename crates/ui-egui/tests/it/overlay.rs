@@ -777,7 +777,9 @@ fn the_override_is_per_pair() {
     to_sheet_and_alignment(&mut h);
     wait_for_drawings(&mut h, true);
     assert!(toggled(&h, "Use the first pair's sheet size for every pair"));
-    assert!(toggled(&h, "Use the first pair's alignment for every pair"));
+    // OVERLAY.ALIGN.PAGE.1: the main alignment is every pair's default; no pair is on the
+    // checklist of pairs with their own.
+    assert!(h.query_by_label("Use the first pair's alignment for every pair").is_none());
     click_label(&mut h, "Match sheet sizes");
     click_label(&mut h, ALLOW);
     pick_the_line_on_large_new(&mut h);
@@ -1164,4 +1166,127 @@ fn a_late_preview_leaves_the_generate_list_alone() {
     let (_, id) = app.active_ids().unwrap();
     let layers: Vec<&str> = app.session.get(id).unwrap().info.layers.iter().map(|l| l.name.as_str()).collect();
     assert_eq!(layers, ["Old", "New"]);
+}
+
+// ── OVERLAY.ALIGN.PAGE.1: the main alignment and pairs with their own ───────────────────────
+
+/// [`drawing`] at 300 × 200 pt with each page's drawing moved right by its own amount.
+fn drawing_shifted(x: u32, dx: [u32; 2]) -> Vec<u8> {
+    let mut objs: Vec<String> = vec!["<< /Type /Catalog /Pages 2 0 R >>".into(), "<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>".into()];
+    for (i, d) in (0..2u32).zip(dx) {
+        objs.push(format!("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents {} 0 R >>", 4 + 2 * i));
+        let body = format!("1 0 0 1 {d} 0 cm 0 g 2 w 20 20 m 280 180 l S {} 60 40 40 re f", x + 10 * i);
+        objs.push(format!("<< /Length {} >>\nstream\n{body}\nendstream", body.len()));
+    }
+    let mut out = b"%PDF-1.7\n".to_vec();
+    let mut offsets = Vec::new();
+    for (i, o) in objs.iter().enumerate() {
+        offsets.push(out.len());
+        out.extend_from_slice(format!("{} 0 obj\n{o}\nendobj\n", i + 1).as_bytes());
+    }
+    let xref = out.len();
+    out.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", objs.len() + 1).as_bytes());
+    for o in offsets {
+        out.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
+    }
+    out.extend_from_slice(format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", objs.len() + 1).as_bytes());
+    out
+}
+
+const CHECKLIST: &str = "Pairs that need their own alignment";
+const PAIR_2: &str = "Output page 2: Old p. 2 · New p. 2";
+
+/// The generated overlay's `/Info /Subject`.
+fn subject(h: &Harness<'static, PdfCraftApp>) -> String {
+    let app = h.state();
+    let (_, id) = app.active_ids().unwrap();
+    let doc = pdfcraft_cos::Document::open(app.session.get(id).unwrap().bytes.clone()).unwrap();
+    let info = doc.resolve(doc.trailer().get(b"Info").unwrap()).as_dict().cloned().unwrap();
+    match &*doc.resolve(info.get(b"Subject").unwrap()) {
+        pdfcraft_cos::Object::String(s) => s.to_text(),
+        other => panic!("{other:?}"),
+    }
+}
+
+/// New's second sheet is drawn 10 pt further right than Old's; the first is not. Pair 2 is
+/// ticked and gets its own two points; pair 1 keeps the main alignment (none: lower-left, 1:1).
+/// The output places each page with its own registration and says which page used its own.
+#[test]
+fn a_ticked_pair_gets_its_own_alignment_and_the_rest_keep_the_main_one() {
+    let mut h = harness_with(drawing(100), drawing_shifted(100, [0, 10]));
+    to_sheet_and_alignment(&mut h);
+    wait_for_drawings(&mut h, true);
+    assert!(h.query_by_label(PAIR_2).is_none(), "the checklist starts closed");
+    click_label(&mut h, CHECKLIST);
+    assert!(!toggled(&h, PAIR_2), "nothing is ticked for the user");
+    click_label(&mut h, PAIR_2);
+    assert!(toggled(&h, PAIR_2));
+    h.get_by_label("Own alignment for output page 2: Old p. 2 · New p. 2");
+    // Not finished: not applied, and nothing blocks.
+    assert!(h.query_all_by_label("Own alignment not finished: the main alignment is used").next().is_some());
+    assert!(!next_disabled(&h));
+    // Fold the checklist away so the drawings sit where they always do, and let pair 2's pages
+    // render.
+    click_label(&mut h, CHECKLIST);
+    for _ in 0..80 {
+        h.run_steps(1);
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    wait_for_drawings(&mut h, true);
+    let (va, vb) = (h.get_by_label("Old drawing").rect(), h.get_by_label("New drawing").rect());
+    let nudge = egui::vec2(2.0, -2.0);
+    for (x, y) in [(20.0, 20.0), (280.0, 180.0)] {
+        click_at(&mut h, on_page(va, x, y) + nudge);
+    }
+    for (x, y) in [(30.0, 20.0), (290.0, 180.0)] {
+        click_at(&mut h, on_page(vb, x, y) + nudge);
+    }
+    h.get_by_label("Alignment calculated.");
+    assert!(h.query_all_by_label("Own alignment").next().is_some());
+    next(&mut h);
+    h.get_by_label("5. Preview");
+    next(&mut h);
+    h.get_by_label("6. Generate");
+    h.get_by_label("Output pages with their own alignment: 2");
+    h.get_by_label("Generate").click();
+    wait(&mut h, |app| app.views.len() == 3);
+    assert_eq!(placed(&h, 0, "GB"), [1.0, 0.0, 0.0, 1.0, 0.0, 0.0], "pair 1: the main alignment (none)");
+    let [a, b, c, d, e, f] = placed(&h, 1, "GB");
+    assert!((a - 1.0).abs() < 1e-3 && b.abs() < 1e-3 && c.abs() < 1e-3 && (d - 1.0).abs() < 1e-3, "{a} {b} {c} {d}");
+    assert!((e + 10.0).abs() < 0.05 && f.abs() < 0.05, "pair 2: its own, 10 pt left: {e} {f}");
+    let s = subject(&h);
+    assert!(s.contains("Page 2: similarity registration") && s.contains("this page's own alignment"), "{s}");
+    assert!(!s.split("Page 2").next().unwrap_or_default().contains("own alignment"), "page 1 used the main alignment: {s}");
+}
+
+/// Preview's "Adjust this pair's alignment" goes back to the Alignment step on that pair, ticked
+/// and on show; an own alignment not finished doesn't block, and Generate says it isn't applied.
+#[test]
+fn adjust_this_pairs_alignment_from_preview() {
+    let mut h = harness();
+    to_sheet_and_alignment(&mut h);
+    next(&mut h);
+    h.get_by_label("5. Preview");
+    h.get_by_label("Placed by its sheet match (no main alignment)");
+    h.get_by_label("Adjust this pair's alignment").click();
+    h.run_steps(3);
+    h.get_by_label("4. Sheet size & Alignment");
+    h.get_by_label("Own alignment for output page 1: Old p. 1 · New p. 1");
+    assert!(toggled(&h, "Output page 1: Old p. 1 · New p. 1"), "ticked, and the checklist open");
+    assert!(!next_disabled(&h));
+    next(&mut h);
+    next(&mut h);
+    h.get_by_label("6. Generate");
+    h.get_by_label(
+        "Output pages whose own alignment isn't applied (not finished, not valid or waiting for review), so they use the main alignment: 1",
+    );
+    // Removing it: the pair is back on the main alignment, and nothing is pending.
+    back(&mut h);
+    back(&mut h);
+    h.get_by_label("Remove own alignment").click();
+    h.run_steps(3);
+    assert!(!toggled(&h, "Output page 1: Old p. 1 · New p. 1"));
+    next(&mut h);
+    next(&mut h);
+    assert!(h.query_by_label_contains("own alignment isn't applied").is_none());
 }

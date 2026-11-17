@@ -241,10 +241,10 @@ fn the_metadata_states_the_registration() {
     let p = placement(&a, &b);
     let mut out = LayeredOutput::new().expect("output");
     let notes = [
-        RegistrationNote { kind: RegistrationKind::Affine, rms_mm: Some(0.1234), max_mm: Some(0.25) },
-        RegistrationNote { kind: RegistrationKind::Similarity, rms_mm: Some(0.0), max_mm: Some(0.0) },
+        RegistrationNote { kind: RegistrationKind::Affine, rms_mm: Some(0.1234), max_mm: Some(0.25), own: false },
+        RegistrationNote { kind: RegistrationKind::Similarity, rms_mm: Some(0.0), max_mm: Some(0.0), own: false },
         RegistrationNote::PLACED,
-        RegistrationNote { kind: RegistrationKind::Matrix, rms_mm: None, max_mm: None },
+        RegistrationNote { kind: RegistrationKind::Matrix, rms_mm: None, max_mm: None, own: false },
     ];
     for n in notes {
         out.add_page(Some(pa.source(0).expect("page")), Some(pb.source(0).expect("page")), &p, &LayerStyle::default(), Roles::default(), n)
@@ -268,7 +268,7 @@ fn the_metadata_states_the_registration() {
     assert_eq!(pdfcraft_model::pages(&doc).len(), 4);
 
     for bad in [f64::NAN, f64::INFINITY, -1.0] {
-        let note = RegistrationNote { kind: RegistrationKind::Affine, rms_mm: Some(bad), max_mm: None };
+        let note = RegistrationNote { kind: RegistrationKind::Affine, rms_mm: Some(bad), max_mm: None, own: false };
         let r = compose_layered(Some(pa.source(0).expect("page")), None, &p, &LayerStyle::default(), Roles::default(), note);
         assert!(matches!(r, Err(OverlayError::NotFinite { .. })), "{bad}");
     }
@@ -761,7 +761,7 @@ fn hostile_layered_input_never_panics() {
             _ => Roles::default(),
         };
         let rms = if rng.next_u64().is_multiple_of(5) { rng.wild() } else { rng.range(0.0, 1.0) };
-        let note = RegistrationNote { kind: RegistrationKind::Affine, rms_mm: Some(rms), max_mm: None };
+        let note = RegistrationNote { kind: RegistrationKind::Affine, rms_mm: Some(rms), max_mm: None, own: false };
         match compose_layered(a, b, &p, &LayerStyle::default(), roles, note) {
             Ok(doc) => {
                 ok += 1;
@@ -772,4 +772,15 @@ fn hostile_layered_input_never_panics() {
         }
     }
     assert!(ok > 50 && err > 50, "both outcomes are exercised: {ok} composed, {err} refused");
+}
+
+/// This fork (OVERLAY.ALIGN.PAGE.1): a page placed with its own alignment, not the main one,
+/// says so in the metadata and the report.
+#[test]
+fn a_page_with_its_own_alignment_says_so() {
+    let own = RegistrationNote { kind: RegistrationKind::Similarity, rms_mm: Some(0.1), max_mm: Some(0.2), own: true };
+    assert_eq!(own.text(), "similarity registration, RMS residual 0.100 mm, largest residual 0.200 mm, this page's own alignment");
+    let main = RegistrationNote { own: false, ..own };
+    assert!(!main.text().contains("own alignment"));
+    assert!(!RegistrationNote::PLACED.text().contains("own alignment"));
 }

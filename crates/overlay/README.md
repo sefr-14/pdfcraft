@@ -209,6 +209,36 @@ the PRD's requirements stay as written, and every functional area is still there
   page listed (`oc::group_unresolved`). The grouping is by object reference, never by name, so two
   layers both named "0" are two questions, and documents A and B are decided apart. Decisions
   were already stored per document and object; only the list repeated.
+- The main alignment and pairs with their own (OVERLAY.ALIGN.PAGE.1, 17 Nov 2026). The
+  alignment picked on the reference pair (the first matched pair, until it has points) is the
+  **main alignment**, every pair's default; it replaces "Use the first pair's alignment for every
+  pair". A checklist in step 4, "Pairs that need their own alignment", selects the pairs that get
+  their own three-point alignment (three Old points, then the same on New, with the same
+  snapping, nudge and opt-in affine fit). Resolution, per pair (`Wizard::effective`, the one
+  lookup Preview and Generate use):
+  - unticked → the main alignment; no main points → placed by the sheet match alone (identity);
+  - ticked, own complete, valid and current → its own; the output's metadata and report say
+    "this page's own alignment" (`RegistrationNote::own`);
+  - ticked, own not finished, refused by the engine, or picked on another version of a document →
+    the main alignment, marked in the checklist, Preview and Generate as not applied;
+  - unticking or "Remove own alignment" → the main alignment again.
+
+  Nothing is ticked automatically: sheet sizes, scaling, rotation, CropBox and UserUnit never put
+  a pair on the list. Points carry the two snapshots they were picked on (`Stamp`). A main
+  alignment whose documents changed, or whose reference pair is no longer matched, is never
+  applied and never silently replaced: it blocks exactly the pairs that would use it, and a pair
+  with a valid, current own alignment goes on. A re-pairing sets a pair's own alignment aside
+  (an unfinished one too); it returns only with the same match against the same snapshots
+  (O-A6). OV6.9 is unchanged: a pair whose own sheets differ still needs its override and
+  reference points, which the main alignment's satisfy. Stage A1 measured how the main alignment
+  carries to pairs of other geometry (`overlay_ui/align_characterisation.rs`,
+  `align_findings.rs`); by the owner's decision no geometry check is added on top. Not done: saving
+  alignments with a session (in memory, like the wizard), several alignments for one pair.
+- Headless reach (recorded, not done here): Overlay compare has no automation tool and no
+  `parity/` entry, so AGENTS.md §3 is not met for the feature as a whole. Proposed as its own work
+  item, **OVERLAY.TOOL.1**: a `doc_overlay` tool taking the two documents, the pairing, a main
+  point set and per-pair point sets, returning the output document and the per-page registration
+  notes, with an end-to-end test and a parity entry.
 - Preview and Generate keep their own unresolved lists (OV6.11, 20 Oct 2026). They used to share
   one, so a preview finishing after Generate replaced Generate's list with its one page, or
   cleared it, and step 6 showed the wrong questions or the raw error. Decisions stay shared.
