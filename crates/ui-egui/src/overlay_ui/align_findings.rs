@@ -101,7 +101,7 @@ fn wizard(old: &[Sheet], new: &[Sheet]) -> (PdfCraftApp, Wizard) {
     app.set_option("language", "en").expect("language");
     app.open_bytes("new.pdf", None, pdf(new)).expect("New opens");
     app.open_bytes("old.pdf", None, pdf(old)).expect("Old opens");
-    let old_id = app.views.iter().map(|v| v.id).nth(1).expect("Old's tab");
+    let old_id = app.win.views.iter().map(|v| v.id).nth(1).expect("Old's tab");
     let w = Wizard::new(&app, old_id);
     assert_eq!(w.matched_rows().len(), old.len().min(new.len()));
     (app, w)

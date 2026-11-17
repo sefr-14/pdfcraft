@@ -1249,7 +1249,7 @@ fn a_ticked_pair_gets_its_own_alignment_and_the_rest_keep_the_main_one() {
     h.get_by_label("6. Generate");
     h.get_by_label("Output pages with their own alignment: 2");
     h.get_by_label("Generate").click();
-    wait(&mut h, |app| app.views.len() == 3);
+    wait(&mut h, |app| app.win.views.len() == 3);
     assert_eq!(placed(&h, 0, "GB"), [1.0, 0.0, 0.0, 1.0, 0.0, 0.0], "pair 1: the main alignment (none)");
     let [a, b, c, d, e, f] = placed(&h, 1, "GB");
     assert!((a - 1.0).abs() < 1e-3 && b.abs() < 1e-3 && c.abs() < 1e-3 && (d - 1.0).abs() < 1e-3, "{a} {b} {c} {d}");
