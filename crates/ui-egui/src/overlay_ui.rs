@@ -3165,6 +3165,10 @@ fn generate_step(w: &mut Wizard, ui: &mut egui::Ui, t: &Tokens) {
     }
 }
 
+// This fork (OVERLAY.ALIGN.PAGE.1, A1): the alignment as it is, measured against known geometry.
+#[cfg(test)]
+mod align_characterisation;
+
 #[cfg(test)]
 mod picks_tests {
     use super::*;
