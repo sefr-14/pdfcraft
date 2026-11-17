@@ -14,7 +14,7 @@ notice requirement.
 
 | Area | What changes | Where |
 |---|---|---|
-| Overlay compare | Six-step wizard that pairs, aligns and overlays two revisions of a drawing set into one new PDF, with the revisions in two layers (Old, New); resolves the sources' own layers and annotations first | `crates/overlay` (new), `crates/ui-egui/src/overlay_ui.rs` (new) |
+| Overlay compare | Six-step wizard that pairs, aligns and overlays two revisions of a drawing set into one new PDF, with the revisions in two layers (Old, New); resolves the sources' own layers and annotations first. One main alignment is every pair's default; a checklist gives chosen pairs their own three-point alignment, applied only when complete, valid and current (OVERLAY.ALIGN.PAGE.1) | `crates/overlay` (new), `crates/ui-egui/src/overlay_ui.rs` (new) |
 | Duplicate Tab | A second tab on the same document, navigated independently. Since SYNC.17 upstream's split view (two panes, one document shown twice) works beside it: a view has one key whichever made it, one refresh brings a document's other views up to date, and closing one of a document's views puts the typing it holds into the document rather than asking or dropping it (upstream asks) | `crates/ui-egui`, `panes.rs` |
 | Tab View and Tile View | All open tabs side by side; navigation follows the pointer | `crates/ui-egui` |
 | Thin lines | View › Page display › Thin lines (also Page display in the view menu) draws every stroke one device pixel wide | `vendor/hayro` (patch), `crates/render`, `crates/ui-egui` |
