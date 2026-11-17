@@ -156,7 +156,7 @@ impl PdfCraftApp {
                     tl!("Running action… file {d} of {t}"),
                     &[("d", &(done + 1).min(total.max(1)).to_string()), ("t", &total.max(1).to_string())],
                 );
-                if self.toast.as_ref().is_none_or(|t| t.0 != m) {
+                if self.win.toast.as_ref().is_none_or(|t| t.0 != m) {
                     self.notify(m);
                 }
                 if let Some(ctx) = &self.ctx {

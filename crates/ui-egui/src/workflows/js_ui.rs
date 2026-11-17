@@ -56,7 +56,7 @@ impl PdfCraftApp {
         // working, and the error is only in the console. Say so once, and bring the notice bar
         // (which keeps saying so) back if it was closed. A message of the form's own, below,
         // takes the toast's place.
-        if let Some(v) = view.and_then(|i| self.views.get_mut(i))
+        if let Some(v) = view.and_then(|i| self.win.views.get_mut(i))
             && !v.scripts_off_noted
             && self.session.get(id).is_some_and(|d| d.xfa_scripts_off())
         {
@@ -77,13 +77,13 @@ impl PdfCraftApp {
                     if let Some(i) = view {
                         // The print dialog reads the active document throughout its lifetime.
                         // Keep the source selected; restoring the comparison tab would retarget it.
-                        self.active = Some(i);
+                        self.win.active = Some(i);
                         self.open_print();
                     }
                 }
                 Request::GoToPage(p) => {
                     if let Some(i) = view {
-                        self.views[i].go_to_page(p);
+                        self.win.views[i].go_to_page(p);
                     }
                 }
                 Request::LaunchUrl(u) => self.request_document_url(&u, crate::LinkOrigin::Script),
@@ -106,12 +106,12 @@ impl PdfCraftApp {
                         Panel::Layers => crate::RightPanel::Layers,
                     };
                     // Show/Hide: a panel already showing closes.
-                    self.right = (self.right != Some(panel)).then_some(panel);
+                    self.win.right = (self.win.right != Some(panel)).then_some(panel);
                 }
                 Request::Zoom(z) => {
                     if let Some(i) = view {
-                        self.views[i].zoom = (z / 100.0) as f32;
-                        self.views[i].fit = crate::canvas::Fit::None;
+                        self.win.views[i].zoom = (z / 100.0) as f32;
+                        self.win.views[i].fit = crate::canvas::Fit::None;
                     }
                 }
                 Request::Highlight(on) => self.script_highlight(id, on),
@@ -131,10 +131,10 @@ impl PdfCraftApp {
             && let Some((wi, widget)) = f.widgets.iter().enumerate().find(|(_, w)| !w.hidden && w.page.is_some())
         {
             let page = widget.page.unwrap_or(0);
-            if self.views[i].page_screen_rect(page).is_none() {
-                self.views[i].go_to_page(page);
+            if self.win.views[i].page_screen_rect(page).is_none() {
+                self.win.views[i].go_to_page(page);
             }
-            self.views[i].forms.focus = Some(crate::forms_ui::open_focus(f, wi));
+            self.win.views[i].forms.focus = Some(crate::forms_ui::open_focus(f, wi));
         }
     }
 
@@ -143,11 +143,11 @@ impl PdfCraftApp {
     /// what the toast shows (another message, or a notice such as the run's own submit request)
     /// to go ([`Self::next_script_message`]).
     pub fn show_script_messages(&mut self, messages: Vec<Message>) {
-        let room = MAX_WAITING_MESSAGES.saturating_sub(self.script_messages.len());
+        let room = MAX_WAITING_MESSAGES.saturating_sub(self.win.script_messages.len());
         let left_out = u64::try_from(messages.len().saturating_sub(room)).unwrap_or(u64::MAX);
-        self.script_messages_dropped = self.script_messages_dropped.saturating_add(left_out);
-        self.script_messages.extend(messages.into_iter().take(room));
-        if self.toast.is_none() {
+        self.win.script_messages_dropped = self.win.script_messages_dropped.saturating_add(left_out);
+        self.win.script_messages.extend(messages.into_iter().take(room));
+        if self.win.toast.is_none() {
             self.next_script_message();
         }
     }
@@ -172,7 +172,7 @@ impl PdfCraftApp {
     /// A form's script turned field highlighting on or off (`app.runtimeHighlight`): as the
     /// Highlight fields button does, for document `id` and the next ones.
     pub(crate) fn script_highlight(&mut self, id: DocId, on: bool) {
-        if let Some(v) = self.views.iter_mut().find(|v| v.id == id) {
+        if let Some(v) = self.win.views.iter_mut().find(|v| v.id == id) {
             v.highlight_fields = on;
         }
         self.view_defaults.highlight_fields = on;
@@ -182,12 +182,12 @@ impl PdfCraftApp {
     /// Put the next waiting script message in the toast, or, once none waits, a notice of how many
     /// the queue had no room for. False when there is neither.
     pub fn next_script_message(&mut self) -> bool {
-        let Some(m) = self.script_messages.pop_front() else {
+        let Some(m) = self.win.script_messages.pop_front() else {
             // Every message the queue held has been shown: say how many it had no room for.
-            if self.script_messages_dropped == 0 {
+            if self.win.script_messages_dropped == 0 {
                 return false;
             }
-            let n = std::mem::take(&mut self.script_messages_dropped);
+            let n = std::mem::take(&mut self.win.script_messages_dropped);
             self.notify(crate::i18n::trn(
                 crate::i18n::current(),
                 n,
@@ -195,11 +195,11 @@ impl PdfCraftApp {
                 "{n} more messages from the form's scripts were left out.",
             ));
             // Kept with the toast until it has been shown its time (the toast's own expiry).
-            self.toast_dropped = n;
+            self.win.toast_dropped = n;
             return true;
         };
-        self.toast = Some((m.text.clone(), 0.0));
-        self.toast_script = Some(m);
+        self.win.toast = Some((m.text.clone(), 0.0));
+        self.win.toast_script = Some(m);
         true
     }
 
@@ -210,10 +210,10 @@ impl PdfCraftApp {
         let before = self.session.get(id).map(|d| d.edit_generation());
         let out = self.session.run_document_actions(id, event);
         if self.session.get(id).map(|d| d.edit_generation()) != before
-            && let Some(i) = self.views.iter().position(|v| v.id == id)
+            && let Some(i) = self.win.views.iter().position(|v| v.id == id)
             && let Some(info) = self.session.get(id).map(|d| d.info.clone())
         {
-            self.views[i].document_changed(&info);
+            self.win.views[i].document_changed(&info);
         }
         if !out.is_empty() {
             self.handle_js(id, out);
@@ -240,7 +240,7 @@ impl PdfCraftApp {
                 if let Some(i) = self.view_of(id)
                     && let Some(info) = self.session.get(id).map(|d| d.info.clone())
                 {
-                    self.views[i].document_changed(&info);
+                    self.win.views[i].document_changed(&info);
                 }
                 let out = JsOutput {
                     alerts: o.alerts,
@@ -262,7 +262,7 @@ impl PdfCraftApp {
             Ok(names) if names.is_empty() => self.notify_tr("No form fields were detected"),
             Ok(names) => {
                 if let Some(info) = self.session.get(id).map(|d| d.info.clone()) {
-                    self.views[i].document_changed(&info);
+                    self.win.views[i].document_changed(&info);
                 }
                 if names.len() == 1 {
                     self.notify_tr("Detected 1 form field");
@@ -285,7 +285,7 @@ impl PdfCraftApp {
         match self.session.run_javascript(id, &script, None) {
             Ok(o) => {
                 if let Some(info) = self.session.get(id).map(|d| d.info.clone()) {
-                    self.views[i].document_changed(&info);
+                    self.win.views[i].document_changed(&info);
                 }
                 let (error, result) = (o.error.clone(), o.result.clone());
                 let out = JsOutput { alerts: o.alerts, console: o.console, requests: o.requests, errors: Vec::new(), doc_errors: Vec::new() };

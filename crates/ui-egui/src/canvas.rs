@@ -464,12 +464,12 @@ fn verdict_mark_rect(widget: Rect, page: Rect, anchor: Pos2) -> Option<Rect> {
 /// is enough.
 pub(crate) fn tab_label(app: &PdfCraftApp, index: usize) -> Option<String> {
     let name = document_label(app, index)?;
-    Some(instance_label(name, app.views.get(index)?.instance))
+    Some(instance_label(name, app.win.views.get(index)?.instance))
 }
 
 /// [`tab_label`] without the duplicate's number: what pickers of documents show.
 pub(crate) fn document_label(app: &PdfCraftApp, index: usize) -> Option<String> {
-    let view = app.views.get(index)?;
+    let view = app.win.views.get(index)?;
     let doc = app.session.get(view.id)?;
     let Some(snap) = view.snapshot.as_ref() else { return Some(doc.display_name()) };
     Some(snapshot_tab_name(&doc.display_name(), &doc.name, snap))
@@ -2757,31 +2757,31 @@ fn plan_renders(ui: &egui::Ui, view: &mut DocView, info: &DocInfo, renders: Page
 fn apply_notice(app: &mut PdfCraftApp, index: usize, notice: Option<Notice>) {
     match notice {
         #[cfg(not(target_arch = "wasm32"))]
-        Some(Notice::Reload) => app.watch.reload_request = app.views.get(index).map(|view| view.id),
+        Some(Notice::Reload) => app.watch.reload_request = app.win.views.get(index).map(|view| view.id),
         #[cfg(target_arch = "wasm32")]
         Some(Notice::Reload) => {}
         Some(Notice::Repairs) => app.dialog = Some(crate::Dialog::Properties(crate::PropsTab::Advanced)),
         Some(Notice::Security) => app.dialog = Some(crate::Dialog::Properties(crate::PropsTab::Security)),
         Some(Notice::Unlock) => {
-            if let Some(doc) = app.views.get(index).and_then(|view| app.session.get(view.id)) {
+            if let Some(doc) = app.win.views.get(index).and_then(|view| app.session.get(view.id)) {
                 app.unlock_prompt = Some(crate::UnlockPrompt::new(doc, None));
             }
         }
         // Flags the view: the tab closes at the top of the next frame, where no document
         // borrow is held.
         Some(Notice::Close) => {
-            if let Some(view) = app.views.get_mut(index) {
+            if let Some(view) = app.win.views.get_mut(index) {
                 view.close_requested = true;
             }
         }
-        Some(Notice::Signatures) => app.right = Some(RightPanel::Signatures),
+        Some(Notice::Signatures) => app.win.right = Some(RightPanel::Signatures),
         Some(Notice::FieldHighlights(on)) => app.view_defaults.highlight_fields = on,
         Some(Notice::Console) => app.dialog = Some(crate::Dialog::JsConsole),
         // Back on in Preferences ▸ General.
         Some(Notice::HideSecured) => app.show_secured_notice = false,
         // Handled by the app with the other view actions (`ViewAction`).
         Some(Notice::LockSignatures) => {
-            if let Some(view) = app.views.get_mut(index) {
+            if let Some(view) = app.win.views.get_mut(index) {
                 view.pending_action = Some(ViewAction::LockSignatures);
             }
         }
@@ -2794,9 +2794,9 @@ fn apply_notice(app: &mut PdfCraftApp, index: usize, notice: Option<Notice>) {
 /// show one document in two tabs), and the flag rides its own view, so a stale flag can never
 /// close the wrong tab. Whether a tab was closed (or asked about).
 fn close_requested_tab(app: &mut PdfCraftApp, index: usize) -> bool {
-    let pending = app.views.get(index).filter(|v| v.close_requested).map(|v| v.view_key()).and_then(|key| app.tab_with_key(key));
+    let pending = app.win.views.get(index).filter(|v| v.close_requested).map(|v| v.view_key()).and_then(|key| app.tab_with_key(key));
     let Some(i) = pending else { return false };
-    app.views[i].close_requested = false;
+    app.win.views[i].close_requested = false;
     app.request_close_tab(i);
     true
 }
@@ -3055,10 +3055,10 @@ pub(crate) fn follow_link(
     index: usize,
     target: Option<LinkTarget>,
 ) -> Option<(pdfcraft_engine::DocId, String, pdfcraft_render::RemoteDestination)> {
-    let view_id = app.views[index].id;
+    let view_id = app.win.views[index].id;
     match target? {
         LinkTarget::Page(p, dest) => {
-            let view = &mut app.views[index];
+            let view = &mut app.win.views[index];
             if let Some(doc) = app.session.get(view.id) {
                 view.go_to_dest(p, dest, &doc.info);
             }
@@ -3074,18 +3074,18 @@ pub(crate) fn follow_link(
 /// A finished marquee zoom, a signature rectangle drawn, or an empty signature field clicked.
 /// Returns the tool to go on with.
 fn finish_sign_requests(app: &mut PdfCraftApp, index: usize, mut tool: QuickTool) -> QuickTool {
-    if let Some(done) = app.views[index].marquee_done.take() {
+    if let Some(done) = app.win.views[index].marquee_done.take() {
         app.finish_marquee(index, done);
     }
     // The copied area and its menu belong to Snapshot: another tool puts them away. The tool is
     // the app's, not the tab's, so every tab's area goes, not only the one on screen.
     if tool != QuickTool::Snapshot {
-        for v in &mut app.views {
+        for v in &mut app.win.views {
             v.area_pick = None;
         }
     }
-    if let Some(choice) = app.views[index].area_choice.take()
-        && let Some((page, area)) = app.views[index].area_pick
+    if let Some(choice) = app.win.views[index].area_choice.take()
+        && let Some((page, area)) = app.win.views[index].area_pick
     {
         match choice {
             crate::zoom_snap::AreaChoice::Print => app.open_print_area(page, area),
@@ -3093,21 +3093,21 @@ fn finish_sign_requests(app: &mut PdfCraftApp, index: usize, mut tool: QuickTool
         }
     }
     // A signature rectangle was drawn, or an empty signature field clicked.
-    let drawn = app.views[index].sign.drawn.take();
+    let drawn = app.win.views[index].sign.drawn.take();
     if let (Some((page, rect)), QuickTool::SignArea { certify }) = (drawn, tool) {
         tool = QuickTool::Select;
-        app.quick_tool = tool;
+        app.win.quick_tool = tool;
         app.start_signing(page, Some(rect), None, certify.then_some(2));
     }
-    if let Some(field) = app.views[index].sign.field.take() {
-        let signed = app.session.get(app.views[index].id).is_some_and(|d| d.signatures.iter().any(|s| s.field == field && s.signed));
+    if let Some(field) = app.win.views[index].sign.field.take() {
+        let signed = app.session.get(app.win.views[index].id).is_some_and(|d| d.signatures.iter().any(|s| s.field == field && s.signed));
         if signed {
-            app.right = Some(RightPanel::Signatures);
+            app.win.right = Some(RightPanel::Signatures);
             if !app.sig_expanded.contains(&field) {
                 app.sig_expanded.push(field);
             }
         } else {
-            let page = app.views[index].current;
+            let page = app.win.views[index].current;
             app.start_signing(page, None, Some(field), None);
         }
     }
@@ -3361,8 +3361,8 @@ fn view_tool(interaction: Interaction, tool: QuickTool) -> QuickTool {
 
 /// The Search panel closed: its search moves to the find bar.
 fn search_panel_closed(app: &mut PdfCraftApp, index: usize) {
-    let search_open = app.right == Some(crate::RightPanel::Search);
-    if let Some(f) = app.views.get_mut(index).and_then(|v| v.find.as_mut())
+    let search_open = app.win.right == Some(crate::RightPanel::Search);
+    if let Some(f) = app.win.views.get_mut(index).and_then(|v| v.find.as_mut())
         && f.in_panel
         && !search_open
     {
@@ -3390,46 +3390,47 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
     let tools = interaction == Interaction::Full;
     let can_paste_image = can_paste_image(app, ui);
     // Keyboard scrolling applies to this frame's page view only, never later.
-    let key_scroll = std::mem::take(&mut app.views[index].key_scroll);
-    let key_side = std::mem::take(&mut app.views[index].key_side);
+    let key_scroll = std::mem::take(&mut app.win.views[index].key_scroll);
+    let key_side = std::mem::take(&mut app.win.views[index].key_side);
     if key_scroll != 0.0 || key_side != 0.0 {
-        app.views[index].end_find_following();
+        app.win.views[index].end_find_following();
     }
     search_panel_closed(app, index);
     if close_requested_tab(app, index) {
         return;
     }
-    let Some(doc) = app.session.get(app.views[index].id) else { return };
+    let Some(doc) = app.session.get(app.win.views[index].id) else { return };
     let info = &doc.info;
-    let paper = app.session.reading_colors(app.views[index].id).and_then(|c| c.params).map_or(Color32::WHITE, |p| {
+    let paper = app.session.reading_colors(app.win.views[index].id).and_then(|c| c.params).map_or(Color32::WHITE, |p| {
         let [r, g, b] = p.background;
         Color32::from_rgb(r, g, b)
     });
     if info.pages.is_empty() {
-        app.views[index].auto_scroll.cancel();
+        app.win.views[index].auto_scroll.cancel();
         ui.centered_and_justified(|ui| ui.label(tl!("This document has no pages.")));
         return;
     }
     // The print dialog queues its own rasters later in the frame. Closing it drops them.
     if app.dialog != Some(crate::Dialog::Print) {
-        app.views[index].print_pages.clear();
+        app.win.views[index].print_pages.clear();
     }
     // The Prepare a form panel is open (or a field tool is picked): fields are edited, not filled.
     let preparing = tools && app.is_preparing();
     // Prepare a form ▸ Calculation order: the order's steps and links on the page.
-    let calc_order = preparing && app.left_open && app.left == crate::LeftPanel::CalculationOrder;
+    let calc_order = preparing && app.win.left_open && app.win.left == crate::LeftPanel::CalculationOrder;
     // Edit a PDF: added text and images can be selected, moved and edited.
     let editing_content = tools
-        && ((app.left_open && app.left == crate::LeftPanel::Tool("edit")) || matches!(app.quick_tool, QuickTool::AddText | QuickTool::EditText));
+        && ((app.win.left_open && app.win.left == crate::LeftPanel::Tool("edit"))
+            || matches!(app.win.quick_tool, QuickTool::AddText | QuickTool::EditText));
     let text_style = app.text_style.clone();
     let show_secured_notice = app.show_secured_notice;
     // Offer to lock a just-placed signature (#2149) on the same terms the save-time question
     // asks: one is still there, saving doesn't lock it anyway, and the document isn't signed.
     let lock_offer = !app.flatten_fill_sign_on_save
-        && app.placed_signatures.contains(&app.views[index].id)
+        && app.placed_signatures.contains(&app.win.views[index].id)
         && doc.info.annotations.iter().any(|a| a.fill_sign)
         && !doc.is_signed();
-    let view = &mut app.views[index];
+    let view = &mut app.win.views[index];
     // Opened without the owner password and something is restricted. The notice says so unless
     // the user turned it off (#4035): the restrictions themselves, and Document Properties ▸
     // Security, stay as they are.
@@ -3437,17 +3438,17 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
     let repaired = !doc.repair_log().is_empty();
     let notice = notices(view, doc, secured, repaired, lock_offer, crate::sign_ui::banner(&doc.signatures), ui, &t);
     apply_notice(app, index, notice);
-    let Some(doc) = app.session.get(app.views[index].id) else { return };
+    let Some(doc) = app.session.get(app.win.views[index].id) else { return };
     let info = &doc.info;
     // No dialog, close prompt or palette over the page: only then does page input count.
     let modal = app.modal_open();
-    let unobstructed = !modal && !app.palette_open;
+    let unobstructed = !modal && !app.win.palette_open;
     // A menu click can open a dialog after the frame's first look.
-    app.page_keys = app.page_keys.also(app.covers_pages());
-    let keys = app.page_keys;
+    app.win.page_keys = app.win.page_keys.also(app.covers_pages());
+    let keys = app.win.page_keys;
     let organize_zoom = app.organize_zoom;
     let invert_middle = app.invert_middle_drag;
-    let view = &mut app.views[index];
+    let view = &mut app.win.views[index];
     if view.organize {
         // One remembered grid size for every document, kept in the settings.
         view.set_grid_zoom(organize_zoom);
@@ -3473,7 +3474,7 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
     // Wheel zoom works in a visible window without focus, as wheel scrolling does; the other gestures need focus.
     let zoom_enabled = unobstructed && ui.is_enabled();
     let navigation_enabled = zoom_enabled && ui.input(|i| i.focused);
-    let present = presentation_click_state(ui, view, navigation_rect, navigation_enabled && app.quick_tool == QuickTool::Select);
+    let present = presentation_click_state(ui, view, navigation_rect, navigation_enabled && app.win.quick_tool == QuickTool::Select);
     pinch_zoom(ui, view, zoom_delta, navigation_rect, zoom_enabled);
     view.viewport_screen = avail;
     let (auto_delta, edge_delta) = auto_scroll_deltas(ui, view, avail, unobstructed, invert_middle);
@@ -3509,12 +3510,12 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
 
     // This fork (OV11): with the Hand tool a guide the pages' pointer took (`guides::pointer_input`)
     // holds the press, and the page view doesn't pan.
-    let hand_guides = tools && unobstructed && app.quick_tool == QuickTool::Hand && !middle_gesture;
+    let hand_guides = tools && unobstructed && app.win.quick_tool == QuickTool::Hand && !middle_gesture;
     let held = crate::guides::before_pages(view, &app.doc_prefs, doc.id, hand_guides);
     let mut scroll = page_scroll_area(
         ui,
         view,
-        &ScrollGeometry { rects: &rects, y_shift, content_w, content_h, avail, middle_gesture, hand: app.quick_tool == QuickTool::Hand, held },
+        &ScrollGeometry { rects: &rects, y_shift, content_w, content_h, avail, middle_gesture, hand: app.win.quick_tool == QuickTool::Hand, held },
     );
     let ppp = ui.ctx().pixels_per_point();
     let scale = view.render_scale(ppp);
@@ -3526,10 +3527,10 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
     // sharp request goes out once the zoom settles.
     let sharp_held = hold_sharp_renders(ui, view, scale);
     view.current_scale_tag = tag;
-    let hand = app.quick_tool == QuickTool::Hand;
+    let hand = app.win.quick_tool == QuickTool::Hand;
     // Comments being placed take the page with the Select tool (upstream); a navigation-only
     // tile takes it with the Hand tool and places nothing (this fork, OV7.3).
-    let (tool, placing) = page_tool(view, app.quick_tool);
+    let (tool, placing) = page_tool(view, app.win.quick_tool);
     let (tool, placing) = (view_tool(interaction, tool), placing && interaction == Interaction::Full);
     // Text selection runs for the Select tool and for the markup tools (highlight…).
     let selects_text = tool_selects_text(tool, preparing);
@@ -3733,7 +3734,7 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
     let form_notice = view.forms.notice.take();
     // One crop, then back to selecting (as Acrobat does).
     let cropped = view.pending_edit.as_ref().is_some_and(|e| matches!(e, pdfcraft_engine::Edit::SetPageBox { .. }));
-    let mut tool = app.quick_tool;
+    let mut tool = app.win.quick_tool;
     // This fork (OV11): Delete takes a selected guide first, and is consumed.
     if unobstructed {
         crate::guides::keys(ui.ctx(), view, &mut app.doc_prefs, doc.id);
@@ -3773,8 +3774,8 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
         Some(comments::CanvasAction::Edit(e)) => view.pending_edit = Some(*e),
         // `choose_right_panel` would borrow all of `app` while `view` is held; same effect.
         Some(comments::CanvasAction::OpenComments) => {
-            app.right = Some(RightPanel::Comments);
-            app.comments_panel_closed = false;
+            app.win.right = Some(RightPanel::Comments);
+            app.win.comments_panel_closed = false;
         }
         Some(comments::CanvasAction::Properties(p, i)) => open_props = Some((p, i)),
         Some(comments::CanvasAction::Colour(c)) => recolour = Some(c),
@@ -3788,7 +3789,7 @@ pub(crate) fn document_area_with(app: &mut PdfCraftApp, index: usize, ui: &mut e
         tool = QuickTool::Select;
     }
     let tool = finish_sign_requests(app, index, tool);
-    app.quick_tool = tool;
+    app.win.quick_tool = tool;
     let requests = FrameRequests {
         open_props,
         field_props,
@@ -3866,7 +3867,7 @@ fn apply_frame_requests(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui, 
         generation,
         avail,
     } = requests;
-    if let Some((page, at)) = app.views[index].comments.attach_at.take() {
+    if let Some((page, at)) = app.win.views[index].comments.attach_at.take() {
         app.attach_file_comment(page, at);
     }
     if let Some((p, i)) = open_props {
@@ -3875,30 +3876,30 @@ fn apply_frame_requests(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui, 
     if let Some(c) = recolour {
         app.colour_selected_comments(c);
     }
-    if let Some((p, i)) = app.views[index].comments.default_request.take() {
+    if let Some((p, i)) = app.win.views[index].comments.default_request.take() {
         app.make_comment_default(p, i);
     }
-    if let Some((p, i, open)) = app.views[index].comments.attachment_request.take() {
-        let doc = app.views[index].id;
+    if let Some((p, i, open)) = app.win.views[index].comments.attachment_request.take() {
+        let doc = app.win.views[index].id;
         app.comment_attachment_action(doc, p, i, open);
     }
     if let Some((name, w)) = field_props {
         app.open_field_props(&name, w);
     }
     if let Some(FieldMenu::Duplicate(name)) = field_menu {
-        let pages = app.session.get(app.views[index].id).map_or(1, |d| d.info.pages.len());
+        let pages = app.session.get(app.win.views[index].id).map_or(1, |d| d.info.pages.len());
         app.duplicate_draft = Some(crate::DuplicateDraft { name, all: true, from: 1, to: pages });
         app.dialog = Some(crate::Dialog::DuplicateField);
     }
-    if let Some((page, rect)) = app.views[index].links.open_new.take() {
+    if let Some((page, rect)) = app.win.views[index].links.open_new.take() {
         app.open_link_props(page, Some(rect), None);
     }
-    if let Some((page, i)) = app.views[index].links.open_existing.take() {
+    if let Some((page, i)) = app.win.views[index].links.open_existing.take() {
         app.open_link_props(page, None, Some(i));
     }
-    if let Some((page, quads)) = app.views[index].pending_redaction.take() {
+    if let Some((page, quads)) = app.win.views[index].pending_redaction.take() {
         let author = app.comment_prefs.author.clone();
-        app.views[index].pending_edit = Some(if app.quick_tool == QuickTool::Comment(comments::CommentTool::Highlight) {
+        app.win.views[index].pending_edit = Some(if app.win.quick_tool == QuickTool::Comment(comments::CommentTool::Highlight) {
             // An area highlight: a highlight over the box.
             let style = app.comment_prefs.style(comments::CommentTool::Highlight);
             pdfcraft_engine::Edit::AddAnnotation(pdfcraft_engine::NewAnnotation {
@@ -3930,19 +3931,19 @@ fn apply_frame_requests(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui, 
             }
         }
         Some(crate::edit_text_ui::ImageAction::DrawFreehand) => {
-            app.quick_tool = crate::QuickTool::Comment(crate::comments::CommentTool::Ink);
+            app.win.quick_tool = crate::QuickTool::Comment(crate::comments::CommentTool::Ink);
         }
         Some(crate::edit_text_ui::ImageAction::Redact(page, index)) => app.redact_page_image(page, index),
         Some(crate::edit_text_ui::ImageAction::Link(page, index)) => app.link_page_image(page, index),
         Some(crate::edit_text_ui::ImageAction::Recognize(page)) => app.recognize_text_on_page(page),
         Some(crate::edit_text_ui::ImageAction::AddComment(page, i)) => {
-            if let Some(d) = app.session.get(app.views[index].id) {
+            if let Some(d) = app.session.get(app.win.views[index].id) {
                 let images = d.page_images(page);
                 if let Some(img) = images.get(i) {
                     let r = img.visible_rect.unwrap_or(img.rect);
                     let center = [(r[0] + r[2]) / 2.0, (r[1] + r[3]) / 2.0];
-                    app.views[index].comments.context_at = Some((page, center));
-                    app.views[index].comments.composer = Some(crate::comments::Composer {
+                    app.win.views[index].comments.context_at = Some((page, center));
+                    app.win.views[index].comments.composer = Some(crate::comments::Composer {
                         page,
                         at: center,
                         kind: crate::comments::ComposerKind::Note,
@@ -3956,12 +3957,12 @@ fn apply_frame_requests(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui, 
     }
     match page_action {
         Some(PageMenuAction::Copy) => {
-            if let Some(sel) = app.views[index].image_selection.clone() {
+            if let Some(sel) = app.win.views[index].image_selection.clone() {
                 app.copy_page_image(sel.page, sel.index);
-            } else if app.views[index].selected_text().is_some() {
+            } else if app.win.views[index].selected_text().is_some() {
                 app.execute("edit.copy");
-            } else if let Some((page, at)) = app.views[index].comments.context_at
-                && let Some(doc) = app.session.get(app.views[index].id)
+            } else if let Some((page, at)) = app.win.views[index].comments.context_at
+                && let Some(doc) = app.session.get(app.win.views[index].id)
                 && let Some(image) = doc.page_image_at(page, at)
             {
                 app.copy_page_image(page, image);
@@ -3974,55 +3975,55 @@ fn apply_frame_requests(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui, 
             app.paste_comments(index, None, Some((page, at)));
         }
         Some(PageMenuAction::RotateCCW) => {
-            app.views[index].rotate_view(false);
+            app.win.views[index].rotate_view(false);
         }
         Some(PageMenuAction::RotateCW) => {
-            app.views[index].rotate_view(true);
+            app.win.views[index].rotate_view(true);
         }
         Some(PageMenuAction::Print) => {
             app.open_print();
         }
         Some(PageMenuAction::SelectTool) => {
-            app.quick_tool = QuickTool::Select;
+            app.win.quick_tool = QuickTool::Select;
         }
         Some(PageMenuAction::HandTool) => {
-            app.quick_tool = QuickTool::Hand;
+            app.win.quick_tool = QuickTool::Hand;
         }
         Some(PageMenuAction::MarqueeZoom) => {
-            app.quick_tool = QuickTool::MarqueeZoom;
+            app.win.quick_tool = QuickTool::MarqueeZoom;
         }
         Some(PageMenuAction::AddComment(page, at)) => {
-            app.views[index].comments.composer =
+            app.win.views[index].comments.composer =
                 Some(crate::comments::Composer { page, at, kind: crate::comments::ComposerKind::Note, text: String::new(), focus: true });
         }
         Some(PageMenuAction::FlattenComments) => {
-            app.views[index].comments.select(None);
-            // COMMENTS.1 fallback (inactive, SYNC.17; f3ccab72): app.views[index].comments.group.clear();
-            app.views[index].pending_edit = Some(pdfcraft_engine::Edit::Flatten { comments: true, fields: false });
+            app.win.views[index].comments.select(None);
+            // COMMENTS.1 fallback (inactive, SYNC.17; f3ccab72): app.win.views[index].comments.group.clear();
+            app.win.views[index].pending_edit = Some(pdfcraft_engine::Edit::Flatten { comments: true, fields: false });
         }
         Some(PageMenuAction::AddBookmark) => {
             app.bookmark_action(crate::panels::BmAction::New);
         }
         Some(PageMenuAction::TakeSnapshot) => {
-            app.quick_tool = QuickTool::Snapshot;
+            app.win.quick_tool = QuickTool::Snapshot;
         }
         Some(PageMenuAction::EditPdf) => {
-            app.quick_tool = QuickTool::EditText;
+            app.win.quick_tool = QuickTool::EditText;
         }
         Some(PageMenuAction::AddText) => {
-            app.quick_tool = QuickTool::AddText;
+            app.win.quick_tool = QuickTool::AddText;
         }
         Some(PageMenuAction::AddImage) => {
             app.add_image_dialog();
         }
         Some(PageMenuAction::DeletePage(page)) => {
-            app.views[index].pending_edit = Some(pdfcraft_engine::Edit::DeletePages { pages: vec![page] });
+            app.win.views[index].pending_edit = Some(pdfcraft_engine::Edit::DeletePages { pages: vec![page] });
         }
         Some(PageMenuAction::ExportPdf) => {
             app.select_tool("export");
         }
         Some(PageMenuAction::Find) => {
-            app.views[index].open_find();
+            app.win.views[index].open_find();
         }
         Some(PageMenuAction::DocProperties) => {
             app.dialog = Some(crate::Dialog::Properties(crate::PropsTab::Description));
@@ -4042,11 +4043,11 @@ fn apply_frame_requests(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui, 
         app.dialog = Some(crate::Dialog::PageBoxes);
     }
     if let Some((page, rect)) = open_table {
-        app.field_table_draft = Some(crate::field_table_ui::FieldTableDraft::new(app.views[index].id, page, rect, &form, generation));
+        app.field_table_draft = Some(crate::field_table_ui::FieldTableDraft::new(app.win.views[index].id, page, rect, &form, generation));
         app.dialog = Some(crate::Dialog::FieldTable);
         // The window lasts while the form is prepared. Drawn with the tool picked but its panel
         // closed, the tool goes back to Select above, so the panel opens to keep it prepared.
-        app.left = crate::LeftPanel::Tool("form");
+        app.win.left = crate::LeftPanel::Tool("form");
         app.reveal_tools();
     }
     if let Some(n) = form_notice {
@@ -4056,7 +4057,7 @@ fn apply_frame_requests(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui, 
             crate::forms_ui::FormNotice::NoAction(name) => app.notify_fmt("{name} has no action", &[("name", &name)]),
         }
     }
-    if let Some((name, identity, action)) = app.views[index].forms.button.take() {
+    if let Some((name, identity, action)) = app.win.views[index].forms.button.take() {
         run_button(app, index, &name, identity, action);
     }
     if copy_selected {
@@ -4074,9 +4075,9 @@ fn apply_frame_requests(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui, 
     // Read mode hides the tools (#2646), and full screen is the page and nothing else (#1459);
     // the quick tools come back with the window.
     // A document that hides the toolbars (`HideToolbar`) hides this one too.
-    if !app.hotbar_hidden() && !app.views.get(index).is_some_and(|v| v.interface.hidden.toolbar) {
+    if !app.hotbar_hidden() && !app.win.views.get(index).is_some_and(|v| v.interface.hidden.toolbar) {
         // The page nearest the left edge, whose margin the bar sits in.
-        let page_left = app.views[index].screen_rects.iter().map(|(_, r)| r.left()).reduce(f32::min);
+        let page_left = app.win.views[index].screen_rects.iter().map(|(_, r)| r.left()).reduce(f32::min);
         quick_bar(app, avail, page_left, ui);
     }
     if let Some((source, file, destination)) = remote_open {

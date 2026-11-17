@@ -24,14 +24,14 @@ fn harness() -> Harness<'static, PdfCraftApp> {
 /// The centre of field `name`'s first widget in tab `view`, once that tab has drawn its page.
 fn field_center(h: &Harness<'static, PdfCraftApp>, view: usize, name: &str) -> Option<Pos2> {
     let s = h.state();
-    let doc = s.session.get(s.views[view].id)?;
+    let doc = s.session.get(s.win.views[view].id)?;
     let f = doc.form.iter().find(|f| f.name == name)?;
-    pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.views[view], &doc.info, f, 0).map(|r| r.center())
+    pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.win.views[view], &doc.info, f, 0).map(|r| r.center())
 }
 
 fn value(h: &Harness<'static, PdfCraftApp>, name: &str) -> Vec<String> {
     let s = h.state();
-    s.session.get(s.views[0].id).unwrap().form.iter().find(|f| f.name == name).unwrap().value.clone()
+    s.session.get(s.win.views[0].id).unwrap().form.iter().find(|f| f.name == name).unwrap().value.clone()
 }
 
 /// A press and release at `p`.
@@ -55,8 +55,8 @@ fn typing_in_one_pane_survives_an_edit_in_the_other() {
     h.key_press_modifiers(Modifiers::COMMAND, Key::Backslash);
     h.run_steps(4);
     let (first, second) = (0, 1);
-    assert_eq!(h.state().views.iter().map(|v| v.place()).collect::<Vec<_>>(), [Place::Main, Place::Second]);
-    assert_eq!(h.state().views[first].id, h.state().views[second].id, "one document");
+    assert_eq!(h.state().win.views.iter().map(|v| v.place()).collect::<Vec<_>>(), [Place::Main, Place::Second]);
+    assert_eq!(h.state().win.views[first].id, h.state().win.views[second].id, "one document");
     for _ in 0..100 {
         if field_center(&h, first, "agree").is_some() && field_center(&h, second, "name").is_some() {
             break;
@@ -65,22 +65,22 @@ fn typing_in_one_pane_survives_an_edit_in_the_other() {
     }
     let name = field_center(&h, second, "name").expect("the second pane shows the field");
     let agree = field_center(&h, first, "agree").expect("the first pane shows the check box");
-    assert!(h.state().views[second].viewport_rect().contains(name), "{name:?}");
-    assert!(h.state().views[first].viewport_rect().contains(agree), "{agree:?}");
+    assert!(h.state().win.views[second].viewport_rect().contains(name), "{name:?}");
+    assert!(h.state().win.views[first].viewport_rect().contains(agree), "{agree:?}");
 
     click(&mut h, name);
-    assert_eq!(h.state().active, Some(second));
-    assert!(h.state().views[second].forms.focus.is_some(), "the editor opened");
+    assert_eq!(h.state().win.active, Some(second));
+    assert!(h.state().win.views[second].forms.focus.is_some(), "the editor opened");
     h.event(egui::Event::Text("Typed in the second pane".into()));
     h.run_steps(2);
     assert!(value(&h, "name").is_empty(), "not committed yet");
 
     click(&mut h, agree);
     h.run_steps(3);
-    assert_eq!(h.state().active, Some(first), "the click made the first pane active");
+    assert_eq!(h.state().win.active, Some(first), "the click made the first pane active");
     assert_eq!(value(&h, "agree"), ["Yes"], "the click's own edit");
     assert_eq!(value(&h, "name"), ["Typed in the second pane"], "the typing in the other pane went into the document");
-    assert!(h.state().views[second].pending_edit.is_none(), "nothing left queued");
+    assert!(h.state().win.views[second].pending_edit.is_none(), "nothing left queued");
 }
 
 /// Save from the second pane, with the same document in both: what is typed there goes into the
@@ -110,8 +110,8 @@ fn save_in_the_second_pane_keeps_its_typing() {
     h.key_press_modifiers(Modifiers::COMMAND, Key::S);
     h.run_steps(4);
     assert_eq!(value(&h, "name"), ["Typed in the second pane"], "the save took the typing");
-    assert_eq!(h.state().active, Some(second), "the pane worked in stays the active one");
+    assert_eq!(h.state().win.active, Some(second), "the pane worked in stays the active one");
     let s = h.state();
-    assert!(!s.session.get(s.views[second].id).unwrap().dirty, "and wrote it");
+    assert!(!s.session.get(s.win.views[second].id).unwrap().dirty, "and wrote it");
     assert!(std::fs::metadata(&out).is_ok_and(|m| m.len() > 0));
 }

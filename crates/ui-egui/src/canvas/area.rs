@@ -166,38 +166,39 @@ pub(super) fn page_scroll<R>(
 /// Run a push button's action (the ones that need no JavaScript engine).
 pub(super) fn run_button(app: &mut PdfCraftApp, index: usize, name: &str, identity: u64, action: pdfcraft_engine::form_scripts::ButtonAction) {
     use pdfcraft_engine::form_scripts::ButtonAction as B;
-    let pages = app.session.get(app.views[index].id).map_or(0, |d| d.info.pages.len());
+    let pages = app.session.get(app.win.views[index].id).map_or(0, |d| d.info.pages.len());
     match action {
         B::Reset { fields, exclude } => {
-            let all: Vec<String> = app.session.get(app.views[index].id).map(|d| d.form.iter().map(|f| f.name.clone()).collect()).unwrap_or_default();
+            let all: Vec<String> =
+                app.session.get(app.win.views[index].id).map(|d| d.form.iter().map(|f| f.name.clone()).collect()).unwrap_or_default();
             let listed = |n: &String| fields.iter().any(|f| n == f || n.starts_with(&format!("{f}.")));
             let names = match (fields.is_empty(), exclude) {
                 (true, _) => None,
                 (false, false) => Some(all.iter().filter(|n| listed(n)).cloned().collect()),
                 (false, true) => Some(all.iter().filter(|n| !listed(n)).cloned().collect()),
             };
-            app.views[index].forms.focus = None;
-            app.views[index].pending_edit = Some(pdfcraft_engine::Edit::ResetForm { names });
+            app.win.views[index].forms.focus = None;
+            app.win.views[index].pending_edit = Some(pdfcraft_engine::Edit::ResetForm { names });
         }
         B::Named(n) => match n.as_str() {
             "Print" => app.open_print(),
             // What PdfCraft's XFA buttons use, and what a script's `execMenuItem("Save")`
             // does too: the Save As dialog, so a click never overwrites the file unasked.
             "SaveAs" => app.run_command("file.save_as"),
-            "NextPage" => app.views[index].step_page(true),
-            "PrevPage" => app.views[index].step_page(false),
-            "FirstPage" => app.views[index].go_to_page(0),
-            "LastPage" => app.views[index].go_to_page(pages.saturating_sub(1)),
+            "NextPage" => app.win.views[index].step_page(true),
+            "PrevPage" => app.win.views[index].step_page(false),
+            "FirstPage" => app.win.views[index].go_to_page(0),
+            "LastPage" => app.win.views[index].go_to_page(pages.saturating_sub(1)),
             other => app.notify_fmt("{name}: the {other} action isn't supported yet", &[("name", name), ("other", other)]),
         },
         B::Uri(u) => app.request_document_url(&u, crate::LinkOrigin::Button),
-        B::GoTo(p) => app.views[index].go_to_page(p.min(pages.saturating_sub(1))),
+        B::GoTo(p) => app.win.views[index].go_to_page(p.min(pages.saturating_sub(1))),
         B::ShowHide { fields, hide } => {
             let listed = |n: &String| fields.iter().any(|f| n == f || n.starts_with(&format!("{f}.")));
             // `display.hidden` 1, `display.visible` 0, as a script setting `field.display` would.
             let changes: Vec<pdfcraft_engine::FieldChange> = app
                 .session
-                .get(app.views[index].id)
+                .get(app.win.views[index].id)
                 .map(|d| d.form.iter().filter(|f| listed(&f.name)).map(|f| f.name.clone()).collect::<Vec<_>>())
                 .unwrap_or_default()
                 .into_iter()
@@ -216,7 +217,7 @@ pub(super) fn run_button(app: &mut PdfCraftApp, index: usize, name: &str, identi
                 .collect();
             if !changes.is_empty() {
                 let label = if hide { "Hide a field" } else { "Show a field" };
-                app.views[index].pending_edit =
+                app.win.views[index].pending_edit =
                     Some(pdfcraft_engine::Edit::Batch { label: label.into(), edits: vec![pdfcraft_engine::Edit::ApplyScriptChanges { changes }] });
             }
         }
@@ -240,9 +241,9 @@ pub(super) fn run_button(app: &mut PdfCraftApp, index: usize, name: &str, identi
             "{name} submits the form to {url}; PDF Overlay doesn't send form data. Save the document to keep your entries.",
             &[("name", name), ("url", &url)],
         ),
-        B::ImportIcon => app.choose_field_image_target(app.views[index].id, name, Some(identity)),
+        B::ImportIcon => app.choose_field_image_target(app.win.views[index].id, name, Some(identity)),
         B::Script(js) => {
-            let id = app.views[index].id;
+            let id = app.win.views[index].id;
             app.run_button_script_target(id, name, Some(identity), &js);
         }
     }
@@ -251,9 +252,9 @@ pub(super) fn run_button(app: &mut PdfCraftApp, index: usize, name: &str, identi
 /// Run a set-layer-visibility action from a button or link. It changes what is shown, as the
 /// Layers panel does (which follows), not the document.
 pub(super) fn set_layers(app: &mut PdfCraftApp, index: usize, changes: &[(LayerOp, (u32, u16))], preserve_rb: bool) {
-    let id = app.views[index].id;
+    let id = app.win.views[index].id;
     if app.session.set_layer_state(id, changes, preserve_rb) {
-        app.views[index].invalidate_content();
+        app.win.views[index].invalidate_content();
     }
 }
 

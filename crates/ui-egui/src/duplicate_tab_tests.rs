@@ -42,19 +42,19 @@ struct Place {
 }
 
 fn place(h: &Harness<'static, PdfCraftApp>, tab: usize) -> Place {
-    let v = &h.state().views[tab];
+    let v = &h.state().win.views[tab];
     Place { current: v.current, zoom: v.zoom, fit: v.fit, scroll: v.last_scroll, back: v.back.clone(), forward: v.forward.clone() }
 }
 
 fn show(h: &mut Harness<'static, PdfCraftApp>, tab: usize) {
-    h.state_mut().active = Some(tab);
+    h.state_mut().win.active = Some(tab);
     h.run_steps(6);
 }
 
 /// Wheel `dy` points over the active tab's page view.
 fn wheel(h: &mut Harness<'static, PdfCraftApp>, dy: f32) {
-    let tab = h.state().active.unwrap();
-    let centre = h.state().views[tab].viewport_rect().center();
+    let tab = h.state().win.active.unwrap();
+    let centre = h.state().win.views[tab].viewport_rect().center();
     h.hover_at(centre);
     h.event(egui::Event::MouseWheel {
         unit: egui::MouseWheelUnit::Point,
@@ -81,14 +81,14 @@ fn close_enough(a: Vec2, b: Vec2) -> bool {
 fn two_places() -> Harness<'static, PdfCraftApp> {
     let mut h = harness();
     {
-        let v = &mut h.state_mut().views[0];
+        let v = &mut h.state_mut().win.views[0];
         v.set_zoom(1.0);
         v.go_to_page(2);
     }
     h.run_steps(6);
     duplicate(&mut h, 0);
     {
-        let v = &mut h.state_mut().views[1];
+        let v = &mut h.state_mut().win.views[1];
         v.set_zoom(1.5);
         v.go_to_page(17);
     }
@@ -102,14 +102,14 @@ fn two_places() -> Harness<'static, PdfCraftApp> {
 #[test]
 fn a_duplicate_starts_at_the_source_place_then_keeps_its_own_page() {
     let mut h = harness();
-    h.state_mut().views[0].go_to_page(4);
+    h.state_mut().win.views[0].go_to_page(4);
     h.run_steps(6);
     wheel(&mut h, -200.0);
     let source = place(&h, 0);
     let at = duplicate(&mut h, 0);
     assert_eq!(at, 1);
-    assert_eq!(h.state().active, Some(1));
-    let (a, b) = (&h.state().views[0], &h.state().views[1]);
+    assert_eq!(h.state().win.active, Some(1));
+    let (a, b) = (&h.state().win.views[0], &h.state().win.views[1]);
     assert_eq!(a.id, b.id, "one document, two views");
     assert_ne!(a.key, b.key);
     assert_eq!(h.state().open_documents().len(), 1, "the document is not opened again");
@@ -119,16 +119,16 @@ fn a_duplicate_starts_at_the_source_place_then_keeps_its_own_page() {
 
     // Tab 1 to page 3, tab 2 to page 18.
     show(&mut h, 0);
-    h.state_mut().views[0].go_to_page(2);
+    h.state_mut().win.views[0].go_to_page(2);
     h.run_steps(6);
     show(&mut h, 1);
-    h.state_mut().views[1].go_to_page(17);
+    h.state_mut().win.views[1].go_to_page(17);
     h.run_steps(6);
     for _ in 0..3 {
         show(&mut h, 0);
-        assert_eq!(h.state().views[0].current, 2);
+        assert_eq!(h.state().win.views[0].current, 2);
         show(&mut h, 1);
-        assert_eq!(h.state().views[1].current, 17);
+        assert_eq!(h.state().win.views[1].current, 17);
     }
 }
 
@@ -136,15 +136,15 @@ fn a_duplicate_starts_at_the_source_place_then_keeps_its_own_page() {
 fn b_a_page_change_in_one_tab_leaves_the_other_unchanged() {
     let mut h = two_places();
     let first = place(&h, 0);
-    h.state_mut().views[1].step_page(true);
+    h.state_mut().win.views[1].step_page(true);
     h.run_steps(6);
-    h.state_mut().views[1].go_to_page(25);
+    h.state_mut().win.views[1].go_to_page(25);
     h.run_steps(6);
     assert_eq!(place(&h, 0), first, "tab 1 is untouched by tab 2's navigation");
     show(&mut h, 0);
     assert_eq!(place(&h, 0).current, first.current);
     let second = place(&h, 1);
-    h.state_mut().views[0].go_to_page(9);
+    h.state_mut().win.views[0].go_to_page(9);
     h.run_steps(6);
     assert_eq!(place(&h, 1), second, "and the other way round");
 }
@@ -167,7 +167,7 @@ fn c_scroll_and_zoom_are_kept_per_tab() {
     }
     // Scrolling and zooming one leaves the other where it is.
     wheel(&mut h, -300.0);
-    h.state_mut().views[1].set_zoom(2.0);
+    h.state_mut().win.views[1].set_zoom(2.0);
     h.run_steps(6);
     show(&mut h, 0);
     assert_eq!(place(&h, 0).zoom, 1.0);
@@ -178,29 +178,29 @@ fn c_scroll_and_zoom_are_kept_per_tab() {
 fn d_back_and_forward_are_per_tab() {
     let mut h = harness();
     duplicate(&mut h, 0);
-    h.state_mut().views[1].go_to_page(11);
+    h.state_mut().win.views[1].go_to_page(11);
     h.run_steps(6);
     let second = place(&h, 1);
     show(&mut h, 0);
     for page in [0, 4, 8] {
-        h.state_mut().views[0].go_to_page(page);
+        h.state_mut().win.views[0].go_to_page(page);
         h.run_steps(4);
     }
     assert!(h.state_mut().execute("view.previous_view"));
     h.run_steps(4);
-    assert_eq!(h.state().views[0].current, 4);
+    assert_eq!(h.state().win.views[0].current, 4);
     assert!(h.state_mut().execute("view.previous_view"));
     h.run_steps(4);
-    assert_eq!(h.state().views[0].current, 0);
+    assert_eq!(h.state().win.views[0].current, 0);
     assert!(h.state_mut().execute("view.next_view"));
     h.run_steps(4);
-    assert_eq!(h.state().views[0].current, 4);
+    assert_eq!(h.state().win.views[0].current, 4);
     assert_eq!(place(&h, 1), second, "tab 2's page and history are its own");
     show(&mut h, 1);
     assert!(h.state_mut().execute("view.previous_view"));
     h.run_steps(4);
-    assert_eq!(h.state().views[1].current, 0, "tab 2 goes back through its own history");
-    assert_eq!(h.state().views[0].current, 4);
+    assert_eq!(h.state().win.views[1].current, 0, "tab 2 goes back through its own history");
+    assert_eq!(h.state().win.views[0].current, 4);
 }
 
 #[test]
@@ -208,14 +208,14 @@ fn e_closing_either_tab_leaves_the_other_where_it_was() {
     for close_original in [false, true] {
         let mut h = two_places();
         let (first, second) = (place(&h, 0), place(&h, 1));
-        let survivor_key = h.state().views[if close_original { 1 } else { 0 }].key;
-        let id = h.state().views[0].id;
+        let survivor_key = h.state().win.views[if close_original { 1 } else { 0 }].key;
+        let id = h.state().win.views[0].id;
         let closing = if close_original { 0 } else { 1 };
-        let key = h.state().views[closing].key;
+        let key = h.state().win.views[closing].key;
         h.state_mut().tab_action(Action::Close(key.0));
         h.run_steps(6);
-        assert_eq!(h.state().views.len(), 1);
-        assert_eq!(h.state().views[0].key, survivor_key, "the tab asked for closed, not the other");
+        assert_eq!(h.state().win.views.len(), 1);
+        assert_eq!(h.state().win.views[0].key, survivor_key, "the tab asked for closed, not the other");
         assert!(h.state().session.get(id).is_some(), "the document stays open with its other tab");
         let left = place(&h, 0);
         let expected = if close_original { second } else { first };
@@ -227,14 +227,14 @@ fn e_closing_either_tab_leaves_the_other_where_it_was() {
 #[test]
 fn f_the_page_grid_scrolls_per_tab() {
     let mut h = harness_with(100);
-    h.state_mut().views[0].organize = true;
+    h.state_mut().win.views[0].organize = true;
     h.run_steps(4);
     duplicate(&mut h, 0);
-    assert!(h.state().views[1].organize, "the duplicate opens on the page grid too");
+    assert!(h.state().win.views[1].organize, "the duplicate opens on the page grid too");
     // Scroll tab 2's grid to the end.
     wheel(&mut h, -100_000.0);
     h.run_steps(30);
-    let first_shown = |h: &Harness<'static, PdfCraftApp>, tab: usize| h.state().views[tab].first_visible_thumbnail();
+    let first_shown = |h: &Harness<'static, PdfCraftApp>, tab: usize| h.state().win.views[tab].first_visible_thumbnail();
     let end = first_shown(&h, 1).expect("tab 2 shows pages");
     assert!(end > 50, "tab 2's grid is near the end: {end}");
     show(&mut h, 0);
@@ -250,7 +250,7 @@ fn g_an_edit_in_one_tab_refreshes_the_other_without_moving_it() {
     let mut h = two_places();
     let second = place(&h, 1);
     show(&mut h, 0);
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let note = Edit::AddAnnotation(pdfcraft_engine::NewAnnotation {
         page: 2,
         shape: pdfcraft_engine::Shape::Note { at: [100.0, 600.0], icon: pdfcraft_engine::NoteIcon::Comment },
@@ -261,7 +261,7 @@ fn g_an_edit_in_one_tab_refreshes_the_other_without_moving_it() {
     assert!(h.state_mut().apply_edit(note));
     h.run_steps(4);
     let version = crate::content_version(h.state().session.get(id).unwrap());
-    assert_eq!(h.state().views[1].content_seen, Some(version), "tab 2 caught up with the edit");
+    assert_eq!(h.state().win.views[1].content_seen, Some(version), "tab 2 caught up with the edit");
     assert_eq!(place(&h, 1), second, "and stayed where it was");
     show(&mut h, 1);
     let now = place(&h, 1);
@@ -283,39 +283,39 @@ fn duplicates_are_numbered_and_numbers_are_reused() {
     assert_eq!(label(&app, 2), "plan.pdf (2)", "the lowest free number is taken");
     // A held shortcut can't fill the strip with one file.
     while app.duplicate_view(0).is_some() {}
-    assert_eq!(app.views.len(), MAX_VIEWS_PER_DOCUMENT);
+    assert_eq!(app.win.views.len(), MAX_VIEWS_PER_DOCUMENT);
     assert!(!app.can_duplicate(0));
 }
 
 #[test]
 fn closing_a_duplicate_keeps_the_document_and_asks_nothing() {
     let mut app = app_with(3);
-    let id = app.views[0].id;
+    let id = app.win.views[0].id;
     app.duplicate_view(0);
     assert!(app.apply_edit(Edit::InsertBlankPage { at: 0, width: 300.0, height: 400.0 }));
     assert!(app.session.get(id).unwrap().dirty);
-    let original = app.views[0].key;
+    let original = app.win.views[0].key;
     app.request_close_tab(1);
     assert!(app.close_request.is_none(), "the document stays open in its other tab: nothing to ask");
-    assert_eq!(app.views.len(), 1);
-    assert_eq!(app.views[0].key, original);
+    assert_eq!(app.win.views.len(), 1);
+    assert_eq!(app.win.views[0].key, original);
     assert!(app.session.get(id).is_some_and(|d| d.dirty), "unsaved changes stay with the document");
-    assert!(app.closed_tabs.is_empty(), "no closed-tab entry while the document is open");
+    assert!(app.win.closed_tabs.is_empty(), "no closed-tab entry while the document is open");
     // Its last tab asks, as before.
     app.request_close_tab(0);
     assert_eq!(app.close_request, Some(crate::CloseRequest::Tab(original)));
     app.resolve_close(&egui::Context::default(), Some(false));
-    assert!(app.views.is_empty());
+    assert!(app.win.views.is_empty());
     assert!(app.session.get(id).is_none(), "the document closes with its last tab");
 }
 
 #[test]
 fn typing_in_a_closing_duplicate_goes_into_the_document() {
     let mut app = app_with(3);
-    let id = app.views[0].id;
+    let id = app.win.views[0].id;
     app.duplicate_view(0);
     // Fill & Sign text typed in the duplicate and not committed yet.
-    app.views[1].fill_text = Some(crate::fill_sign::TypeBox {
+    app.win.views[1].fill_text = Some(crate::fill_sign::TypeBox {
         page: 0,
         at: [72.0, 700.0],
         text: "Approved".into(),
@@ -328,7 +328,7 @@ fn typing_in_a_closing_duplicate_goes_into_the_document() {
     let annotations = app.session.get(id).unwrap().info.annotations.len();
     app.request_close_tab(1);
     assert!(app.close_request.is_none());
-    assert_eq!(app.views.len(), 1);
+    assert_eq!(app.win.views.len(), 1);
     assert_eq!(app.session.get(id).unwrap().info.annotations.len(), annotations + 1, "the text is in the document");
 }
 
@@ -339,13 +339,13 @@ fn an_edit_and_its_undo_reach_every_tab() {
     show(&mut h, 0);
     assert!(h.state_mut().apply_edit(Edit::InsertBlankPage { at: 3, width: 300.0, height: 400.0 }));
     h.run_steps(4);
-    assert_eq!(h.state().views[1].page_count(), 4, "the other tab sees the new page");
+    assert_eq!(h.state().win.views[1].page_count(), 4, "the other tab sees the new page");
     show(&mut h, 1);
     h.state_mut().undo();
     h.run_steps(4);
-    assert_eq!(h.state().views[0].page_count(), 3, "one history: undo from either tab");
-    assert_eq!(h.state().views[1].page_count(), 3);
-    assert!(h.state().session.get(h.state().views[0].id).unwrap().can_undo().is_none());
+    assert_eq!(h.state().win.views[0].page_count(), 3, "one history: undo from either tab");
+    assert_eq!(h.state().win.views[1].page_count(), 3);
+    assert!(h.state().session.get(h.state().win.views[0].id).unwrap().can_undo().is_none());
 }
 
 #[test]
@@ -354,11 +354,11 @@ fn a_hidden_duplicate_does_not_starve_the_tab_on_screen() {
     duplicate(&mut h, 0);
     // A zoom the source never rendered: the tab on screen needs new page images from the
     // document's render pool, which the hidden source shares.
-    h.state_mut().views[1].set_zoom(2.5);
+    h.state_mut().win.views[1].set_zoom(2.5);
     let mut sharp = false;
     for _ in 0..600 {
         h.run_steps(1);
-        if h.state().views[1].current_page_sharp() {
+        if h.state().win.views[1].current_page_sharp() {
             sharp = true;
             break;
         }
@@ -370,14 +370,14 @@ fn a_hidden_duplicate_does_not_starve_the_tab_on_screen() {
 #[test]
 fn quitting_and_close_all_ask_once_per_document() {
     let mut app = app_with(3);
-    let id = app.views[0].id;
+    let id = app.win.views[0].id;
     app.duplicate_view(0);
     assert!(app.apply_edit(Edit::InsertBlankPage { at: 0, width: 300.0, height: 400.0 }));
     app.close_all();
     assert_eq!(app.close_request, Some(crate::CloseRequest::All));
     app.resolve_close(&egui::Context::default(), Some(false));
     assert!(app.close_request.is_none(), "one answer for the document, not one per tab");
-    assert!(app.views.is_empty(), "Close All leaves none of its tabs open");
+    assert!(app.win.views.is_empty(), "Close All leaves none of its tabs open");
     assert!(app.session.get(id).is_none());
 }
 
@@ -392,12 +392,12 @@ fn reloading_the_file_keeps_each_tab_in_its_place() {
     file.write_all(&first).unwrap();
     drop(file);
     app.open_path(path.to_str().unwrap());
-    assert_eq!(app.views.len(), 1);
-    let id = app.views[0].id;
+    assert_eq!(app.win.views.len(), 1);
+    let id = app.win.views[0].id;
     app.duplicate_view(0);
-    app.views[0].go_to_page(3);
-    app.views[1].go_to_page(15);
-    app.views[1].set_zoom(1.5);
+    app.win.views[0].go_to_page(3);
+    app.win.views[1].go_to_page(15);
+    app.win.views[1].set_zoom(1.5);
     // A rebuilt file with more pages.
     let second = app.session.create_blank(612.0, 792.0, 25).unwrap();
     std::fs::write(&path, second.as_ref()).unwrap();
@@ -406,11 +406,11 @@ fn reloading_the_file_keeps_each_tab_in_its_place() {
     assert_eq!(app.session.get(id).unwrap().info.pages.len(), 25);
     let version = crate::content_version(app.session.get(id).unwrap());
     for (tab, page) in [(0, 3), (1, 15)] {
-        assert_eq!(app.views[tab].current, page, "tab {tab} keeps its page");
-        assert_eq!(app.views[tab].page_count(), 25, "tab {tab} shows the new version");
-        assert_eq!(app.views[tab].content_seen, Some(version));
+        assert_eq!(app.win.views[tab].current, page, "tab {tab} keeps its page");
+        assert_eq!(app.win.views[tab].page_count(), 25, "tab {tab} shows the new version");
+        assert_eq!(app.win.views[tab].content_seen, Some(version));
     }
-    assert_eq!(app.views[1].zoom, 1.5);
+    assert_eq!(app.win.views[1].zoom, 1.5);
     assert_eq!(app.open_session().files.len(), 1, "the last session remembers the file once");
     assert_eq!(app.open_documents(), [id], "pickers list the document once");
     std::fs::remove_file(path).unwrap();
@@ -421,18 +421,18 @@ fn a_deferred_shortcut_runs_only_in_its_own_tab() {
     let mut h = harness();
     duplicate(&mut h, 0);
     for page in [0, 6] {
-        h.state_mut().views[1].go_to_page(page);
+        h.state_mut().win.views[1].go_to_page(page);
         h.run_steps(3);
     }
-    let first: ViewKey = h.state().views[0].key;
-    let second: ViewKey = h.state().views[1].key;
+    let first: ViewKey = h.state().win.views[0].key;
+    let second: ViewKey = h.state().win.views[1].key;
     // Pressed while tab 1 was active, but tab 2 is active now.
-    h.state_mut().deferred_commands.push(("view.previous_view", Some(first)));
+    h.state_mut().win.deferred_commands.push(("view.previous_view", Some(first)));
     h.run_steps(3);
-    assert_eq!(h.state().views[1].current, 6, "not run in the other tab of the same document");
-    h.state_mut().deferred_commands.push(("view.previous_view", Some(second)));
+    assert_eq!(h.state().win.views[1].current, 6, "not run in the other tab of the same document");
+    h.state_mut().win.deferred_commands.push(("view.previous_view", Some(second)));
     h.run_steps(3);
-    assert_eq!(h.state().views[1].current, 0);
+    assert_eq!(h.state().win.views[1].current, 0);
 }
 
 #[test]
@@ -443,9 +443,9 @@ fn the_tab_menu_duplicates_a_tab() {
     h.run_steps(2);
     h.get_by_label("Duplicate Tab").click();
     h.run_steps(4);
-    assert_eq!(h.state().views.len(), 2);
-    assert_eq!(h.state().active, Some(1));
+    assert_eq!(h.state().win.views.len(), 2);
+    assert_eq!(h.state().win.active, Some(1));
     h.get_by_role_and_label(egui::accesskit::Role::Tab, "plan.pdf (2)");
     assert!(h.state_mut().execute("view.duplicate_tab"), "also a registered command");
-    assert_eq!(h.state().views.len(), 3);
+    assert_eq!(h.state().win.views.len(), 3);
 }

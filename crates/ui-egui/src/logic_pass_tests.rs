@@ -40,7 +40,7 @@ fn a_deferred_shortcut_runs_once_whatever_the_logic_passes() {
     assert!(!h.state().thin_lines);
     let key = h.state().active_key();
     // Thin lines toggles: run twice, it would be off again.
-    h.state_mut().deferred_commands.push(("view.thin_lines", key));
+    h.state_mut().win.deferred_commands.push(("view.thin_lines", key));
     hidden_logic(&mut h, 3);
     assert!(h.state().thin_lines, "run once");
     h.run_steps(3);
@@ -65,20 +65,20 @@ fn frame_with(h: &mut Harness<'static, PdfCraftApp>, events: Vec<egui::Event>) {
 #[test]
 fn one_escape_takes_one_step_across_logic_passes() {
     let mut h = harness();
-    h.state_mut().views[0].open_find();
-    if let Some(f) = h.state_mut().views[0].find.as_mut() {
+    h.state_mut().win.views[0].open_find();
+    if let Some(f) = h.state_mut().win.views[0].find.as_mut() {
         f.focus = false;
     }
     h.run_steps(2);
-    h.ctx.memory_mut(|m| m.surrender_focus(h.state().views[0].find_input_id()));
-    h.state_mut().views[0].all_text = true;
+    h.ctx.memory_mut(|m| m.surrender_focus(h.state().win.views[0].find_input_id()));
+    h.state_mut().win.views[0].all_text = true;
     h.run_steps(2);
     let key = |pressed| egui::Event::Key { key: egui::Key::Escape, physical_key: None, pressed, repeat: false, modifiers: egui::Modifiers::NONE };
     frame_with(&mut h, vec![key(true), key(false)]);
-    assert!(!h.state().views[0].all_text, "the press clears Select All");
-    assert!(h.state().views[0].find.is_some());
+    assert!(!h.state().win.views[0].all_text, "the press clears Select All");
+    assert!(h.state().win.views[0].find.is_some());
     hidden_logic(&mut h, 3);
-    assert!(h.state().views[0].find.is_some(), "the same press doesn't also close the find bar");
+    assert!(h.state().win.views[0].find.is_some(), "the same press doesn't also close the find bar");
 }
 
 /// A duplicate tab catches up once with an edit made through the other tab: the next refresh,
@@ -87,20 +87,20 @@ fn one_escape_takes_one_step_across_logic_passes() {
 fn a_duplicate_tab_catches_up_once_per_edit() {
     let mut h = harness();
     let twin = h.state_mut().duplicate_view(0).expect("a duplicate");
-    h.state_mut().active = Some(0);
+    h.state_mut().win.active = Some(0);
     h.run_steps(6);
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let edit = |h: &mut Harness<'static, PdfCraftApp>, title: &str| {
         h.state_mut().session.apply(id, Edit::SetInfo { key: "Title".into(), value: title.into() }).unwrap();
     };
     edit(&mut h, "First");
     h.state_mut().sync_shared_views();
     // A jump asked of the other tab after it caught up: a second refresh would drop it.
-    h.state_mut().views[twin].goto = Some((5, 0.0));
+    h.state_mut().win.views[twin].goto = Some((5, 0.0));
     h.state_mut().sync_shared_views();
     h.state_mut().sync_shared_views();
-    assert_eq!(h.state().views[twin].goto, Some((5, 0.0)), "caught up once, not on every pass");
+    assert_eq!(h.state().win.views[twin].goto, Some((5, 0.0)), "caught up once, not on every pass");
     edit(&mut h, "Second");
     h.state_mut().sync_shared_views();
-    assert_eq!(h.state().views[twin].goto, None, "a new edit refreshes it again");
+    assert_eq!(h.state().win.views[twin].goto, None, "a new edit refreshes it again");
 }

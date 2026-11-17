@@ -325,7 +325,7 @@ impl Card {
 /// outside closes it. It closes by itself when the file leaves the list or has nothing to show.
 pub(crate) fn preview(app: &mut PdfCraftApp, ctx: &egui::Context, t: &Tokens) {
     // The command palette goes over everything: the preview waits under it (drawn again after).
-    if app.palette_open {
+    if app.win.palette_open {
         return;
     }
     let Some(p) = app.combine_tab.preview.as_mut() else { return };

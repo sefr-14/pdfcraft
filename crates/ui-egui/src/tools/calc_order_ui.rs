@@ -629,17 +629,17 @@ fn explained(issues: &[CalculationIssue]) -> String {
 pub(crate) fn panel(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens) {
     let (back, close) = crate::panels::panel_header(ui, t, "Calculation order", Some(("chevron-left", tl!("Back to Prepare a form"))));
     if back {
-        app.left = LeftPanel::Tool("form");
+        app.win.left = LeftPanel::Tool("form");
     }
     if close {
-        app.left_open = false;
+        app.win.left_open = false;
     }
     let Some((index, id)) = app.active_ids() else {
         ui.label(egui::RichText::new(tl!("Open a document first")).color(t.text_muted));
         return;
     };
     let Some(doc) = app.session.get(id) else { return };
-    let Some(view) = app.views.get_mut(index) else { return };
+    let Some(view) = app.win.views.get_mut(index) else { return };
     let listed = view.calc_order.listed(doc);
     let order = &listed.order;
     if order.fields.is_empty() && order.extra.is_empty() {
@@ -834,7 +834,7 @@ pub(crate) fn panel(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens) {
             app.execute("edit.undo");
         }
         Some(Act::EditFormula(name)) => {
-            if let Some(view) = app.views.get_mut(index) {
+            if let Some(view) = app.win.views.get_mut(index) {
                 view.prepare.select((name.clone(), 0), false);
             }
             app.open_field_props(&name, 0);
@@ -848,7 +848,7 @@ pub(crate) fn panel(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens) {
                 .session
                 .get(id)
                 .and_then(|doc| doc.form.iter().find(|g| g.name == name).and_then(|g| g.widgets.first()).and_then(|w| Some((w.page?, w.rect))));
-            if let Some(view) = app.views.get_mut(index) {
+            if let Some(view) = app.win.views.get_mut(index) {
                 view.prepare.select((name, 0), false);
                 if let Some((page, rect)) = shown {
                     view.go_to_page(page);

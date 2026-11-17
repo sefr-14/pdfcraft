@@ -52,7 +52,7 @@ fn assert_empty_combine(h: &Harness<'static, PdfCraftApp>) {
     let app = h.state();
     assert!(app.combine_showing(), "the Combine tab shows");
     assert!(app.combine_draft.is_empty(), "with an empty list");
-    assert_ne!(app.left, LeftPanel::Tool("combine"), "not the Combine tool pane");
+    assert_ne!(app.win.left, LeftPanel::Tool("combine"), "not the Combine tool pane");
     h.get_by_label("Add the files to combine");
 }
 
@@ -79,7 +79,7 @@ fn the_compare_card_opens_compare_files_with_overlay() {
     let card = h.query_all_by_label("Compare files").find(|n| (n.rect().width() - 190.0).abs() < 1.0).expect("Compare files card");
     card.click();
     h.run_steps(3);
-    assert_eq!(h.state().left, LeftPanel::Tool("compare"));
+    assert_eq!(h.state().win.left, LeftPanel::Tool("compare"));
     h.get_by_label("Overlay two revisions");
 }
 
@@ -138,19 +138,19 @@ fn the_combine_card_keeps_an_open_combine_list() {
 #[test]
 fn other_ways_to_combine_and_other_cards_are_unchanged() {
     let mut h = harness("en");
-    h.state_mut().left = LeftPanel::AllTools;
+    h.state_mut().win.left = LeftPanel::AllTools;
     h.run_steps(3);
     h.query_all_by_label("Combine files")
         .find(|n| (n.rect().width() - 190.0).abs() >= 1.0 && n.rect().top() > 40.0)
         .expect("the All tools row")
         .click();
     h.run_steps(3);
-    assert_eq!(h.state().left, LeftPanel::Tool("combine"));
+    assert_eq!(h.state().win.left, LeftPanel::Tool("combine"));
     assert!(!h.state().combine_showing());
 
     let mut h = harness("en");
     click_card(&mut h, "Organize pages");
-    assert_eq!(h.state().left, LeftPanel::Tool("organize"));
+    assert_eq!(h.state().win.left, LeftPanel::Tool("organize"));
     assert!(!h.state().combine_showing());
 }
 

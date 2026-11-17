@@ -123,13 +123,13 @@ fn collapsed_comments_with_ten_thousand_named_roots_stay_within_the_frame_budget
         app.open_bytes("review.pdf", None, bytes).expect("opens");
         app.set_option("left", "closed").unwrap();
         app.set_option("panel", "comments").unwrap();
-        app.views[0].comments.collapsed_pages = vec![0];
+        app.win.views[0].comments.collapsed_pages = vec![0];
         app
     });
     h.run_steps(4);
     {
         let state = h.state();
-        let info = &state.session.get(state.views[0].id).unwrap().info;
+        let info = &state.session.get(state.win.views[0].id).unwrap().info;
         assert_eq!(info.pages.len(), 1);
         assert_eq!(info.annotations.len(), 10_000);
         for a in &info.annotations {
@@ -137,7 +137,7 @@ fn collapsed_comments_with_ten_thousand_named_roots_stay_within_the_frame_budget
             assert!(a.in_reply_to.is_none());
             assert!(a.state.is_none());
         }
-        assert_eq!(state.views[0].comments.collapsed_pages, [0]);
+        assert_eq!(state.win.views[0].comments.collapsed_pages, [0]);
     }
     // Folding removes card layout cost, so this measures filtering and thread lookup work.
     let avg = best_average("collapsed named comments", 30, |_| h.step());
@@ -162,7 +162,7 @@ fn scrolling_a_500_page_document_stays_within_the_frame_budget() {
     eprintln!("PERF open {:?}", t0.elapsed());
     // Scroll through the document: 200 frames, jumping ~2 pages per frame.
     let avg = best_average("scroll", 200, |f| {
-        h.state_mut().views[0].goto = Some(((f * 5) / 2 % 500, 0.3));
+        h.state_mut().win.views[0].goto = Some(((f * 5) / 2 % 500, 0.3));
         h.step();
     });
     assert!(avg < BUDGET, "average frame {avg:?}");
@@ -186,9 +186,9 @@ fn regular_wheel_input_on_500_pages_stays_within_the_frame_budget() {
         app
     });
     h.run_steps(8);
-    h.hover_at(h.state().views[0].viewport_rect().center());
+    h.hover_at(h.state().win.views[0].viewport_rect().center());
     h.run_steps(2);
-    let start = h.state().views[0].current;
+    let start = h.state().win.views[0].current;
     let average = best_average("wheel input", 200, |frame| {
         if frame % 3 == 0 {
             h.event(egui::Event::MouseWheel {
@@ -201,7 +201,7 @@ fn regular_wheel_input_on_500_pages_stays_within_the_frame_budget() {
         }
         h.step();
     });
-    assert!(h.state().views[0].current > start, "wheel events must actually move through the document");
+    assert!(h.state().win.views[0].current > start, "wheel events must actually move through the document");
     assert!(average < BUDGET, "wheel input: average frame {average:?}");
 }
 
@@ -223,7 +223,7 @@ fn panels_with_hundreds_of_items_stay_within_the_frame_budget() {
         });
         h.run_steps(4);
         let avg = best_average(panel, 100, |f| {
-            h.state_mut().views[0].goto = Some(((f * 5) % 500, 0.3));
+            h.state_mut().win.views[0].goto = Some(((f * 5) % 500, 0.3));
             h.step();
         });
         assert!(avg < BUDGET, "{panel}: average frame {avg:?}");

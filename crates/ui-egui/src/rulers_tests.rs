@@ -39,11 +39,11 @@ fn open(app: &mut PdfCraftApp, (path, bytes): &(String, Vec<u8>)) {
 
 fn prefs(h: &Harness<'static, PdfCraftApp>, view: usize) -> crate::doc_prefs::ViewPrefs {
     let app = h.state();
-    app.doc_prefs.state(app.views[view].id).expect("followed").prefs
+    app.doc_prefs.state(app.win.views[view].id).expect("followed").prefs
 }
 
 fn viewport(h: &Harness<'static, PdfCraftApp>, view: usize) -> egui::Rect {
-    h.state().views[view].viewport_rect()
+    h.state().win.views[view].viewport_rect()
 }
 
 /// The PDF is as it was opened: nothing to save, no undo step, the same bytes.
@@ -71,9 +71,9 @@ fn rulers_show_per_pdf_take_their_strips_and_dont_change_the_pdf() {
     let mut h = harness(1600.0, move |app| {
         open(app, &a);
         open(app, &b);
-        app.active = Some(0);
+        app.win.active = Some(0);
     });
-    let (ida, idb) = (h.state().views[0].id, h.state().views[1].id);
+    let (ida, idb) = (h.state().win.views[0].id, h.state().win.views[1].id);
     assert_eq!(prefs(&h, 0), crate::doc_prefs::ViewPrefs::new(h.state().units), "a new PDF: rulers hidden, guides shown");
     let before = viewport(&h, 0);
 
@@ -100,7 +100,7 @@ fn rulers_show_per_pdf_take_their_strips_and_dont_change_the_pdf() {
     untouched(&mut h, ida, &a_bytes);
 
     // The other PDF keeps its own: no rulers.
-    h.state_mut().active = Some(1);
+    h.state_mut().win.active = Some(1);
     h.run_steps(4);
     assert_eq!(prefs(&h, 1), crate::doc_prefs::ViewPrefs::new(h.state().units));
     assert_eq!(viewport(&h, 1), before, "no strips for the other PDF");
@@ -125,10 +125,10 @@ fn rulers_and_their_unit_are_remembered_per_pdf_across_a_restart() {
         open(app, &a);
         open(app, &b);
     });
-    h.state_mut().active = Some(0);
+    h.state_mut().win.active = Some(0);
     h.state_mut().set_option("rulers", "on").unwrap();
     h.state_mut().set_option("ruler_unit", "mm").unwrap();
-    h.state_mut().active = Some(1);
+    h.state_mut().win.active = Some(1);
     h.state_mut().set_option("guides", "off").unwrap();
     assert!(h.state_mut().set_option("ruler_unit", "furlong").is_err());
     assert!(h.state_mut().set_option("rulers", "maybe").is_err());
@@ -154,9 +154,9 @@ fn each_tile_has_its_documents_rulers_and_duplicate_tabs_share_them() {
         app.duplicate_view(0);
         open(app, &b);
         app.set_view_layout(ViewLayout::Tiles);
-        app.active = Some(0);
+        app.win.active = Some(0);
     });
-    assert_eq!(h.state().views.len(), 3);
+    assert_eq!(h.state().win.views.len(), 3);
     let before: Vec<egui::Rect> = (0..3).map(|i| viewport(&h, i)).collect();
     h.state_mut().set_option("rulers", "on").unwrap();
     h.run_steps(4);
@@ -166,9 +166,9 @@ fn each_tile_has_its_documents_rulers_and_duplicate_tabs_share_them() {
     }
     assert_eq!(viewport(&h, 2), before[2], "the other PDF's tile has none");
     // Each tile's page view keeps its own zoom.
-    h.state_mut().views[1].set_zoom(2.0);
+    h.state_mut().win.views[1].set_zoom(2.0);
     h.run_steps(3);
-    assert!((h.state().views[0].zoom - h.state().views[1].zoom).abs() > 0.1);
+    assert!((h.state().win.views[0].zoom - h.state().win.views[1].zoom).abs() > 0.1);
 }
 
 // Guides (this fork, OV11): pulled out of the rulers or made by double-clicking them; moved,
@@ -214,7 +214,7 @@ fn plans(name: &str) -> (String, Vec<u8>) {
 /// Screen position of user-space point (`x`, `y`) on `page` of view `view`.
 fn on_page(h: &Harness<'static, PdfCraftApp>, view: usize, page: usize, x: f64, y: f64) -> Pos2 {
     let app = h.state();
-    let v = &app.views[view];
+    let v = &app.win.views[view];
     let xf = v.page_xform(page).expect("page on screen");
     let p = guides::to_screen(&app.session.get(v.id).unwrap().info.pages[page], &xf, x, y);
     assert!(v.viewport_rect().contains(p), "({x}, {y}) on page {page} is at {p:?}, outside {:?}", v.viewport_rect());
@@ -251,7 +251,7 @@ fn click(h: &mut Harness<'static, PdfCraftApp>, p: Pos2) {
 
 fn guides_of(h: &Harness<'static, PdfCraftApp>, view: usize, page: usize) -> crate::doc_prefs::PageGuides {
     let app = h.state();
-    app.doc_prefs.state(app.views[view].id).and_then(|s| s.page(page)).cloned().unwrap_or_default()
+    app.doc_prefs.state(app.win.views[view].id).and_then(|s| s.page(page)).cloned().unwrap_or_default()
 }
 
 /// The top ruler's strip at screen x `x` of view `view`; the left one's at screen y `y`.
@@ -265,7 +265,7 @@ fn left_ruler(h: &Harness<'static, PdfCraftApp>, view: usize, y: f32) -> Pos2 {
 
 /// Within half a screen point at the view's zoom.
 fn near(got: f64, want: f64, h: &Harness<'static, PdfCraftApp>, view: usize) -> bool {
-    (got - want).abs() <= 0.6 / f64::from(h.state().views[view].zoom).max(0.01)
+    (got - want).abs() <= 0.6 / f64::from(h.state().win.views[view].zoom).max(0.01)
 }
 
 #[test]
@@ -273,7 +273,7 @@ fn guides_pulled_out_of_the_rulers_land_on_the_page_and_come_back_after_a_restar
     let file = plans("restart.pdf");
     let (again, bytes) = (file.clone(), file.1.clone());
     let mut h = harness(1600.0, move |app| open(app, &file));
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     h.state_mut().set_option("rulers", "on").unwrap();
     h.run_steps(4);
 
@@ -294,14 +294,14 @@ fn guides_pulled_out_of_the_rulers_land_on_the_page_and_come_back_after_a_restar
     // Released off every page: nothing.
     let vp = viewport(&h, 0);
     let off = Pos2::new(vp.left() + 3.0, vp.center().y);
-    assert!(h.state().views[0].visible_page_rects().iter().all(|(_, r)| !r.contains(off)), "a point off the pages");
+    assert!(h.state().win.views[0].visible_page_rects().iter().all(|(_, r)| !r.contains(off)), "a point off the pages");
     let p = top_ruler(&h, 0, off.x + 40.0);
     drag(&mut h, p, off, 6, false);
     // Escape while pulling: nothing either, and the press is taken (rulers stay on).
     let target = on_page(&h, 0, 0, 100.0, 220.0);
     let p = top_ruler(&h, 0, target.x);
     drag(&mut h, p, target, 6, true);
-    assert!(h.state().views[0].guides.pulling.is_some());
+    assert!(h.state().win.views[0].guides.pulling.is_some());
     h.key_press(egui::Key::Escape);
     h.run_steps(1);
     button(&mut h, target, false);
@@ -325,7 +325,7 @@ fn guides_pulled_out_of_the_rulers_land_on_the_page_and_come_back_after_a_restar
 
     // On the page turned a quarter (crop box [100 50 500 350]), a guide horizontal on screen
     // fixes x: through the middle of the page, x = 300.
-    h.state_mut().views[0].go_to_page(1);
+    h.state_mut().win.views[0].go_to_page(1);
     h.run_steps(6);
     let target = on_page(&h, 0, 1, 300.0, 200.0);
     let p = top_ruler(&h, 0, target.x);
@@ -343,12 +343,12 @@ fn guides_pulled_out_of_the_rulers_land_on_the_page_and_come_back_after_a_restar
     });
     assert_eq!([guides_of(&h, 0, 0), guides_of(&h, 0, 1)], before);
     assert!(prefs(&h, 0).rulers);
-    h.state_mut().views[0].set_zoom(2.3);
+    h.state_mut().win.views[0].set_zoom(2.3);
     h.run_steps(4);
-    h.state_mut().views[0].go_to_page(0);
+    h.state_mut().win.views[0].go_to_page(0);
     h.run_steps(6);
     let app = h.state();
-    let v = &app.views[0];
+    let v = &app.win.views[0];
     let page = &app.session.get(v.id).unwrap().info.pages[0];
     let xf = v.page_xform(0).unwrap();
     let seg = guides::segment(page, &xf, Axis::Y, before[0].y[0]);
@@ -361,15 +361,15 @@ fn the_hand_tool_moves_selects_and_deletes_guides_and_escape_puts_one_back() {
     let file = plans("hand.pdf");
     let bytes = file.1.clone();
     let mut h = harness(1600.0, move |app| open(app, &file));
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     // Rulers stay hidden: guides are still shown, moved, selected and deleted.
     let (y, x) = {
         let p = &mut h.state_mut().doc_prefs;
         (p.add_guide(id, 0, Axis::Y, 150.0).unwrap(), p.add_guide(id, 0, Axis::X, 120.0).unwrap())
     };
-    h.state_mut().quick_tool = QuickTool::Hand;
+    h.state_mut().win.quick_tool = QuickTool::Hand;
     h.run_steps(4);
-    let page_at = h.state().views[0].page_screen_rect(0);
+    let page_at = h.state().win.views[0].page_screen_rect(0);
 
     // Drag the horizontal guide from y = 150 to y = 100: it moves, the page doesn't pan.
     let from = on_page(&h, 0, 0, 250.0, 150.0);
@@ -377,9 +377,9 @@ fn the_hand_tool_moves_selects_and_deletes_guides_and_escape_puts_one_back() {
     drag(&mut h, from, to, 6, false);
     let g = guides_of(&h, 0, 0);
     assert!(g.y.len() == 1 && near(g.y[0], 100.0, &h, 0), "{g:?}");
-    assert_eq!(h.state().views[0].page_screen_rect(0), page_at, "the press took the guide, not the page");
+    assert_eq!(h.state().win.views[0].page_screen_rect(0), page_at, "the press took the guide, not the page");
     let moved = GuideRef { at: g.y[0], ..y };
-    assert_eq!(h.state().views[0].guides.selected, Some(moved));
+    assert_eq!(h.state().win.views[0].guides.selected, Some(moved));
 
     // Escape mid-drag: the guide goes back to where the drag began, and the page stays.
     let from = on_page(&h, 0, 0, 250.0, 100.0);
@@ -394,23 +394,23 @@ fn the_hand_tool_moves_selects_and_deletes_guides_and_escape_puts_one_back() {
     button(&mut h, p, false);
     h.run_steps(3);
     assert_eq!(guides_of(&h, 0, 0).y, vec![moved.at], "back where it was");
-    assert_eq!(h.state().views[0].page_screen_rect(0), page_at);
+    assert_eq!(h.state().win.views[0].page_screen_rect(0), page_at);
     // The next Escape lets go of the selection, and only that.
-    assert!(h.state().views[0].guides.selected.is_some());
+    assert!(h.state().win.views[0].guides.selected.is_some());
     h.key_press(egui::Key::Escape);
     h.run_steps(2);
-    assert_eq!(h.state().views[0].guides.selected, None);
-    assert_eq!(h.state().quick_tool, QuickTool::Hand);
+    assert_eq!(h.state().win.views[0].guides.selected, None);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Hand);
 
     // Click the vertical guide, then Delete: it goes, and the comment selected meanwhile stays.
     let p = on_page(&h, 0, 0, 120.0, 220.0);
     click(&mut h, p);
-    assert_eq!(h.state().views[0].guides.selected, Some(x));
-    h.state_mut().views[0].comments.selected = Some((0, 0));
+    assert_eq!(h.state().win.views[0].guides.selected, Some(x));
+    h.state_mut().win.views[0].comments.selected = Some((0, 0));
     h.key_press(egui::Key::Delete);
     h.run_steps(3);
     assert_eq!(guides_of(&h, 0, 0).x, Vec::<f64>::new());
-    assert_eq!(h.state().views[0].guides.selected, None);
+    assert_eq!(h.state().win.views[0].guides.selected, None);
     let doc = h.state().session.get(id).unwrap();
     assert_eq!(doc.info.pages.len(), 3);
     untouched(&mut h, id, &bytes);
@@ -418,10 +418,10 @@ fn the_hand_tool_moves_selects_and_deletes_guides_and_escape_puts_one_back() {
     // A click beside a guide lets go of the selection.
     let p = on_page(&h, 0, 0, 250.0, moved.at);
     click(&mut h, p);
-    assert!(h.state().views[0].guides.selected.is_some());
+    assert!(h.state().win.views[0].guides.selected.is_some());
     let p = on_page(&h, 0, 0, 250.0, moved.at + 40.0);
     click(&mut h, p);
-    assert_eq!(h.state().views[0].guides.selected, None);
+    assert_eq!(h.state().win.views[0].guides.selected, None);
 
     // Hidden guides take no input: the press pans instead, and Delete deletes nothing.
     assert!(h.state_mut().execute("view.guides"));
@@ -429,7 +429,7 @@ fn the_hand_tool_moves_selects_and_deletes_guides_and_escape_puts_one_back() {
     let from = on_page(&h, 0, 0, 250.0, moved.at);
     drag(&mut h, from, from + vec2(0.0, -80.0), 6, false);
     assert_eq!(guides_of(&h, 0, 0).y, vec![moved.at], "kept, not moved");
-    assert_eq!(h.state().views[0].guides.selected, None);
+    assert_eq!(h.state().win.views[0].guides.selected, None);
     untouched(&mut h, id, &bytes);
 }
 
@@ -440,13 +440,13 @@ fn the_hand_tool_moves_selects_and_deletes_guides_and_escape_puts_one_back() {
 fn the_hand_tool_shows_which_way_a_guide_under_it_moves() {
     let file = plans("cursor.pdf");
     let mut h = harness(1600.0, move |app| open(app, &file));
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     {
         let p = &mut h.state_mut().doc_prefs;
         p.add_guide(id, 0, Axis::Y, 150.0).unwrap();
         p.add_guide(id, 0, Axis::X, 120.0).unwrap();
     }
-    h.state_mut().quick_tool = QuickTool::Hand;
+    h.state_mut().win.quick_tool = QuickTool::Hand;
     h.run_steps(4);
     let cursor_at = |h: &mut Harness<'static, PdfCraftApp>, p: Pos2| {
         h.hover_at(p);
@@ -475,16 +475,16 @@ fn the_hand_tool_shows_which_way_a_guide_under_it_moves() {
 fn a_guide_under_the_find_bar_is_not_taken() {
     let file = plans("under.pdf");
     let mut h = harness(1600.0, move |app| open(app, &file));
-    let id = h.state().views[0].id;
-    h.state_mut().quick_tool = QuickTool::Hand;
-    h.state_mut().views[0].open_find();
+    let id = h.state().win.views[0].id;
+    h.state_mut().win.quick_tool = QuickTool::Hand;
+    h.state_mut().win.views[0].open_find();
     h.run_steps(4);
-    let key = h.state().views[0].view_key();
+    let key = h.state().win.views[0].view_key();
     let bar = h.ctx.memory(|m| m.area_rect(egui::Id::unique(("find-bar", key)))).expect("the find bar is drawn");
     let under = bar.center();
     let (page, xf) = {
         let app = h.state();
-        let v = &app.views[0];
+        let v = &app.win.views[0];
         (app.session.get(v.id).unwrap().info.pages[0].clone(), v.page_xform(0).expect("page 1 on screen"))
     };
     assert!(xf.rect.contains(under), "the find bar {bar:?} is over page 1 {:?}", xf.rect);
@@ -494,12 +494,12 @@ fn a_guide_under_the_find_bar_is_not_taken() {
 
     drag(&mut h, under, under + egui::vec2(0.0, 60.0), 6, false);
     assert_eq!(guides_of(&h, 0, 0).y, vec![guide.at], "the guide under the find bar stays where it is");
-    assert_eq!(h.state().views[0].guides.selected, None, "and isn't selected");
+    assert_eq!(h.state().win.views[0].guides.selected, None, "and isn't selected");
 
     let beside = guides::to_screen(&page, &xf, 60.0, guide.at);
     assert!(!bar.contains(beside));
     click(&mut h, beside);
-    assert_eq!(h.state().views[0].guides.selected, Some(guide), "beside the find bar the press takes it");
+    assert_eq!(h.state().win.views[0].guides.selected, Some(guide), "beside the find bar the press takes it");
 }
 
 #[test]
@@ -510,9 +510,9 @@ fn clearing_guides_and_two_tabs_of_one_pdf() {
         open(app, &file);
         app.duplicate_view(0);
     });
-    assert_eq!(h.state().views.len(), 2);
-    let id = h.state().views[0].id;
-    h.state_mut().active = Some(1);
+    assert_eq!(h.state().win.views.len(), 2);
+    let id = h.state().win.views[0].id;
+    h.state_mut().win.active = Some(1);
     h.state_mut().set_option("rulers", "on").unwrap();
     h.run_steps(4);
     // Made in the second tab, the guide is the first tab's too.
@@ -522,16 +522,16 @@ fn clearing_guides_and_two_tabs_of_one_pdf() {
     assert_eq!(guides_of(&h, 0, 0), guides_of(&h, 1, 0));
     assert_eq!(guides_of(&h, 0, 0).y.len(), 1);
     // Moved in the first tab (Hand tool), it moves in the second; each tab keeps its own zoom.
-    h.state_mut().views[1].set_zoom(1.7);
-    h.state_mut().active = Some(0);
-    h.state_mut().quick_tool = QuickTool::Hand;
+    h.state_mut().win.views[1].set_zoom(1.7);
+    h.state_mut().win.active = Some(0);
+    h.state_mut().win.quick_tool = QuickTool::Hand;
     h.run_steps(4);
     let at = guides_of(&h, 0, 0).y[0];
     let p = on_page(&h, 0, 0, 250.0, at);
     let q = on_page(&h, 0, 0, 250.0, 90.0);
     drag(&mut h, p, q, 6, false);
     assert!(near(guides_of(&h, 1, 0).y[0], 90.0, &h, 0), "{:?}", guides_of(&h, 1, 0));
-    assert!((h.state().views[0].zoom - h.state().views[1].zoom).abs() > 0.1);
+    assert!((h.state().win.views[0].zoom - h.state().win.views[1].zoom).abs() > 0.1);
 
     // Clear Guides on Page from the ruler's menu: this page's only.
     {
@@ -564,10 +564,10 @@ fn clearing_guides_and_two_tabs_of_one_pdf() {
 fn guides_are_drawn_with_page_gaps_on_and_off() {
     let file = plans("gaps.pdf");
     let mut h = harness(1600.0, move |app| open(app, &file));
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     h.state_mut().doc_prefs.add_guide(id, 0, Axis::Y, 150.0).unwrap();
     for gaps in [true, false] {
-        h.state_mut().views[0].show_page_gaps = gaps;
+        h.state_mut().win.views[0].show_page_gaps = gaps;
         h.run_steps(3);
         let drawn = h.output().shapes.iter().any(|c| matches!(&c.shape, egui::Shape::LineSegment { stroke, .. } if stroke.color == guides::GUIDE));
         assert!(drawn, "page gaps {gaps}: the guide is drawn");

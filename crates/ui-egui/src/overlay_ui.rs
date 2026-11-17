@@ -987,7 +987,7 @@ impl Wizard {
         let (tx, rx) = channel();
         let snap = Snapshot::take(app, a);
         let n = snap.as_ref().map_or(0, Snapshot::pages).max(1);
-        let others: Vec<DocId> = app.views.iter().map(|v| v.id).filter(|id| *id != a).collect();
+        let others: Vec<DocId> = app.win.views.iter().map(|v| v.id).filter(|id| *id != a).collect();
         let mut w = Wizard {
             step: Step::Documents,
             open: true,

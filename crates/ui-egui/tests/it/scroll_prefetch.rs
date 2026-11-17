@@ -52,7 +52,7 @@ fn go_to(h: &mut Harness<'static, PdfCraftApp>, page: usize) {
 }
 
 fn shown(h: &Harness<'static, PdfCraftApp>) -> Vec<usize> {
-    (0..PAGES).filter(|&p| h.state().views[0].page_screen_rect(p).is_some()).collect()
+    (0..PAGES).filter(|&p| h.state().win.views[0].page_screen_rect(p).is_some()).collect()
 }
 
 #[test]
@@ -61,7 +61,7 @@ fn continuous_view_prefetches_the_pages_ahead_of_the_scroll() {
     go_to(&mut h, 14);
     let shown_down = shown(&h);
     let last = *shown_down.last().expect("pages on screen");
-    let cached = h.state().views[0].cached_pages_debug();
+    let cached = h.state().win.views[0].cached_pages_debug();
     // The page just past the window is within the 400 pt band every frame asks for; the one
     // after it is past the band, and only the prefetch asks for it.
     for page in last + 1..=last + 2 {
@@ -72,7 +72,7 @@ fn continuous_view_prefetches_the_pages_ahead_of_the_scroll() {
     go_to(&mut h, 9);
     let shown_up = shown(&h);
     let first = *shown_up.first().expect("pages on screen");
-    let cached = h.state().views[0].cached_pages_debug();
+    let cached = h.state().win.views[0].cached_pages_debug();
     for page in first.saturating_sub(2)..first {
         assert!(cached.contains(&page), "page {page} renders ahead of a scroll up: shown {shown_up:?}, cached {cached:?}");
     }

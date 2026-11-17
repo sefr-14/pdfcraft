@@ -20,7 +20,7 @@ fn harness() -> Harness<'static, PdfCraftApp> {
 }
 
 fn at(h: &Harness<'static, PdfCraftApp>, x: f32, y: f32) -> Pos2 {
-    let r = h.state().views[0].page_screen_rect(0).unwrap();
+    let r = h.state().win.views[0].page_screen_rect(0).unwrap();
     let k = r.width() / 300.0;
     r.min + egui::vec2(x * k, y * k)
 }
@@ -40,7 +40,7 @@ fn drag(h: &mut Harness<'static, PdfCraftApp>, a: Pos2, b: Pos2) {
 
 fn links(h: &Harness<'static, PdfCraftApp>) -> Vec<pdfcraft_engine::LinkItem> {
     let s = h.state();
-    s.session.get(s.views[0].id).unwrap().links().to_vec()
+    s.session.get(s.win.views[0].id).unwrap().links().to_vec()
 }
 
 #[test]
@@ -129,10 +129,10 @@ fn an_appearance_edit_keeps_the_destination_as_written() {
     let positioned = LinkTarget::Page(0, DestView::Xyz { left: Some(100.0), top: Some(300.0), zoom: Some(2.0) });
     let target = |h: &Harness<'static, PdfCraftApp>| {
         let s = h.state();
-        s.session.get(s.views[0].id).unwrap().info.links[0].target.clone()
+        s.session.get(s.win.views[0].id).unwrap().info.links[0].target.clone()
     };
     assert_eq!(target(&h), positioned);
-    h.state_mut().views[0].links.open_existing = Some((0, 0));
+    h.state_mut().win.views[0].links.open_existing = Some((0, 0));
     h.run_steps(3);
     assert_eq!(h.state().dialog, Some(Dialog::LinkProps));
     h.state_mut().link_draft.as_mut().unwrap().style.color = [1.0, 0.0, 0.0];
@@ -190,17 +190,17 @@ fn the_link_context_menu_shows_only_for_a_right_click_on_a_link() {
     h.event(egui::Event::PointerButton { pos: on_link, button: egui::PointerButton::Primary, pressed: true, modifiers: Default::default() });
     h.event(egui::Event::PointerButton { pos: on_link, button: egui::PointerButton::Primary, pressed: false, modifiers: Default::default() });
     h.run_steps(3);
-    assert!(h.state().views[0].links.selected.is_some());
+    assert!(h.state().win.views[0].links.selected.is_some());
     right_click(&mut h, away);
     assert!(h.query_by_label("Remove all links").is_none(), "a right-click away from the link got the link menu");
     h.key_press(egui::Key::Escape);
     h.run_steps(3);
     // A right-click on the link gets it, with the Select tool too.
-    h.state_mut().quick_tool = pdfcraft_ui_egui::QuickTool::Select;
+    h.state_mut().win.quick_tool = pdfcraft_ui_egui::QuickTool::Select;
     h.run_steps(2);
     right_click(&mut h, on_link);
     h.get_by_label("Remove all links").click();
     h.run_steps(3);
     assert!(links(&h).is_empty());
-    assert_eq!(h.state().session.get(h.state().views[0].id).unwrap().can_undo(), Some("Remove all links"));
+    assert_eq!(h.state().session.get(h.state().win.views[0].id).unwrap().can_undo(), Some("Remove all links"));
 }

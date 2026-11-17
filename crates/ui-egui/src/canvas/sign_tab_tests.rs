@@ -276,7 +276,7 @@ fn painted(h: &egui_kittest::Harness<'static, PdfCraftApp>) -> Vec<egui::Shape> 
 /// Where the named field's first widget is on screen.
 fn field_on_screen(h: &egui_kittest::Harness<'static, PdfCraftApp>, name: &str) -> Rect {
     let app = h.state();
-    let view = &app.views[0];
+    let view = &app.win.views[0];
     let doc = app.session.get(view.id).expect("open");
     let f = doc.form.iter().find(|f| f.name == name).expect("field");
     crate::forms_ui::field_screen_rect(view, &doc.info, f, 0).expect("on screen")
@@ -366,7 +366,7 @@ fn a_sign_tab_signs_its_field_where_an_earlier_field_overlaps_it() {
     click_at(&mut h, tab.center());
     assert_eq!(h.state().dialog, Some(crate::Dialog::Sign));
     assert_eq!(h.state().sign_draft.as_ref().and_then(|d| d.field.clone()).as_deref(), Some("Approver"));
-    assert!(h.state().views[0].forms.focus.is_none(), "the text field didn't open");
+    assert!(h.state().win.views[0].forms.focus.is_none(), "the text field didn't open");
 
     let beside = pos2(tab.right() + 6.0, tab.center().y);
     assert!(name.contains(beside) && approver.contains(beside), "beside the tab, both fields are under the pointer");
@@ -374,5 +374,5 @@ fn a_sign_tab_signs_its_field_where_an_earlier_field_overlaps_it() {
     h.state_mut().sign_draft = None;
     h.run_steps(1);
     click_at(&mut h, beside);
-    assert_eq!(h.state().views[0].forms.focus.as_ref().map(|f| f.name.as_str()), Some("Name"), "the earlier field takes the click");
+    assert_eq!(h.state().win.views[0].forms.focus.as_ref().map(|f| f.name.as_str()), Some("Name"), "the earlier field takes the click");
 }

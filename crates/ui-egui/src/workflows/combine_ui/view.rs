@@ -106,7 +106,7 @@ pub(crate) fn page(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
             let open_docs: Vec<(usize, String)> = app
                 .open_documents()
                 .into_iter()
-                .filter_map(|id| app.views.iter().position(|v| v.id == id))
+                .filter_map(|id| app.win.views.iter().position(|v| v.id == id))
                 .filter_map(|i| crate::canvas::document_label(app, i).map(|name| (i, name)))
                 .collect();
             let response = ui.add_enabled_ui(!open_docs.is_empty(), |ui| widgets::icon_pill(ui, "file-plus", tl!("Add open documents"), false)).inner;

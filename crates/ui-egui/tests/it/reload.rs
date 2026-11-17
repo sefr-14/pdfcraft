@@ -92,16 +92,16 @@ fn harness(path: &str) -> Harness<'static, PdfCraftApp> {
 
 fn pages(h: &Harness<'static, PdfCraftApp>) -> usize {
     let app = h.state();
-    app.session.get(app.views[0].id).unwrap().info.pages.len()
+    app.session.get(app.win.views[0].id).unwrap().info.pages.len()
 }
 
 fn dirty(h: &Harness<'static, PdfCraftApp>) -> bool {
     let app = h.state();
-    app.session.get(app.views[0].id).unwrap().dirty
+    app.session.get(app.win.views[0].id).unwrap().dirty
 }
 
 fn rotate_first_page(h: &mut Harness<'static, PdfCraftApp>) {
-    h.state_mut().views[0].select_pages(&[0]);
+    h.state_mut().win.views[0].select_pages(&[0]);
     h.state_mut().apply_edit(pdfcraft_engine::Edit::RotatePages { pages: vec![0], degrees: 90 });
 }
 
@@ -109,18 +109,18 @@ fn rotate_first_page(h: &mut Harness<'static, PdfCraftApp>) {
 fn a_rebuilt_file_reloads_in_place_keeping_the_page_and_zoom() {
     let file = TempPdf::new("rebuild", &fixture(3));
     let mut h = harness(&file.path);
-    let id = h.state().views[0].id;
-    h.state_mut().views[0].fit = pdfcraft_ui_egui::canvas::Fit::None;
-    h.state_mut().views[0].zoom = 1.5;
-    h.state_mut().views[0].go_to_page(2);
+    let id = h.state().win.views[0].id;
+    h.state_mut().win.views[0].fit = pdfcraft_ui_egui::canvas::Fit::None;
+    h.state_mut().win.views[0].zoom = 1.5;
+    h.state_mut().win.views[0].go_to_page(2);
     h.run_steps(4);
     file.rebuild(&fixture(4));
     // One look sees the change, the next sees it settled and reloads.
     h.run_steps(3);
     let app = h.state();
     assert_eq!(pages(&h), 4, "the new version shows");
-    assert_eq!((app.views.len(), app.views[0].id), (1, id), "in the same tab");
-    assert_eq!((app.views[0].current, app.views[0].zoom), (2, 1.5), "at the same page and zoom");
+    assert_eq!((app.win.views.len(), app.win.views[0].id), (1, id), "in the same tab");
+    assert_eq!((app.win.views[0].current, app.win.views[0].zoom), (2, 1.5), "at the same page and zoom");
 }
 
 #[test]
@@ -142,12 +142,12 @@ fn a_watched_label_replacement_keeps_the_display_mode_and_focused_page() {
     for display in ["single", "continuous"] {
         let file = TempPdf::new(&format!("focused-label-{display}"), &original);
         let mut h = harness(&file.path);
-        let id = h.state().views[0].id;
+        let id = h.state().win.views[0].id;
         h.state_mut().set_option("layout", display).unwrap();
         h.state_mut().set_option("zoom", "100").unwrap();
         h.state_mut().set_option("page", "4").unwrap();
         h.run_steps(3);
-        let view = &h.state().views[0];
+        let view = &h.state().win.views[0];
         assert_eq!((view.current, display_token(view.layout, view.continuous())), (3, display));
         let doc = h.state().session.get(id).unwrap();
         assert_eq!(doc.bytes, original);
@@ -173,9 +173,9 @@ fn a_watched_label_replacement_keeps_the_display_mode_and_focused_page() {
         }
         h.run_steps(2);
         let app = h.state();
-        let view = &app.views[0];
+        let view = &app.win.views[0];
         let doc = app.session.get(id).unwrap();
-        assert_eq!((app.views.len(), app.active, view.id), (1, Some(0), id));
+        assert_eq!((app.win.views.len(), app.win.active, view.id), (1, Some(0), id));
         assert_eq!(doc.bytes, replacement, "the watcher loaded the replacement before checking navigation");
         assert_eq!((doc.info.pages.len(), doc.info.pages[3].label.as_str()), (5, "iv"));
         // First causal negative: a single-page reader must not become a continuous reader.
@@ -188,17 +188,17 @@ fn a_watched_label_replacement_keeps_the_display_mode_and_focused_page() {
         // Keep the replacement editor's selection and then its caret, without re-focusing it.
         h.event(egui::Event::Text("2".into()));
         h.run_steps(2);
-        assert_eq!((h.state().views[0].current, h.state().views[0].page_input.as_str()), (3, "2"));
+        assert_eq!((h.state().win.views[0].current, h.state().win.views[0].page_input.as_str()), (3, "2"));
         h.event(egui::Event::Text("x".into()));
         h.run_steps(1);
-        assert_eq!(h.state().views[0].page_input, "2x");
+        assert_eq!(h.state().win.views[0].page_input, "2x");
         h.key_press(egui::Key::Backspace);
         h.run_steps(1);
-        assert_eq!(h.state().views[0].page_input, "2");
+        assert_eq!(h.state().win.views[0].page_input, "2");
         h.key_press(egui::Key::Enter);
         h.run_steps(3);
         let app = h.state();
-        assert_eq!((app.views[0].id, app.views[0].current, app.views[0].page_input.as_str()), (id, 1, "ii"));
+        assert_eq!((app.win.views[0].id, app.win.views[0].current, app.win.views[0].page_input.as_str()), (id, 1, "ii"));
         let doc = app.session.get(id).unwrap();
         assert_eq!(doc.path.as_deref(), Some(file.path.as_str()));
         assert!(!doc.dirty);
@@ -233,7 +233,7 @@ fn saving_does_not_reload_or_lose_undo() {
     h.state_mut().save_active(SaveTarget::InPlace);
     h.run_steps(4);
     let app = h.state();
-    let doc = app.session.get(app.views[0].id).unwrap();
+    let doc = app.session.get(app.win.views[0].id).unwrap();
     assert!(!doc.dirty, "saved");
     assert!(doc.can_undo().is_some(), "a reload would have cleared the undo history");
 }
@@ -259,7 +259,7 @@ fn a_deleted_file_leaves_the_document_open() {
     let mut h = harness(&file.path);
     std::fs::remove_file(&file.path).unwrap();
     h.run_steps(4);
-    assert_eq!((h.state().views.len(), pages(&h)), (1, 2), "still open, as it was");
+    assert_eq!((h.state().win.views.len(), pages(&h)), (1, 2), "still open, as it was");
     file.rebuild(&fixture(3));
     h.run_steps(3);
     assert_eq!(pages(&h), 3, "and the next build shows");
@@ -284,13 +284,13 @@ fn nothing_reloads_with_the_preference_off() {
 fn a_shorter_new_version_drops_what_pointed_into_the_old_one() {
     let file = TempPdf::new("shorter", &fixture_with(5, true));
     let mut h = harness(&file.path);
-    h.state_mut().views[0].go_to_page(4);
-    h.state_mut().views[0].select_pages(&[3, 4]);
-    h.state_mut().views[0].comments.selected = Some((4, 0));
+    h.state_mut().win.views[0].go_to_page(4);
+    h.state_mut().win.views[0].select_pages(&[3, 4]);
+    h.state_mut().win.views[0].comments.selected = Some((4, 0));
     h.run_steps(2);
     file.rebuild(&fixture(1));
     h.run_steps(4);
-    let view = &h.state().views[0];
+    let view = &h.state().win.views[0];
     assert_eq!(pages(&h), 1);
     assert_eq!(view.current, 0, "the page is clamped");
     assert!(view.selected.is_empty() && view.comments.selected.is_none(), "no selection points past the new version");
@@ -355,16 +355,16 @@ fn saving_checks_the_file_with_the_watcher_off_too() {
 fn opening_a_file_that_is_open_focuses_its_tab() {
     let file = TempPdf::new("twice", &fixture(2));
     let mut h = harness(&file.path);
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     h.state_mut().open_bytes("other.pdf", None, fixture(1)).unwrap();
     h.run_steps(2);
-    assert_eq!((h.state().views.len(), h.state().active), (2, Some(1)));
+    assert_eq!((h.state().win.views.len(), h.state().win.active), (2, Some(1)));
     let spelled = file.dir.join(".").join("thesis.pdf").to_string_lossy().into_owned();
     assert_ne!(spelled, file.path);
     h.state_mut().open_path(&spelled);
     h.run_steps(2);
     let app = h.state();
-    assert_eq!((app.views.len(), app.active, app.views[0].id), (2, Some(0), id), "focused, not opened again");
+    assert_eq!((app.win.views.len(), app.win.active, app.win.views[0].id), (2, Some(0), id), "focused, not opened again");
 }
 
 #[test]
@@ -417,7 +417,7 @@ fn a_newer_version_found_as_the_dialog_closes_replaces_the_held_one() {
     // frame that closes the dialog reads it, together with the held version.
     file.rebuild(&fixture(5));
     h.step();
-    let generation = |h: &Harness<'static, PdfCraftApp>| h.state().session.get(h.state().views[0].id).unwrap().edit_generation();
+    let generation = |h: &Harness<'static, PdfCraftApp>| h.state().session.get(h.state().win.views[0].id).unwrap().edit_generation();
     let before = generation(&h);
     h.state_mut().dialog = None;
     h.step();
@@ -429,7 +429,7 @@ fn a_file_rebuilt_under_the_full_screen_prompt_reloads_once_it_is_answered() {
     // #3917 review: the full-screen prompt is about the document's current version.
     let file = TempPdf::new("under-full-screen", &fixture(2));
     let mut h = harness(&file.path);
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     h.state_mut().pending_full_screen = Some(id);
     h.run_steps(2);
     file.rebuild(&fixture(4));

@@ -58,7 +58,7 @@ impl PdfCraftApp {
             std::panic::resume_unwind(Box::new(message.to_string()));
         }
         self.dialog = None;
-        self.palette_open = false;
+        self.win.palette_open = false;
         self.keep_active_valid();
         self.notify_fmt("That didn't work: an internal error stopped it ({m}).", &[("m", message)]);
         if let Some(ctx) = &self.ctx {
@@ -79,8 +79,8 @@ impl PdfCraftApp {
     /// `active` names an open tab, or nothing: a panic part way through closing or replacing a
     /// tab can leave it past the end, and the next frame would index out of bounds unguarded.
     pub(crate) fn keep_active_valid(&mut self) {
-        if self.active.is_some_and(|i| i >= self.views.len()) {
-            self.active = self.views.len().checked_sub(1);
+        if self.win.active.is_some_and(|i| i >= self.win.views.len()) {
+            self.win.active = self.win.views.len().checked_sub(1);
         }
     }
 }
@@ -154,7 +154,7 @@ mod tests {
     }
 
     fn toast(h: &Harness<'static, PdfCraftApp>) -> String {
-        h.state().toast.as_ref().map(|t| t.0.clone()).unwrap_or_default()
+        h.state().win.toast.as_ref().map(|t| t.0.clone()).unwrap_or_default()
     }
 
     #[test]
@@ -166,8 +166,8 @@ mod tests {
         h.state_mut().panic_next = None;
         h.run_steps(2);
         let app = h.state();
-        assert_eq!(app.views.len(), 2, "every tab is still open");
-        assert_eq!(app.active, Some(1));
+        assert_eq!(app.win.views.len(), 2, "every tab is still open");
+        assert_eq!(app.win.active, Some(1));
         assert!(app.dialog.is_none(), "the dialog that was showing is dropped");
         assert_eq!(app.panicking_frames, 0, "a frame that draws resets the count");
         assert!(toast(&h).starts_with("That didn't work: an internal error stopped it (injected Ui panic)"), "{}", toast(&h));
@@ -182,7 +182,7 @@ mod tests {
         h.run_steps(1);
         h.state_mut().panic_next = None;
         h.run_steps(2);
-        assert_eq!(h.state().views.len(), 2);
+        assert_eq!(h.state().win.views.len(), 2);
         assert!(toast(&h).contains("injected Logic panic"), "{}", toast(&h));
         assert_eq!(snapshots(&store), 1);
     }
@@ -243,12 +243,12 @@ mod tests {
     #[test]
     fn active_stays_on_an_open_tab() {
         let mut app = PdfCraftApp::new();
-        app.active = Some(3);
+        app.win.active = Some(3);
         app.keep_active_valid();
-        assert_eq!(app.active, None, "no tabs: nothing is active");
+        assert_eq!(app.win.active, None, "no tabs: nothing is active");
         app.open_bytes("a.pdf", None, pdf("Only")).unwrap();
-        app.active = Some(5);
+        app.win.active = Some(5);
         app.keep_active_valid();
-        assert_eq!(app.active, Some(0));
+        assert_eq!(app.win.active, Some(0));
     }
 }

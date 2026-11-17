@@ -46,7 +46,7 @@ fn open(bytes: Vec<u8>) -> Harness<'static, PdfCraftApp> {
 
 fn xfa(h: &Harness<'static, PdfCraftApp>) -> Option<pdfcraft_render::Xfa> {
     let s = h.state();
-    s.session.get(s.views[0].id).unwrap().info.xfa
+    s.session.get(s.win.views[0].id).unwrap().info.xfa
 }
 
 #[test]
@@ -55,7 +55,7 @@ fn a_dynamic_xfa_form_is_laid_out_and_filled() {
     assert_eq!(xfa(&h), Some(pdfcraft_render::Xfa::Dynamic));
     h.get_by_label_contains("laid out from its template: 2 pages, 11 fields");
     let s = h.state();
-    let doc = s.session.get(s.views[0].id).unwrap();
+    let doc = s.session.get(s.win.views[0].id).unwrap();
     assert_eq!(doc.info.pages.len(), 2);
     assert!(doc.form.iter().any(|f| f.name == "familyName"));
     // The notice offers the highlight toggle, like any form; highlights are on by default.
@@ -91,7 +91,7 @@ fn a_static_xfa_form_is_filled_from_its_data_and_says_so() {
     // Values saved in the datasets by another viewer show up in the fields.
     let h = open(pdfcraft_xfa::fixtures::static_shell("<form1><page1><name>Ada</name><agree>1</agree></page1></form1>"));
     let s = h.state();
-    let doc = s.session.get(s.views[0].id).unwrap();
+    let doc = s.session.get(s.win.views[0].id).unwrap();
     assert_eq!(doc.form.iter().find(|f| f.name == "form1[0].page1[0].name[0]").unwrap().value, vec!["Ada".to_string()]);
     assert_eq!(doc.form.iter().find(|f| f.name == "form1[0].page1[0].agree[0]").unwrap().value, vec!["1".to_string()]);
     assert!(!doc.dirty);
@@ -115,9 +115,9 @@ fn ordinary_forms_and_documents_have_no_xfa_notice() {
 fn click_field(h: &mut Harness<'static, PdfCraftApp>, name: &str) {
     let p = {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         let f = doc.form.iter().find(|f| f.name == name).unwrap_or_else(|| panic!("no field {name}"));
-        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.views[0], &doc.info, f, 0).expect("on screen").center()
+        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.win.views[0], &doc.info, f, 0).expect("on screen").center()
     };
     h.hover_at(p);
     h.run_steps(1);
@@ -135,7 +135,7 @@ fn xfa_buttons_run_their_scripts_in_the_app() {
     crate::support::settle(&mut h);
     let names = |h: &Harness<'static, PdfCraftApp>| {
         let s = h.state();
-        s.session.get(s.views[0].id).unwrap().form.iter().map(|f| f.name.clone()).collect::<Vec<_>>()
+        s.session.get(s.win.views[0].id).unwrap().form.iter().map(|f| f.name.clone()).collect::<Vec<_>>()
     };
     assert!(!names(&h).iter().any(|n| n == "amount_2"));
     click_field(&mut h, "addRow");
@@ -155,11 +155,11 @@ fn xfa_enter_and_exit_scripts_run_whenever_the_focus_moves() {
     crate::support::settle(&mut h);
     let counts = |h: &Harness<'static, PdfCraftApp>| {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         let v = |n: &str| doc.form.iter().find(|f| f.name == n).and_then(|f| f.value.first().cloned()).unwrap_or_default();
         (v("enters"), v("exits"))
     };
-    let focus = |h: &Harness<'static, PdfCraftApp>| h.state().views[0].forms.focus.as_ref().map(|f| f.name.clone());
+    let focus = |h: &Harness<'static, PdfCraftApp>| h.state().win.views[0].forms.focus.as_ref().map(|f| f.name.clone());
     let press = |h: &mut Harness<'static, PdfCraftApp>, modifiers, key| {
         h.key_press_modifiers(modifiers, key);
         h.run_steps(4);
@@ -198,12 +198,12 @@ fn an_enter_script_that_changes_its_field_shows_in_the_editor() {
     crate::support::settle(&mut h);
     let value = |h: &Harness<'static, PdfCraftApp>| {
         let s = h.state();
-        s.session.get(s.views[0].id).unwrap().form.iter().find(|f| f.name == "hint").and_then(|f| f.value.first().cloned()).unwrap_or_default()
+        s.session.get(s.win.views[0].id).unwrap().form.iter().find(|f| f.name == "hint").and_then(|f| f.value.first().cloned()).unwrap_or_default()
     };
     assert_eq!(value(&h), "Type here");
     click_field(&mut h, "hint");
     assert_eq!(value(&h), "", "the enter script cleared it");
-    assert_eq!(h.state().views[0].forms.focus.as_ref().map(|f| f.text.clone()).as_deref(), Some(""), "and the editor shows that");
+    assert_eq!(h.state().win.views[0].forms.focus.as_ref().map(|f| f.text.clone()).as_deref(), Some(""), "and the editor shows that");
     h.key_press_modifiers(Modifiers::NONE, Key::Tab);
     h.run_steps(4);
     assert_eq!(value(&h), "", "leaving it doesn't write \"Type here\" back");
@@ -218,7 +218,7 @@ fn an_enter_script_that_changes_its_field_shows_in_the_editor() {
     click_field(&mut h, "relay");
     click_field(&mut h, "hint");
     assert_eq!(value(&h), "", "relay's exit, then hint's enter");
-    assert_eq!(h.state().views[0].forms.focus.as_ref().map(|f| f.text.clone()).as_deref(), Some(""), "the editor holds the enter script's value");
+    assert_eq!(h.state().win.views[0].forms.focus.as_ref().map(|f| f.text.clone()).as_deref(), Some(""), "the editor holds the enter script's value");
     h.key_press_modifiers(Modifiers::NONE, Key::Tab);
     h.run_steps(4);
     assert_eq!(value(&h), "");
@@ -234,7 +234,7 @@ fn messages_from_scripts_run_on_open_show_right_away() {
     h.run_steps(2);
     assert!(h.query_by_label_contains("Welcome to the form").is_some(), "script console: {:?}", h.state().js_console.log);
     assert_eq!(h.state().dialog, None, "an initialize script can't open the Print dialog");
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     assert!(h.state_mut().session.take_js_output(id).is_empty(), "nothing waits for the next edit");
 }
 
@@ -251,11 +251,11 @@ fn says_scripts_are_off(toast: &Option<(String, f64)>) -> bool {
 fn a_form_whose_scripts_were_turned_off_at_open_says_so() {
     let tpl = pdfcraft_xfa::fixtures::scripted_template().replace("if (qty.rawValue === null) qty.rawValue = 2;", RUNAWAY);
     let mut h = open(pdfcraft_xfa::fixtures::shell(&tpl));
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     assert!(h.state().session.get(id).unwrap().xfa_scripts_off(), "script console: {:?}", h.state().js_console.log);
     // A toast says so as it happens; the notice bar keeps saying so after the toast is gone.
-    assert!(says_scripts_are_off(&h.state().toast), "{:?}", h.state().toast);
-    h.state_mut().toast = None;
+    assert!(says_scripts_are_off(&h.state().win.toast), "{:?}", h.state().win.toast);
+    h.state_mut().win.toast = None;
     h.run_steps(2);
     assert!(h.query_by_label_contains(SCRIPTS_OFF).is_some());
     // The bar leads to the console, where the script's error is.
@@ -271,26 +271,26 @@ fn scripts_turned_off_by_a_click_bring_a_closed_notice_bar_back() {
     let mut h = open(pdfcraft_xfa::fixtures::shell(&tpl));
     crate::support::settle(&mut h);
     // The form opens with its scripts on, and the user closes the notice bar.
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     assert!(!h.state().session.get(id).unwrap().xfa_scripts_off());
-    assert!(h.query_by_label_contains(SCRIPTS_OFF).is_none() && !says_scripts_are_off(&h.state().toast));
+    assert!(h.query_by_label_contains(SCRIPTS_OFF).is_none() && !says_scripts_are_off(&h.state().win.toast));
     h.get_by_label("Dismiss").click();
     h.run_steps(2);
-    assert!(h.state().views[0].notice_dismissed);
+    assert!(h.state().win.views[0].notice_dismissed);
     // The button's script runs away: a toast says the scripts are off and the bar is back.
     click_field(&mut h, "hello");
     assert!(h.state().session.get(id).unwrap().xfa_scripts_off(), "script console: {:?}", h.state().js_console.log);
-    assert!(says_scripts_are_off(&h.state().toast), "{:?}", h.state().toast);
-    assert!(!h.state().views[0].notice_dismissed);
-    h.state_mut().toast = None;
+    assert!(says_scripts_are_off(&h.state().win.toast), "{:?}", h.state().win.toast);
+    assert!(!h.state().win.views[0].notice_dismissed);
+    h.state_mut().win.toast = None;
     h.run_steps(2);
     assert!(h.query_by_label_contains(SCRIPTS_OFF).is_some());
     // It is said once: closed again, the bar stays closed through what the user does next.
     h.get_by_label("Dismiss").click();
     h.run_steps(2);
     click_field(&mut h, "addRow");
-    assert!(h.state().views[0].notice_dismissed);
-    assert!(!says_scripts_are_off(&h.state().toast), "{:?}", h.state().toast);
+    assert!(h.state().win.views[0].notice_dismissed);
+    assert!(!says_scripts_are_off(&h.state().win.toast), "{:?}", h.state().win.toast);
 }
 
 /// On an encrypted dynamic XFA form that allows filling, the notice bar shows the layout note and
@@ -339,10 +339,10 @@ fn opening_another_document_keeps_the_highlight_the_one_in_front_reads() {
     let app = h.state_mut();
     // The document in front has Highlight fields on; the remembered setting is off.
     app.view_defaults.highlight_fields = false;
-    app.views[0].highlight_fields = true;
+    app.win.views[0].highlight_fields = true;
     h.run_steps(2);
     let app = h.state_mut();
-    let first = app.views[0].id;
+    let first = app.win.views[0].id;
     app.open_bytes("next.pdf", None, pdfcraft_xfa::fixtures::shell(&pdfcraft_xfa::fixtures::template(1))).unwrap();
     // Before the next frame, the first document's script reads its own setting.
     app.session.apply(first, pdfcraft_engine::Edit::XfaEvent { som: "form[0].look[0]".into(), activity: "click".into() }).unwrap();
@@ -356,8 +356,8 @@ fn opening_another_document_keeps_the_highlight_the_one_in_front_reads() {
 fn a_form_that_turns_field_highlighting_on_gets_it() {
     let mut h = open(pdfcraft_xfa::fixtures::shell(&pdfcraft_xfa::fixtures::layout_ready_template()));
     h.run_steps(4);
-    assert!(h.state().views[0].highlight_fields, "the form's fields are highlighted");
+    assert!(h.state().win.views[0].highlight_fields, "the form's fields are highlighted");
     h.state_mut().open_bytes("next.pdf", None, pdfcraft_xfa::fixtures::shell(&pdfcraft_xfa::fixtures::template(1))).unwrap();
     h.run_steps(4);
-    assert!(h.state().views[1].highlight_fields, "the next document opens highlighted");
+    assert!(h.state().win.views[1].highlight_fields, "the next document opens highlighted");
 }

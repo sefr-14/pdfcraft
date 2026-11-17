@@ -72,7 +72,7 @@ fn fill_and_sign_dates_follow_the_date_format_preference_and_it_is_remembered() 
     h.run_steps(2);
     assert!(h.state_mut().execute("sign.fill.date"));
     h.run_steps(2);
-    let r = h.state().views[0].page_screen_rect(0).expect("on screen");
+    let r = h.state().win.views[0].page_screen_rect(0).expect("on screen");
     let p = pos2(r.left() + r.width() * 0.2, r.top() + r.height() * 0.2);
     h.hover_at(p);
     h.run_steps(1);
@@ -82,7 +82,7 @@ fn fill_and_sign_dates_follow_the_date_format_preference_and_it_is_remembered() 
     h.run_steps(4);
     let expected = h.state().date_text(None).unwrap();
     let s = h.state();
-    let dates: Vec<_> = s.session.get(s.views[0].id).unwrap().info.annotations.iter().filter_map(|a| a.contents.clone()).collect();
+    let dates: Vec<_> = s.session.get(s.win.views[0].id).unwrap().info.annotations.iter().filter_map(|a| a.contents.clone()).collect();
     assert_eq!(dates, std::slice::from_ref(&expected));
     assert!(expected.ends_with('.') && expected.matches('.').count() == 3, "{expected}");
 
@@ -161,7 +161,7 @@ fn a_date_the_pdf_cannot_hold_is_refused_with_a_warning_first() {
     h.run_steps(2);
     assert!(h.state_mut().execute("sign.fill.date"));
     h.run_steps(2);
-    let r = h.state().views[0].page_screen_rect(0).expect("on screen");
+    let r = h.state().win.views[0].page_screen_rect(0).expect("on screen");
     let p = pos2(r.left() + r.width() * 0.2, r.top() + r.height() * 0.2);
     h.hover_at(p);
     h.run_steps(1);
@@ -170,7 +170,7 @@ fn a_date_the_pdf_cannot_hold_is_refused_with_a_warning_first() {
     h.drop_at(p);
     h.run_steps(4);
     let s = h.state();
-    assert!(s.session.get(s.views[0].id).unwrap().info.annotations.is_empty(), "nothing placed");
-    let toast = s.toast.as_ref().map(|t| t.0.clone()).unwrap_or_default();
+    assert!(s.session.get(s.win.views[0].id).unwrap().info.annotations.is_empty(), "nothing placed");
+    let toast = s.win.toast.as_ref().map(|t| t.0.clone()).unwrap_or_default();
     assert!(toast.contains("can't be written into the PDF yet"), "{toast}");
 }

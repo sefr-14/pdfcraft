@@ -63,7 +63,7 @@ fn current_print_page_saves_the_viewed_page_when_labels_restart() {
         app
     });
     h.run_steps(4);
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let labels: Vec<_> = h.state().session.get(id).unwrap().info.pages.iter().map(|p| p.label.as_str()).collect();
     assert_eq!(labels, ["i", "ii", "iii", "1", "2"]);
     for (current, expected) in [[255, 0, 0], [0, 255, 0]].into_iter().enumerate() {
@@ -128,7 +128,7 @@ fn print_dialog_prints_the_selected_pages() {
     let bytes = h.state().session.create_blank(200.0, 300.0, 5).unwrap();
     h.state_mut().open_bytes("five.pdf", None, bytes.as_ref().clone()).unwrap();
     h.run_steps(3);
-    let tab = h.state().views.len() - 1;
+    let tab = h.state().win.views.len() - 1;
     // Nothing picked: the whole document, and no "Selected pages" choice.
     assert!(h.state_mut().execute("print.dialog"));
     h.run_steps(3);
@@ -138,7 +138,7 @@ fn print_dialog_prints_the_selected_pages() {
     h.state_mut().dialog = None;
     h.run_steps(2);
     // Pages 2 and 4 picked.
-    h.state_mut().views[tab].select_pages(&[1, 3]);
+    h.state_mut().win.views[tab].select_pages(&[1, 3]);
     assert!(h.state_mut().execute("print.dialog"));
     h.run_steps(3);
     assert_eq!(h.state().print_draft.which, PrintWhich::Selected);
@@ -156,7 +156,7 @@ fn print_dialog_prints_the_selected_pages() {
     assert_eq!(pdfcraft_model::pages(&doc).len(), 2);
     let _ = std::fs::remove_file(out);
     // The selection gone, the remembered choice falls back to the whole document.
-    h.state_mut().views[tab].select_pages(&[]);
+    h.state_mut().win.views[tab].select_pages(&[]);
     assert!(h.state_mut().execute("print.dialog"));
     h.run_steps(3);
     assert_eq!(h.state().print_draft.which, PrintWhich::All);
@@ -260,7 +260,7 @@ fn a_failed_save_as_pdf_keeps_the_dialog_open() {
     h.get_by_label("Save as PDF").click();
     h.run_steps(3);
     assert_eq!(h.state().dialog, Some(Dialog::Print), "the dialog stays open, with its settings");
-    let toast = h.state().toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
+    let toast = h.state().win.toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
     assert!(toast.contains("Could not save"), "the user is told why: {toast:?}");
 }
 
@@ -980,7 +980,7 @@ fn print_restricted_documents_say_so_before_the_dialog() {
     assert!(!h.state_mut().execute("print.dialog"));
     h.run_steps(2);
     assert_eq!(h.state().dialog, None);
-    assert_eq!(h.state().toast.as_ref().map(|t| t.0.as_str()), Some("The document's security settings don't allow printing"));
+    assert_eq!(h.state().win.toast.as_ref().map(|t| t.0.as_str()), Some("The document's security settings don't allow printing"));
 }
 
 /// With no document open the top bar's Print button is disabled too, but not for security
@@ -1531,7 +1531,7 @@ fn restored_paper_keeps_preview_and_saved_sheet_dimensions() {
     h.run_steps(3);
     h.get_by_value("A4");
     h.get_by_label("Sheet 1 of 1");
-    let id = h.state().views[h.state().active.unwrap()].id;
+    let id = h.state().win.views[h.state().win.active.unwrap()].id;
     let doc = h.state().session.get(id).unwrap();
     let sizes: Vec<_> = doc.info.pages.iter().map(|p| (f64::from(p.width), f64::from(p.height))).collect();
     let labels: Vec<_> = doc.info.pages.iter().map(|p| p.label.clone()).collect();

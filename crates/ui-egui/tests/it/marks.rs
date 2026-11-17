@@ -32,7 +32,7 @@ fn harness_with(pdf: Vec<u8>) -> Harness<'static, PdfCraftApp> {
 
 fn marks(h: &Harness<'static, PdfCraftApp>) -> Vec<MarkKind> {
     let s = h.state();
-    s.session.get(s.views[0].id).unwrap().marks().to_vec()
+    s.session.get(s.win.views[0].id).unwrap().marks().to_vec()
 }
 
 #[test]
@@ -82,7 +82,7 @@ fn header_and_footer_dialog_draws_in_the_chosen_face() {
     h.run_steps(4);
     assert_eq!(marks(&h), [MarkKind::HeaderFooter]);
     let s = h.state();
-    let doc = pdfcraft_cos::Document::open(s.session.get(s.views[0].id).unwrap().bytes.clone()).unwrap();
+    let doc = pdfcraft_cos::Document::open(s.session.get(s.win.views[0].id).unwrap().bytes.clone()).unwrap();
     let page = &pdfcraft_model::pages(&doc)[0];
     let res = doc.resolve(page.dict.get(b"Resources").unwrap());
     let fonts = doc.resolve(res.as_dict().unwrap().get(b"Font").unwrap()).as_dict().cloned().unwrap();
@@ -141,7 +141,7 @@ fn backgrounds_and_watermarks_from_a_file() {
     h.run_steps(3);
     assert_eq!(marks(&h), vec![MarkKind::Background]);
     let s = h.state();
-    assert_eq!(s.session.get(s.views[0].id).unwrap().can_undo(), Some("Add background"));
+    assert_eq!(s.session.get(s.win.views[0].id).unwrap().can_undo(), Some("Add background"));
 }
 
 /// Three pages: a white backdrop of its own (as browsers write), a page-sized picture (a scan)
@@ -179,7 +179,7 @@ fn the_background_dialog_offers_to_replace_a_white_backdrop_and_warns_about_scan
     h.run_steps(4);
     let backdrop = |h: &Harness<'static, PdfCraftApp>, page| {
         let s = h.state();
-        s.session.get(s.views[0].id).unwrap().page_backdrop(page)
+        s.session.get(s.win.views[0].id).unwrap().page_backdrop(page)
     };
     assert_eq!(backdrop(&h, 0), Some(pdfcraft_engine::Backdrop::Fill));
     h.state_mut().execute("edit.background");
@@ -278,7 +278,7 @@ fn remove_background_says_which_pages_keep_their_own_backdrop_off() {
     h.state_mut().execute("edit.background.remove");
     h.run_steps(2);
     assert!(marks(&h).is_empty());
-    let toast = h.state().toast.as_ref().map(|(t, _)| t.clone()).unwrap_or_default();
+    let toast = h.state().win.toast.as_ref().map(|(t, _)| t.clone()).unwrap_or_default();
     assert_eq!(toast, "Page 1 changed after the background was added, so its own white backdrop stays off. It looks the same on white paper.");
 }
 
@@ -306,7 +306,7 @@ trailer << /Root 1 0 R >>
 
 /// The pictures of page `page` (its thumbnail) painted last frame: paint order, bounds, tint.
 fn page_pictures(h: &Harness<'static, PdfCraftApp>, page: usize) -> Vec<(usize, egui::Rect, egui::Color32)> {
-    let Some(tex) = h.state().views[0].thumb(page).map(|t| t.id()) else { return Vec::new() };
+    let Some(tex) = h.state().win.views[0].thumb(page).map(|t| t.id()) else { return Vec::new() };
     h.output()
         .shapes
         .iter()
@@ -416,7 +416,7 @@ fn preview_step(h: &mut Harness<'static, PdfCraftApp>, label: &str, now: &str) {
 #[test]
 fn the_preview_steps_through_the_pages_and_starts_at_the_current_one() {
     let mut h = harness();
-    h.state_mut().views[0].go_to_page(1);
+    h.state_mut().win.views[0].go_to_page(1);
     h.run_steps(2);
     assert!(h.state_mut().execute("edit.watermark"));
     h.run_steps(2);
@@ -617,7 +617,7 @@ fn page_range_from_one_to_one_selects_only_the_first_page() {
     h.get_by_label("OK").click();
     h.run_steps(3);
     let s = h.state();
-    let doc = s.session.get(s.views[0].id).unwrap();
+    let doc = s.session.get(s.win.views[0].id).unwrap();
     assert_eq!(doc.marks(), [MarkKind::Background]);
     // Rendered: page 1 has the default background colour, page 2 is still blank.
     let mut r = pdfcraft_render::PageRenderer::new(doc.bytes.clone(), pdfcraft_render::RenderConfig::default());

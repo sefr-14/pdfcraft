@@ -334,7 +334,7 @@ impl PdfCraftApp {
         let Some(doc) = self.session.get(id) else { return };
         let n = doc.info.pages.len();
         let d = self.redact_pages_draft.clone();
-        let pages: Vec<usize> = if d.current { vec![self.views[i].current] } else { (d.from.max(1) - 1..d.to.min(n)).collect() };
+        let pages: Vec<usize> = if d.current { vec![self.win.views[i].current] } else { (d.from.max(1) - 1..d.to.min(n)).collect() };
         let author = self.comment_prefs.author.clone();
         let edits: Vec<Edit> = pages
             .iter()

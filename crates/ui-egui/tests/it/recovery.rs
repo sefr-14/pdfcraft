@@ -85,10 +85,10 @@ fn a_crashed_session_is_offered_and_recovered_unsaved() {
     h.get_by_label("Recover unsaved documents?");
     h.get_by_label("work.pdf");
     h.get_by_label("Recover").click();
-    support::wait_until(&mut h, "recovered document", |app| app.views.len() == 1);
+    support::wait_until(&mut h, "recovered document", |app| app.win.views.len() == 1);
     let app = h.state();
-    assert_eq!(app.views.len(), 1);
-    let doc = app.session.get(app.views[0].id).unwrap();
+    assert_eq!(app.win.views.len(), 1);
+    let doc = app.session.get(app.win.views[0].id).unwrap();
     assert!(doc.dirty, "recovered changes are unsaved");
     assert_eq!(doc.path.as_deref(), Some("/docs/work.pdf"), "the original path is kept, as what Save offers (#3923)");
     assert_eq!(doc.info.pages.len(), 2, "the edit survived the crash");
@@ -102,7 +102,7 @@ fn discarding_removes_the_autosaves() {
     let mut h = harness(s.clone());
     h.get_by_label("Discard").click();
     h.run_steps(3);
-    assert!(h.state().views.is_empty());
+    assert!(h.state().win.views.is_empty());
     assert_eq!(files_in(&s), 0);
 }
 
@@ -210,7 +210,7 @@ fn quitting_cleanly_leaves_nothing_behind() {
     h.run_steps(2);
     h.get_by_label("Don't save").click();
     h.run_steps(4);
-    assert!(h.state().views.is_empty());
+    assert!(h.state().win.views.is_empty());
     h.state_mut().shutdown_recovery();
     assert_eq!(files_in(&s), 0);
 }
@@ -257,10 +257,10 @@ fn encrypted_documents_are_autosaved_encrypted_and_recovered_with_the_password()
     field.type_text("pw");
     h.run_steps(2);
     h.key_press(Key::Enter);
-    support::wait_until(&mut h, "unlocked recovery", |app| app.views.len() == 1);
+    support::wait_until(&mut h, "unlocked recovery", |app| app.win.views.len() == 1);
     let app = h.state();
-    assert_eq!(app.views.len(), 1);
-    let d = app.session.get(app.views[0].id).unwrap();
+    assert_eq!(app.win.views.len(), 1);
+    let d = app.session.get(app.win.views[0].id).unwrap();
     assert!(d.dirty);
     assert_eq!(d.info.pages.len(), 1);
     let _ = Modifiers::NONE;
@@ -288,15 +288,15 @@ fn a_cancelled_recovery_password_does_not_attach_to_the_next_unlocked_document()
     h.get_by_label("Cancel").click();
     h.run_steps(3);
     assert!(h.state().password_prompt.is_none());
-    assert!(h.state().views.is_empty());
+    assert!(h.state().win.views.is_empty());
 
     let app = h.state_mut();
     app.open_bytes("B.pdf", Some("/docs/B.pdf".into()), encrypted(fixture(1), "pw-b")).unwrap();
     app.submit_password(Some("pw-b".into()));
-    support::wait_until(&mut h, "unlocked B", |app| app.views.len() == 1);
+    support::wait_until(&mut h, "unlocked B", |app| app.win.views.len() == 1);
     let app = h.state();
-    assert_eq!(app.views.len(), 1);
-    let b = app.session.get(app.views[0].id).unwrap();
+    assert_eq!(app.win.views.len(), 1);
+    let b = app.session.get(app.win.views[0].id).unwrap();
     assert_eq!(b.path.as_deref(), Some("/docs/B.pdf"), "B keeps its own path");
     assert!(!b.dirty, "B is clean: it is not the recovered document");
     assert_eq!(s.list().len(), 1, "A's snapshot is still in the store");
@@ -305,7 +305,7 @@ fn a_cancelled_recovery_password_does_not_attach_to_the_next_unlocked_document()
     // Closing B (clean, so no prompt) must not remove A's snapshot either.
     h.state_mut().execute("file.close");
     h.run_steps(3);
-    assert!(h.state().views.is_empty());
+    assert!(h.state().win.views.is_empty());
     assert_eq!(s.list().len(), 1, "A's snapshot survives closing B");
 }
 
@@ -370,10 +370,10 @@ fn missing_corrupt_or_mismatched_metadata_recovers_the_snapshot_without_an_origi
         }
         let mut h = harness(s.clone());
         h.get_by_label("Recover").click();
-        support::wait_until(&mut h, "recovery without valid metadata", |app| app.views.len() == 1);
+        support::wait_until(&mut h, "recovery without valid metadata", |app| app.win.views.len() == 1);
         let app = h.state();
-        assert_eq!(app.views.len(), 1, "{case}");
-        let doc = app.session.get(app.views[0].id).unwrap();
+        assert_eq!(app.win.views.len(), 1, "{case}");
+        let doc = app.session.get(app.win.views[0].id).unwrap();
         assert!(doc.dirty);
         assert_eq!(doc.path, None);
         assert_eq!(doc.info.pages.len(), 2, "the edit survived missing metadata: {case}");
@@ -404,16 +404,16 @@ fn an_encrypted_snapshot_without_metadata_still_requires_its_password() {
         }
         h.run_steps(1);
     }
-    assert!(h.state().views.is_empty());
+    assert!(h.state().win.views.is_empty());
     let field = h.get_by_role(Role::PasswordInput);
     field.focus();
     field.type_text("pw");
     h.run_steps(2);
     h.key_press(Key::Enter);
-    support::wait_until(&mut h, "unlocked orphan recovery", |app| app.views.len() == 1);
+    support::wait_until(&mut h, "unlocked orphan recovery", |app| app.win.views.len() == 1);
     let app = h.state();
-    assert_eq!(app.views.len(), 1);
-    let doc = app.session.get(app.views[0].id).unwrap();
+    assert_eq!(app.win.views.len(), 1);
+    let doc = app.session.get(app.win.views[0].id).unwrap();
     assert!(doc.dirty);
     assert_eq!(doc.path, None);
     assert_eq!(doc.info.pages.len(), 1);

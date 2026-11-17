@@ -356,7 +356,7 @@ impl PdfCraftApp {
         self.a11y.previous = None;
         self.a11y.options = Some(options);
         self.a11y.report = Some((id, report));
-        self.right = Some(RightPanel::Accessibility);
+        self.win.right = Some(RightPanel::Accessibility);
         self.notify(if failed == 0 {
             tl!("No untagged content was found.").to_string()
         } else {
@@ -400,7 +400,7 @@ impl PdfCraftApp {
             if self.a11y.options.as_ref() == Some(&options) { self.a11y.report.take().filter(|(prior_id, _)| *prior_id == id) } else { None };
         self.a11y.options = Some(options);
         self.a11y.report = Some((id, report));
-        self.right = Some(RightPanel::Accessibility);
+        self.win.right = Some(RightPanel::Accessibility);
         self.notify(if failed == 0 && manual == 0 && skipped == 0 {
             tl!("The checker found no problems in this document.").to_string()
         } else if failed == 1 {
@@ -441,7 +441,7 @@ impl PdfCraftApp {
 
     /// Turn to a finding's page and, when the checker located it, flash its box there.
     fn a11y_show_on_page(&mut self, index: usize, page: usize, bbox: Option<[f64; 4]>) {
-        let Some(view) = self.views.get_mut(index) else { return };
+        let Some(view) = self.win.views.get_mut(index) else { return };
         view.go_to_page(page);
         if let Some(bbox) = bbox {
             view.flash = Some((page, bbox.map(|v| v as f32), 0.0));
@@ -464,7 +464,7 @@ impl PdfCraftApp {
                     return;
                 }
                 if self.tags_state.select(id, &tags, object) {
-                    self.right = Some(RightPanel::Tags);
+                    self.win.right = Some(RightPanel::Tags);
                     if let Some(page) = page {
                         self.a11y_show_on_page(index, page, bbox);
                     }

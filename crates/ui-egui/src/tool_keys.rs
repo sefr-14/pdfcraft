@@ -95,28 +95,28 @@ impl PdfCraftApp {
     pub(crate) fn tool_keys(&mut self, i: usize, ctx: &egui::Context) {
         let (now, clicked, modified) = ctx.input(|input| (input.time, input.pointer.any_pressed(), !input.modifiers.is_none()));
         let space = crate::page_keys::PageKeys::held(ctx, Key::Space);
-        if let Some(previous) = self.space_hand
+        if let Some(previous) = self.win.space_hand
             && !space
         {
-            self.space_hand = None;
-            if self.quick_tool == QuickTool::Hand {
-                self.quick_tool = previous;
+            self.win.space_hand = None;
+            if self.win.quick_tool == QuickTool::Hand {
+                self.win.quick_tool = previous;
             }
         }
-        let Some(view) = self.views.get(i).map(|v| v.key) else { return };
+        let Some(view) = self.win.views.get(i).map(|v| v.key) else { return };
         let free = self.dialog.is_none()
-            && !self.palette_open
+            && !self.win.palette_open
             && !ctx.egui_wants_keyboard_input()
-            && self.views.get(i).is_some_and(|v| v.forms.focus.is_none())
+            && self.win.views.get(i).is_some_and(|v| v.forms.focus.is_none())
             && !craft_menu::bar::is_open(ctx)
             && !craft_menu::bar::is_focused(ctx)
             && !egui::Popup::is_any_open(ctx)
             // Nor while something covers the pages (upstream's page keys, SYNC.17): the hotbar's
             // tools window, a prompt, the OCR Verify screen.
-            && !self.page_keys.over();
+            && !self.win.page_keys.over();
         // A pair waiting too long, in another view, behind a dialog or a click, is dropped.
-        if self.pending_keys.is_some_and(|p| now - p.at > SEQUENCE_TIMEOUT || p.view != view || !free || clicked) {
-            self.pending_keys = None;
+        if self.win.pending_keys.is_some_and(|p| now - p.at > SEQUENCE_TIMEOUT || p.view != view || !free || clicked) {
+            self.win.pending_keys = None;
         }
         if !free {
             return;
@@ -134,20 +134,20 @@ impl PdfCraftApp {
                 .collect()
         });
         for (key, plain) in presses {
-            let pending = self.pending_keys.take();
+            let pending = self.win.pending_keys.take();
             if !plain {
                 continue;
             }
             let run = match pending.and_then(|p| action(&[p.first, key])) {
                 Some(done) => Some(done),
                 None if starts_pair(key) => {
-                    self.pending_keys = Some(Pending { first: key, at: now, view });
+                    self.win.pending_keys = Some(Pending { first: key, at: now, view });
                     ctx.request_repaint_after(std::time::Duration::from_secs_f64(SEQUENCE_TIMEOUT));
                     None
                 }
                 None => action(&[key]),
             };
-            if run.is_none() && self.pending_keys.is_none() {
+            if run.is_none() && self.win.pending_keys.is_none() {
                 continue;
             }
             // Taken: nothing later in this frame, nor a `logic` pass run again, sees it.
@@ -162,12 +162,12 @@ impl PdfCraftApp {
             });
             match run {
                 Some(Action::Select) => {
-                    self.quick_tool = QuickTool::Select;
-                    self.space_hand = None;
+                    self.win.quick_tool = QuickTool::Select;
+                    self.win.space_hand = None;
                 }
                 Some(Action::Hand) => {
-                    self.quick_tool = QuickTool::Hand;
-                    self.space_hand = None;
+                    self.win.quick_tool = QuickTool::Hand;
+                    self.win.space_hand = None;
                 }
                 Some(Action::Command(id)) => {
                     self.execute(id);
@@ -175,16 +175,16 @@ impl PdfCraftApp {
                 None => {}
             }
         }
-        if space && !modified && self.space_hand.is_none() && self.quick_tool != QuickTool::Hand {
-            self.space_hand = Some(self.quick_tool);
-            self.quick_tool = QuickTool::Hand;
+        if space && !modified && self.win.space_hand.is_none() && self.win.quick_tool != QuickTool::Hand {
+            self.win.space_hand = Some(self.win.quick_tool);
+            self.win.quick_tool = QuickTool::Hand;
         }
     }
 
     /// While the first key of a pair waits: which second keys finish it, at the foot of the page
     /// area ("D…  I Measure distance · L Draw a line").
     pub(crate) fn show_pending_keys(&self, ctx: &egui::Context) {
-        let Some(pending) = self.pending_keys else { return };
+        let Some(pending) = self.win.pending_keys else { return };
         let options: Vec<String> = KEYS
             .iter()
             .filter(|(k, _)| k.len() == 2 && k.first() == Some(&pending.first))

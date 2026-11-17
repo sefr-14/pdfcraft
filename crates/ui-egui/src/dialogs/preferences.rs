@@ -621,20 +621,20 @@ fn card_general(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens, ctx: &mut 
 
     ui.horizontal(|ui| {
         ctx.label_primary(ui, tl!("Tools panel side"), t);
-        let right = app.side_panels.tools_on_right();
+        let right = app.win.side_panels.tools_on_right();
         let mut side = if right { ToolsSide::Right } else { ToolsSide::Left };
         if ctx.pill_choice(ui, t, &mut side, &[(ToolsSide::Left, tl!("Left")), (ToolsSide::Right, tl!("Right"))]) {
-            app.side_panels.tools_side = side;
+            app.win.side_panels.tools_side = side;
         }
 
         ui.add_space(16.0);
         ctx.label_primary(ui, tl!("Navigation rail side"), t);
-        let rail_right = app.side_panels.rail_on_right();
+        let rail_right = app.win.side_panels.rail_on_right();
         let mut rside = if rail_right { ToolsSide::Right } else { ToolsSide::Left };
         let left_a11y = format!("{}: {}", tl!("Navigation rail side"), tl!("Left"));
         let right_a11y = format!("{}: {}", tl!("Navigation rail side"), tl!("Right"));
         if ctx.pill_choice_a11y(ui, t, &mut rside, &[(ToolsSide::Left, tl!("Left"), &left_a11y), (ToolsSide::Right, tl!("Right"), &right_a11y)]) {
-            app.side_panels.rail_side = rside;
+            app.win.side_panels.rail_side = rside;
         }
     });
     ui.add_space(6.0);
@@ -820,12 +820,12 @@ fn card_documents_and_view(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens,
     };
     if app.always_default_view && (always_changed || layout_changed || continuous_changed || gaps_changed || fit_changed || zoom_changed) {
         let defaults = app.view_defaults;
-        for view in &mut app.views {
+        for view in &mut app.win.views {
             apply_view_pref_changes(view, &defaults, changes);
         }
-    } else if let Some(i) = app.active {
+    } else if let Some(i) = app.win.active {
         let defaults = app.view_defaults;
-        apply_view_pref_changes(&mut app.views[i], &defaults, ViewPrefChanges { always_reset: false, ..changes });
+        apply_view_pref_changes(&mut app.win.views[i], &defaults, ViewPrefChanges { always_reset: false, ..changes });
     }
     ctx.checkbox(ui, &mut app.text_links, tl!("Open web and email addresses written in the page text"), t);
     ctx.label_secondary(ui, tl!("Only web (http, https) and email addresses open, and PDF Overlay asks first, as for other links."), t);

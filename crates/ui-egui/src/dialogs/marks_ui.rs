@@ -462,7 +462,7 @@ fn step_preview(range: &PageRange, shown: usize, count: usize, forward: bool) ->
 /// The dialog for `kind`; returns (apply, cancel).
 pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens, kind: MarkKind) -> (bool, bool) {
     let Some((i, id)) = app.active_ids() else { return (false, true) };
-    let current = app.views[i].current;
+    let current = app.win.views[i].current;
     let Some(doc) = app.session.get(id) else { return (false, true) };
     let count = doc.info.pages.len();
     let units = app.units;
@@ -644,7 +644,7 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens, kind: M
     let near: Vec<usize> = [false, true].into_iter().filter_map(|forward| step_preview(&d.range, target, count, forward)).collect();
     let unmarked = app.unmarked_page.picture(ui.ctx(), (doc, id), target, &near, kind, d.replace);
     let picture = unmarked.or_else(|| {
-        app.views.get_mut(i).and_then(|view| {
+        app.win.views.get_mut(i).and_then(|view| {
             view.need_thumbnail(target, true);
             view.thumb_id(target)
         })

@@ -85,7 +85,7 @@ fn harness(bytes: Vec<u8>) -> Harness<'static, PdfCraftApp> {
 
 /// The annotation whose text is `text`.
 fn annot(h: &Harness<'static, PdfCraftApp>, text: &str) -> pdfcraft_render::Annotation {
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let doc = h.state().session.get(id).unwrap();
     doc.info.annotations.iter().find(|a| a.contents.as_deref() == Some(text)).cloned().unwrap_or_else(|| panic!("no {text:?}"))
 }
@@ -97,21 +97,21 @@ fn group(h: &Harness<'static, PdfCraftApp>) -> Vec<String> {
 }
 
 fn group_of(h: &Harness<'static, PdfCraftApp>, view: usize) -> Vec<String> {
-    let v = &h.state().views[view];
+    let v = &h.state().win.views[view];
     let doc = h.state().session.get(v.id).unwrap();
     let keys = v.comments.selection();
     doc.info.annotations.iter().filter(|a| keys.contains(&(a.page, a.index))).filter_map(|a| a.contents.clone()).collect()
 }
 
 fn active(h: &Harness<'static, PdfCraftApp>) -> Option<String> {
-    let (p, i) = h.state().views[0].comments.selected?;
-    let id = h.state().views[0].id;
+    let (p, i) = h.state().win.views[0].comments.selected?;
+    let id = h.state().win.views[0].id;
     let doc = h.state().session.get(id).unwrap();
     doc.info.annotations.iter().find(|a| (a.page, a.index) == (p, i)).and_then(|a| a.contents.clone())
 }
 
 fn texts(h: &Harness<'static, PdfCraftApp>) -> Vec<String> {
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     h.state().session.get(id).unwrap().info.annotations.iter().filter_map(|a| a.contents.clone()).collect()
 }
 
@@ -140,7 +140,7 @@ fn a_plain_click_selects_the_card_and_shows_it_as_before() {
     click(&mut h, "Card C", Modifiers::NONE);
     assert_eq!(active(&h).as_deref(), Some("Card C"));
     assert_eq!(group(&h), ["Card C"]);
-    assert!(h.state().views[0].flash.is_some(), "it is shown on the page, as before");
+    assert!(h.state().win.views[0].flash.is_some(), "it is shown on the page, as before");
 }
 
 #[test]
@@ -150,7 +150,7 @@ fn with_one_card_selected_the_keys_delete_as_before() {
     h.key_press(Key::Delete);
     h.run_steps(3);
     assert!(!texts(&h).contains(&"Card C".to_string()));
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     assert_eq!(h.state().session.get(id).unwrap().can_undo(), Some("Delete comment"));
 }
 
@@ -164,7 +164,7 @@ fn collapse_and_expand_selected_fold_the_selected_cards_page_groups() {
     h.get_by_label("More options").click();
     h.run_steps(2);
     pick(&mut h, "Collapse selected");
-    let mut folded = h.state().views[0].comments.collapsed_pages.clone();
+    let mut folded = h.state().win.views[0].comments.collapsed_pages.clone();
     folded.sort_unstable();
     assert_eq!(folded, [0, 1, 2], "pages 1-3, each once");
     assert!(h.query_by_label("Card B").is_none(), "an unselected card on a folded page is hidden too");
@@ -174,15 +174,15 @@ fn collapse_and_expand_selected_fold_the_selected_cards_page_groups() {
     h.get_by_label("More options").click();
     h.run_steps(2);
     pick(&mut h, "Expand selected");
-    assert!(h.state().views[0].comments.collapsed_pages.is_empty());
+    assert!(h.state().win.views[0].comments.collapsed_pages.is_empty());
     h.get_by_label("Card B");
     // Not sorted by page: no page groups, so both are disabled.
-    h.state_mut().views[0].comments.sort = pdfcraft_ui_egui::comments::SortBy::Author;
+    h.state_mut().win.views[0].comments.sort = pdfcraft_ui_egui::comments::SortBy::Author;
     h.run_steps(2);
     h.get_by_label("More options").click();
     h.run_steps(2);
     pick(&mut h, "Collapse selected");
-    assert!(h.state().views[0].comments.collapsed_pages.is_empty(), "disabled when sorted by author");
+    assert!(h.state().win.views[0].comments.collapsed_pages.is_empty(), "disabled when sorted by author");
 }
 
 #[test]
@@ -229,7 +229,7 @@ fn each_tab_keeps_its_own_selection_and_a_duplicate_starts_empty() {
     click(&mut h, "Card C", Modifiers::COMMAND);
     assert!(h.state_mut().execute("view.duplicate_tab"));
     h.run_steps(4);
-    let views = &h.state().views;
+    let views = &h.state().win.views;
     assert_eq!(views.len(), 2);
     assert!(group_of(&h, 1).is_empty(), "a duplicate tab starts with no selection");
     assert_eq!(group_of(&h, 0).len(), 2, "the first tab keeps its own");
@@ -304,7 +304,7 @@ fn choosing_a_comment_alone_replaces_the_selection() {
     click(&mut h, "Card A", Modifiers::NONE);
     click(&mut h, "Card C", Modifiers::COMMAND);
     let d = annot(&h, "Card D");
-    h.state_mut().views[0].comments.select_only((d.page, d.index));
+    h.state_mut().win.views[0].comments.select_only((d.page, d.index));
     h.run_steps(3);
     assert_eq!(group(&h), ["Card D"]);
 }
@@ -318,10 +318,10 @@ fn a_sort_keeps_the_selection_and_a_search_keeps_hidden_cards_selected() {
     let mut h = harness(cards());
     click(&mut h, "Card A", Modifiers::NONE);
     click(&mut h, "Card C", Modifiers::COMMAND);
-    h.state_mut().views[0].comments.sort = pdfcraft_ui_egui::comments::SortBy::Date;
+    h.state_mut().win.views[0].comments.sort = pdfcraft_ui_egui::comments::SortBy::Date;
     h.run_steps(3);
     assert_eq!(group(&h), ["Card A", "Card C"]);
-    h.state_mut().views[0].comments.search = Some("Card C".into());
+    h.state_mut().win.views[0].comments.search = Some("Card C".into());
     h.run_steps(3);
     assert_eq!(group(&h), ["Card A", "Card C"], "upstream keeps the hidden card selected");
 }

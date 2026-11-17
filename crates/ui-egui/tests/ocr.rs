@@ -37,7 +37,7 @@ fn recognize_text_dialog_adds_searchable_text() {
     h.get_by_label("Recognize text").click();
     h.run_steps(3);
     assert!(h.state().ocr_run.is_none(), "finished");
-    let toast = h.state().toast.clone().unwrap().0;
+    let toast = h.state().win.toast.clone().unwrap().0;
     assert!(toast.starts_with("Recognized ") && toast.contains("on 1 page"), "{toast}");
     let app = h.state();
     let id = app.active_ids().unwrap().1;
@@ -59,7 +59,7 @@ fn recognize_text_in_multiple_files_writes_searchable_copies() {
     app.export_dir_override = Some(dir.to_string_lossy().into_owned());
     app.use_files(pdfcraft_ui_egui::FilePurpose::Ocr, vec![("one.pdf".into(), scan()), ("two.pdf".into(), scan())]);
     assert!(app.ocr_batch.is_none(), "finished");
-    let toast = app.toast.clone().unwrap().0;
+    let toast = app.win.toast.clone().unwrap().0;
     assert!(toast.starts_with("Recognized ") && toast.ends_with("in 2 files"), "{toast}");
     for name in ["one.pdf", "two.pdf"] {
         let bytes = std::fs::read(dir.join(name)).unwrap();
@@ -135,7 +135,7 @@ fn ocr_verify_screen_controls_keyboard_and_accept() {
     let app = h.state();
     let id = app.active_ids().unwrap().1;
     assert_eq!(app.session.get(id).unwrap().can_undo(), Some("Recognize text"));
-    let toast = app.toast.clone().map(|t| t.0).unwrap_or_default();
+    let toast = app.win.toast.clone().map(|t| t.0).unwrap_or_default();
     assert!(toast.contains("one undoable step"), "{toast}");
 }
 
@@ -213,7 +213,7 @@ fn recognize_text_can_read_pictures_on_pages_with_text() {
     h.get_by_label("Recognize text").click();
     h.run_steps(3);
     assert!(h.state().ocr_run.is_none(), "finished");
-    let toast = h.state().toast.clone().unwrap().0;
+    let toast = h.state().win.toast.clone().unwrap().0;
     assert!(toast.starts_with("Recognized ") && toast.ends_with("on 1 page"), "{toast}");
     let app = h.state();
     let id = app.active_ids().unwrap().1;
@@ -235,7 +235,7 @@ fn an_ocr_word_opens_for_editing_and_stays_open() {
         let mut app = PdfCraftApp::new();
         app.set_option("language", "en").unwrap();
         app.open_bytes("scan.pdf", None, scan()).unwrap();
-        let id = app.views[0].id;
+        let id = app.win.views[0].id;
         let ph = app.session.get(id).unwrap().info.pages[0].height as f64;
         let words = vec![PlacedWord {
             text: "Recognize".into(),
@@ -259,9 +259,9 @@ fn an_ocr_word_opens_for_editing_and_stays_open() {
     }
     let (r, k) = {
         let app = h.state();
-        let d = app.session.get(app.views[0].id).unwrap();
+        let d = app.session.get(app.win.views[0].id).unwrap();
         assert!(d.text_blocks(0).first().is_some_and(|b| b.invisible));
-        let r = app.views[0].page_screen_rect(0).unwrap();
+        let r = app.win.views[0].page_screen_rect(0).unwrap();
         (r, r.width() / d.info.pages[0].width)
     };
     // The word, 100 pt from the top of the page.
@@ -272,9 +272,9 @@ fn an_ocr_word_opens_for_editing_and_stays_open() {
         h.event(egui::Event::PointerButton { pos: p, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() });
     }
     h.run_steps(4);
-    let opened = |h: &Harness<'_, PdfCraftApp>| h.state().views[0].line_editor.as_ref().map(|e| e.text.clone());
+    let opened = |h: &Harness<'_, PdfCraftApp>| h.state().win.views[0].line_editor.as_ref().map(|e| e.text.clone());
     assert_eq!(opened(&h).as_deref(), Some("Recognize"));
-    assert!(h.state().views[0].image_selection.is_none(), "the scan under the word isn't selected");
+    assert!(h.state().win.views[0].image_selection.is_none(), "the scan under the word isn't selected");
     h.hover_at(r.min + egui::vec2(300.0, 400.0) * k);
     h.run_steps(4);
     assert_eq!(opened(&h).as_deref(), Some("Recognize"), "moving the pointer away keeps the word open");

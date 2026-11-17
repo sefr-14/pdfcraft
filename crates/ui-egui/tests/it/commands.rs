@@ -116,7 +116,7 @@ fn every_registered_command_is_implemented() {
                 contents: String::new(),
                 author: String::new(),
             })));
-            app.views[0].comments.select_only((0, 0));
+            app.win.views[0].comments.select_only((0, 0));
             if spec.id == "comment.paste" {
                 assert!(app.copy_selected_comments(0));
             }
@@ -176,9 +176,9 @@ fn every_registered_command_is_implemented() {
         }
         // History commands need a real jump (and Back first to make Forward available).
         if matches!(spec.id, "view.previous_view" | "view.next_view") {
-            app.views[0].go_to_page(1);
+            app.win.views[0].go_to_page(1);
             if spec.id == "view.next_view" {
-                assert!(app.views[0].view_history(false));
+                assert!(app.win.views[0].view_history(false));
             }
         }
         let dir = std::env::temp_dir().join(format!("pdfcraft-cmd-{}", std::process::id()));
@@ -196,13 +196,13 @@ fn disabled_commands_explain_themselves() {
     let mut app = PdfCraftApp::new();
     app.set_option("language", "en").unwrap();
     assert!(!app.execute("file.save"));
-    assert_eq!(app.toast.as_ref().map(|t| t.0.as_str()), Some("Open a document first"));
+    assert_eq!(app.win.toast.as_ref().map(|t| t.0.as_str()), Some("Open a document first"));
     app.open_bytes("doc.pdf", None, fixture(2)).unwrap();
     assert!(!app.execute("edit.undo"));
-    assert_eq!(app.toast.as_ref().map(|t| t.0.as_str()), Some("Nothing to undo"));
+    assert_eq!(app.win.toast.as_ref().map(|t| t.0.as_str()), Some("Nothing to undo"));
     // View state counts too: the cover page exists only in two-page view.
     assert!(!app.execute("view.layout.cover"));
-    assert_eq!(app.toast.as_ref().map(|t| t.0.as_str()), Some("Switch to two-page view first to show the cover page"));
+    assert_eq!(app.win.toast.as_ref().map(|t| t.0.as_str()), Some("Switch to two-page view first to show the cover page"));
     assert!(!app.execute("no.such.command"));
 }
 
@@ -221,9 +221,9 @@ fn a_tool_chosen_with_no_document_asks_for_one_and_runs_on_it() {
     });
     h.run_steps(2);
     h.state_mut().run_command("export.text");
-    assert!(h.state().toast.as_ref().is_none_or(|t| t.0 != "Open a document first"));
-    support::wait_until(&mut h, "picked document and chosen tool", |app| app.active.is_some() && matches!(app.dialog, Some(Dialog::Export(_))));
-    assert!(h.state().active.is_some(), "the picked file is open");
+    assert!(h.state().win.toast.as_ref().is_none_or(|t| t.0 != "Open a document first"));
+    support::wait_until(&mut h, "picked document and chosen tool", |app| app.win.active.is_some() && matches!(app.dialog, Some(Dialog::Export(_))));
+    assert!(h.state().win.active.is_some(), "the picked file is open");
     assert!(matches!(h.state().dialog, Some(Dialog::Export(_))), "and the tool runs on it: {:?}", h.state().dialog);
     let (_, id) = h.state().active_ids().unwrap();
     let doc = h.state().session.get(id).unwrap();
@@ -239,7 +239,7 @@ fn a_tool_chosen_with_no_document_asks_for_one_and_runs_on_it() {
     h.run_steps(2);
     h.state_mut().run_command("export.text");
     h.run_steps(3);
-    assert!(h.state().active.is_none() && h.state().dialog.is_none());
+    assert!(h.state().win.active.is_none() && h.state().dialog.is_none());
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -256,7 +256,7 @@ fn a_tool_chosen_with_an_already_open_file_focuses_its_tab_and_still_runs() {
         app.set_option("language", "en").unwrap();
         // The file is already open, but the Home tab is showing (no active document).
         app.open_path(&picked);
-        app.active = None;
+        app.win.active = None;
         app.pick_override = Some(vec![pick]);
         app
     });
@@ -264,8 +264,8 @@ fn a_tool_chosen_with_an_already_open_file_focuses_its_tab_and_still_runs() {
     h.state_mut().run_command("export.text");
     h.run_steps(3);
     let app = h.state();
-    assert_eq!(app.views.len(), 1, "the existing tab is reused, not duplicated");
-    assert_eq!(app.active, Some(0), "the pick focused the tab it already opened");
+    assert_eq!(app.win.views.len(), 1, "the existing tab is reused, not duplicated");
+    assert_eq!(app.win.active, Some(0), "the pick focused the tab it already opened");
     assert!(matches!(app.dialog, Some(Dialog::Export(_))), "the tool still runs on it: {:?}", app.dialog);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -279,7 +279,7 @@ fn shortcuts_run_registered_commands() {
     h.state_mut().dialog = None;
     h.key_press_modifiers(Modifiers::COMMAND, Key::K);
     h.run_steps(2);
-    assert!(h.state().palette_open);
+    assert!(h.state().win.palette_open);
     h.key_press(Key::Escape);
     h.run_steps(2);
     h.key_press_modifiers(Modifiers::COMMAND | Modifiers::CTRL, Key::H);
@@ -296,8 +296,8 @@ fn the_palette_lists_commands_with_shortcuts_and_runs_them() {
     h.key_press(Key::Enter);
     h.run_steps(3);
     let app = h.state();
-    assert!(!app.palette_open, "Enter runs the top hit and closes the palette");
-    let doc = app.session.get(app.views[0].id).unwrap();
+    assert!(!app.win.palette_open, "Enter runs the top hit and closes the palette");
+    let doc = app.session.get(app.win.views[0].id).unwrap();
     assert_eq!(doc.info.pages[0].rotation, 90);
     assert_eq!(doc.can_undo(), Some("Rotate page"));
 }
@@ -314,8 +314,8 @@ fn palette_arrow_keys_select_results_and_enter_runs_the_selection() {
     h.key_press(Key::Enter);
     h.run_steps(2);
     let app = h.state();
-    assert!(!app.palette_open);
-    assert_eq!(app.session.get(app.views[0].id).unwrap().info.pages[0].rotation, 270);
+    assert!(!app.win.palette_open);
+    assert_eq!(app.session.get(app.win.views[0].id).unwrap().info.pages[0].rotation, 270);
 }
 
 /// Check that choosing Edit ▸ Pages ▸ Delete pages in the menu bar reduces the page count once.
@@ -328,7 +328,7 @@ fn the_pages_menu_comes_from_the_registry() {
     support::menu_row(&h, "Delete pages").click();
     h.run_steps(3);
     let app = h.state();
-    assert_eq!(app.session.get(app.views[0].id).unwrap().info.pages.len(), 2);
+    assert_eq!(app.session.get(app.win.views[0].id).unwrap().info.pages.len(), 2);
 }
 
 /// Check that Open Recent lists a recorded file and opens it in a new active tab without replacing the
@@ -354,14 +354,14 @@ fn the_open_recent_menu_lists_files_and_opens_one() {
     support::open_menu(&mut h, "File");
     support::menu_row(&h, "Open Recent").hover();
     h.run_steps(3);
-    let original = h.state().views[0].id;
+    let original = h.state().win.views[0].id;
     support::menu_row(&h, "recent.pdf").click();
-    support::wait_until(&mut h, "recent document", |app| app.views.len() == 2 && app.password_prompt.is_none());
+    support::wait_until(&mut h, "recent document", |app| app.win.views.len() == 2 && app.password_prompt.is_none());
     let app = h.state();
-    let active = app.active.unwrap();
-    assert_eq!(app.session.get(app.views[active].id).and_then(|d| d.path.as_deref()), Some(path.as_str()), "the active tab is the recent file");
-    assert_eq!(app.session.get(app.views[active].id).unwrap().bytes.as_slice(), fixture(2).as_slice());
-    assert!(app.views.iter().any(|view| view.id == original));
+    let active = app.win.active.unwrap();
+    assert_eq!(app.session.get(app.win.views[active].id).and_then(|d| d.path.as_deref()), Some(path.as_str()), "the active tab is the recent file");
+    assert_eq!(app.session.get(app.win.views[active].id).unwrap().bytes.as_slice(), fixture(2).as_slice());
+    assert!(app.win.views.iter().any(|view| view.id == original));
     assert_eq!(app.session.get(original).unwrap().bytes.as_slice(), fixture(3).as_slice());
 }
 
@@ -412,7 +412,7 @@ fn clear_recent_files_runs_from_the_palette_and_is_saved() {
     restarted.restore(&app.persist());
     assert!(restarted.recent.is_empty(), "the empty list is what's saved");
     app.execute("file.clear_recent");
-    assert!(app.toast.as_ref().is_some_and(|(m, _)| m.contains("No recent files")), "nothing to clear is said, not silent");
+    assert!(app.win.toast.as_ref().is_some_and(|(m, _)| m.contains("No recent files")), "nothing to clear is said, not silent");
 }
 
 #[test]
@@ -461,15 +461,15 @@ fn localized_shortcuts_update_immediately_and_keep_command_ids_and_key_bindings(
     h.ctx.set_os(OperatingSystem::Windows);
     h.key_press_modifiers(Modifiers::CTRL | Modifiers::COMMAND, Key::K);
     h.run_steps(3);
-    assert!(h.state().palette_open, "the localized Strg+K display still binds Ctrl+K");
+    assert!(h.state().win.palette_open, "the localized Strg+K display still binds Ctrl+K");
     // Searching by the stable command id still works in a translated interface.
     h.state_mut().set_option("palette", "view.read_mode").unwrap();
     h.run_steps(2);
     h.key_press(Key::Enter);
     h.run_steps(3);
     assert_eq!(h.state().mode, pdfcraft_ui_egui::Mode::Read);
-    assert!(!h.state().palette_open);
-    let doc = h.state().session.get(h.state().views[0].id).unwrap();
+    assert!(!h.state().win.palette_open);
+    let doc = h.state().session.get(h.state().win.views[0].id).unwrap();
     assert!(!doc.dirty);
 }
 
@@ -523,16 +523,16 @@ fn full_screen_toggles_by_shortcut_and_command_and_escape_leaves() {
     let mut h = harness();
     h.key_press_modifiers(Modifiers::COMMAND, Key::L);
     h.run_steps(2);
-    assert!(h.state().full_screen, "⌘L / Ctrl+L enters full screen");
+    assert!(h.state().win.full_screen, "⌘L / Ctrl+L enters full screen");
     h.key_press(Key::Escape);
     h.run_steps(2);
-    assert!(!h.state().full_screen, "Escape leaves full screen");
+    assert!(!h.state().win.full_screen, "Escape leaves full screen");
     h.state_mut().execute("view.full_screen");
     h.run_steps(2);
-    assert!(h.state().full_screen);
+    assert!(h.state().win.full_screen);
     h.state_mut().execute("view.full_screen");
     h.run_steps(2);
-    assert!(!h.state().full_screen, "the command toggles back");
+    assert!(!h.state().win.full_screen, "the command toggles back");
 }
 
 #[test]
@@ -570,8 +570,8 @@ fn quit_shortcut_requires_exact_modifiers_and_preserves_unsaved_work() {
                 h.run_steps(2);
                 h.get_by_label("Cancel").click();
                 h.run_steps(2);
-                assert_eq!(h.state().views.len(), 1);
-                assert!(h.state().session.get(h.state().views[0].id).unwrap().dirty);
+                assert_eq!(h.state().win.views.len(), 1);
+                assert!(h.state().session.get(h.state().win.views[0].id).unwrap().dirty);
                 assert!(!h.output().viewport_output.values().any(|v| v.commands.contains(&egui::ViewportCommand::Close)));
             }
         }
@@ -584,7 +584,7 @@ fn command_w_closes_empty_macos_window_but_not_an_empty_windows_window() {
         let mut h = Harness::builder().with_size(egui::vec2(1000.0, 700.0)).build_eframe(|_cc| PdfCraftApp::new());
         h.ctx.set_os(os);
         h.run_steps(4);
-        assert!(h.state().views.is_empty());
+        assert!(h.state().win.views.is_empty());
         h.event(egui::Event::Key { key: Key::W, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND });
         h.step();
         let closes = h.output().viewport_output.values().any(|v| v.commands.iter().any(|c| matches!(c, egui::ViewportCommand::Close)));
@@ -599,13 +599,13 @@ fn command_w_still_closes_the_document_tab_on_macos() {
     h.run_steps(2);
     h.key_press_modifiers(Modifiers::COMMAND, Key::W);
     h.run_steps(2);
-    assert!(h.state().views.is_empty(), "⌘W closes the clean document tab");
+    assert!(h.state().win.views.is_empty(), "⌘W closes the clean document tab");
 }
 
 fn palette_ime_output_requests_interrupt(h: &Harness<'_, PdfCraftApp>, phase: &str) -> bool {
-    assert!(h.state().palette_open, "palette closed during {phase}");
+    assert!(h.state().win.palette_open, "palette closed during {phase}");
     let ime = h.output().platform_output.ime.as_ref().expect("focused palette advertises IME");
-    eprintln!("{phase}: query={:?}; should_interrupt_composition={}", h.state().palette_query, ime.should_interrupt_composition);
+    eprintln!("{phase}: query={:?}; should_interrupt_composition={}", h.state().win.palette_query, ime.should_interrupt_composition);
     ime.should_interrupt_composition
 }
 
@@ -625,7 +625,7 @@ fn palette_ime_idle_frames_and_reopen_do_not_interrupt_composition() {
         }
         h.key_press(Key::Escape);
         h.run_steps(2);
-        assert!(!h.state().palette_open);
+        assert!(!h.state().win.palette_open);
     }
 }
 
@@ -647,17 +647,17 @@ fn palette_ime_chinese_preedit_commit_and_cancel_remain_uninterrupted() {
     }
     h.event(egui::Event::Ime(egui::ImeEvent::Commit("你".into())));
     h.step();
-    assert_eq!(h.state().palette_query, "你");
+    assert_eq!(h.state().win.palette_query, "你");
     interruptions.push(palette_ime_output_requests_interrupt(&h, "Chinese commit"));
     h.run_steps(2);
-    assert_eq!(h.state().palette_query, "你");
+    assert_eq!(h.state().win.palette_query, "你");
     interruptions.push(palette_ime_output_requests_interrupt(&h, "committed idle"));
     h.event(egui::Event::Ime(egui::ImeEvent::Preedit { text: "hao".into(), active_range_chars: Some(0..3) }));
     h.step();
     interruptions.push(palette_ime_output_requests_interrupt(&h, "second preedit"));
     h.event(egui::Event::Ime(egui::ImeEvent::Preedit { text: String::new(), active_range_chars: None }));
     h.step();
-    assert_eq!(h.state().palette_query, "你");
+    assert_eq!(h.state().win.palette_query, "你");
     interruptions.push(palette_ime_output_requests_interrupt(&h, "cancel preedit"));
     assert!(interruptions.iter().all(|interrupt| !interrupt), "composition interrupted: {interruptions:?}");
 }
@@ -674,9 +674,9 @@ fn palette_ime_outside_click_closes_without_running_a_command() {
         modifiers: Modifiers::NONE,
     });
     h.step();
-    assert!(!h.state().palette_open);
-    assert!(h.state().palette_query.is_empty());
-    assert_eq!(h.state().session.get(h.state().views[0].id).unwrap().info.pages[0].rotation, 0);
+    assert!(!h.state().win.palette_open);
+    assert!(h.state().win.palette_query.is_empty());
+    assert_eq!(h.state().session.get(h.state().win.views[0].id).unwrap().info.pages[0].rotation, 0);
 }
 
 /// Ctrl+Tab and Ctrl+Shift+Tab step through the tabs in the strip's order, wrap around at either
@@ -692,15 +692,15 @@ fn ctrl_tab_steps_through_the_tabs_in_order_and_wraps_around() {
     let press = |h: &mut Harness<'static, PdfCraftApp>, modifiers: Modifiers| {
         h.key_press_modifiers(modifiers, Key::Tab);
         h.run_steps(2);
-        h.state().active
+        h.state().win.active
     };
-    assert_eq!(h.state().active, Some(2));
+    assert_eq!(h.state().win.active, Some(2));
     assert_eq!(press(&mut h, ctrl), Some(0), "the last tab wraps to the first");
     assert_eq!(press(&mut h, ctrl), Some(1));
     assert_eq!(press(&mut h, ctrl | Modifiers::SHIFT), Some(0));
     assert_eq!(press(&mut h, ctrl | Modifiers::SHIFT), Some(2), "the first tab wraps to the last");
     // The order is the one on screen, after the tabs are moved.
-    let ids: Vec<_> = h.state().views.iter().map(|v| v.id).collect();
+    let ids: Vec<_> = h.state().win.views.iter().map(|v| v.id).collect();
     h.state_mut().move_tab(2, 0);
     h.run_steps(2);
     assert_eq!(h.state().active_ids().map(|(_, id)| id), Some(ids[2]));

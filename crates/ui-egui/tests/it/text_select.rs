@@ -45,8 +45,8 @@ fn harness_with(pdf: Vec<u8>, setup: impl FnOnce(&mut PdfCraftApp) + 'static) ->
         app
     });
     // Wait for the text layer itself (#1277), not for a fixed second.
-    crate::support::wait_until(&mut h, "the page's text layer", |app| app.views[0].glyph_screen_pos(0, 5).is_some() && !app.render_pending());
-    let at = h.state().views[0].glyph_screen_pos(0, 5).expect("text layer loaded");
+    crate::support::wait_until(&mut h, "the page's text layer", |app| app.win.views[0].glyph_screen_pos(0, 5).is_some() && !app.render_pending());
+    let at = h.state().win.views[0].glyph_screen_pos(0, 5).expect("text layer loaded");
     h.hover_at(at);
     h.run_steps(1);
     (h, at)
@@ -66,13 +66,13 @@ fn quick_clicks_select_a_word_then_the_line_then_the_page() {
     let page = "The quick brown fox\njumps over the dog";
     for (n, want) in [None, Some("quick"), Some("The quick brown fox"), Some(page), Some(page)].into_iter().enumerate() {
         click(&mut h, at);
-        assert_eq!(h.state().views[0].selected_text().as_deref(), want, "after {} clicks", n + 1);
+        assert_eq!(h.state().win.views[0].selected_text().as_deref(), want, "after {} clicks", n + 1);
     }
     // A pause ends the run: the next double-click selects a word again.
     h.run_steps(60);
     click(&mut h, at);
     click(&mut h, at);
-    assert_eq!(h.state().views[0].selected_text().as_deref(), Some("quick"));
+    assert_eq!(h.state().win.views[0].selected_text().as_deref(), Some("quick"));
 }
 
 #[test]
@@ -96,13 +96,13 @@ fn quick_clicks_with_the_highlighter_mark_only_the_word() {
     // waiting can't turn the clicks into a different run). By state, not for a fixed second
     // (#1277).
     crate::support::wait_until(&mut h, "the highlight and the page after it", |app| {
-        app.session.get(app.views[0].id).is_some_and(|d| !d.info.annotations.is_empty()) && !app.render_pending()
+        app.session.get(app.win.views[0].id).is_some_and(|d| !d.info.annotations.is_empty()) && !app.render_pending()
     });
     let app = h.state();
-    let doc = app.session.get(app.views[0].id).unwrap();
+    let doc = app.session.get(app.win.views[0].id).unwrap();
     let marks: Vec<(&str, usize)> = doc.info.annotations.iter().map(|a| (a.subtype.as_str(), a.quads.len())).collect();
     assert_eq!(marks, [("Highlight", 1)], "one highlight, on the double-clicked word");
-    assert!(app.views[0].selected_text().is_none());
+    assert!(app.win.views[0].selected_text().is_none());
 }
 
 /// Press at `from`, move to `to` and release there.
@@ -134,29 +134,29 @@ fn shift_click(h: &mut Harness<'static, PdfCraftApp>, pos: Pos2) {
 #[test]
 fn shift_click_extends_the_selection_from_its_anchor() {
     let (mut h, _) = harness(|_| {});
-    let glyph = |h: &Harness<'static, PdfCraftApp>, g: usize| h.state().views[0].glyph_screen_pos(0, g).expect("glyph on screen");
+    let glyph = |h: &Harness<'static, PdfCraftApp>, g: usize| h.state().win.views[0].glyph_screen_pos(0, g).expect("glyph on screen");
     // Drag over "quick" (glyphs 4..=8).
     let (q, k) = (glyph(&h, 4), glyph(&h, 8));
     drag(&mut h, q, k);
-    assert_eq!(h.state().views[0].selected_text().as_deref(), Some("quick"));
+    assert_eq!(h.state().win.views[0].selected_text().as_deref(), Some("quick"));
     h.run_steps(60);
     // ⇧-click on the "n" of "brown": the selection runs from the anchor to it.
     let n = glyph(&h, 14);
     shift_click(&mut h, n);
-    assert_eq!(h.state().views[0].selected_text().as_deref(), Some("quick brown"));
+    assert_eq!(h.state().win.views[0].selected_text().as_deref(), Some("quick brown"));
     h.run_steps(60);
     // ⇧-click before the anchor: the anchor stays, the selection now runs back to the click.
     let t = glyph(&h, 0);
     shift_click(&mut h, t);
-    assert_eq!(h.state().views[0].selected_text().as_deref(), Some("The q"));
+    assert_eq!(h.state().win.views[0].selected_text().as_deref(), Some("The q"));
     h.run_steps(60);
     // A plain click still clears it.
     click(&mut h, n);
-    assert_eq!(h.state().views[0].selected_text(), None);
+    assert_eq!(h.state().win.views[0].selected_text(), None);
     h.run_steps(60);
     // ⇧-click with nothing selected selects nothing.
     shift_click(&mut h, n);
-    assert_eq!(h.state().views[0].selected_text(), None);
+    assert_eq!(h.state().win.views[0].selected_text(), None);
 }
 
 /// Issue #1024: multi-click selection triggers immediately on pointer press, before release.
@@ -168,20 +168,20 @@ fn multiclick_selects_on_pointer_press_before_release() {
     // Second click: press and HOLD (do not release).
     h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
     h.run_steps(1);
-    assert_eq!(h.state().views[0].selected_text().as_deref(), Some("quick"), "word highlights on press");
+    assert_eq!(h.state().win.views[0].selected_text().as_deref(), Some("quick"), "word highlights on press");
     // Release the second click: still selected.
     h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
     h.run_steps(1);
-    assert_eq!(h.state().views[0].selected_text().as_deref(), Some("quick"), "word stays selected on release");
+    assert_eq!(h.state().win.views[0].selected_text().as_deref(), Some("quick"), "word stays selected on release");
 
     // Third click: press and HOLD.
     h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
     h.run_steps(1);
-    assert_eq!(h.state().views[0].selected_text().as_deref(), Some("The quick brown fox"), "line highlights on press");
+    assert_eq!(h.state().win.views[0].selected_text().as_deref(), Some("The quick brown fox"), "line highlights on press");
     // Release third click.
     h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
     h.run_steps(1);
-    assert_eq!(h.state().views[0].selected_text().as_deref(), Some("The quick brown fox"), "line stays selected on release");
+    assert_eq!(h.state().win.views[0].selected_text().as_deref(), Some("The quick brown fox"), "line stays selected on release");
 }
 
 // Issue #1225: page-text Copy belongs in both menus and observes PDF permissions.
@@ -196,7 +196,7 @@ fn selected_text_copy_edit_and_context_menus() {
     let (mut h, at) = harness(|app| app.system_clipboard = false);
     click(&mut h, at);
     click(&mut h, at);
-    h.state_mut().quick_tool = pdfcraft_ui_egui::QuickTool::Hand;
+    h.state_mut().win.quick_tool = pdfcraft_ui_egui::QuickTool::Hand;
     h.run_steps(2); // Hide floating Copy so this test can only reach menu entries.
     crate::support::open_menu(&mut h, "Edit");
     crate::support::menu_row(&h, "Copy").click();
@@ -206,7 +206,7 @@ fn selected_text_copy_edit_and_context_menus() {
         did_copy |= copied(&h, "quick");
     }
     assert!(did_copy, "Edit Copy emits the selected text");
-    h.state_mut().quick_tool = pdfcraft_ui_egui::QuickTool::Hand;
+    h.state_mut().win.quick_tool = pdfcraft_ui_egui::QuickTool::Hand;
     h.run_steps(2); // Hide the floating bar: the remaining Copy must be in the context menu.
     h.event(Event::PointerMoved(at));
     for pressed in [true, false] {
@@ -221,7 +221,7 @@ fn selected_text_copy_edit_and_context_menus() {
         did_copy |= copied(&h, "quick");
     }
     assert!(did_copy, "context Copy emits the selected text");
-    assert_eq!(h.state().views[0].selected_text().as_deref(), Some("quick"));
+    assert_eq!(h.state().win.views[0].selected_text().as_deref(), Some("quick"));
 }
 
 #[test]
@@ -231,16 +231,16 @@ fn escape_closes_an_open_menu_before_it_clears_the_selection() {
     click(&mut h, at);
     click(&mut h, at);
     h.run_steps(2);
-    assert_eq!(h.state().views[0].selected_text().as_deref(), Some("quick"));
+    assert_eq!(h.state().win.views[0].selected_text().as_deref(), Some("quick"));
     crate::support::open_menu(&mut h, "View");
     assert!(egui::Popup::is_any_open(&h.ctx), "the menu is open");
     h.key_press(egui::Key::Escape);
     h.run_steps(2);
     assert!(!egui::Popup::is_any_open(&h.ctx), "Escape closes the menu");
-    assert_eq!(h.state().views[0].selected_text().as_deref(), Some("quick"), "and keeps the selection");
+    assert_eq!(h.state().win.views[0].selected_text().as_deref(), Some("quick"), "and keeps the selection");
     h.key_press(egui::Key::Escape);
     h.run_steps(2);
-    assert_eq!(h.state().views[0].selected_text(), None, "a second Escape clears it");
+    assert_eq!(h.state().win.views[0].selected_text(), None, "a second Escape clears it");
 }
 
 #[test]
@@ -283,7 +283,7 @@ fn selected_text_copy_floating_button_honours_permissions() {
         let mut loaded = false;
         for _ in 0..200 {
             h.run_steps(2);
-            if h.state_mut().views[0].select_all() {
+            if h.state_mut().win.views[0].select_all() {
                 loaded = true;
                 break;
             }
@@ -393,7 +393,7 @@ fn selected_text_copy_with_formatting_honours_permissions() {
     let sets = html_clipboard(h.state_mut(), true);
     click(&mut h, at);
     click(&mut h, at);
-    assert_eq!(h.state().views[0].selected_text().as_deref(), Some("quick"));
+    assert_eq!(h.state().win.views[0].selected_text().as_deref(), Some("quick"));
     assert!(!h.state_mut().execute("edit.copy"));
     h.step();
     assert!(!any_copy_text(&h));
@@ -412,14 +412,14 @@ fn selected_text_copy_preserves_unicode_and_page_clipboard() {
     let mut loaded = false;
     for _ in 0..200 {
         h.run_steps(2);
-        if h.state_mut().views[0].select_all() {
+        if h.state_mut().win.views[0].select_all() {
             loaded = true;
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
     assert!(loaded);
-    assert_eq!(h.state().views[0].selected_text().as_deref(), Some("café"));
+    assert_eq!(h.state().win.views[0].selected_text().as_deref(), Some("café"));
     assert!(h.state_mut().execute("edit.copy"));
     h.step();
     assert!(copied(&h, "café"));
@@ -437,10 +437,10 @@ fn selected_text_copy_keeps_focused_input_clipboard_ownership() {
     let (mut h, at) = harness(|_| {});
     click(&mut h, at);
     click(&mut h, at);
-    h.state_mut().views[0].open_find();
-    h.state_mut().views[0].find.as_mut().unwrap().query = "widget café".into();
+    h.state_mut().win.views[0].open_find();
+    h.state_mut().win.views[0].find.as_mut().unwrap().query = "widget café".into();
     h.run_steps(3);
-    let find_input = h.state().views[0].find_input_id();
+    let find_input = h.state().win.views[0].find_input_id();
     h.ctx.memory_mut(|m| m.request_focus(find_input));
     h.run_steps(2);
     h.key_press_modifiers(Modifiers::COMMAND, egui::Key::A);
@@ -503,7 +503,7 @@ fn wheel(h: &mut Harness<'static, PdfCraftApp>, unit: MouseWheelUnit, dy: f32) {
 
 /// The top edge of `page` on screen.
 fn page_top(h: &Harness<'static, PdfCraftApp>, page: usize) -> f32 {
-    h.state().views[0].page_screen_rect(page).expect("page on screen").min.y
+    h.state().win.views[0].page_screen_rect(page).expect("page on screen").min.y
 }
 
 /// Issue #721: selecting near the bottom of a page with the button held, the wheel keeps
@@ -515,17 +515,17 @@ fn a_selection_drag_keeps_scrolling_over_the_gap_and_the_next_page() {
         app.set_option("layout", "continuous").unwrap();
         app.set_option("zoom", "200").unwrap();
     });
-    let glyph = |h: &Harness<'static, PdfCraftApp>, g: usize| h.state().views[0].glyph_screen_pos(0, g).expect("glyph on screen");
+    let glyph = |h: &Harness<'static, PdfCraftApp>, g: usize| h.state().win.views[0].glyph_screen_pos(0, g).expect("glyph on screen");
     // "ends" (glyphs 7..=10) in "Page 1 ends with this line".
     let (from, to) = (glyph(&h, 7), glyph(&h, 10));
     press_and_move(&mut h, from, to);
-    assert_eq!(h.state().views[0].selected_text().as_deref(), Some("ends"));
+    assert_eq!(h.state().win.views[0].selected_text().as_deref(), Some("ends"));
     let (mut over_gap, mut over_next) = (false, false);
     for _ in 0..100 {
         let before = page_top(&h, 0);
         wheel(&mut h, MouseWheelUnit::Line, -0.1);
         assert!(page_top(&h, 0) < before - 0.5, "the wheel scrolls during the drag (over the gap yet: {over_gap})");
-        let view = &h.state().views[0];
+        let view = &h.state().win.views[0];
         let on = |page| view.page_screen_rect(page).is_some_and(|r| r.contains(to));
         over_gap |= !on(0) && !on(1);
         over_next = on(1);
@@ -534,11 +534,11 @@ fn a_selection_drag_keeps_scrolling_over_the_gap_and_the_next_page() {
         }
     }
     assert!(over_gap && over_next, "the pointer crossed the gap ({over_gap}) onto the next page ({over_next})");
-    let held = h.state().views[0].selected_text().expect("still selected");
+    let held = h.state().win.views[0].selected_text().expect("still selected");
     assert!(held.starts_with("ends") && "Page 1 ends with this line".contains(held.as_str()), "the selection stays on page 1: {held:?}");
     h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
     h.run_steps(2);
-    assert_eq!(h.state().views[0].selected_text(), Some(held), "releasing keeps the selection");
+    assert_eq!(h.state().win.views[0].selected_text(), Some(held), "releasing keeps the selection");
 }
 
 /// One 300×600 page with a line of Helvetica text at its top and another at its bottom.
@@ -568,24 +568,24 @@ fn a_selection_drag_held_at_the_bottom_edge_scrolls_the_view() {
         app.set_option("layout", "continuous").unwrap();
         app.set_option("zoom", "200").unwrap();
     });
-    let view = &h.state().views[0];
+    let view = &h.state().win.views[0];
     let viewport = view.viewport_rect();
     assert!(view.page_screen_rect(0).expect("page on screen").bottom() > viewport.bottom() + 100.0, "the page must not fit");
     // "Top" (glyphs 0..=2).
     let (from, to) = (view.glyph_screen_pos(0, 0).expect("glyph on screen"), view.glyph_screen_pos(0, 2).expect("glyph on screen"));
     press_and_move(&mut h, from, to);
-    assert_eq!(h.state().views[0].selected_text().as_deref(), Some("Top"));
+    assert_eq!(h.state().win.views[0].selected_text().as_deref(), Some("Top"));
     let edge = egui::pos2(to.x, viewport.bottom() - 2.0);
     let before = page_top(&h, 0);
     h.hover_at(edge);
     h.run_steps(120);
     assert!(page_top(&h, 0) < before - 100.0, "the view scrolls while the pointer rests at its edge ({before} -> {})", page_top(&h, 0));
-    let held = h.state().views[0].selected_text().expect("still selected");
+    let held = h.state().win.views[0].selected_text().expect("still selected");
     // The pointer stays above the "t" of "Top", so the selection ends at the "t" of "Bottom".
     assert_eq!(held, "Top line\nBot", "the selection reaches the bottom line");
     h.event(Event::PointerButton { pos: edge, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
     h.run_steps(2);
-    assert_eq!(h.state().views[0].selected_text(), Some(held), "releasing keeps the selection");
+    assert_eq!(h.state().win.views[0].selected_text(), Some(held), "releasing keeps the selection");
 }
 
 /// Click at `at`, then press there again and drag to `to` before releasing: a double-click drag.
@@ -601,14 +601,14 @@ fn double_click_drag(h: &mut Harness<'static, PdfCraftApp>, at: Pos2, to: Pos2) 
 #[test]
 fn a_double_click_drag_extends_by_whole_words_both_ways() {
     let (mut h, _) = harness(|_| {});
-    let glyph = |h: &Harness<'static, PdfCraftApp>, g: usize| h.state().views[0].glyph_screen_pos(0, g).expect("glyph on screen");
+    let glyph = |h: &Harness<'static, PdfCraftApp>, g: usize| h.state().win.views[0].glyph_screen_pos(0, g).expect("glyph on screen");
     // "The quick brown fox": the "u" of "quick" is glyph 5, the "o" of "brown" glyph 12.
     let (u, o) = (glyph(&h, 5), glyph(&h, 12));
     double_click_drag(&mut h, u, o);
-    let right = h.state().views[0].selected_text();
+    let right = h.state().win.views[0].selected_text();
     h.run_steps(60);
     double_click_drag(&mut h, o, u);
-    let left = h.state().views[0].selected_text();
+    let left = h.state().win.views[0].selected_text();
     assert_eq!([right.as_deref(), left.as_deref()], [Some("quick brown"); 2], "dragging right, then left");
 }
 
@@ -617,10 +617,10 @@ fn a_double_click_drag_extends_by_whole_words_both_ways() {
 fn a_triple_click_drag_extends_by_whole_lines() {
     let (mut h, at) = harness(|_| {});
     // A glyph inside "jumps over the dog", on the second line.
-    let below = h.state().views[0].glyph_screen_pos(0, 23).expect("glyph on screen");
+    let below = h.state().win.views[0].glyph_screen_pos(0, 23).expect("glyph on screen");
     click(&mut h, at);
     double_click_drag(&mut h, at, below);
-    assert_eq!(h.state().views[0].selected_text().as_deref(), Some("The quick brown fox\njumps over the dog"));
+    assert_eq!(h.state().win.views[0].selected_text().as_deref(), Some("The quick brown fox\njumps over the dog"));
 }
 
 /// Coalesced down/up keeps the same word/line selection as separate press and release passes.
@@ -629,9 +629,9 @@ fn coalesced_primary_clicks_select_line_then_spaced_click_clears() {
     for coalesced in [true, false] {
         let (mut h, at) = harness(|_| {});
         h.ctx.options_mut(|o| o.max_passes = 1.try_into().unwrap());
-        let id = h.state().views[0].id;
+        let id = h.state().win.views[0].id;
         let saved = h.state().session.get(id).unwrap().saved_bytes();
-        assert!(h.state().views[0].selected_text().is_none());
+        assert!(h.state().win.views[0].selected_text().is_none());
         assert!(!h.state().session.get(id).unwrap().dirty);
         for want in [None, Some("quick"), Some("The quick brown fox")] {
             if coalesced {
@@ -646,7 +646,7 @@ fn coalesced_primary_clicks_select_line_then_spaced_click_clears() {
             } else {
                 click(&mut h, at);
             }
-            assert_eq!(h.state().views[0].selected_text().as_deref(), want, "coalesced={coalesced}");
+            assert_eq!(h.state().win.views[0].selected_text().as_deref(), want, "coalesced={coalesced}");
         }
         h.run_steps(60);
         if coalesced {
@@ -660,8 +660,8 @@ fn coalesced_primary_clicks_select_line_then_spaced_click_clears() {
         } else {
             click(&mut h, at);
         }
-        assert_eq!(h.state().views[0].selected_text(), None, "a spaced click clears either gesture path");
-        assert_eq!(h.state().views[0].id, id);
+        assert_eq!(h.state().win.views[0].selected_text(), None, "a spaced click clears either gesture path");
+        assert_eq!(h.state().win.views[0].id, id);
         let doc = h.state().session.get(id).unwrap();
         assert!(!doc.dirty);
         assert_eq!((doc.can_undo(), doc.can_redo()), (None, None));
@@ -688,8 +688,8 @@ fn full_screen_link_click_cancels_the_pending_page_turn() {
         .into_bytes();
     let (mut h, _) = harness_with(four_pages, |_| {});
     h.state_mut().apply_full_screen(true);
-    crate::support::wait_until(&mut h, "the page in full screen", |app| app.views[0].glyph_screen_pos(0, 5).is_some() && !app.render_pending());
-    let r = h.state().views[0].page_screen_rect(0).expect("page 1 on screen");
+    crate::support::wait_until(&mut h, "the page in full screen", |app| app.win.views[0].glyph_screen_pos(0, 5).is_some() && !app.render_pending());
+    let r = h.state().win.views[0].page_screen_rect(0).expect("page 1 on screen");
     let at = |x: f32, y: f32| egui::pos2(r.left() + x / 300.0 * r.width(), r.top() + (200.0 - y) / 200.0 * r.height());
     // A click on blank page area, then, within the double-click time, a click on the link.
     h.hover_at(at(150.0, 90.0));
@@ -700,7 +700,7 @@ fn full_screen_link_click_cancels_the_pending_page_turn() {
     h.run_steps(1);
     click(&mut h, at(240.0, 40.0));
     h.run_steps(30);
-    assert_eq!(h.state().views[0].current, 2, "the link's page, and no turn after it");
+    assert_eq!(h.state().win.views[0].current, 2, "the link's page, and no turn after it");
 }
 
 /// Review on #2070: in full screen a click goes forward a page, but a double-click selects the
@@ -720,17 +720,17 @@ fn full_screen_double_click_selects_a_word_and_stays_on_the_page() {
         .into_bytes();
     let (mut h, _) = harness_with(two_pages, |_| {});
     h.state_mut().apply_full_screen(true);
-    crate::support::wait_until(&mut h, "the page in full screen", |app| app.views[0].glyph_screen_pos(0, 5).is_some() && !app.render_pending());
-    let at = h.state().views[0].glyph_screen_pos(0, 5).expect("text layer");
+    crate::support::wait_until(&mut h, "the page in full screen", |app| app.win.views[0].glyph_screen_pos(0, 5).is_some() && !app.render_pending());
+    let at = h.state().win.views[0].glyph_screen_pos(0, 5).expect("text layer");
     h.hover_at(at);
     h.run_steps(1);
 
     // A double-click selects "quick" and stays on page 1, also once the double-click time is over.
     click(&mut h, at);
     click(&mut h, at);
-    assert_eq!(h.state().views[0].selected_text().as_deref(), Some("quick"));
+    assert_eq!(h.state().win.views[0].selected_text().as_deref(), Some("quick"));
     h.run_steps(30);
-    assert_eq!(h.state().views[0].current, 0, "the double-click didn't turn the page");
+    assert_eq!(h.state().win.views[0].current, 0, "the double-click didn't turn the page");
 
     // A single click turns it once the double-click time is over.
     // Entering full screen again clears the selection.
@@ -739,13 +739,13 @@ fn full_screen_double_click_selects_a_word_and_stays_on_the_page() {
     h.run_steps(30);
     click(&mut h, at);
     h.run_steps(30);
-    assert_eq!(h.state().views[0].current, 1, "a click goes forward");
+    assert_eq!(h.state().win.views[0].current, 1, "a click goes forward");
 
     // A click right before leaving full screen doesn't turn the page after it.
-    h.state_mut().views[0].go_to_page(0);
+    h.state_mut().win.views[0].go_to_page(0);
     h.run_steps(30);
     click(&mut h, at);
     h.state_mut().apply_full_screen(false);
     h.run_steps(30);
-    assert_eq!(h.state().views[0].current, 0, "no page turn after leaving");
+    assert_eq!(h.state().win.views[0].current, 0, "no page turn after leaving");
 }

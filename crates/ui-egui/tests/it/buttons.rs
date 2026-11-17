@@ -36,9 +36,9 @@ fn fixture() -> Vec<u8> {
 fn click_field(h: &mut Harness<'static, PdfCraftApp>, name: &str) {
     let p = {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         let f = doc.form.iter().find(|f| f.name == name).unwrap();
-        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.views[0], &doc.info, f, 0).expect("on screen").center()
+        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.win.views[0], &doc.info, f, 0).expect("on screen").center()
     };
     h.hover_at(p);
     h.run_steps(1);
@@ -66,7 +66,7 @@ fn buttons_reset_navigate_and_print() {
     click_field(&mut h, "reset");
     {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         assert!(doc.form.iter().find(|f| f.name == "name").unwrap().value.is_empty(), "Reset form cleared the field");
     }
     click_field(&mut h, "print");
@@ -80,11 +80,11 @@ fn buttons_reset_navigate_and_print() {
     click_field(&mut h, "save");
     h.run_steps(4);
     h.get_by_label_contains("isn't supported");
-    assert!(h.state().session.get(h.state().views[0].id).unwrap().dirty, "not saved");
+    assert!(h.state().session.get(h.state().win.views[0].id).unwrap().dirty, "not saved");
     assert_eq!(std::fs::read(&path).unwrap(), before, "the file is untouched");
     click_field(&mut h, "next");
     h.run_steps(4);
-    assert_eq!(h.state().views[0].current, 1, "the NextPage action");
+    assert_eq!(h.state().win.views[0].current, 1, "the NextPage action");
 }
 
 /// One page: a text field "name" and two push buttons whose Hide actions hide it and show it again.
@@ -115,7 +115,7 @@ fn show_hide_fixture() -> Vec<u8> {
 /// Whether the "name" widget (object 4) has the Hidden annotation flag in the saved document.
 fn name_hidden(h: &Harness<'static, PdfCraftApp>) -> bool {
     let s = h.state();
-    let bytes = s.session.save_bytes(s.views[0].id).unwrap();
+    let bytes = s.session.save_bytes(s.win.views[0].id).unwrap();
     let doc = pdfcraft_cos::Document::open(bytes).unwrap();
     let f = doc.get(pdfcraft_cos::ObjRef::new(4, 0)).as_dict().and_then(|d| d.int(b"F")).unwrap_or(0);
     f & 2 != 0
@@ -135,9 +135,9 @@ fn hide_actions_hide_and_show_fields() {
     // A push button with an action shows the pointing hand, not the "not allowed" cursor.
     let hide_at = {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         let f = doc.form.iter().find(|f| f.name == "hide").unwrap();
-        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.views[0], &doc.info, f, 0).expect("on screen").center()
+        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.win.views[0], &doc.info, f, 0).expect("on screen").center()
     };
     h.hover_at(hide_at);
     h.run_steps(2);
@@ -146,7 +146,7 @@ fn hide_actions_hide_and_show_fields() {
     assert!(name_hidden(&h), "the Hide action hid the field");
     // A hidden field takes no clicks: clicking where it was doesn't start editing it.
     click_field(&mut h, "name");
-    assert!(h.state().views[0].forms.focus.is_none(), "a hidden field can't be focused");
+    assert!(h.state().win.views[0].forms.focus.is_none(), "a hidden field can't be focused");
     click_field(&mut h, "show");
     assert!(!name_hidden(&h), "the Hide action with /H false showed it again");
 }

@@ -331,7 +331,7 @@ fn a_refused_text_box_is_put_back_whole() {
     app.set_option("language", "en").unwrap();
     app.open_bytes("a.pdf", None, no_changes_pdf()).unwrap();
     let style = crate::content_ui::default_style();
-    app.views[0].content.draft = Some(crate::content_ui::TextDraft {
+    app.win.views[0].content.draft = Some(crate::content_ui::TextDraft {
         page: 0,
         index: None,
         rect: [20.0, 20.0, 120.0, 40.0],
@@ -342,7 +342,7 @@ fn a_refused_text_box_is_put_back_whole() {
         typing_from: None,
     });
     app.undo();
-    let content = &app.views[0].content;
+    let content = &app.win.views[0].content;
     assert_eq!(content.draft.as_ref().map(|d| d.text.as_str()), Some("Typed"), "the refused box stays open");
     assert_eq!(content.select_added, None, "nothing was added to select");
 }
@@ -356,7 +356,7 @@ fn save_commits_the_open_text_box() {
     app.open_bytes("a.pdf", None, one_page_pdf()).unwrap();
     app.save_override = Some(dest.to_string_lossy().into_owned());
     let style = crate::content_ui::default_style();
-    app.views[0].content.draft = Some(crate::content_ui::TextDraft {
+    app.win.views[0].content.draft = Some(crate::content_ui::TextDraft {
         page: 0,
         index: None,
         rect: [20.0, 20.0, 120.0, 40.0],
@@ -368,10 +368,10 @@ fn save_commits_the_open_text_box() {
     });
 
     assert!(app.save_active(SaveTarget::InPlace));
-    let id = app.views[0].id;
+    let id = app.win.views[0].id;
     let added = app.session.get(id).unwrap().added();
     assert_eq!(added.len(), 1, "the open text box was committed before the save");
-    assert!(app.views[0].content.draft.is_none());
+    assert!(app.win.views[0].content.draft.is_none());
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -401,12 +401,12 @@ fn moving_pages_cancels_an_in_progress_drawing() {
     app.open_bytes("a.pdf", None, pdf).unwrap();
     let drawing =
         || Some(crate::comments::Gesture::Draw { page: 0, tool: crate::comments::CommentTool::Ink, points: vec![[10.0, 10.0], [30.0, 20.0]] });
-    app.views[0].comments.gesture = drawing();
+    app.win.views[0].comments.gesture = drawing();
     assert!(app.apply_edit(pdfcraft_engine::Edit::RotatePages { pages: vec![0], degrees: 90 }));
-    assert!(app.views[0].comments.gesture.is_some(), "rotating the page keeps the drawing on it");
-    app.views[0].comments.gesture = drawing();
+    assert!(app.win.views[0].comments.gesture.is_some(), "rotating the page keeps the drawing on it");
+    app.win.views[0].comments.gesture = drawing();
     assert!(app.apply_edit(pdfcraft_engine::Edit::MovePages { pages: vec![1], to: 0 }));
-    assert!(app.views[0].comments.gesture.is_none(), "the drawing's page index would now be a different page");
+    assert!(app.win.views[0].comments.gesture.is_none(), "the drawing's page index would now be a different page");
 }
 
 #[test]
@@ -453,7 +453,7 @@ fn recolouring_print_ink_text_in_its_box_drops_the_ink_without_an_empty_step() {
         assert!(app.apply_edit(pdfcraft_engine::Edit::AddText { page: 0, text }));
         let stored = item(&app);
         assert!(stored.painted_ink().is_some());
-        app.views[0].content.draft = Some(crate::content_ui::TextDraft {
+        app.win.views[0].content.draft = Some(crate::content_ui::TextDraft {
             page: 0,
             index: Some(0),
             rect: stored.rect,
@@ -466,19 +466,19 @@ fn recolouring_print_ink_text_in_its_box_drops_the_ink_without_an_empty_step() {
         app
     };
     fn item(app: &crate::PdfCraftApp) -> pdfcraft_engine::AddedText {
-        match &app.session.get(app.views[0].id).unwrap().added()[0].content {
+        match &app.session.get(app.win.views[0].id).unwrap().added()[0].content {
             pdfcraft_engine::AddedContent::Text(t) => t.clone(),
             other => panic!("{other:?}"),
         }
     }
     // The box's style with another colour, set as the Format panel hands it over.
     let recolour = |app: &mut crate::PdfCraftApp, color: [f64; 3]| {
-        let style = app.views[0].content.draft.as_ref().map(|d| d.style.clone()).unwrap();
+        let style = app.win.views[0].content.draft.as_ref().map(|d| d.style.clone()).unwrap();
         app.restyle_draft(0, pdfcraft_engine::AddedText { color, ..style });
     };
     let finish = |app: &mut crate::PdfCraftApp| {
-        let added = app.session.get(app.views[0].id).unwrap().added().to_vec();
-        app.views[0].content.finish_draft(&added)
+        let added = app.session.get(app.win.views[0].id).unwrap().added().to_vec();
+        app.win.views[0].content.finish_draft(&added)
     };
 
     // Red, then Done.

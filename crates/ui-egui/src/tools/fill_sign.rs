@@ -418,7 +418,7 @@ pub(crate) fn signature_entries(ui: &mut egui::Ui, app: &mut crate::PdfCraftApp,
             }
             continue;
         };
-        let on = app.quick_tool == crate::QuickTool::Fill(if i == 0 { FillTool::Signature } else { FillTool::Initials });
+        let on = app.win.quick_tool == crate::QuickTool::Fill(if i == 0 { FillTool::Signature } else { FillTool::Initials });
         let wash = ui.painter().add(egui::Shape::Noop);
         let row = ui.horizontal(|ui| {
             let (rect, response) = ui.allocate_exact_size(vec2((ui.available_width() - 68.0).max(140.0), 52.0), Sense::click());
@@ -976,7 +976,7 @@ impl crate::PdfCraftApp {
         match cleaned {
             Ok(image) => {
                 self.signature_draft.image = Some(image);
-                self.toast = None;
+                self.win.toast = None;
             }
             Err(e) => self.notify_fmt("Couldn't import the signature image: {e}", &[("e", &e)]),
         }
@@ -1019,7 +1019,7 @@ impl crate::PdfCraftApp {
             Ok(mut scan) => {
                 scan.rescan_in_background(&mut self.signature_draft.image, true, self.ctx.as_ref());
                 self.signature_draft.scan = Some(scan);
-                self.toast = None;
+                self.win.toast = None;
             }
             Err(e) => self.notify_fmt("Couldn't use the photo: {e}", &[("e", &e)]),
         }

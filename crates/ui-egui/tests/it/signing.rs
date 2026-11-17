@@ -44,7 +44,7 @@ fn harness(dir: std::path::PathBuf) -> Harness<'static, PdfCraftApp> {
 }
 
 fn at(h: &Harness<'static, PdfCraftApp>, x: f32, y: f32) -> Pos2 {
-    let r = h.state().views[0].page_screen_rect(0).expect("page 1 on screen");
+    let r = h.state().win.views[0].page_screen_rect(0).expect("page 1 on screen");
     pos2(r.left() + x / 300.0 * r.width(), r.top() + (200.0 - y) / 200.0 * r.height())
 }
 
@@ -108,7 +108,7 @@ fn drawing_a_signature_creating_an_id_signing_and_trusting() {
 
 fn create_signing_id(h: &mut Harness<'static, PdfCraftApp>) {
     assert!(h.state_mut().execute("sign.digital"));
-    assert_eq!(h.state().quick_tool, QuickTool::SignArea { certify: false });
+    assert_eq!(h.state().win.quick_tool, QuickTool::SignArea { certify: false });
     let (a, b) = (at(h, 40.0, 90.0), at(h, 220.0, 40.0));
     drag(h, a, b);
     assert_eq!(h.state().dialog, Some(Dialog::Sign));
@@ -154,7 +154,7 @@ fn sign_with_created_id(h: &mut Harness<'static, PdfCraftApp>, dir: &std::path::
     let s = h.state();
     assert_eq!(s.dialog, None);
     assert!(dir.join("contract_signed.pdf").exists());
-    let doc = s.session.get(s.views[0].id);
+    let doc = s.session.get(s.win.views[0].id);
     assert!(doc.is_some(), "signed document remains open");
     if let Some(doc) = doc {
         assert_eq!(doc.name, "contract_signed.pdf");
@@ -164,7 +164,7 @@ fn sign_with_created_id(h: &mut Harness<'static, PdfCraftApp>, dir: &std::path::
             assert_eq!((signature.status, signature.reason.as_deref(), signature.page), (SignatureStatus::Unknown, Some("I approve"), Some(0)));
         }
     }
-    assert_eq!(s.right, Some(RightPanel::Signatures));
+    assert_eq!(s.win.right, Some(RightPanel::Signatures));
     h.get_by_label("At least one signature has problems.");
 }
 
@@ -175,18 +175,18 @@ fn trust_signer_and_inspect_certificate(h: &mut Harness<'static, PdfCraftApp>) {
     h.get_by_label("Signature validity is UNKNOWN:");
     // Seed a find so the trust path proves it invalidates the view: trust rebuilds
     // the display copy, and the next frame must draw from it without any zoom change.
-    h.state_mut().views[0].find = Some(pdfcraft_ui_egui::canvas::Find { matches: vec![(0, 0..5)], ..Default::default() });
+    h.state_mut().win.views[0].find = Some(pdfcraft_ui_egui::canvas::Find { matches: vec![(0, 0..5)], ..Default::default() });
     h.get_by_label("Add to trusted certificates").click();
     h.run_steps(3);
     h.get_by_label("Signed and all signatures are valid.");
     let s = h.state();
-    let doc = s.session.get(s.views[0].id);
+    let doc = s.session.get(s.win.views[0].id);
     assert!(doc.is_some(), "the original signed document remains open");
     if let Some(doc) = doc {
         assert_eq!(doc.signatures[0].status, SignatureStatus::Valid);
         assert!(!doc.dirty, "trust alone is not an edit");
     }
-    assert!(s.views[0].find.as_ref().is_some_and(|f| f.matches.is_empty()), "trust invalidates the view without zooming");
+    assert!(s.win.views[0].find.as_ref().is_some_and(|f| f.matches.is_empty()), "trust invalidates the view without zooming");
     // Show certificate: the Certificate Viewer.
     h.get_by_label("Show certificate…").click();
     h.run_steps(3);
@@ -212,26 +212,26 @@ fn verify_signed_snapshot_reuse(h: &mut Harness<'static, PdfCraftApp>) {
     h.get_by_label("View signed version").click();
     h.run_steps(3);
     let s = h.state();
-    assert_eq!(s.views.len(), 2);
-    let signed_version = s.session.get(s.views[1].id);
+    assert_eq!(s.win.views.len(), 2);
+    let signed_version = s.session.get(s.win.views[1].id);
     assert!(signed_version.is_some(), "the signed version opens in its own tab");
     if let Some(version) = signed_version {
         assert!(version.name.contains("signed version") && version.signatures.iter().any(|signature| signature.signed));
     }
-    assert!(s.views[0].snapshot.is_none());
-    assert!(s.views[1].snapshot.as_ref().is_some_and(|snap| snap.kind == pdfcraft_ui_egui::canvas::SnapshotKind::SignedVersion));
+    assert!(s.win.views[0].snapshot.is_none());
+    assert!(s.win.views[1].snapshot.as_ref().is_some_and(|snap| snap.kind == pdfcraft_ui_egui::canvas::SnapshotKind::SignedVersion));
     // A repeat click reuses the snapshot tab instead of opening another identical one.
     h.get_by_label("View signed version").click();
     h.run_steps(3);
     let s = h.state();
-    assert_eq!((s.views.len(), s.active), (2, Some(1)));
+    assert_eq!((s.win.views.len(), s.win.active), (2, Some(1)));
     // A repeat from the original tab reuses it too.
-    h.state_mut().active = Some(0);
+    h.state_mut().win.active = Some(0);
     h.run_steps(1);
     h.get_by_label("View signed version").click();
     h.run_steps(3);
     let s = h.state();
-    assert_eq!((s.views.len(), s.active), (2, Some(1)));
+    assert_eq!((s.win.views.len(), s.win.active), (2, Some(1)));
     // The snapshot tab says what it is.
     h.get_by_label_contains("You are viewing the signed version of");
     // Closing a clean snapshot closes the tab with no save prompt. The bar's own
@@ -257,7 +257,7 @@ fn verify_signed_snapshot_reuse(h: &mut Harness<'static, PdfCraftApp>) {
         assert!(label_row.contains(close.rect().center().y), "the Close found is the bar's own");
         close.click();
         h.run_steps(2);
-        assert_eq!(h.state().views.len(), 1);
+        assert_eq!(h.state().win.views.len(), 1);
         assert!(h.state().close_request.is_none());
     }
 }
@@ -266,15 +266,15 @@ fn verify_dirty_snapshot_close(h: &mut Harness<'static, PdfCraftApp>) {
     // Closing a dirty snapshot asks about saving instead of closing at once.
     h.get_by_label("View signed version").click();
     h.run_steps(3);
-    let id = h.state().views[1].id;
+    let id = h.state().win.views[1].id;
     h.state_mut().session.apply(id, pdfcraft_engine::Edit::SetInfo { key: "Title".into(), value: "Dirty".into() }).unwrap();
-    h.state_mut().views[1].close_requested = true;
+    h.state_mut().win.views[1].close_requested = true;
     h.run_steps(2);
-    assert_eq!(h.state().views.len(), 2);
+    assert_eq!(h.state().win.views.len(), 2);
     h.get_by_label("Save changes to “contract_signed (signed version).pdf” before closing?");
     h.get_by_label("Don't save").click();
     h.run_steps(2);
-    assert_eq!(h.state().views.len(), 1);
+    assert_eq!(h.state().win.views.len(), 1);
 }
 
 fn assert_trust_and_id_persist(h: &Harness<'static, PdfCraftApp>) {
@@ -318,7 +318,7 @@ fn certifying_without_a_visible_signature() {
     h.run_steps(6);
     let s = h.state();
     assert_eq!(s.sign_draft.as_ref().and_then(|d| d.error.clone()), None);
-    let doc = s.session.get(s.views[0].id).unwrap();
+    let doc = s.session.get(s.win.views[0].id).unwrap();
     let sig = doc.signatures.iter().find(|x| x.signed).unwrap();
     assert_eq!((sig.certify, sig.visible), (Some(2), false));
     h.get_by_label_contains("Certified by Test Signer EC");
@@ -346,7 +346,7 @@ fn save_as_keeps_a_signed_document_incremental() {
     h.run_steps(4);
     let status = |h: &Harness<'static, PdfCraftApp>| {
         let s = h.state();
-        s.session.get(s.views[0].id).unwrap().signatures.iter().find(|x| x.signed).map(|x| x.status)
+        s.session.get(s.win.views[0].id).unwrap().signatures.iter().find(|x| x.signed).map(|x| x.status)
     };
     assert_eq!(status(&h), Some(SignatureStatus::Valid));
     h.state_mut().save_override = Some(out.to_string_lossy().into_owned());
@@ -426,13 +426,13 @@ fn clicking_an_empty_signature_field_signs_it() {
     let mut h = harness(dir.clone());
     sign_the_empty_field(&mut h);
     let s = h.state();
-    let sig = s.session.get(s.views[1].id).unwrap().signatures.iter().find(|x| x.field == "Approver").cloned().unwrap();
+    let sig = s.session.get(s.win.views[1].id).unwrap().signatures.iter().find(|x| x.field == "Approver").cloned().unwrap();
     assert!(sig.signed && sig.visible);
 }
 
 /// The centre of `WITH_FIELD`'s signature field, opened as the second document.
 fn field_centre(h: &Harness<'static, PdfCraftApp>) -> Pos2 {
-    let r = h.state().views[1].page_screen_rect(0).expect("on screen");
+    let r = h.state().win.views[1].page_screen_rect(0).expect("on screen");
     pos2(r.left() + 150.0 / 300.0 * r.width(), r.top() + (200.0 - 50.0) / 200.0 * r.height())
 }
 
@@ -440,7 +440,7 @@ fn field_centre(h: &Harness<'static, PdfCraftApp>) -> Pos2 {
 /// clicking the field.
 fn sign_the_empty_field(h: &mut Harness<'static, PdfCraftApp>) {
     h.state_mut().open_bytes("form.pdf", None, WITH_FIELD.to_vec()).unwrap();
-    h.state_mut().active = Some(1);
+    h.state_mut().win.active = Some(1);
     h.run_steps(6);
     let p = field_centre(h);
     h.hover_at(p);
@@ -487,12 +487,12 @@ fn a_signature_badge_says_its_verdict_with_any_tool() {
     sign_the_empty_field(&mut h);
     let verdict = {
         let s = h.state();
-        let sig = s.session.get(s.views[1].id).unwrap().signatures.iter().find(|x| x.field == "Approver").cloned().unwrap();
+        let sig = s.session.get(s.win.views[1].id).unwrap().signatures.iter().find(|x| x.field == "Approver").cloned().unwrap();
         sig.summary()
     };
     let p = field_centre(&h);
     let hover = |h: &mut Harness<'static, PdfCraftApp>, tool: QuickTool, at: Pos2| {
-        h.state_mut().quick_tool = tool;
+        h.state_mut().win.quick_tool = tool;
         h.run_steps(4);
         h.hover_at(at);
         h.run_steps(4);
@@ -513,16 +513,16 @@ fn signing_an_xfa_box_runs_its_signing_scripts_in_the_app() {
     let mut h = harness(dir.clone());
     let bytes = pdfcraft_xfa::fixtures::shell(&pdfcraft_xfa::fixtures::signing_events_template());
     h.state_mut().open_bytes("events.pdf", None, bytes).unwrap();
-    h.state_mut().active = Some(1);
+    h.state_mut().win.active = Some(1);
     crate::support::settle(&mut h);
     let named = |h: &Harness<'static, PdfCraftApp>, n: &str| {
         let s = h.state();
-        s.session.get(s.views[1].id).unwrap().form.iter().find(|f| f.name == n || f.name.ends_with(&format!(".{n}[0]"))).cloned().unwrap()
+        s.session.get(s.win.views[1].id).unwrap().form.iter().find(|f| f.name == n || f.name.ends_with(&format!(".{n}[0]"))).cloned().unwrap()
     };
     let p = {
         let s = h.state();
-        let doc = s.session.get(s.views[1].id).unwrap();
-        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.views[1], &doc.info, &named(&h, "sign"), 0).expect("on screen").center()
+        let doc = s.session.get(s.win.views[1].id).unwrap();
+        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.win.views[1], &doc.info, &named(&h, "sign"), 0).expect("on screen").center()
     };
     h.hover_at(p);
     h.run_steps(1);
@@ -560,7 +560,7 @@ fn signing_an_xfa_box_runs_its_signing_scripts_in_the_app() {
     assert!(value("after").is_empty());
     assert_eq!(named(&h, "after").value, ["done"]);
     let st = h.state();
-    assert!(st.session.get(st.views[1].id).unwrap().dirty, "the postSign change is not saved yet");
+    assert!(st.session.get(st.win.views[1].id).unwrap().dirty, "the postSign change is not saved yet");
 }
 
 /// Signing a dynamic form's box and then cancelling takes back what its preSign script changed.
@@ -571,11 +571,11 @@ fn cancelling_signing_takes_back_the_presign_scripts_changes() {
     let mut h = harness(dir.clone());
     let bytes = pdfcraft_xfa::fixtures::shell(&pdfcraft_xfa::fixtures::signing_events_template());
     h.state_mut().open_bytes("events.pdf", None, bytes).unwrap();
-    h.state_mut().active = Some(1);
+    h.state_mut().win.active = Some(1);
     crate::support::settle(&mut h);
     let named = |h: &Harness<'static, PdfCraftApp>, n: &str| {
         let s = h.state();
-        s.session.get(s.views[1].id).unwrap().form.iter().find(|f| f.name == n || f.name.ends_with(&format!(".{n}[0]"))).cloned().unwrap()
+        s.session.get(s.win.views[1].id).unwrap().form.iter().find(|f| f.name == n || f.name.ends_with(&format!(".{n}[0]"))).cloned().unwrap()
     };
     let sign = named(&h, "sign").name;
     h.state_mut().start_signing(0, None, Some(sign), None);
@@ -623,7 +623,7 @@ fn the_fill_and_sign_signature_or_an_image_shows_in_a_digital_signature() {
     h.run_steps(6);
     let s = h.state();
     assert_eq!(s.sign_draft.as_ref().and_then(|d| d.error.clone()), None);
-    let sig = s.session.get(s.views[0].id).unwrap().signatures.iter().find(|x| x.signed).cloned().unwrap();
+    let sig = s.session.get(s.win.views[0].id).unwrap().signatures.iter().find(|x| x.signed).cloned().unwrap();
     assert!(sig.visible && sig.status == SignatureStatus::Unknown, "{:?}", sig.details);
     // Remembered for the next signature, and across a restart.
     assert_eq!(s.sign_graphic, SignGraphic::FillSign);
@@ -645,7 +645,7 @@ fn the_fill_and_sign_signature_or_an_image_shows_in_a_digital_signature() {
     assert_eq!(s.sign_draft.as_ref().and_then(|d| d.error.clone()), None);
     let signed = std::fs::read(dir.join("contract_signed.pdf")).unwrap();
     assert!(signed.windows(6).any(|w| w == b"/Image"), "the image is embedded");
-    assert_eq!(s.session.get(s.views[0].id).unwrap().signatures.iter().filter(|x| x.signed).count(), 2);
+    assert_eq!(s.session.get(s.win.views[0].id).unwrap().signatures.iter().filter(|x| x.signed).count(), 2);
     let mut fresh = PdfCraftApp::new();
     fresh.restore(&s.persist());
     assert_eq!(fresh.sign_graphic, SignGraphic::Image(image));
@@ -905,7 +905,7 @@ fn signing_preserves_destination_opening_attributes() {
     h.run_steps(2);
     support::outside_menus(&h, "Sign").click();
     h.run_steps(6);
-    assert!(h.state().session.get(h.state().views[0].id).unwrap().signatures.iter().any(|s| s.signed));
+    assert!(h.state().session.get(h.state().win.views[0].id).unwrap().signatures.iter().any(|s| s.signed));
     assert_eq!(xattr::get(&dest, "com.apple.LaunchServices.OpenWith").unwrap(), Some(b"existing binding".to_vec()));
     assert_eq!(xattr::get(&dest, "com.apple.quarantine").unwrap(), Some(b"0082;1234;Preview;".to_vec()));
     let _ = std::fs::remove_dir_all(dir);

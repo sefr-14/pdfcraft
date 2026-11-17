@@ -613,7 +613,7 @@ mod pointer_tests {
                 .0
                 .0;
             assert!(request(&mut h, &c, json!({"id":disabled_id})).unwrap_err().contains("disabled"));
-            assert!(h.state().host.views.is_empty(), "pointer probes create no document edits");
+            assert!(h.state().host.win.views.is_empty(), "pointer probes create no document edits");
             assert_eq!(h.ctx.options(|o| o.input_options.max_click_duration), max_duration);
         }
     }

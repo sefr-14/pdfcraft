@@ -12,7 +12,7 @@ impl PdfCraftApp {
                 .iter()
                 .flat_map(|g| g.sections.iter().flat_map(|s| s.items.iter()))
                 .any(|i| i.command == spec.id);
-            if self.active.is_none() && needs_document && is_tool && !self.command_enabled(spec) {
+            if self.win.active.is_none() && needs_document && is_tool && !self.command_enabled(spec) {
                 self.open_then_run(spec);
                 return;
             }
@@ -53,14 +53,14 @@ impl PdfCraftApp {
     }
 
     pub(crate) fn reveal_tools(&mut self) {
-        self.left_open = true;
+        self.win.left_open = true;
     }
 
     /// Enter a tool from the catalogue, Home, palette or control channel. Organize is a
     /// workspace, so opening its panel also opens the page grid (without toggling it off).
     pub(crate) fn select_tool(&mut self, id: &'static str) {
         // The tool's panel shows, not the expanded All tools view over it.
-        self.all_tools_full = false;
+        self.win.all_tools_full = false;
         // Edit a PDF turns on Edit text & images at once, as the Edit tab does (`enter_mode`), so
         // the page is editable without a second click. Leaving it for another tool from All tools
         // puts editing down again; under the Edit tab the workspace keeps it, as before. Read mode
@@ -68,17 +68,17 @@ impl PdfCraftApp {
         // channel's `tool edit` there leaves editing off.
         if id == "edit" {
             if self.mode != Mode::Read {
-                self.quick_tool = QuickTool::EditText;
+                self.win.quick_tool = QuickTool::EditText;
             }
         } else if self.mode != Mode::Edit
-            && self.left == LeftPanel::Tool("edit")
-            && matches!(self.quick_tool, QuickTool::EditText | QuickTool::AddText)
+            && self.win.left == LeftPanel::Tool("edit")
+            && matches!(self.win.quick_tool, QuickTool::EditText | QuickTool::AddText)
         {
             self.put_down_edit_text();
         }
-        self.left = LeftPanel::Tool(id);
+        self.win.left = LeftPanel::Tool(id);
         self.reveal_tools();
-        if let Some(view) = self.active.and_then(|i| self.views.get_mut(i)) {
+        if let Some(view) = self.win.active.and_then(|i| self.win.views.get_mut(i)) {
             if id == "organize" {
                 view.open_organize();
             } else {
@@ -92,10 +92,10 @@ impl PdfCraftApp {
     pub(crate) fn select_mode(&mut self, mode: Mode) {
         self.enter_mode(mode);
         self.reveal_tools();
-        if let Some(view) = self.active.and_then(|i| self.views.get_mut(i)) {
+        if let Some(view) = self.win.active.and_then(|i| self.win.views.get_mut(i)) {
             view.organize = false;
         }
-        self.left = match mode {
+        self.win.left = match mode {
             Mode::Edit => LeftPanel::Tool("edit"),
             Mode::Convert => LeftPanel::Tool("export"),
             Mode::Sign => LeftPanel::Tool("fill_sign"),
@@ -112,17 +112,17 @@ impl PdfCraftApp {
         self.mode = mode;
         // Another workspace puts the expanded All tools view away.
         if mode != Mode::AllTools {
-            self.all_tools_full = false;
+            self.win.all_tools_full = false;
         }
         if mode == Mode::Edit {
-            self.quick_tool = QuickTool::EditText;
-        } else if matches!(self.quick_tool, QuickTool::EditText | QuickTool::AddText) {
+            self.win.quick_tool = QuickTool::EditText;
+        } else if matches!(self.win.quick_tool, QuickTool::EditText | QuickTool::AddText) {
             self.put_down_edit_text();
         }
         // Read mode hides the quick toolbar, so no other tool may stay active there. Opening a
         // document with Read as the default mode comes here without `switch_mode`.
         if mode == Mode::Read {
-            self.quick_tool = QuickTool::Select;
+            self.win.quick_tool = QuickTool::Select;
         }
     }
 
@@ -132,21 +132,21 @@ impl PdfCraftApp {
         if self.mode != Mode::AllTools {
             self.switch_mode(Mode::AllTools, true);
         }
-        self.all_tools_full = true;
-        self.all_tools_tab = self.shown_tab();
+        self.win.all_tools_full = true;
+        self.win.all_tools_tab = self.shown_tab();
     }
 
     /// The tab at the front: the active document, or else whether Combine files shows over Home.
     pub(super) fn shown_tab(&self) -> (Option<DocId>, bool) {
-        (self.active.and_then(|i| self.views.get(i)).map(|v| v.id), self.combine_showing())
+        (self.win.active.and_then(|i| self.win.views.get(i)).map(|v| v.id), self.combine_showing())
     }
 
     /// Back to the Select tool from an editing tool. A paragraph still open in the editor is
     /// applied, as clicking away from it does; left open, its page would keep showing the
     /// paragraph's text removed with no editor over it.
     pub(crate) fn put_down_edit_text(&mut self) {
-        self.quick_tool = QuickTool::Select;
-        if let Some(ed) = self.active.and_then(|i| self.views.get_mut(i)).and_then(|v| v.line_editor.take())
+        self.win.quick_tool = QuickTool::Select;
+        if let Some(ed) = self.win.active.and_then(|i| self.win.views.get_mut(i)).and_then(|v| v.line_editor.take())
             && let Some(edit) = edit_text_ui::finished_edit(ed)
         {
             self.apply_edit(edit);
@@ -165,17 +165,17 @@ impl PdfCraftApp {
             self.enter_mode(mode);
         }
         if mode == Mode::Read && !was_read {
-            self.right_before_read = self.right.take();
+            self.win.right_before_read = self.win.right.take();
             // An editing tool is put down so its open paragraph is applied, as `select_mode` does.
-            if matches!(self.quick_tool, QuickTool::EditText | QuickTool::AddText) {
+            if matches!(self.win.quick_tool, QuickTool::EditText | QuickTool::AddText) {
                 self.put_down_edit_text();
             } else {
-                self.quick_tool = QuickTool::Select;
+                self.win.quick_tool = QuickTool::Select;
             }
         } else if mode != Mode::Read && was_read {
-            let before = self.right_before_read.take();
-            if self.right.is_none() {
-                self.right = before;
+            let before = self.win.right_before_read.take();
+            if self.win.right.is_none() {
+                self.win.right = before;
             }
         }
     }
@@ -185,26 +185,26 @@ impl PdfCraftApp {
     /// Read mode replaces the pane saved on the way in, so leaving Read mode doesn't undo it.
     pub fn choose_right_panel(&mut self, panel: Option<RightPanel>) {
         if self.mode == Mode::Read {
-            self.right_before_read = None;
+            self.win.right_before_read = None;
         }
         if panel == Some(RightPanel::Comments) {
-            self.comments_panel_closed = false;
-        } else if panel.is_none() && self.right == Some(RightPanel::Comments) {
-            self.comments_panel_closed = true;
+            self.win.comments_panel_closed = false;
+        } else if panel.is_none() && self.win.right == Some(RightPanel::Comments) {
+            self.win.comments_panel_closed = true;
         }
         if panel.is_some() {
-            self.right_panel_closed = false;
-        } else if self.right.is_some() {
-            self.right_panel_closed = true;
+            self.win.right_panel_closed = false;
+        } else if self.win.right.is_some() {
+            self.win.right_panel_closed = true;
         }
-        self.right = panel;
+        self.win.right = panel;
         if let Some(panel) = panel {
-            self.last_right = panel;
+            self.win.last_right = panel;
         }
     }
 
     /// F4: closes the side panel, or reopens the one open last.
     pub(crate) fn toggle_side_panel(&mut self) {
-        self.choose_right_panel(if self.right.is_some() { None } else { Some(self.last_right) });
+        self.choose_right_panel(if self.win.right.is_some() { None } else { Some(self.win.last_right) });
     }
 }

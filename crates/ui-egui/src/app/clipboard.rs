@@ -61,8 +61,9 @@ impl PdfCraftApp {
                 })
                 .collect()
         });
-        let free = self.dialog.is_none() && !self.palette_open && !self.page_keys.over() && !ctx.egui_wants_keyboard_input() && !self.is_preparing();
-        if !free || self.views.get(i).is_some_and(|v| v.forms.focus.is_some() || v.organize) {
+        let free =
+            self.dialog.is_none() && !self.win.palette_open && !self.win.page_keys.over() && !ctx.egui_wants_keyboard_input() && !self.is_preparing();
+        if !free || self.win.views.get(i).is_some_and(|v| v.forms.focus.is_some() || v.organize) {
             self.receive_pastes(i, pastes, false);
             return;
         }
@@ -73,30 +74,33 @@ impl PdfCraftApp {
         let paste = ctx.input_mut(|input| input.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::V)));
 
         // Objects selected together in Edit a PDF take ⌘C and ⌘X.
-        let objects = (copy || cut) && self.quick_tool == QuickTool::EditText && self.views.get(i).is_some_and(|v| v.objects.count() > 0);
+        let objects = (copy || cut) && self.win.quick_tool == QuickTool::EditText && self.win.views.get(i).is_some_and(|v| v.objects.count() > 0);
         if objects {
             self.copy_objects(i, ctx, cut);
         }
-        let text_selected = copy && self.views.get(i).and_then(|v| v.selected_text()).is_some_and(|t| !t.is_empty());
+        let text_selected = copy && self.win.views.get(i).and_then(|v| v.selected_text()).is_some_and(|t| !t.is_empty());
         if copy
             && !objects
             && (text_selected || !self.copy_selected_comments(i))
             && !self.copy_selected_text(i, ctx)
-            && let Some(sel) = self.views.get(i).and_then(|v| v.image_selection.clone())
-            && let Some(id) = self.views.get(i).map(|v| v.id)
+            && let Some(sel) = self.win.views.get(i).and_then(|v| v.image_selection.clone())
+            && let Some(id) = self.win.views.get(i).map(|v| v.id)
             && self.may_copy(id)
         {
             self.copy_page_image(sel.page, sel.index);
         }
         if cut
             && !objects
-            && let Some(sel) = self.views.get(i).and_then(|v| v.image_selection.clone())
-            && let Some(id) = self.views.get(i).map(|v| v.id)
+            && let Some(sel) = self.win.views.get(i).and_then(|v| v.image_selection.clone())
+            && let Some(id) = self.win.views.get(i).map(|v| v.id)
             && self.may_copy(id)
         {
             self.cut_page_image(sel.page, sel.index);
         }
-        if (paste || !pastes.is_empty()) && self.quick_tool == QuickTool::EditText && self.object_clipboard.is_some() && self.pastes_objects(&pastes)
+        if (paste || !pastes.is_empty())
+            && self.win.quick_tool == QuickTool::EditText
+            && self.object_clipboard.is_some()
+            && self.pastes_objects(&pastes)
         {
             self.paste_objects(i);
             return;
@@ -118,7 +122,7 @@ impl PdfCraftApp {
                 return;
             }
 
-            let page = self.views.get(i).map_or(0, |v| v.current);
+            let page = self.win.views.get(i).map_or(0, |v| v.current);
             self.paste_image(page, None);
         }
     }
@@ -127,7 +131,7 @@ impl PdfCraftApp {
     /// document, and put their text (or else their first picture) on the system clipboard for
     /// other applications. A cut then deletes them, as one undo step.
     pub(crate) fn copy_objects(&mut self, i: usize, ctx: &egui::Context, cut: bool) -> bool {
-        let Some((id, Some((page, targets)))) = self.views.get(i).map(|v| (v.id, v.objects.selection())) else { return false };
+        let Some((id, Some((page, targets)))) = self.win.views.get(i).map(|v| (v.id, v.objects.selection())) else { return false };
         if !self.may_copy(id) {
             return false;
         }
@@ -184,7 +188,7 @@ impl PdfCraftApp {
     /// ⌘V in Edit a PDF: the copied objects onto the current page of tab `i`, as page content
     /// that draws the same (one undo step), and selected.
     pub(crate) fn paste_objects(&mut self, i: usize) -> bool {
-        let Some((id, page)) = self.views.get(i).map(|v| (v.id, v.current)) else { return false };
+        let Some((id, page)) = self.win.views.get(i).map(|v| (v.id, v.current)) else { return false };
         let (Some(doc), Some(clipboard)) = (self.session.get(id), self.object_clipboard.as_mut()) else { return false };
         if !doc.allows_modification() {
             self.notify_error(tl!("The document's security settings don't allow this change"));
@@ -201,7 +205,7 @@ impl PdfCraftApp {
         if !self.apply_edit(edit) {
             return false;
         }
-        if let (Some(Ok(after)), Some(view)) = (self.session.get(id).map(|d| d.editable_objects(page)), self.views.get_mut(i)) {
+        if let (Some(Ok(after)), Some(view)) = (self.session.get(id).map(|d| d.editable_objects(page)), self.win.views.get_mut(i)) {
             view.objects.select_pasted(page, &before, after);
         }
         true
@@ -210,7 +214,7 @@ impl PdfCraftApp {
     /// `on_canvas`: the paste is the canvas's (no text field, dialog or page grid has it), so
     /// pictures and copied comments land on the page.
     fn receive_pastes(&mut self, view: usize, pastes: Vec<ClipboardPaste>, on_canvas: bool) {
-        let page = self.views.get(view).map_or(0, |view| view.current);
+        let page = self.win.views.get(view).map_or(0, |view| view.current);
         for paste in pastes {
             match paste {
                 ClipboardPaste::Text(text) => {
@@ -245,7 +249,7 @@ impl PdfCraftApp {
     /// clipboard (for ⌘V in any tab or window) and onto the system clipboard as text. False
     /// when nothing is selected.
     pub fn copy_selected_comments(&mut self, i: usize) -> bool {
-        let Some(view) = self.views.get(i) else { return false };
+        let Some(view) = self.win.views.get(i) else { return false };
         let keys = view.comments.selection();
         if keys.is_empty() {
             return false;
@@ -277,7 +281,7 @@ impl PdfCraftApp {
             self.notify_tr("Copy comments first");
             return false;
         };
-        let Some(view) = self.views.get(i) else { return false };
+        let Some(view) = self.win.views.get(i) else { return false };
         let id = view.id;
         let Some(doc) = self.session.get(id) else { return false };
         if !doc.allows_annotation() {
@@ -295,7 +299,7 @@ impl PdfCraftApp {
                 self.apply_edit(pdfcraft_engine::Edit::PasteComments { xfdf, page, offset: Some(offset) })
             }
             None => {
-                let Some(view) = self.views.get_mut(i) else { return false };
+                let Some(view) = self.win.views.get_mut(i) else { return false };
                 view.comments.clear_selection();
                 let outlines = pdfcraft_engine::comment_outlines(&xfdf);
                 view.comments.gesture = Some(comments::Gesture::Place { xfdf, bounds, count, outlines });
@@ -311,14 +315,14 @@ impl PdfCraftApp {
     pub(crate) fn copy_selected_text(&mut self, i: usize, ctx: &egui::Context) -> bool {
         // A newer copy wins: a whole-document copy still reading must not replace it later.
         self.document_copy = None;
-        let Some(v) = self.views.get(i) else { return false };
+        let Some(v) = self.win.views.get(i) else { return false };
         let id = v.id;
         if v.all_text && !v.pages_without_text().is_empty() {
             // Checked before any page is read: a document that refuses copying reads nothing.
             if !self.may_copy(id) {
                 return false;
             }
-            let Some(job) = self.views.get(i).and_then(|v| Some(DocumentCopyJob::of(v, self.session.get(id)?))) else { return false };
+            let Some(job) = self.win.views.get(i).and_then(|v| Some(DocumentCopyJob::of(v, self.session.get(id)?))) else { return false };
             self.document_copy = Some(DocumentCopy::start(id, job, ctx));
             return true;
         }
@@ -328,7 +332,8 @@ impl PdfCraftApp {
         }
         // Built only when there is a clipboard to take it.
         let html = if self.takes_html() {
-            self.views
+            self.win
+                .views
                 .get(i)
                 .and_then(DocView::selected_glyphs)
                 .and_then(|(page, layer, glyphs)| self.session.get(id)?.rich_copy(page, &layer, &glyphs).ok())
@@ -374,7 +379,7 @@ impl PdfCraftApp {
     pub(crate) fn finish_document_copy(&mut self, ctx: &egui::Context) {
         let Some(c) = &self.document_copy else { return };
         let copied = ctx.output(|o| o.commands.iter().any(|c| matches!(c, egui::OutputCommand::CopyText(_) | egui::OutputCommand::CopyImage(_))));
-        if copied || !self.views.iter().any(|v| v.id == c.doc) {
+        if copied || !self.win.views.iter().any(|v| v.id == c.doc) {
             self.document_copy = None;
             return;
         }
@@ -413,7 +418,7 @@ mod review_tests {
     fn frame(app: &mut PdfCraftApp, ctx: &egui::Context, time: f64, events: Vec<egui::Event>) -> usize {
         ctx.run_ui(egui::RawInput { time: Some(time), events, ..Default::default() }, |ui| app.clipboard_keys(0, ui.ctx()))
             .drop_without_applying_deltas();
-        app.session.get(app.views[0].id).unwrap().page_images(0).len()
+        app.session.get(app.win.views[0].id).unwrap().page_images(0).len()
     }
 
     #[test]
@@ -518,20 +523,20 @@ mod review_tests {
     fn delivered_image_obeys_focus_modal_and_permission_guards() {
         let ctx = egui::Context::default();
         let mut app = image_app();
-        app.palette_open = true;
+        app.win.palette_open = true;
         assert_eq!(frame(&mut app, &ctx, 1.0, vec![delivered()]), 0);
-        app.palette_open = false;
-        app.views[0].organize = true;
+        app.win.palette_open = false;
+        app.win.views[0].organize = true;
         assert_eq!(frame(&mut app, &ctx, 2.0, vec![delivered()]), 0);
-        app.views[0].organize = false;
+        app.win.views[0].organize = false;
         app.apply_edit(pdfcraft_engine::Edit::Protect(pdfcraft_engine::Protection {
             permissions_password: Some("owner".into()),
             ..Default::default()
         }));
-        let bytes = app.session.save_bytes(app.views[0].id).unwrap();
+        let bytes = app.session.save_bytes(app.win.views[0].id).unwrap();
         let mut restricted = PdfCraftApp::new();
         restricted.open_bytes("restricted.pdf", None, bytes.as_ref().clone()).unwrap();
-        assert!(!restricted.session.get(restricted.views[0].id).unwrap().allows_modification());
+        assert!(!restricted.session.get(restricted.win.views[0].id).unwrap().allows_modification());
         assert_eq!(frame(&mut restricted, &ctx, 3.0, vec![delivered()]), 0);
     }
 
@@ -540,7 +545,7 @@ mod review_tests {
         let mut app = PdfCraftApp::new();
         app.system_clipboard = false;
         app.create_blank();
-        app.toast = None;
+        app.win.toast = None;
         let ctx = egui::Context::default();
         ctx.run_ui(
             egui::RawInput {
@@ -556,9 +561,9 @@ mod review_tests {
             |ui| app.clipboard_keys(0, ui.ctx()),
         )
         .drop_without_applying_deltas();
-        assert!(app.toast.is_none());
+        assert!(app.win.toast.is_none());
         assert!(!app.paste_image(0, None));
-        assert!(app.toast.is_some(), "an explicit menu action still explains why there is no image");
+        assert!(app.win.toast.is_some(), "an explicit menu action still explains why there is no image");
     }
 
     #[test]
@@ -567,13 +572,13 @@ mod review_tests {
         app.system_clipboard = false;
         app.create_blank();
         app.last_copied_image = Some((1, 1, vec![255, 0, 0, 255]));
-        app.palette_open = true; // A text field owns the first event.
+        app.win.palette_open = true; // A text field owns the first event.
         let ctx = egui::Context::default();
         ctx.run_ui(egui::RawInput { events: vec![egui::Event::Paste("text".into())], ..Default::default() }, |ui| app.clipboard_keys(0, ui.ctx()))
             .drop_without_applying_deltas();
         assert!(app.last_copied_image.is_none());
-        app.palette_open = false;
-        app.toast = None;
+        app.win.palette_open = false;
+        app.win.toast = None;
         ctx.run_ui(
             egui::RawInput {
                 events: vec![egui::Event::Key {
@@ -588,7 +593,7 @@ mod review_tests {
             |ui| app.clipboard_keys(0, ui.ctx()),
         )
         .drop_without_applying_deltas();
-        assert!(app.toast.is_none(), "the text gesture's key release must be silent");
+        assert!(app.win.toast.is_none(), "the text gesture's key release must be silent");
         app.clipboard_override = None;
         let delivered = egui::Event::PasteImage(std::sync::Arc::new(egui::ColorImage::filled([1, 1], egui::Color32::GREEN)));
         ctx.run_ui(egui::RawInput { events: vec![delivered], ..Default::default() }, |ui| app.clipboard_keys(0, ui.ctx()))
@@ -602,10 +607,10 @@ mod review_tests {
         let mut app = PdfCraftApp::new();
         app.system_clipboard = false;
         app.create_blank();
-        app.views[0].image_selection = Some(crate::edit_text_ui::ImageSelection::at(0, 0));
+        app.win.views[0].image_selection = Some(crate::edit_text_ui::ImageSelection::at(0, 0));
         let ctx = egui::Context::default();
         ctx.run_ui(egui::RawInput { events: vec![egui::Event::Cut], ..Default::default() }, |ui| app.clipboard_keys(0, ui.ctx()))
             .drop_without_applying_deltas();
-        assert!(app.views[0].image_selection.is_some());
+        assert!(app.win.views[0].image_selection.is_some());
     }
 }

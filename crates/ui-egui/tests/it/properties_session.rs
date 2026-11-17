@@ -36,7 +36,7 @@ fn confirm_if_still_open(h: &mut Harness<'static, PdfCraftApp>) {
 /// A pending title must never replace metadata written by a later document edit.
 fn properties_session_does_not_overwrite_a_newer_document_edit() {
     let mut h = harness();
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     h.state_mut().session.apply(id, Edit::SetInfo { key: "Title".into(), value: "Newer title".into() }).unwrap();
     let generation = h.state().session.get(id).unwrap().edit_generation();
     h.run_steps(2);
@@ -51,7 +51,7 @@ fn properties_session_does_not_overwrite_a_newer_document_edit() {
 /// Returning to the original value via Undo must still invalidate the draft and preserve Redo.
 fn properties_session_rejects_undo_back_to_the_original_value() {
     let mut h = harness();
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     h.state_mut().session.apply(id, Edit::SetInfo { key: "Title".into(), value: "Temporary".into() }).unwrap();
     h.state_mut().session.undo(id).unwrap();
     let generation = h.state().session.get(id).unwrap().edit_generation();
@@ -69,7 +69,7 @@ fn properties_session_rejects_undo_back_to_the_original_value() {
 fn properties_session_inspection_tabs_do_not_rebase_pending_input() {
     for unaccepted_custom in [false, true] {
         let mut h = harness();
-        let id = h.state().views[0].id;
+        let id = h.state().win.views[0].id;
         if unaccepted_custom {
             // Name/Value are typed input, even before Add has accepted a property.
             let app = h.state_mut();
@@ -96,7 +96,7 @@ fn properties_session_inspection_tabs_do_not_rebase_pending_input() {
 /// A clean inspection tab keeps the dialog open and follows a same-document edit.
 fn properties_session_clean_inspection_tab_follows_a_newer_edit() {
     let mut h = harness();
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     // No pending input: the typed title is cleared again before switching tabs.
     h.state_mut().props_draft.as_mut().unwrap().1[0].clear();
     h.state_mut().set_option("dialog", "space-audit").unwrap();

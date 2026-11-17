@@ -155,12 +155,12 @@ mod tests {
             let mut app = PdfCraftApp::new();
             app.set_option("default-layout", "single").unwrap();
             app.open_bytes("restored.pdf", None, include_bytes!("../../../crates/ui-egui/tests/data/form.pdf").to_vec()).unwrap();
-            let restored = app.views[0].id;
+            let restored = app.win.views[0].id;
             open_files(&mut app, &[text.into(), second.into()], enabled);
-            assert_eq!(app.views.len(), 3);
-            assert_eq!(app.views[0].id, restored);
-            assert_eq!(app.views[0].layout, pdfcraft_ui_egui::canvas::PageLayout::Single);
-            for view in app.views.iter().skip(1) {
+            assert_eq!(app.win.views.len(), 3);
+            assert_eq!(app.win.views[0].id, restored);
+            assert_eq!(app.win.views[0].layout, pdfcraft_ui_egui::canvas::PageLayout::Single);
+            for view in app.win.views.iter().skip(1) {
                 assert_eq!(
                     view.layout,
                     if enabled { pdfcraft_ui_egui::canvas::PageLayout::TwoUp } else { pdfcraft_ui_egui::canvas::PageLayout::Single }
@@ -176,13 +176,13 @@ mod tests {
             } else {
                 app.set_option("layout", "continuous").unwrap();
             }
-            assert_eq!(app.views[2].layout, pdfcraft_ui_egui::canvas::PageLayout::Single);
-            assert!(app.views[2].continuous());
+            assert_eq!(app.win.views[2].layout, pdfcraft_ui_egui::canvas::PageLayout::Single);
+            assert!(app.win.views[2].continuous());
             app.set_option("default-layout", "two-up").unwrap();
             assert_eq!(app.view_defaults.layout, pdfcraft_ui_egui::canvas::PageLayout::TwoUp);
             assert!(app.view_defaults.continuous);
             open_files(&mut app, &[], enabled);
-            assert_eq!(app.views.len(), 3);
+            assert_eq!(app.win.views.len(), 3);
         }
         std::fs::remove_file(path).unwrap();
         std::fs::remove_file(second_path).unwrap();
@@ -207,13 +207,13 @@ mod tests {
                     assert_eq!(key, "layout");
                     app.set_launch_layout(&value).unwrap();
                 }
-                assert_eq!(app.active, Some(count));
-                assert!(app.views[0].continuous());
-                for view in app.views.iter().skip(1).take(count - 1) {
+                assert_eq!(app.win.active, Some(count));
+                assert!(app.win.views[0].continuous());
+                for view in app.win.views.iter().skip(1).take(count - 1) {
                     assert_eq!(view.layout, PageLayout::TwoUp);
                 }
-                assert_eq!(app.views[count].layout, PageLayout::Single);
-                assert!(!app.views[count].continuous());
+                assert_eq!(app.win.views[count].layout, PageLayout::Single);
+                assert!(!app.win.views[count].continuous());
                 assert!(app.view_defaults.continuous);
             }
         }
@@ -235,14 +235,14 @@ mod repeated_file_tests {
         let mut app = PdfCraftApp::new();
         app.set_option("default-layout", "continuous").unwrap();
         app.open_path(&name);
-        let original = app.views[0].id;
+        let original = app.win.views[0].id;
         open_files(&mut app, &[name.clone(), name], true);
-        assert_eq!(app.views.len(), 1);
-        assert_eq!(app.views[0].id, original);
-        assert_eq!(app.views[0].layout, PageLayout::TwoUp);
-        assert!(!app.views[0].continuous());
+        assert_eq!(app.win.views.len(), 1);
+        assert_eq!(app.win.views[0].id, original);
+        assert_eq!(app.win.views[0].layout, PageLayout::TwoUp);
+        assert!(!app.win.views[0].continuous());
         app.set_launch_layout("single").unwrap();
-        assert_eq!(app.views[0].layout, PageLayout::Single);
+        assert_eq!(app.win.views[0].layout, PageLayout::Single);
         assert!(app.view_defaults.continuous);
         std::fs::remove_file(path).unwrap();
     }

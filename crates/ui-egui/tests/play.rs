@@ -171,7 +171,7 @@ impl Step {
             Step::ClickPage { x, y } => click_page(h, session, *x, *y)?,
             Step::Type { text } => type_into_paragraph(h, text)?,
             Step::Editor { text } => {
-                let Some(editor) = h.state_mut().views.first_mut().and_then(|v| v.line_editor.as_mut()) else {
+                let Some(editor) = h.state_mut().win.views.first_mut().and_then(|v| v.line_editor.as_mut()) else {
                     return Err("no paragraph is open for typing".into());
                 };
                 editor.text.clone_from(text);
@@ -187,7 +187,7 @@ impl Step {
                 // The open editor is what a click just showed. Otherwise take the shortest
                 // paragraph that contains the words, so a heading that merely mentions them
                 // does not win.
-                let actual = if let Some(open) = h.state().views.first().and_then(|v| v.line_editor.as_ref()) {
+                let actual = if let Some(open) = h.state().win.views.first().and_then(|v| v.line_editor.as_ref()) {
                     open.text.clone()
                 } else {
                     let mut matches: Vec<_> =
@@ -236,7 +236,7 @@ impl Step {
 }
 
 fn type_into_paragraph(h: &mut Harness<'static, PdfCraftApp>, text: &str) -> Result<(), String> {
-    if h.state().views.first().and_then(|v| v.line_editor.as_ref()).is_none() {
+    if h.state().win.views.first().and_then(|v| v.line_editor.as_ref()).is_none() {
         return Err("no paragraph is open for typing".into());
     }
     h.key_press_modifiers(Modifiers::COMMAND, Key::A);
@@ -250,7 +250,7 @@ fn type_into_paragraph(h: &mut Harness<'static, PdfCraftApp>, text: &str) -> Res
 fn drag_edge(h: &mut Harness<'static, PdfCraftApp>, session: &Session, contains: &str, dx: f32, dy: f32) -> Result<(), String> {
     let edge = {
         let s = h.state();
-        let Some(view) = s.views.first() else { return Err("no document is open".into()) };
+        let Some(view) = s.win.views.first() else { return Err("no document is open".into()) };
         let Some(page) = view.page_screen_rect(0) else { return Err("the page is not on screen".into()) };
         let Some(doc) = s.session.get(view.id) else { return Err("the document is gone".into()) };
         let blocks = doc.text_blocks(0);
@@ -276,7 +276,7 @@ fn drag_edge(h: &mut Harness<'static, PdfCraftApp>, session: &Session, contains:
 }
 
 fn click_page(h: &mut Harness<'static, PdfCraftApp>, session: &Session, x: f32, y: f32) -> Result<(), String> {
-    let page = h.state().views.first().and_then(|v| v.page_screen_rect(0)).ok_or("the page is not on screen")?;
+    let page = h.state().win.views.first().and_then(|v| v.page_screen_rect(0)).ok_or("the page is not on screen")?;
     let [pw, ph] = session.page;
     let at = egui::pos2(page.left() + x / pw * page.width(), page.top() + (ph - y) / ph * page.height());
     h.hover_at(at);
@@ -312,7 +312,7 @@ fn paragraphs(h: &Harness<'static, PdfCraftApp>) -> Vec<String> {
 
 fn paragraphs_full(h: &Harness<'static, PdfCraftApp>) -> Vec<pdfcraft_engine::TextBlock> {
     let s = h.state();
-    let Some(view) = s.views.first() else { return Vec::new() };
+    let Some(view) = s.win.views.first() else { return Vec::new() };
     s.session.get(view.id).map(|d| d.text_blocks(0)).unwrap_or_default()
 }
 

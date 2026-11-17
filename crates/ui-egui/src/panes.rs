@@ -2,10 +2,10 @@
 //! Split view (`view.split-window`): the main window's page area in two panes, and which pane
 //! shows each tab.
 //!
-//! Every tab is a [`DocView`](crate::DocView) in `PdfCraftApp::views`, and its [`Place`] says where
+//! Every tab is a [`DocView`](crate::DocView) in `PdfCraftApp::win.views`, and its [`Place`] says where
 //! it shows. The window's tab strip holds the [`Place::Main`] tabs; split view adds a second pane,
 //! to the right or below, with a small strip of its own ([`Place::Second`]). Each pane shows the
-//! tab of it that was active last, and `PdfCraftApp::active` is the tab of the pane last clicked:
+//! tab of it that was active last, and `PdfCraftApp::win.active` is the tab of the pane last clicked:
 //! menus, keyboard shortcuts and the side panels act on it.
 //!
 //! One document can show in both panes at once (page 2 beside page 40): two views with one
@@ -133,18 +133,18 @@ fn layout(area: Rect, split: Split) -> (Rect, Rect, Rect) {
 impl PdfCraftApp {
     /// The tabs shown in `place`, in their strip's order (indexes into `views`).
     pub fn tabs_in(&self, place: Place) -> Vec<usize> {
-        self.views.iter().enumerate().filter(|(_, v)| v.pane.place == place).map(|(i, _)| i).collect()
+        self.win.views.iter().enumerate().filter(|(_, v)| v.pane.place == place).map(|(i, _)| i).collect()
     }
 
     /// The tab `place` shows: the active tab when it is there, else the one active there last.
     /// `None` for the main pane while Home (or Combine files) shows.
     pub fn pane_front(&self, place: Place) -> Option<usize> {
-        if let Some(a) = self.active
-            && self.views.get(a).is_some_and(|v| v.pane.place == place)
+        if let Some(a) = self.win.active
+            && self.win.views.get(a).is_some_and(|v| v.pane.place == place)
         {
             return Some(a);
         }
-        if place == Place::Main && self.active.is_none() {
+        if place == Place::Main && self.win.active.is_none() {
             return None;
         }
         self.latest_in(place)
@@ -152,7 +152,8 @@ impl PdfCraftApp {
 
     /// The tab of `place` active last (the first one when none has been).
     fn latest_in(&self, place: Place) -> Option<usize> {
-        self.views
+        self.win
+            .views
             .iter()
             .enumerate()
             .filter(|(_, v)| v.pane.place == place)
@@ -162,27 +163,27 @@ impl PdfCraftApp {
 
     /// Where tab `index` shows.
     pub fn place_of(&self, index: usize) -> Option<Place> {
-        self.views.get(index).map(|v| v.pane.place)
+        self.win.views.get(index).map(|v| v.pane.place)
     }
 
     /// Whether another tab shows the same document as tab `index`.
     pub(crate) fn has_twin(&self, index: usize) -> bool {
-        let Some(id) = self.views.get(index).map(|v| v.id) else { return false };
-        self.views.iter().enumerate().any(|(k, v)| k != index && v.id == id)
+        let Some(id) = self.win.views.get(index).map(|v| v.id) else { return false };
+        self.win.views.iter().enumerate().any(|(k, v)| k != index && v.id == id)
     }
 
     /// The tab with view key `key` ([`crate::DocView::view_key`]).
     pub(crate) fn tab_with_key(&self, key: u64) -> Option<usize> {
-        self.views.iter().position(|v| v.view_key() == key)
+        self.win.views.iter().position(|v| v.view_key() == key)
     }
 
     /// Bring forward the tab `place` shows (a click in that pane).
     pub fn activate_place(&mut self, place: Place) {
-        if self.active.and_then(|i| self.views.get(i)).is_some_and(|v| v.pane.place == place) {
+        if self.win.active.and_then(|i| self.win.views.get(i)).is_some_and(|v| v.pane.place == place) {
             return;
         }
         if let Some(i) = self.latest_in(place) {
-            self.active = Some(i);
+            self.win.active = Some(i);
             self.combine_tab.focused = false;
         }
     }
@@ -192,9 +193,9 @@ impl PdfCraftApp {
     /// view, the views of a document changed through another view catch up, and the active tab
     /// becomes its pane's latest.
     pub(crate) fn settle_panes(&mut self) {
-        let split = self.panes.split.is_some();
-        let focus = if split { self.panes.focus } else { Place::Main };
-        for v in &mut self.views {
+        let split = self.win.panes.split.is_some();
+        let focus = if split { self.win.panes.focus } else { Place::Main };
+        for v in &mut self.win.views {
             if !v.pane.placed {
                 v.pane.place = focus;
                 v.pane.placed = true;
@@ -204,7 +205,7 @@ impl PdfCraftApp {
             }
         }
         if split {
-            let has = |p: Place| self.views.iter().any(|v| v.pane.place == p);
+            let has = |p: Place| self.win.views.iter().any(|v| v.pane.place == p);
             if !has(Place::Main) || !has(Place::Second) {
                 self.unsplit();
             }
@@ -217,11 +218,11 @@ impl PdfCraftApp {
         // Then a comment selection taken in another version of its document goes (SYNC.16h,
         // SYNC.17): one this view's own edits haven't kept current.
         self.expire_comment_selections();
-        if let Some(v) = self.active.and_then(|i| self.views.get_mut(i)) {
-            self.panes.focus = v.pane.place;
-            if v.pane.shown_seq != self.panes.top_seq || self.panes.top_seq == 0 {
-                self.panes.top_seq = self.panes.top_seq.saturating_add(1);
-                v.pane.shown_seq = self.panes.top_seq;
+        if let Some(v) = self.win.active.and_then(|i| self.win.views.get_mut(i)) {
+            self.win.panes.focus = v.pane.place;
+            if v.pane.shown_seq != self.win.panes.top_seq || self.win.panes.top_seq == 0 {
+                self.win.panes.top_seq = self.win.panes.top_seq.saturating_add(1);
+                v.pane.shown_seq = self.win.panes.top_seq;
             }
         }
     }
@@ -239,28 +240,29 @@ impl PdfCraftApp {
                 None => return,
             },
         };
-        if from >= self.views.len() || slots.iter().position(|(i, _)| *i == from) == Some(to) {
+        if from >= self.win.views.len() || slots.iter().position(|(i, _)| *i == from) == Some(to) {
             return;
         }
-        let Some(anchor) = self.views.get(anchor).map(|v| v.view_key()) else { return };
+        let Some(anchor) = self.win.views.get(anchor).map(|v| v.view_key()) else { return };
         let active = self.active_key().map(|k| k.0);
-        let view = self.views.remove(from);
+        let view = self.win.views.remove(from);
         let Some(a) = self.tab_with_key(anchor) else {
-            self.views.insert(from.min(self.views.len()), view);
+            self.win.views.insert(from.min(self.win.views.len()), view);
             return;
         };
         let at = if before { a } else { a.saturating_add(1) };
-        self.views.insert(at.min(self.views.len()), view);
-        self.active = active.and_then(|k| self.tab_with_key(k));
+        self.win.views.insert(at.min(self.win.views.len()), view);
+        self.win.active = active.and_then(|k| self.tab_with_key(k));
     }
 
     /// Remove tab `index` but not its document, which another tab still shows. When it was the
     /// active tab, that other tab of the document becomes active.
     fn drop_view(&mut self, index: usize) {
-        let Some((key, id)) = self.views.get(index).map(|v| (v.view_key(), v.id)) else { return };
+        let Some((key, id)) = self.win.views.get(index).map(|v| (v.view_key(), v.id)) else { return };
         let active = self.active_key().map(|k| k.0);
-        self.views.remove(index);
-        self.active = if active == Some(key) { self.views.iter().position(|v| v.id == id) } else { active.and_then(|k| self.tab_with_key(k)) };
+        self.win.views.remove(index);
+        self.win.active =
+            if active == Some(key) { self.win.views.iter().position(|v| v.id == id) } else { active.and_then(|k| self.tab_with_key(k)) };
     }
 
     /// Tab `index`'s right-click Split right (or Split down). The tab the main pane shows gets a
@@ -271,17 +273,17 @@ impl PdfCraftApp {
         let Some(place) = self.place_of(index) else { return };
         match place {
             Place::Second => {
-                if let Some(s) = self.panes.split.as_mut() {
+                if let Some(s) = self.win.panes.split.as_mut() {
                     s.down = down;
                 }
-                self.active = Some(index);
+                self.win.active = Some(index);
             }
             Place::Main => {
                 let alone = self.tabs_in(Place::Main).len() <= 1;
-                let shown = self.pane_front(Place::Main) == Some(index) || (self.active.is_none() && self.latest_in(Place::Main) == Some(index));
-                match self.panes.split.as_mut() {
+                let shown = self.pane_front(Place::Main) == Some(index) || (self.win.active.is_none() && self.latest_in(Place::Main) == Some(index));
+                match self.win.panes.split.as_mut() {
                     Some(s) => s.down = down,
-                    None => self.panes.split = Some(Split::new(down)),
+                    None => self.win.panes.split = Some(Split::new(down)),
                 }
                 if shown || alone {
                     self.show_twin(index, Place::Second);
@@ -295,10 +297,10 @@ impl PdfCraftApp {
     /// Show tab `index`'s document in `place` too (a second view of it), or bring forward the
     /// view of it already there.
     fn show_twin(&mut self, index: usize, place: Place) {
-        let Some(view) = self.views.get(index) else { return };
+        let Some(view) = self.win.views.get(index) else { return };
         let id = view.id;
-        if let Some(there) = self.views.iter().position(|v| v.id == id && v.pane.place == place) {
-            self.active = Some(there);
+        if let Some(there) = self.win.views.iter().position(|v| v.id == id && v.pane.place == place) {
+            self.win.active = Some(there);
             return;
         }
         let Some(doc) = self.session.get(id) else { return };
@@ -307,16 +309,16 @@ impl PdfCraftApp {
         twin.comments.stamp(crate::content_version(doc));
         twin.pane.place = place;
         twin.pane.placed = true;
-        self.views.push(twin);
-        self.active = Some(self.views.len() - 1);
+        self.win.views.push(twin);
+        self.win.active = Some(self.win.views.len() - 1);
     }
 
     /// View ▸ Split (⌘\): split the current document into two panes, or end split view.
     pub fn toggle_split(&mut self) {
         self.settle_panes();
-        if self.panes.split.is_some() {
+        if self.win.panes.split.is_some() {
             self.unsplit();
-        } else if let Some(i) = self.active {
+        } else if let Some(i) = self.win.active {
             self.split_tab(i, false);
         }
     }
@@ -325,15 +327,15 @@ impl PdfCraftApp {
     /// documents the main pane has open already, which close, unless they hold typing of their own
     /// (this fork): those join the strip too, as a duplicate tab would.
     pub fn unsplit(&mut self) {
-        self.panes.split = None;
-        for i in (0..self.views.len()).rev() {
-            let Some((id, place)) = self.views.get(i).map(|v| (v.id, v.pane.place)) else { continue };
+        self.win.panes.split = None;
+        for i in (0..self.win.views.len()).rev() {
+            let Some((id, place)) = self.win.views.get(i).map(|v| (v.id, v.pane.place)) else { continue };
             if place != Place::Second {
                 continue;
             }
-            if self.views.iter().any(|v| v.id == id && v.pane.place == Place::Main) && !self.has_unsaved_typing(i) {
+            if self.win.views.iter().any(|v| v.id == id && v.pane.place == Place::Main) && !self.has_unsaved_typing(i) {
                 self.drop_view(i);
-            } else if let Some(v) = self.views.get_mut(i) {
+            } else if let Some(v) = self.win.views.get_mut(i) {
                 v.pane.place = Place::Main;
             }
         }
@@ -343,27 +345,27 @@ impl PdfCraftApp {
     /// keeps the view it has, and the moving one closes, unless it holds typing of its own (this
     /// fork): then it moves too. Returns the tab's index afterwards.
     pub fn move_tab_to(&mut self, index: usize, place: Place) -> Option<usize> {
-        let (id, key, from) = self.views.get(index).map(|v| (v.id, v.view_key(), v.pane.place))?;
+        let (id, key, from) = self.win.views.get(index).map(|v| (v.id, v.view_key(), v.pane.place))?;
         if from == place {
-            self.active = Some(index);
+            self.win.active = Some(index);
             return Some(index);
         }
-        if place == Place::Second && self.panes.split.is_none() {
-            self.panes.split = Some(Split::new(false));
+        if place == Place::Second && self.win.panes.split.is_none() {
+            self.win.panes.split = Some(Split::new(false));
         }
-        if let Some(there) = self.views.iter().position(|v| v.id == id && v.pane.place == place && v.view_key() != key)
+        if let Some(there) = self.win.views.iter().position(|v| v.id == id && v.pane.place == place && v.view_key() != key)
             && !self.has_unsaved_typing(index)
         {
-            let keep = self.views.get(there).map(|v| v.view_key());
+            let keep = self.win.views.get(there).map(|v| v.view_key());
             self.drop_view(index);
-            self.active = keep.and_then(|k| self.tab_with_key(k));
-            return self.active;
+            self.win.active = keep.and_then(|k| self.tab_with_key(k));
+            return self.win.active;
         }
-        if let Some(v) = self.views.get_mut(index) {
+        if let Some(v) = self.win.views.get_mut(index) {
             v.pane.place = place;
             v.pane.placed = true;
         }
-        self.active = Some(index);
+        self.win.active = Some(index);
         self.combine_tab.focused = false;
         Some(index)
     }
@@ -371,9 +373,9 @@ impl PdfCraftApp {
     /// Quitting or File ▸ Close all with unsaved documents: one tab per document first, so each
     /// document is asked about once (a tab with typing of its own stays, to be asked about).
     fn one_tab_per_document(&mut self) {
-        for i in (0..self.views.len()).rev() {
-            let Some(id) = self.views.get(i).map(|v| v.id) else { continue };
-            if self.views.iter().take(i).any(|v| v.id == id) && !self.has_unsaved_typing(i) {
+        for i in (0..self.win.views.len()).rev() {
+            let Some(id) = self.win.views.get(i).map(|v| v.id) else { continue };
+            if self.win.views.iter().take(i).any(|v| v.id == id) && !self.has_unsaved_typing(i) {
                 self.drop_view(i);
             }
         }
@@ -381,7 +383,7 @@ impl PdfCraftApp {
 
     /// The tabs, one per document (the last session lists each file once).
     pub(crate) fn first_views(&self) -> impl Iterator<Item = &crate::DocView> {
-        self.views.iter().enumerate().filter(|(i, v)| !self.views.iter().take(*i).any(|w| w.id == v.id)).map(|(_, v)| v)
+        self.win.views.iter().enumerate().filter(|(i, v)| !self.win.views.iter().take(*i).any(|w| w.id == v.id)).map(|(_, v)| v)
     }
 
     /// The tab that comes forward when the active tab closes (it was at `index`, in `place`, and
@@ -390,7 +392,7 @@ impl PdfCraftApp {
     pub(crate) fn after_close(&self, place: Place, index: usize) -> Option<usize> {
         let tabs = self.tabs_in(place);
         tabs.iter().copied().find(|&i| i >= index).or_else(|| tabs.last().copied()).or_else(|| match place {
-            Place::Main if self.panes.split.is_some() => self.latest_in(Place::Second),
+            Place::Main if self.win.panes.split.is_some() => self.latest_in(Place::Second),
             Place::Main => None,
             Place::Second => self.latest_in(Place::Main),
         })
@@ -400,11 +402,11 @@ impl PdfCraftApp {
     /// half of a page area that isn't split, or else its own strip (as before split view, the
     /// tab moves along the strip wherever it is let go).
     pub(crate) fn drop_target(&self, pos: Pos2, from: Place) -> TabDrop {
-        if from != Place::Main && self.panes.main_strip.is_some_and(|r| r.contains(pos)) {
+        if from != Place::Main && self.win.panes.main_strip.is_some_and(|r| r.contains(pos)) {
             return TabDrop::Pane(Place::Main);
         }
-        let Some(page) = self.panes.page_rect.filter(|r| r.contains(pos)) else { return TabDrop::Strip };
-        match self.panes.split {
+        let Some(page) = self.win.panes.page_rect.filter(|r| r.contains(pos)) else { return TabDrop::Strip };
+        match self.win.panes.split {
             Some(split) => {
                 let (first, _, second) = layout(page, split);
                 if second.contains(pos) && from != Place::Second {
@@ -422,10 +424,10 @@ impl PdfCraftApp {
 
     /// The area a [`TabDrop`] would fill, for the hint drawn while dragging.
     pub(crate) fn drop_hint_rect(&self, drop: TabDrop) -> Option<Rect> {
-        let page = self.panes.page_rect?;
+        let page = self.win.panes.page_rect?;
         match drop {
             TabDrop::Pane(p) => {
-                let split = self.panes.split?;
+                let split = self.win.panes.split?;
                 let (first, _, second) = layout(page, split);
                 Some(if p == Place::Second { second } else { first })
             }
@@ -455,10 +457,10 @@ impl PdfCraftApp {
                 shown.push(i);
             }
         };
-        let main = if self.full_screen { self.active } else { self.pane_front(Place::Main) };
+        let main = if self.win.full_screen { self.win.active } else { self.pane_front(Place::Main) };
         add(main);
         add(main.and_then(|i| crate::compare_ui::side_by_side(self, i)).map(|(old, _)| old));
-        if !self.full_screen && self.panes.split.is_some() {
+        if !self.win.full_screen && self.win.panes.split.is_some() {
             add(self.pane_front(Place::Second));
         }
         shown
@@ -477,15 +479,15 @@ pub(crate) fn frame(app: &mut PdfCraftApp) {
 /// The page area: the main pane's tab (Home or Combine files while it has none, a comparison's
 /// two halves), or split view's two panes.
 pub(crate) fn page_area(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
-    app.panes.page_rect = Some(ui.max_rect());
-    app.panes.drawing = Place::Main;
-    if let Some(hint) = app.panes.drop_hint.take() {
+    app.win.panes.page_rect = Some(ui.max_rect());
+    app.win.panes.drawing = Place::Main;
+    if let Some(hint) = app.win.panes.drop_hint.take() {
         let t = Tokens::get(ui.ctx());
         let painter = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("pane-drop-hint")));
         painter.rect(hint.shrink(4.0), 6.0, t.accent.gamma_multiply(0.12), Stroke::new(2.0, t.accent), egui::StrokeKind::Inside);
     }
     let main = app.pane_front(Place::Main);
-    match app.panes.split.and_then(|s| Some((s, app.pane_front(Place::Second)?))) {
+    match app.win.panes.split.and_then(|s| Some((s, app.pane_front(Place::Second)?))) {
         Some((split, second)) => split_area(app, split, main, second, ui),
         None => main_pane(app, main, ui),
     }
@@ -527,11 +529,11 @@ fn split_area(app: &mut PdfCraftApp, split: Split, main: Option<usize>, second: 
     let t = Tokens::get(ui.ctx());
     let area = ui.max_rect();
     let (first, divider, other) = layout(area, split);
-    if !app.modal_open() && !app.palette_open {
+    if !app.modal_open() && !app.win.palette_open {
         // (While Home shows in the main pane, a click there stays on Home.)
-        if main.is_some() && pressed_in(ui, first, Place::Main, main.and_then(|i| app.views.get(i))) {
+        if main.is_some() && pressed_in(ui, first, Place::Main, main.and_then(|i| app.win.views.get(i))) {
             app.activate_place(Place::Main);
-        } else if pressed_in(ui, other, Place::Second, app.views.get(second)) {
+        } else if pressed_in(ui, other, Place::Second, app.win.views.get(second)) {
             app.activate_place(Place::Second);
         }
     }
@@ -543,7 +545,7 @@ fn split_area(app: &mut PdfCraftApp, split: Split, main: Option<usize>, second: 
     }
     if response.dragged()
         && let Some(p) = ui.ctx().pointer_latest_pos()
-        && let Some(s) = app.panes.split.as_mut()
+        && let Some(s) = app.win.panes.split.as_mut()
     {
         let f = if split.down { (p.y - area.top()) / area.height().max(1.0) } else { (p.x - area.left()) / area.width().max(1.0) };
         if f.is_finite() {
@@ -551,7 +553,7 @@ fn split_area(app: &mut PdfCraftApp, split: Split, main: Option<usize>, second: 
         }
     }
     ui.painter().rect_filled(divider, 0.0, if response.dragged() || response.hovered() { t.accent } else { t.divider });
-    let active = app.active.and_then(|i| app.views.get(i)).map(|v| v.pane.place);
+    let active = app.win.active.and_then(|i| app.win.views.get(i)).map(|v| v.pane.place);
     pane(app, ui, first, Place::Main, main, active == Some(Place::Main));
     pane(app, ui, other, Place::Second, Some(second), active == Some(Place::Second));
 }
@@ -571,16 +573,16 @@ fn pane(app: &mut PdfCraftApp, ui: &mut egui::Ui, rect: Rect, place: Place, fron
     };
     // The strip may have closed or moved a tab just now: look the pane's tab up again (a pane
     // left empty ends split view next frame).
-    let front = if place == Place::Second { app.pane_front(place) } else { front.filter(|&i| i < app.views.len()) };
+    let front = if place == Place::Second { app.pane_front(place) } else { front.filter(|&i| i < app.win.views.len()) };
     let mut body_ui = child.new_child(egui::UiBuilder::new().max_rect(body).id_salt("body"));
     body_ui.set_clip_rect(body.intersect(ui.clip_rect()));
-    app.panes.drawing = place;
+    app.win.panes.drawing = place;
     match (place, front) {
         (Place::Main, _) => main_pane(app, front, &mut body_ui),
         (Place::Second, Some(index)) => crate::canvas::document_area(app, index, &mut body_ui),
         (Place::Second, None) => {}
     }
-    app.panes.drawing = Place::Main;
+    app.win.panes.drawing = Place::Main;
     // The active pane is marked along its top edge.
     if active {
         let edge = Rect::from_min_size(rect.min, vec2(rect.width(), 2.0));

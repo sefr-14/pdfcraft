@@ -106,7 +106,7 @@ fn text_widget_mouse_up_runs_its_menu_and_keeps_the_result() {
         let doc = app.session.get(id).unwrap();
         let field = doc.form.iter().find(|field| field.name == "greeting").unwrap();
         assert!(field.widgets[0].mouse_up_script.is_some());
-        pdfcraft_ui_egui::forms_ui::field_screen_rect(&app.views[index], &doc.info, field, 0).unwrap().center()
+        pdfcraft_ui_egui::forms_ui::field_screen_rect(&app.win.views[index], &doc.info, field, 0).unwrap().center()
     };
     for _ in 0..2 {
         h.hover_at(point);
@@ -137,40 +137,40 @@ fn every_message_a_script_shows_takes_the_toast_in_turn() {
         .unwrap();
     h.state_mut().handle_js(id, pdfcraft_engine::js::JsOutput { alerts: out.alerts, ..Default::default() });
     h.run_steps(2);
-    let shown = |h: &Harness<'static, PdfCraftApp>| h.state().toast.clone().map(|t| t.0);
+    let shown = |h: &Harness<'static, PdfCraftApp>| h.state().win.toast.clone().map(|t| t.0);
     assert_eq!(shown(&h).as_deref(), Some("First"));
-    let m = h.state().toast_script.clone().expect("the toast shows the script's message");
+    let m = h.state().win.toast_script.clone().expect("the toast shows the script's message");
     assert_eq!((m.title.as_deref(), m.icon, m.buttons), (Some("Order form"), MessageIcon::Warning, MessageButtons::Ok));
     assert!(h.query_by_label("Order form").is_some(), "the title is drawn");
-    assert_eq!(h.state().script_messages.len(), 2);
+    assert_eq!(h.state().win.script_messages.len(), 2);
     // The first is gone: the second takes its place, with its own icon and no title.
-    h.state_mut().toast = None;
+    h.state_mut().win.toast = None;
     h.run_steps(2);
     assert_eq!(shown(&h).as_deref(), Some("Second"));
-    assert_eq!(h.state().toast_script.as_ref().map(|m| (m.title.clone(), m.icon)), Some((None, MessageIcon::Status)));
+    assert_eq!(h.state().win.toast_script.as_ref().map(|m| (m.title.clone(), m.icon)), Some((None, MessageIcon::Status)));
     // A notice of the app's own replaces it; the third still follows.
     h.state_mut().notify("Saved");
-    assert_eq!(h.state().toast_script, None);
-    h.state_mut().toast = None;
+    assert_eq!(h.state().win.toast_script, None);
+    h.state_mut().win.toast = None;
     h.run_steps(2);
     assert_eq!(shown(&h).as_deref(), Some("Third"));
-    assert!(h.state().script_messages.is_empty());
+    assert!(h.state().win.script_messages.is_empty());
     // A notice the same run raises first (its submit request) isn't replaced: the message
     // follows it.
-    h.state_mut().toast = None;
+    h.state_mut().win.toast = None;
     h.run_steps(2);
     let out = h.state_mut().session.run_javascript(id, "this.submitForm('https://example.com/form'); app.alert('Fourth');", None).unwrap();
     h.state_mut().handle_js(id, pdfcraft_engine::js::JsOutput { alerts: out.alerts, requests: out.requests, ..Default::default() });
     h.run_steps(2);
     let notice = shown(&h).unwrap_or_default();
     assert!(notice.contains("submitted"), "the submit notice stays: {notice}");
-    assert_eq!(h.state().script_messages.len(), 1);
-    h.state_mut().toast = None;
+    assert_eq!(h.state().win.script_messages.len(), 1);
+    h.state_mut().win.toast = None;
     h.run_steps(2);
     assert_eq!(shown(&h).as_deref(), Some("Fourth"));
     // Past the 100 the queue holds, messages are counted, and the toast says how many once the
     // rest have been shown.
-    h.state_mut().toast = None;
+    h.state_mut().win.toast = None;
     h.run_steps(2);
     let many: Vec<_> = (0..105).map(|i| pdfcraft_engine::js::Message::plain(format!("Message {i}"))).collect();
     h.state_mut().show_script_messages(many);
@@ -181,7 +181,7 @@ fn every_message_a_script_shows_takes_the_toast_in_turn() {
     }
     assert!(h.state_mut().next_script_message(), "the notice comes after the last message");
     assert_eq!(shown(&h).as_deref(), Some("5 more messages from the form's scripts were left out."));
-    assert_eq!(h.state().toast_script, None, "an app notice, not a script message");
+    assert_eq!(h.state().win.toast_script, None, "an app notice, not a script message");
     assert!(!h.state_mut().next_script_message(), "said once");
     // Another notice replacing it before its time doesn't lose the count: once that notice has
     // been shown its time, the count is said again, and then, its own time over, not again.
@@ -238,9 +238,9 @@ fn merge_data_files_into_a_spreadsheet() {
     app.save_override = Some(out.to_string_lossy().into_owned());
     app.merge_data_files(vec![("form.pdf".into(), form())]);
     assert_eq!(std::fs::read_to_string(&out).unwrap(), "greeting\n\n");
-    assert!(app.toast.clone().unwrap().0.starts_with("Merged 1 file"));
+    assert!(app.win.toast.clone().unwrap().0.starts_with("Merged 1 file"));
     app.merge_data_files(vec![("x.fdf".into(), b"junk".to_vec())]);
-    assert!(app.toast.clone().unwrap().0.starts_with("x.fdf:"));
+    assert!(app.win.toast.clone().unwrap().0.starts_with("x.fdf:"));
 }
 
 #[test]
@@ -259,7 +259,7 @@ fn prepare_a_form_detects_fields_on_a_paper_form() {
     let id = app.active_ids().unwrap().1;
     let names: Vec<String> = app.session.get(id).unwrap().form.iter().map(|f| f.name.clone()).collect();
     assert_eq!(names, ["Name", "Phone"]);
-    assert_eq!(app.toast.clone().unwrap().0, "Detected 2 form fields");
+    assert_eq!(app.win.toast.clone().unwrap().0, "Detected 2 form fields");
 }
 
 /// Advance bounded UI frames until the synthetic prompt label becomes available.
@@ -551,7 +551,7 @@ fn clicking_duplicate_named_buttons_targets_the_clicked_object() {
             .map(|f| f.widgets.first().and_then(|w| w.caption.clone()))
             .collect::<Vec<_>>()
     };
-    let r = h.state().views[0].page_screen_rect(0).unwrap();
+    let r = h.state().win.views[0].page_screen_rect(0).unwrap();
     let at = r.min + egui::vec2(r.width() * 220.0 / 300.0, r.height() * 85.0 / 300.0);
     h.hover_at(at);
     h.run_steps(1);
@@ -573,7 +573,7 @@ fn clicking_duplicate_named_buttons_targets_the_clicked_object() {
     assert!(h.state_mut().execute("edit.redo"));
     h.run_steps(3);
     assert_eq!(captions(&h), [Some("idle".into()), Some("second".into())]);
-    let r = h.state().views[0].page_screen_rect(0).unwrap();
+    let r = h.state().win.views[0].page_screen_rect(0).unwrap();
     let at = r.min + egui::vec2(r.width() * 70.0 / 300.0, r.height() * 85.0 / 300.0);
     h.hover_at(at);
     h.run_steps(1);
@@ -659,7 +659,7 @@ fn clicking_duplicate_image_buttons_imports_only_into_the_clicked_field() {
         app
     });
     h.run_steps(6);
-    let rect = h.state().views[0].page_screen_rect(0).unwrap();
+    let rect = h.state().win.views[0].page_screen_rect(0).unwrap();
     let at = rect.min + egui::vec2(rect.width() * 210.0 / 300.0, rect.height() * 85.0 / 300.0);
     h.hover_at(at);
     h.run_steps(1);

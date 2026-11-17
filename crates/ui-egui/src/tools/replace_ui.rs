@@ -12,7 +12,7 @@ impl PdfCraftApp {
     /// Replace the find bar's highlighted match (`all` false) or every match in the document, in
     /// view `i`, with its Replace field's text.
     pub(crate) fn replace_found(&mut self, i: usize, all: bool) {
-        let Some(view) = self.views.get(i) else { return };
+        let Some(view) = self.win.views.get(i) else { return };
         let Some(find) = view.find.as_ref() else { return };
         if find.case_query.trim().is_empty() {
             return;

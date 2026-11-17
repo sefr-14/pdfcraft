@@ -402,7 +402,7 @@ mod tests {
         assert!(app.ask(Ask::Save(rfd::AsyncFileDialog::new()), None, move |_, _| first.lock().unwrap().push("first")));
         let second = got.clone();
         assert!(app.ask(Ask::Folder(rfd::AsyncFileDialog::new()), None, move |_, _| second.lock().unwrap().push("second")));
-        assert!(app.toast.as_ref().is_some_and(|(m, _)| m.contains("will open when it closes")), "the user is told it will follow");
+        assert!(app.win.toast.as_ref().is_some_and(|(m, _)| m.contains("will open when it closes")), "the user is told it will follow");
         app.process_picked();
         assert_eq!(*got.lock().unwrap(), vec!["first"], "the waiting picker shows only once the first one is answered");
         assert!(app.pickers.showing.load(Ordering::SeqCst), "the waiting picker owns the flag now");
@@ -563,12 +563,12 @@ mod tests {
         let out = dir.join("notes (reduced).pdf");
         let failed = Err(pdfcraft_engine::EditError::Optimize("the image stream is damaged".into()));
         app.save_optimized(id, crate::optimize_ui::OptimizeKind::Reduce, generation, failed, Some(out.to_string_lossy().into_owned()));
-        let told = app.toast.as_ref().map(|t| t.0.clone()).unwrap_or_default();
+        let told = app.win.toast.as_ref().map(|t| t.0.clone()).unwrap_or_default();
         assert!(told.starts_with("Couldn't optimize the file") && told.contains("damaged"), "{told}");
         assert!(!out.exists(), "nothing written");
         let doc = app.session.get(id).unwrap();
         assert!(Arc::ptr_eq(&doc.bytes, &bytes) && doc.name == name && doc.path == path && !doc.dirty, "the document is as it was");
-        assert_eq!(app.views.len(), 1);
+        assert_eq!(app.win.views.len(), 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -601,7 +601,7 @@ mod tests {
         let mut again = pdfcraft_engine::Session::new();
         let reopened = again.open("check.pdf", None, Arc::new(std::fs::read(&good).unwrap()), None).unwrap();
         assert!(again.get(reopened).unwrap().info.annotations.iter().any(|a| a.contents.as_deref() == Some("Unsaved")), "and in the file");
-        assert_eq!(app.views.len(), 1);
+        assert_eq!(app.win.views.len(), 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -615,7 +615,7 @@ mod tests {
         app.reduce_file_size();
         app.pick_override = Some(vec![good.to_string_lossy().into_owned()]);
         app.process_picked();
-        let told = app.toast.as_ref().map(|t| t.0.clone()).unwrap_or_default();
+        let told = app.win.toast.as_ref().map(|t| t.0.clone()).unwrap_or_default();
         assert!(told.contains("Couldn't write"), "{told}");
         assert!(app.pickers.pending(), "it asks again");
         app.process_picked();
@@ -655,7 +655,7 @@ mod tests {
         app.reduce_file_size();
         app.process_picked();
         assert_eq!(std::fs::read(&out).unwrap(), b"what was there");
-        let told = app.toast.as_ref().map(|t| t.0.clone()).unwrap_or_default();
+        let told = app.win.toast.as_ref().map(|t| t.0.clone()).unwrap_or_default();
         assert!(told.contains("No copy was saved"), "{told}");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -675,7 +675,7 @@ mod tests {
         app.pick_override = Some(vec![dir.join("no.pdf").to_string_lossy().into_owned()]);
         app.reduce_file_size();
         assert!(!app.pickers.pending(), "no question");
-        assert_eq!(app.toast.as_ref().map(|t| t.0.as_str()), Some("Optimization is already running"));
+        assert_eq!(app.win.toast.as_ref().map(|t| t.0.as_str()), Some("Optimization is already running"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -706,7 +706,7 @@ mod tests {
         app.pickers.deliver(None, vec![PathBuf::from("y.pdf")], record(&got));
         app.process_picked();
         assert_eq!(*got.lock().unwrap(), vec![PathBuf::from("y.pdf")]);
-        let toast = app.toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
+        let toast = app.win.toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
         assert!(toast.contains("internal error"), "the user is told: {toast:?}");
         assert!(!app.pickers.showing.load(Ordering::SeqCst));
     }

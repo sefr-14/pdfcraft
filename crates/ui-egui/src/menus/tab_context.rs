@@ -29,7 +29,7 @@ impl crate::PdfCraftApp {
     /// Whether tab `index` can be duplicated: it shows a document that isn't in
     /// [`MAX_VIEWS_PER_DOCUMENT`] tabs already.
     pub fn can_duplicate(&self, index: usize) -> bool {
-        self.views.get(index).is_some_and(|v| self.session.get(v.id).is_some() && self.views_of(v.id).len() < MAX_VIEWS_PER_DOCUMENT)
+        self.win.views.get(index).is_some_and(|v| self.session.get(v.id).is_some() && self.views_of(v.id).len() < MAX_VIEWS_PER_DOCUMENT)
     }
 
     /// Duplicate Tab: another view of tab `index`'s document, right after it and made active. It
@@ -41,9 +41,9 @@ impl crate::PdfCraftApp {
         if !self.can_duplicate(index) {
             return None;
         }
-        let source = self.views.get(index)?;
+        let source = self.win.views.get(index)?;
         let doc = self.session.get(source.id)?;
-        let taken: Vec<u16> = self.views.iter().filter(|v| v.id == source.id).map(|v| v.instance).collect();
+        let taken: Vec<u16> = self.win.views.iter().filter(|v| v.id == source.id).map(|v| v.instance).collect();
         let instance = (2..=u16::MAX).find(|n| !taken.contains(n))?;
         let version = crate::content_version(doc);
         let mut view = source.duplicate(&doc.info, instance);
@@ -51,13 +51,13 @@ impl crate::PdfCraftApp {
         view.comments.stamp(version);
         // The source is up to date (it refreshes itself), and so is the copy of its caches.
         view.content_seen = Some(version);
-        if let Some(source) = self.views.get_mut(index) {
+        if let Some(source) = self.win.views.get_mut(index) {
             source.content_seen = Some(version);
         }
         // `index` is a valid tab, so the slot after it is at most the end of the list.
-        let at = index.saturating_add(1).min(self.views.len());
-        self.views.insert(at, view);
-        self.active = Some(at);
+        let at = index.saturating_add(1).min(self.win.views.len());
+        self.win.views.insert(at, view);
+        self.win.active = Some(at);
         Some(at)
     }
 
@@ -81,18 +81,19 @@ impl crate::PdfCraftApp {
             }
             Action::Reopen => {
                 #[cfg(not(target_arch = "wasm32"))]
-                if let Some(path) = self.closed_tabs.last().cloned() {
+                if let Some(path) = self.win.closed_tabs.last().cloned() {
                     // A tab may already have been reopened through File > Open.
-                    if let Some(index) = self.views.iter().position(|v| self.session.get(v.id).is_some_and(|d| d.path.as_deref() == Some(&path))) {
-                        self.active = Some(index);
-                        self.closed_tabs.pop();
+                    if let Some(index) = self.win.views.iter().position(|v| self.session.get(v.id).is_some_and(|d| d.path.as_deref() == Some(&path)))
+                    {
+                        self.win.active = Some(index);
+                        self.win.closed_tabs.pop();
                     } else {
-                        let tabs = self.views.len();
+                        let tabs = self.win.views.len();
                         self.open_path(&path);
                         // open_path reports errors through notifications, not a Result.
                         // Keep the entry until an actual document tab has been opened.
-                        if self.views.len() > tabs {
-                            self.closed_tabs.pop();
+                        if self.win.views.len() > tabs {
+                            self.win.closed_tabs.pop();
                         }
                     }
                 }
@@ -226,21 +227,21 @@ mod tests {
     fn confirmed_close_uses_id_and_cancel_keeps_history_empty() {
         let mut app = crate::PdfCraftApp::new();
         app.open_bytes("first.pdf", Some("/tmp/first.pdf".into()), PDF.to_vec()).unwrap();
-        let (first, first_tab) = (app.views[0].id, app.views[0].view_key());
+        let (first, first_tab) = (app.win.views[0].id, app.win.views[0].view_key());
         app.open_bytes("second.pdf", None, PDF.to_vec()).unwrap();
         app.session.apply(first, pdfcraft_engine::Edit::InsertBlankPage { at: 0, width: 300.0, height: 400.0 }).unwrap();
         app.tab_action(Action::Close(first_tab));
-        assert_eq!(app.views.len(), 2);
-        assert!(app.closed_tabs.is_empty());
+        assert_eq!(app.win.views.len(), 2);
+        assert!(app.win.closed_tabs.is_empty());
         app.resolve_close(&egui::Context::default(), None);
-        assert!(app.closed_tabs.is_empty());
+        assert!(app.win.closed_tabs.is_empty());
         app.tab_action(Action::Close(first_tab));
         app.resolve_close(&egui::Context::default(), Some(false));
-        assert_eq!(app.views.len(), 1);
-        assert_eq!(app.closed_tabs, ["/tmp/first.pdf"]);
-        assert_eq!(app.active, Some(0));
+        assert_eq!(app.win.views.len(), 1);
+        assert_eq!(app.win.closed_tabs, ["/tmp/first.pdf"]);
+        assert_eq!(app.win.active, Some(0));
         app.close_tab(0);
-        assert_eq!(app.closed_tabs.len(), 1, "pathless tabs are not recorded");
+        assert_eq!(app.win.closed_tabs.len(), 1, "pathless tabs are not recorded");
     }
 
     #[test]
@@ -257,13 +258,13 @@ mod tests {
             app.open_path(path_text);
             app.close_tab(0);
         }
-        assert_eq!(app.closed_tabs.len(), 10);
+        assert_eq!(app.win.closed_tabs.len(), 10);
         app.tab_action(Action::Reopen);
-        assert_eq!(app.views.len(), 1);
-        let doc = app.session.get(app.views[0].id).unwrap();
+        assert_eq!(app.win.views.len(), 1);
+        let doc = app.session.get(app.win.views[0].id).unwrap();
         assert_eq!(doc.path.as_deref(), Some(path_text));
         assert!(!doc.dirty);
-        assert_eq!(app.closed_tabs.len(), 9);
+        assert_eq!(app.win.closed_tabs.len(), 9);
         std::fs::remove_file(path).unwrap();
     }
 
@@ -281,16 +282,16 @@ mod tests {
         app.close_tab(0);
         std::fs::remove_file(&path).unwrap();
         app.tab_action(Action::Reopen);
-        assert!(app.views.is_empty());
-        assert_eq!(app.closed_tabs, [text]);
+        assert!(app.win.views.is_empty());
+        assert_eq!(app.win.closed_tabs, [text]);
         std::fs::write(&path, PDF).unwrap();
         app.tab_action(Action::Reopen);
-        assert_eq!(app.views.len(), 1);
-        assert!(app.closed_tabs.is_empty());
-        app.closed_tabs.push(text.into());
+        assert_eq!(app.win.views.len(), 1);
+        assert!(app.win.closed_tabs.is_empty());
+        app.win.closed_tabs.push(text.into());
         app.tab_action(Action::Reopen);
-        assert_eq!(app.views.len(), 1, "an already-open file is selected, not duplicated");
-        assert!(app.closed_tabs.is_empty());
+        assert_eq!(app.win.views.len(), 1, "an already-open file is selected, not duplicated");
+        assert!(app.win.closed_tabs.is_empty());
         std::fs::remove_file(path).unwrap();
     }
 
@@ -371,10 +372,10 @@ mod ui_tests {
         assert!(h.get_by_label("Reopen Closed Tab").accesskit_node().is_disabled());
         let reveal_label = if cfg!(target_os = "macos") { "Reveal in Finder" } else { "Reveal in File Explorer" };
         assert!(h.get_by_label(reveal_label).accesskit_node().is_disabled());
-        assert_eq!(h.state().active, Some(1));
+        assert_eq!(h.state().win.active, Some(1));
         h.get_by_label("Close Tab").click();
         h.run_steps(3);
-        assert_eq!(h.state().views.len(), 1);
-        assert_eq!(h.state().session.get(h.state().views[0].id).unwrap().name, "second.pdf");
+        assert_eq!(h.state().win.views.len(), 1);
+        assert_eq!(h.state().session.get(h.state().win.views[0].id).unwrap().name, "second.pdf");
     }
 }

@@ -35,7 +35,7 @@ fn wizard_sized(old: (u32, u32), new: (u32, u32)) -> (PdfCraftApp, Wizard) {
     app.set_option("language", "en").expect("language");
     app.open_bytes("new.pdf", None, pages(3, new.0, new.1)).expect("New opens");
     app.open_bytes("old.pdf", None, pages(3, old.0, old.1)).expect("Old opens");
-    let old_id = app.views.iter().map(|v| v.id).nth(1).expect("Old's tab");
+    let old_id = app.win.views.iter().map(|v| v.id).nth(1).expect("Old's tab");
     let w = Wizard::new(&app, old_id);
     assert_eq!(w.matched_rows().len(), 3);
     (app, w)

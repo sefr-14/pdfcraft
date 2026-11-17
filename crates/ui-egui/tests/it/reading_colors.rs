@@ -28,12 +28,12 @@ fn pending_pages_use_document_reading_background() {
         let mut app = PdfCraftApp::new();
         app.set_option("language", "en").unwrap();
         app.open_bytes("pending.pdf", None, crate::support::fixtures::pdf_pages(3)).unwrap();
-        let id = app.views[0].id;
+        let id = app.win.views[0].id;
         // Deliberately differ from the app preference: the document is the source of truth.
         app.session.set_reading_colors(id, colors);
         let ctx = Context::default();
         for page in 0..3 {
-            app.views[0].go_to_page(page);
+            app.win.views[0].go_to_page(page);
             // Draw the real canvas without finishing the render frame, so no texture can
             // race the assertion or hide the pending-page background.
             let mut output =
@@ -41,7 +41,7 @@ fn pending_pages_use_document_reading_background() {
                     pdfcraft_ui_egui::canvas::document_area(&mut app, 0, ui);
                 });
             output.textures_delta.clear();
-            let view = &app.views[0];
+            let view = &app.win.views[0];
             assert_eq!(view.raster_memory().page_count, 0, "the page must still be waiting for its raster");
             let rect = view.page_screen_rect(page).expect("target page visible");
             let fill = output.shapes.iter().find_map(|s| match &s.shape {
@@ -83,7 +83,7 @@ fn reading_colours_preference_round_trips() {
     h.run_steps(2);
     assert_eq!(h.state().reading_colors, ReadingColors::WHITE_ON_BLACK);
     // The preference is app-wide: the already open document follows it too.
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     assert_eq!(h.state().session.reading_colors(id), Some(ReadingColors::WHITE_ON_BLACK));
     // Closing the dialog keeps everything.
     h.state_mut().set_option("dialog", "none").unwrap();
@@ -150,7 +150,7 @@ fn reading_colours_seed_on_open() {
     });
     h.run_steps(4);
     // The document opened with the preference already applied.
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     assert_eq!(h.state().session.reading_colors(id), Some(ReadingColors::WHITE_ON_BLACK));
     // Changing the preference applies it to the open document as well.
     h.state_mut().set_reading_colors(ReadingColors::YELLOW_ON_BLACK);
@@ -167,30 +167,30 @@ fn reading_colours_seed_on_open() {
         s.mark_saved(id, saved, None).unwrap();
     }
     h.state_mut().open_revision(1);
-    let revision = h.state().views.last().unwrap().id;
+    let revision = h.state().win.views.last().unwrap().id;
     assert_ne!(revision, id);
     assert_eq!(h.state().session.reading_colors(revision), Some(ReadingColors::YELLOW_ON_BLACK));
     let len = h.state().session.get(id).unwrap().bytes.len();
     h.state_mut().view_signed_version(len, 1);
-    let signed = h.state().views.last().unwrap().id;
+    let signed = h.state().win.views.last().unwrap().id;
     assert_ne!(signed, id);
     assert_eq!(h.state().session.reading_colors(signed), Some(ReadingColors::YELLOW_ON_BLACK));
 
     // Created documents open through their own session calls too — a comment summary via
     // `open_created`, an image import via `open_created_bytes` — and seed the same way.
     h.state_mut().summarize_comments();
-    let summary = h.state().views.last().unwrap().id;
+    let summary = h.state().win.views.last().unwrap().id;
     assert_ne!(summary, signed);
     assert_eq!(h.state().session.reading_colors(summary), Some(ReadingColors::YELLOW_ON_BLACK));
     h.state_mut().create_from_images(vec![("scan.png".into(), png())]);
-    let created = h.state().views.last().unwrap().id;
+    let created = h.state().win.views.last().unwrap().id;
     assert_ne!(created, summary);
     assert_eq!(h.state().session.reading_colors(created), Some(ReadingColors::YELLOW_ON_BLACK));
 
     // And back off, for every open document.
     h.state_mut().set_reading_colors(ReadingColors::default());
     h.run_steps(1);
-    for view in &h.state().views {
+    for view in &h.state().win.views {
         assert_eq!(h.state().session.reading_colors(view.id), Some(ReadingColors::default()));
     }
 }

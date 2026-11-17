@@ -41,7 +41,7 @@ fn organize() -> Harness<'static, PdfCraftApp> {
 }
 
 fn page_texts(app: &PdfCraftApp) -> Vec<String> {
-    let doc = app.session.get(app.views[0].id).unwrap();
+    let doc = app.session.get(app.win.views[0].id).unwrap();
     let mut renderer = PageRenderer::new(doc.bytes.clone(), Default::default());
     (0..renderer.page_count())
         .map(|page| {
@@ -91,7 +91,7 @@ fn release(h: &mut Harness<'static, PdfCraftApp>, to: Pos2, modifiers: Modifiers
 
 fn assert_saved_order(h: &Harness<'static, PdfCraftApp>, expected: &[&str]) {
     let app = h.state();
-    let bytes = app.session.save_bytes(app.views[0].id).unwrap();
+    let bytes = app.session.save_bytes(app.win.views[0].id).unwrap();
     let mut reopened = PdfCraftApp::new();
     reopened.open_bytes("saved.pdf", None, bytes.as_ref().clone()).unwrap();
     assert_eq!(page_texts(&reopened), expected, "save/reopen preserves the post-edit order");
@@ -112,7 +112,11 @@ fn check_undo_cancels_drag(copying: bool) {
     release(&mut h, to, modifiers);
     let expected = ["Page 1", "Page 2", "Page 3", "Page 4"];
     assert_eq!(page_texts(h.state()), expected, "releasing the old drag must not move or copy a different page");
-    assert_eq!(h.state().session.get(h.state().views[0].id).unwrap().can_redo(), Some("Move page"), "the cancelled gesture leaves Redo available");
+    assert_eq!(
+        h.state().session.get(h.state().win.views[0].id).unwrap().can_redo(),
+        Some("Move page"),
+        "the cancelled gesture leaves Redo available"
+    );
     assert_saved_order(&h, &expected);
     h.state_mut().redo();
     h.run_steps(2);
@@ -179,10 +183,10 @@ fn replacing_a_document_cancels_an_organize_drag_before_pointer_release() {
     let (to, modifiers) = start_drag(&mut h, false);
     let bytes = document("Replacement");
     let app = h.state_mut();
-    let id = app.views[0].id;
+    let id = app.win.views[0].id;
     app.session.reload(id, bytes).unwrap();
     let info = &app.session.get(id).unwrap().info;
-    app.views[0].document_replaced(info);
+    app.win.views[0].document_replaced(info);
     let expected = ["Replacement 1", "Replacement 2", "Replacement 3", "Replacement 4"];
     assert_eq!(page_texts(h.state()), expected, "the new content replaces all four pages before release");
     h.run_steps(2);

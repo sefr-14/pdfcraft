@@ -71,6 +71,8 @@ pub use redact_ui::{HiddenDraft, PagesDraft as RedactPagesDraft, RedactPrefs, Se
 pub mod i18n;
 pub mod theme;
 pub mod viewer_prefs;
+pub mod window_ui;
+pub use window_ui::WindowUi;
 mod widgets;
 
 use pdfcraft_engine::{DocId, Session};
@@ -339,21 +341,11 @@ struct PendingDestination {
 }
 
 pub struct PdfCraftApp {
-    /// Split view (`panes`); which pane shows each tab is its view's.
-    pub panes: panes::Panes,
-    /// Tools side and pane widths; which panes are open is `left_open` and `right`.
-    pub side_panels: side_panels::SidePanels,
+    /// This window's tabs, panes, panels, tool, keys and notices (TAB.WINDOW.1).
+    pub win: WindowUi,
     pub session: Session,
     /// The interface language signature status captions were last drawn in.
     pub(crate) status_captions_lang: Option<i18n::Lang>,
-    pub views: Vec<DocView>,
-    pub(crate) closed_tabs: Vec<String>,
-    /// `None` shows the Home tab.
-    pub active: Option<usize>,
-    /// Tab View or Tile View (OV7.2). Tab View at every start: it isn't kept in the settings.
-    pub layout_mode: ViewLayout,
-    /// The tiles drawn this frame in Tile View, which render alongside the active view.
-    pub(crate) tile_frame: Vec<usize>,
     pub mode: Mode,
     /// Workspace used for newly opened PDFs; independent of PDF Initial View metadata.
     pub default_mode: Mode,
@@ -370,21 +362,6 @@ pub struct PdfCraftApp {
     pub date_format_draft: Option<String>,
     /// Explicit CLI/control mode lasts for this session and is never persisted.
     mode_override: Option<Mode>,
-    pub left: LeftPanel,
-    pub left_open: bool,
-    pub right: Option<RightPanel>,
-    /// The side panel F4 reopens: the one open last.
-    pub(crate) last_right: RightPanel,
-    /// The right panel that was open when the user switched to Read mode, which starts with the
-    /// panes closed; leaving Read mode brings it back unless the user opened or closed a pane in
-    /// Read mode meanwhile.
-    right_before_read: Option<RightPanel>,
-    /// The user closed the Comments panel, so picking a comment tool leaves it closed until they
-    /// open it again (#225). Remembered across restarts.
-    pub comments_panel_closed: bool,
-    /// The user closed the right panel, so opening a document leaves it closed instead of
-    /// showing its comments or bookmarks (#1590). Remembered across restarts.
-    pub right_panel_closed: bool,
     /// A portfolio that just opened and the name-tree key of the attachment it presents first
     /// (`/Collection /D`), opened by [`Self::present_portfolios`] on the next frame while the
     /// portfolio is still the active tab.
@@ -398,16 +375,8 @@ pub struct PdfCraftApp {
     /// A portfolio's file list is showing in place of this panel (`None`: the panel was
     /// closed), given back when its tab is left.
     portfolio_panel: Option<Option<RightPanel>>,
-    pub quick_tool: QuickTool,
-    /// The tool to go back to when Space, held for a temporary Hand, is released.
-    space_hand: Option<QuickTool>,
-    /// The first key of a tool-key pair, waiting for the second (this fork, KEY.1).
-    pending_keys: Option<tool_keys::Pending>,
-    /// The tool before full screen, given back on leaving it (see [`Self::apply_full_screen`]).
-    full_screen_tool: Option<QuickTool>,
     /// Comment author, per-tool colours and widths, pin.
     pub comment_prefs: comments::CommentPrefs,
-    pub(crate) hotbar: hotbar::Hotbar,
     /// Resolved colours, including the current OS theme when following the system.
     pub theme: ThemeKind,
     pub theme_preference: ThemePreference,
@@ -497,15 +466,6 @@ pub struct PdfCraftApp {
     // A browser has no background print work: the type is empty there.
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub(crate) print_tasks: print_ui::PrintTasks,
-    pub palette_open: bool,
-    pub palette_query: String,
-    pub all_tools_expanded: bool,
-    /// The All tools view fills the workspace (its sidebar's expand button).
-    pub all_tools_full: bool,
-    pub all_tools_query: String,
-    /// The tab that showed when the expanded All tools view opened ([`Self::shown_tab`]). Another
-    /// tab coming to the front (Home, a document, Combine files) puts the view away.
-    all_tools_tab: (Option<DocId>, bool),
     pub recent: Vec<RecentFile>,
     /// How many recent files to keep, 0 for no list (Preferences ▸ Documents and view, #5572).
     pub recent_limit: usize,
@@ -569,18 +529,6 @@ pub struct PdfCraftApp {
     pub pinned_tools: Vec<String>,
     /// Search query for the Pin a tool selection dialog.
     pub pin_tool_search: String,
-    pub toast: Option<(String, f64)>,
-    /// The form script message the toast shows now, if it shows one: drawn with its title and
-    /// icon (#4293).
-    pub toast_script: Option<pdfcraft_engine::js::Message>,
-    /// Form script messages waiting for the toast, in the order the scripts showed them: each
-    /// takes the toast when the one before it is gone, so every one is seen (#4294).
-    pub script_messages: std::collections::VecDeque<pdfcraft_engine::js::Message>,
-    /// Form script messages the waiting queue had no room for, since the toast last said how many.
-    pub script_messages_dropped: u64,
-    /// The left-out count the toast is saying now ([`Self::next_script_message`]): put back to be
-    /// said again if another notice replaces the toast before it has been shown its time.
-    pub toast_dropped: u64,
     /// Whether the macOS title bar is drawn by us (traffic lights over our tab strip).
     pub integrated_titlebar: bool,
     /// Set when the desktop leaves the window frame to the app (GNOME on Wayland): the tab strip
@@ -595,7 +543,6 @@ pub struct PdfCraftApp {
     /// Copy of a whole document's text (#2639) whose pages are being read off the UI thread.
     document_copy: Option<DocumentCopy>,
     pub unlock_prompt: Option<UnlockPrompt>,
-    pub full_screen: bool,
     /// Files delivered asynchronously (web drag-and-drop, web file picker).
     pub inbox: Inbox,
     /// The browser's startup `?file=` download. Unlike a deliberate Open or drop, a late
@@ -812,19 +759,8 @@ pub struct PdfCraftApp {
     recovered_paths: std::collections::HashSet<DocId>,
     last_autosave: Option<web_time::Instant>,
     allow_quit: bool,
-    /// Shortcuts pressed while a text field had the keyboard, run on the next frame (see
-    /// `registry_shortcuts`).
-    pub(crate) deferred_commands: Vec<(&'static str, Option<canvas::ViewKey>)>,
     /// The native menu bar (macOS), while it is installed; the in-window bar shows otherwise.
     pub(crate) native_menu: Option<craft_menu::NativeMenu>,
-    /// Input a menu click stands for (⌘C, Delete…), waiting to join a pass's input (see
-    /// `release_menu_input`).
-    pub(crate) menu_input: Vec<egui::Event>,
-    /// Edit ▸ Paste clicks waiting to ask the platform for the clipboard (see
-    /// `release_menu_input`).
-    pub(crate) menu_pastes: usize,
-    /// This frame's keys as the pages see them: none while something is over them.
-    pub(crate) page_keys: page_keys::PageKeys,
     /// The dialog seen at the last check, and a counter bumped whenever it changes (see
     /// [`Self::dialog_epoch`]).
     dialog_seen: Option<Dialog>,
@@ -838,10 +774,6 @@ pub struct PdfCraftApp {
     fonts_ready: bool,
     /// The CJK fallback order the installed fonts follow (see `theme::installed_font_definitions`).
     fonts_cjk: theme::CjkPreference,
-    /// The window title last sent to the platform.
-    pub window_title: String,
-    /// The web page's title last set: the window title, but always with the file's name.
-    pub page_title: String,
     /// The UI control channel, when enabled (`--control`; off by default).
     control: Option<control::Control>,
     /// A bookmark being renamed in the Bookmarks panel: (path, text so far).

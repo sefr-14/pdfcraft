@@ -183,10 +183,10 @@ pub(crate) fn palette_section(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Toke
     for c in categories {
         ui.label(egui::RichText::new(&c).small().color(t.text_muted));
         for (i, s) in app.custom_stamps.iter().enumerate().filter(|(_, s)| s.category == c) {
-            let active = app.quick_tool == QuickTool::CustomStamp(i);
+            let active = app.win.quick_tool == QuickTool::CustomStamp(i);
             let resp = ui.add(egui::Button::selectable(active, s.name.as_str()).min_size(egui::vec2(ui.available_width(), 28.0)));
             if resp.clicked() {
-                app.quick_tool = QuickTool::CustomStamp(i);
+                app.win.quick_tool = QuickTool::CustomStamp(i);
             }
             resp.context_menu(|ui| {
                 if ui.button(tl!("Delete stamp")).clicked() {
@@ -198,7 +198,7 @@ pub(crate) fn palette_section(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Toke
     }
     if let Some(i) = remove {
         app.custom_stamps.remove(i);
-        app.quick_tool = QuickTool::Select;
+        app.win.quick_tool = QuickTool::Select;
     }
     ui.add_space(4.0);
     if widgets::pill_button(ui, tl!("Create custom stamp…"), false).on_hover_text(tl!("From a PDF page or an image")).clicked() {
@@ -257,7 +257,7 @@ impl PdfCraftApp {
             data: d.data,
             line,
         });
-        self.quick_tool = QuickTool::CustomStamp(self.custom_stamps.len() - 1);
+        self.win.quick_tool = QuickTool::CustomStamp(self.custom_stamps.len() - 1);
     }
 }
 

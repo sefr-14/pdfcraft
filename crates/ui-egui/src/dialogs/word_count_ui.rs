@@ -120,7 +120,8 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp) -> bool {
     ui.add(widgets::checkbox(&mut draft.options.exclude_code, tl!("Exclude tagged code blocks")));
     ui.add(widgets::checkbox(&mut draft.options.exclude_images, tl!("Exclude image/OCR text")));
     ui.label(tl!("Exclusions use PDF tags. Untagged tables and code remain included. Image exclusion also removes invisible text."));
-    let key = Key { doc: id, generation: doc.edit_generation(), page: draft.current_page.then_some(app.views[view].current), options: draft.options };
+    let key =
+        Key { doc: id, generation: doc.edit_generation(), page: draft.current_page.then_some(app.win.views[view].current), options: draft.options };
     draft.update(key, || doc.export_source(), ui.ctx(), app.run_inline);
     ui.separator();
     match &draft.result {

@@ -40,7 +40,7 @@ fn harness() -> Harness<'static, PdfCraftApp> {
 }
 
 fn dirty(app: &PdfCraftApp, view: usize) -> bool {
-    app.session.get(app.views[view].id).is_some_and(|d| d.dirty)
+    app.session.get(app.win.views[view].id).is_some_and(|d| d.dirty)
 }
 
 #[test]
@@ -52,15 +52,15 @@ fn an_attachment_pick_is_dropped_when_the_user_switches_tabs() {
     std::fs::write(&file, b"hello").unwrap();
 
     let mut h = harness();
-    h.state_mut().active = Some(0);
+    h.state_mut().win.active = Some(0);
     h.state_mut().pick_override = Some(vec![file.to_string_lossy().into_owned()]);
     assert!(h.state_mut().execute("edit.attach"));
     // The user switches tabs before the pick arrives.
-    h.state_mut().active = Some(1);
+    h.state_mut().win.active = Some(1);
     h.run_steps(2);
     assert!(!dirty(h.state(), 0), "the document the pick was for is unchanged");
     assert!(!dirty(h.state(), 1), "the newly active document did not get the attachment");
-    let toast = h.state().toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
+    let toast = h.state().win.toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
     assert!(toast.contains("document changed"), "the user is told why nothing happened: {toast:?}");
     let _ = std::fs::remove_dir_all(&dir);
 }

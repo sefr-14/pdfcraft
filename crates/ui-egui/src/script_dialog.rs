@@ -74,7 +74,7 @@ impl PdfCraftApp {
             self.notify("Another form script is active; this click was not run");
             return;
         }
-        let Some(view) = self.views.iter().find(|v| v.id == id) else { return };
+        let Some(view) = self.win.views.iter().find(|v| v.id == id) else { return };
         let (zoom, page, highlight) = (view.zoom, view.current, view.highlight_fields);
         self.session.set_javascript_view(id, zoom as f64 * 100.0, highlight, page);
         match self.session.start_javascript_target(id, script, field, identity) {
@@ -95,7 +95,7 @@ impl PdfCraftApp {
                     && self.active_ids().is_some_and(|(_, active)| active == c.old || active == c.new)
             }))
             && self.session.script_pending_current(&pending.run)
-            && self.views.iter().find(|v| v.id == pending.run.id).is_some_and(|v| v.zoom == pending.zoom && v.current == pending.page);
+            && self.win.views.iter().find(|v| v.id == pending.run.id).is_some_and(|v| v.zoom == pending.zoom && v.current == pending.page);
         if !current {
             self.session.discard_javascript(&pending.run);
             return;
@@ -123,10 +123,10 @@ impl PdfCraftApp {
                     let id = pending.run.id;
                     match self.session.finish_javascript(pending.run, out) {
                         Ok(out) => {
-                            if let Some(i) = self.views.iter().position(|v| v.id == id)
+                            if let Some(i) = self.win.views.iter().position(|v| v.id == id)
                                 && let Some(info) = self.session.get(id).map(|d| d.info.clone())
                             {
-                                self.views[i].document_changed(&info);
+                                self.win.views[i].document_changed(&info);
                             }
                             self.handle_js(
                                 id,
@@ -310,8 +310,8 @@ mod review13_ui_tests {
             let (mut app, id) = app();
             app.start_ui_script(id, "app.response({cQuestion:'Wait'});", None, None);
             app.start_ui_script(id, "var shouldNotRun=1;", None, None);
-            assert!(app.toast.as_ref().unwrap().0.contains("not run"));
-            app.toast = None;
+            assert!(app.win.toast.as_ref().unwrap().0.contains("not run"));
+            app.win.toast = None;
             if prompt {
                 let deadline = Instant::now() + Duration::from_secs(5);
                 while app.script_pending.as_ref().unwrap().prompt.is_none() && Instant::now() < deadline {
@@ -323,14 +323,14 @@ mod review13_ui_tests {
             if timeout {
                 app.script_pending.as_mut().unwrap().started = Instant::now() - Duration::from_secs(if prompt { 301 } else { 11 });
             } else {
-                app.views.iter_mut().find(|v| v.id == id).unwrap().zoom += 1.0;
+                app.win.views.iter_mut().find(|v| v.id == id).unwrap().zoom += 1.0;
             }
             app.poll_script_dialog(&ctx);
             assert!(app.script_pending.is_none());
             if timeout {
-                assert_eq!(app.toast.as_ref().unwrap().0, "The form script timed out; its result was discarded");
+                assert_eq!(app.win.toast.as_ref().unwrap().0, "The form script timed out; its result was discarded");
             } else {
-                assert!(app.toast.is_none());
+                assert!(app.win.toast.is_none());
             }
         }
     }
@@ -339,7 +339,7 @@ mod review13_ui_tests {
     fn non_active_comparison_document_completes_native_script() {
         for request in ["", "app.execMenuItem('SaveAs');", "print();"] {
             let (mut app, old) = app();
-            app.views.iter_mut().find(|v| v.id == old).unwrap().current = 1;
+            app.win.views.iter_mut().find(|v| v.id == old).unwrap().current = 1;
             let bytes = app.session.create_blank(200.0, 300.0, 1).unwrap();
             app.open_bytes("new.pdf", None, bytes.to_vec()).unwrap();
             let new = app.active_ids().unwrap().1;
@@ -406,7 +406,7 @@ mod review13_ui_tests {
             )
             .unwrap();
         app.handle_js(id, JsOutput { requests: vec![pdfcraft_engine::js::Request::Focus("later".into())], ..Default::default() });
-        let view = app.views.iter().find(|v| v.id == id).unwrap();
+        let view = app.win.views.iter().find(|v| v.id == id).unwrap();
         assert_eq!(view.current, 1);
         assert_eq!(view.forms.focus.as_ref().unwrap().name, "later");
     }

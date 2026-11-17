@@ -63,7 +63,7 @@ fn harness(rotate: u16) -> Harness<'static, PdfCraftApp> {
 fn new_bookmark(h: &mut Harness<'static, PdfCraftApp>) -> (Option<usize>, DestView) {
     h.key_press_modifiers(Modifiers::COMMAND, Key::B);
     h.run_steps(3);
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let outline = &h.state().session.get(id).unwrap().info.outline;
     let made = outline.iter().find(|b| b.title == "Untitled").expect("the new bookmark");
     (made.page, made.view)
@@ -114,7 +114,7 @@ fn a_bookmark_made_at_the_start_goes_to_the_top_of_the_first_page() {
 fn a_bookmark_made_with_text_selected_goes_to_the_selections_corner() {
     let mut h = harness(0);
     // "quick brown": the selection starts after "The ", 40 pt in plus its width, on the line at 150.
-    h.state_mut().views[0].select_text(0, 4, 15);
+    h.state_mut().win.views[0].select_text(0, 4, 15);
     h.run_steps(3);
     let (page, view) = new_bookmark(&mut h);
     assert_eq!(page, Some(0), "the selection's page");
@@ -138,7 +138,7 @@ fn a_bookmark_made_on_a_turned_page_pins_the_axis_the_window_scrolls_along() {
 
 /// Turn the view a quarter at a time (View ▸ Rotate View) and let the layout settle.
 fn rotate_view(h: &mut Harness<'static, PdfCraftApp>, degrees: u16) {
-    h.state_mut().views[0].rotation = degrees;
+    h.state_mut().win.views[0].rotation = degrees;
     h.run_steps(3);
     crate::support::settle(h);
 }
@@ -176,7 +176,7 @@ fn a_bookmark_made_with_text_selected_in_a_turned_view_goes_to_the_corner_shown_
     for (degrees, right_end, upper) in [(0, false, true), (90, false, false), (180, true, false), (270, true, true)] {
         let mut h = harness(0);
         rotate_view(&mut h, degrees);
-        h.state_mut().views[0].select_text(0, 4, 15);
+        h.state_mut().win.views[0].select_text(0, 4, 15);
         h.run_steps(3);
         let (page, view) = new_bookmark(&mut h);
         assert_eq!(page, Some(0), "{degrees}");
@@ -203,7 +203,7 @@ fn a_bookmark_in_a_spread_of_unequal_pages_goes_to_the_page_crossing_the_top_of_
         app.set_option("panel", "bookmarks").unwrap();
         app
     });
-    h.state_mut().views[0].layout = PageLayout::TwoUp;
+    h.state_mut().win.views[0].layout = PageLayout::TwoUp;
     h.run_steps(4);
     crate::support::settle(&mut h);
     // 20 pt below page 2's top is at the window's top, where page 1 has not started.

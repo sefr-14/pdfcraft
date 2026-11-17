@@ -89,10 +89,10 @@ fn a_document_that_hides_the_interface_opens_without_it_and_f8_brings_it_back() 
     assert_eq!(shown(&h), (false, false, false), "and hides them again");
 
     // Another tab, whose document asks for nothing, has the usual interface.
-    h.state_mut().active = Some(0);
+    h.state_mut().win.active = Some(0);
     h.run_steps(3);
     assert_eq!(shown(&h), (true, true, true));
-    h.state_mut().active = Some(1);
+    h.state_mut().win.active = Some(1);
     h.run_steps(3);
     assert_eq!(shown(&h), (false, false, false));
 
@@ -108,8 +108,8 @@ fn a_document_that_hides_the_interface_opens_without_it_and_f8_brings_it_back() 
 fn a_reloaded_document_keeps_its_interface() {
     let mut h = harness(|_| {}, &["/ViewerPreferences << /HideToolbar true >>"]);
     let reload = |h: &mut Harness<'static, PdfCraftApp>| {
-        let info = h.state().session.get(h.state().views[0].id).unwrap().info.clone();
-        h.state_mut().views[0].document_replaced(&info);
+        let info = h.state().session.get(h.state().win.views[0].id).unwrap().info.clone();
+        h.state_mut().win.views[0].document_replaced(&info);
         h.run_steps(3);
     };
     reload(&mut h);
@@ -126,7 +126,7 @@ fn a_reloaded_document_keeps_its_interface() {
 
 #[test]
 fn each_preference_hides_its_own_part() {
-    let top = |h: &Harness<'static, PdfCraftApp>| h.state().views[0].viewport_rect().top();
+    let top = |h: &Harness<'static, PdfCraftApp>| h.state().win.views[0].viewport_rect().top();
     let mut h = harness(|_| {}, &["/ViewerPreferences << /HideToolbar true >>"]);
     assert_eq!(shown(&h), (false, true, true), "HideToolbar");
     // Shown and hidden again, F8 hides only what the document asked for.
@@ -155,7 +155,7 @@ fn each_preference_hides_its_own_part() {
 fn hiding_the_window_controls_leaves_the_document_the_whole_width() {
     // The document also asks for the page thumbnails panel, which is hidden with the rest.
     let mut h = harness(|_| {}, &["/PageMode /UseThumbs /ViewerPreferences << /HideWindowUI true >>"]);
-    let width = |h: &Harness<'static, PdfCraftApp>| h.state().views[0].viewport_rect().width();
+    let width = |h: &Harness<'static, PdfCraftApp>| h.state().win.views[0].viewport_rect().width();
     assert!(width(&h) > 1390.0, "{}", width(&h));
     h.key_press(egui::Key::F8);
     settle(&mut h);
@@ -195,7 +195,7 @@ fn opening_fit(catalog: &str, own_view: bool) -> Fit {
     let mut app = PdfCraftApp::new();
     app.always_default_view = own_view;
     app.open_bytes("x.pdf", None, fixture(catalog)).unwrap();
-    app.views[0].fit
+    app.win.views[0].fit
 }
 
 #[test]
@@ -215,7 +215,7 @@ fn one_page_at_a_time_opens_at_fit_page() {
     assert_eq!(opening_fit("/PageLayout /SinglePage /OpenAction [3 0 R /FitH 300]", false), Fit::Width);
     let mut app = PdfCraftApp::new();
     app.open_bytes("x.pdf", None, fixture("/PageLayout /SinglePage /OpenAction [3 0 R /XYZ 0 300 2]")).unwrap();
-    assert_eq!((app.views[0].fit, app.views[0].zoom), (Fit::None, 2.0));
+    assert_eq!((app.win.views[0].fit, app.win.views[0].zoom), (Fit::None, 2.0));
 }
 
 /// Review on #4378: where the reader left off wins over the fit page a one-page-at-a-time
@@ -228,7 +228,7 @@ fn a_remembered_zoom_wins_over_the_layouts_fit_page() {
     app.restore(&format!(r#"{{"last_views": [{{"path": {json_path}, "page": 1, "zoom": "62.5%", "display": "single"}}]}}"#));
     assert!(app.restore_last_view);
     app.open_bytes("x.pdf", Some(path), fixture("/PageLayout /SinglePage")).unwrap();
-    let v = &app.views[0];
+    let v = &app.win.views[0];
     assert_eq!((v.fit, v.zoom, v.current), (Fit::None, 0.625, 1));
 }
 
@@ -243,7 +243,7 @@ fn always_default_view_wins_over_a_remembered_view() {
     assert!(app.always_default_view);
     assert!(app.restore_last_view);
     app.open_bytes("x.pdf", Some(path), fixture("/PageLayout /SinglePage")).unwrap();
-    let v = &app.views[0];
+    let v = &app.win.views[0];
     assert_eq!((v.fit, v.layout, v.continuous(), v.current), (Fit::Width, pdfcraft_ui_egui::canvas::PageLayout::Single, true, 1));
 }
 
@@ -297,7 +297,7 @@ fn fit_window_sizes_the_window_to_the_first_page() {
     // Asked once.
     assert_eq!(window_commands(&mut h, 6), (None, None));
     // The page now fills the document area's height and nearly its width.
-    let v = &h.state().views[0];
+    let v = &h.state().win.views[0];
     let (page, area) = (v.page_screen_rect(0).expect("shown"), v.viewport_rect());
     assert!(area.width() - page.width() < 160.0, "page {page:?} in {area:?}");
 }
@@ -329,7 +329,7 @@ fn a_maximized_window_or_a_second_tab_is_left_alone() {
     // the window alone too, though the document stays active.
     let mut h = windowed(&["/ViewerPreferences << /FitWindow true /CenterWindow true >>"]);
     h.state_mut().open_bytes("1.pdf", None, fixture("")).unwrap();
-    h.state_mut().active = Some(0);
+    h.state_mut().win.active = Some(0);
     assert_eq!(window_commands(&mut h, 12), (None, None), "a tab opened behind it");
 }
 

@@ -101,7 +101,7 @@ fn clicking_a_pinned_pdf_opens_it_and_adds_it_to_recent() {
     h.get_by_label("scan.pdf").click();
     h.run_steps(3);
     let app = h.state();
-    assert_eq!(app.views.len(), 1, "the PDF opens in a tab");
+    assert_eq!(app.win.views.len(), 1, "the PDF opens in a tab");
     assert_eq!(app.recent.first().map(|r| r.path.clone()), Some(path.to_string_lossy().into_owned()));
 }
 
@@ -301,5 +301,5 @@ fn pinning_is_limited_and_never_duplicates() {
     assert!(app.pin_folder(&folders[0]), "pinning again is fine");
     assert_eq!(app.pinned.folders.len(), MAX_PINNED, "and adds nothing");
     assert!(!app.pin_folder(&Path::new(root).join("one-too-many").to_string_lossy()));
-    assert!(app.toast.as_ref().is_some_and(|(m, _)| m.contains("Unpin one first")), "the user is told");
+    assert!(app.win.toast.as_ref().is_some_and(|(m, _)| m.contains("Unpin one first")), "the user is told");
 }

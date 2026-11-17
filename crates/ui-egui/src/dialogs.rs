@@ -990,7 +990,7 @@ fn dialog_split(ui: &mut egui::Ui, app: &mut PdfCraftApp, req: &mut Pending) -> 
     ui.add_space(8.0);
     let Some((vi, id)) = app.active_ids() else { return false };
     let n = app.session.get(id).map(|d| d.info.pages.len()).unwrap_or(0);
-    let selected: Vec<usize> = app.views[vi].selected.iter().copied().filter(|p| *p > 0).collect();
+    let selected: Vec<usize> = app.win.views[vi].selected.iter().copied().filter(|p| *p > 0).collect();
     let marks = app.session.bookmark_splits(id);
     let draft = &mut app.split_draft;
     use crate::SplitMode as M;
@@ -1131,7 +1131,7 @@ fn dialog_redact_props(ui: &mut egui::Ui, app: &mut PdfCraftApp, req: &mut Pendi
 
 /// `Dialog::Extract` content. Returns `false` when it has its own buttons and no footer is wanted.
 fn dialog_extract(ui: &mut egui::Ui, app: &mut PdfCraftApp, req: &mut Pending) -> bool {
-    let (selected, total) = app.active_ids().map_or((Vec::new(), 0), |(i, _)| (app.views[i].target_pages(), app.views[i].page_count()));
+    let (selected, total) = app.active_ids().map_or((Vec::new(), 0), |(i, _)| (app.win.views[i].target_pages(), app.win.views[i].page_count()));
     ui.label(egui::RichText::new(tl!("Extract pages")).font(theme::semibold(18.0)));
     ui.add_space(8.0);
     // Page ranges to take instead of the selection (#3593); the hint is the selection.
@@ -1438,7 +1438,7 @@ fn dialog_print(ui: &mut egui::Ui, app: &mut PdfCraftApp, req: &mut Pending) -> 
         ui.ctx().pixels_per_point(),
         ui.ctx().input(|i| i.max_texture_side) as f32,
     );
-    let view = &mut app.views[i];
+    let view = &mut app.win.views[i];
     view.set_print_grayscale(app.print_draft.grayscale);
     view.queue_print_previews(&rasters);
     let (go, cancel) = crate::print_ui::body(ui, &mut app.print_draft, &t, &sizes, &labels, &mut |p| {
@@ -1469,8 +1469,8 @@ fn dialog_signature(ui: &mut egui::Ui, app: &mut PdfCraftApp, req: &mut Pending)
             crate::fill_sign::FillTool::Signature
         };
         app.fill_tool = tool;
-        app.quick_tool = crate::QuickTool::Fill(tool);
-        app.toast = None;
+        app.win.quick_tool = crate::QuickTool::Fill(tool);
+        app.win.toast = None;
     }
     req.close = req.apply || cancel;
     false
@@ -2018,7 +2018,7 @@ fn finish_redactions_and_fields(app: &mut PdfCraftApp, req: &mut Pending) {
         Some(Dialog::RedactApply) => {
             let marks = app.active_ids().and_then(|(_, id)| app.session.get(id)).map_or(0, |d| d.redaction_marks());
             if app.apply_edit(Edit::ApplyRedactions { pages: None }) {
-                if let Some(view) = app.active.and_then(|i| app.views.get_mut(i)) {
+                if let Some(view) = app.win.active.and_then(|i| app.win.views.get_mut(i)) {
                     let delivered_undone = view.redactions_applied < view.redactions_downloaded;
                     view.redactions_applied = view.redactions_applied.saturating_add(1);
                     // A new step clears the redo history, so the undone saved steps can't come back.
@@ -2066,7 +2066,7 @@ fn finish_redactions_and_fields(app: &mut PdfCraftApp, req: &mut Pending) {
             // typed into it, as the several-fields dialog does, so nothing is lost meanwhile.
             app.field_props = Some(d);
             req.close = false;
-        } else if applied && let Some(i) = app.active {
+        } else if applied && let Some(i) = app.win.active {
             // Keep the (possibly renamed) field selected.
             // A dotted name is the full name; a plain one renames the field within its parent.
             let typed = d.name.trim();
@@ -2086,7 +2086,7 @@ fn finish_redactions_and_fields(app: &mut PdfCraftApp, req: &mut Pending) {
                     ));
                 }
             }
-            app.views[i].prepare.selected = Some((name, index));
+            app.win.views[i].prepare.selected = Some((name, index));
         }
     }
 }
@@ -2182,7 +2182,7 @@ fn finish_edits(app: &mut PdfCraftApp, dialog: Dialog, req: &mut Pending) {
         && let Some((i, id)) = app.active_ids()
     {
         let count = app.session.get(id).map(|d| d.info.pages.len()).unwrap_or(0);
-        let edit = app.boxes_draft.edit(app.views[i].current, count);
+        let edit = app.boxes_draft.edit(app.win.views[i].current, count);
         app.apply_edit(edit);
         app.boxes_draft.seeded = None;
     }

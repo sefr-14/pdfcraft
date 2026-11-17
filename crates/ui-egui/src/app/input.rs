@@ -47,14 +47,14 @@ impl PdfCraftApp {
 
     /// The document whose page grid is showing and may take pages, if any.
     fn grid_target(&self) -> Option<pdfcraft_engine::DocId> {
-        let view = self.active.and_then(|i| self.views.get(i)).filter(|v| v.organize)?;
+        let view = self.win.active.and_then(|i| self.win.views.get(i)).filter(|v| v.organize)?;
         (self.dialog.is_none() && self.session.get(view.id)?.allows_assembly()).then_some(view.id)
     }
 
     /// The document whose Pages panel is under the pointer and may take pages, if any.
     #[cfg(not(target_arch = "wasm32"))]
     fn panel_target(&self, ctx: &egui::Context) -> Option<pdfcraft_engine::DocId> {
-        let view = self.active.and_then(|i| self.views.get(i))?;
+        let view = self.win.active.and_then(|i| self.win.views.get(i))?;
         let pointer = ctx.input(|i| i.pointer.hover_pos())?;
         let over = view.pages_panel.is_some_and(|panel| panel.contains(pointer));
         (over && self.dialog.is_none() && self.session.get(view.id)?.allows_assembly()).then_some(view.id)
@@ -111,7 +111,7 @@ impl PdfCraftApp {
             self.grid_drop = None;
             return self.notify_tr("The document changed while you were choosing a file, so nothing was changed.");
         }
-        let Some(view) = self.active.and_then(|i| self.views.get_mut(i)) else { return };
+        let Some(view) = self.win.active.and_then(|i| self.win.views.get_mut(i)) else { return };
         let gap = match if panel { view.panel_gap } else { view.grid_gap } {
             Some(gap) => gap,
             None if web_time::Instant::now() >= deadline => usize::MAX,

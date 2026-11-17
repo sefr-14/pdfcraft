@@ -54,10 +54,10 @@ impl PdfCraftApp {
     /// Colors). A document the change actually touches re-renders.
     pub fn set_reading_colors(&mut self, colors: pdfcraft_render::ReadingColors) {
         self.reading_colors = colors;
-        for i in 0..self.views.len() {
+        for i in 0..self.win.views.len() {
             // Idempotent per document: the engine says whether anything changed.
-            if self.session.set_reading_colors(self.views[i].id, colors) {
-                self.views[i].invalidate_content();
+            if self.session.set_reading_colors(self.win.views[i].id, colors) {
+                self.win.views[i].invalidate_content();
             }
         }
     }
@@ -70,12 +70,12 @@ impl PdfCraftApp {
         // Once per document (the engine says whether it changed), then every view of each
         // changed document drops its rasters, not just the first view of it.
         let mut changed = Vec::new();
-        for id in self.views.iter().map(|v| v.id).collect::<Vec<_>>() {
+        for id in self.win.views.iter().map(|v| v.id).collect::<Vec<_>>() {
             if !changed.contains(&id) && self.session.set_thin_lines(id, on) {
                 changed.push(id);
             }
         }
-        for view in &mut self.views {
+        for view in &mut self.win.views {
             if changed.contains(&view.id) {
                 view.invalidate_content();
             }
@@ -112,8 +112,8 @@ impl PdfCraftApp {
             "dpi": self.print_draft.dpi,
         });
         let mut v = serde_json::json!({
-            "side_panels": self.side_panels.to_json(self.left_open),
-            "docking_right": self.right,
+            "side_panels": self.win.side_panels.to_json(self.win.left_open),
+            "docking_right": self.win.right,
             "recent": self.recent.iter().take(self.recent_limit).collect::<Vec<_>>(),
             "reopen_last_session": self.reopen_last_session,
             "restore_last_view": self.restore_last_view,
@@ -188,8 +188,8 @@ impl PdfCraftApp {
             "combine_columns": self.combine_columns.to_json(),
             "combine_view": self.combine_view.as_str(),
             "combine_zoom": self.combine_zoom,
-            "comments_panel_closed": self.comments_panel_closed,
-            "right_panel_closed": self.right_panel_closed,
+            "comments_panel_closed": self.win.comments_panel_closed,
+            "right_panel_closed": self.win.right_panel_closed,
             "ocr": self.ocr_draft.to_pref(),
         });
         // Set apart: one more key inside the macro above passes serde_json's recursion limit.
@@ -210,7 +210,7 @@ impl PdfCraftApp {
         // Not `check_updates_at_start`: that key was an opt-in of its own, off unless chosen, and
         // settings written then would turn this off unasked.
         v["update_check_at_start"] = self.update_check_at_start.into();
-        v["hotbar"] = serde_json::to_value(&self.hotbar).unwrap_or_default();
+        v["hotbar"] = serde_json::to_value(&self.win.hotbar).unwrap_or_default();
         v["comment_tool_pinned"] = serde_json::Value::Bool(self.comment_prefs.pinned);
         v["show_secured_notice"] = serde_json::Value::Bool(self.show_secured_notice);
         v["text_links"] = serde_json::Value::Bool(self.text_links);
@@ -237,15 +237,15 @@ impl PdfCraftApp {
                 bar.adopt_legacy();
             }
             bar.normalize();
-            self.hotbar = bar;
+            self.win.hotbar = bar;
         }
         let panels = side_panels::restore(&v);
-        self.side_panels = panels.panels;
+        self.win.side_panels = panels.panels;
         if let Some(open) = panels.tools_open {
-            self.left_open = open;
+            self.win.left_open = open;
         }
         if let Some(right) = v.get("docking_right") {
-            self.right = serde_json::from_value(right.clone()).ok().flatten().filter(|_| !panels.side_closed);
+            self.win.right = serde_json::from_value(right.clone()).ok().flatten().filter(|_| !panels.side_closed);
         }
         self.combine_columns = combine_ui::Columns::from_json(&v["combine_columns"]);
         if let Some(view) = v["combine_view"].as_str().and_then(combine_ui::CombineView::parse) {
@@ -425,10 +425,10 @@ impl PdfCraftApp {
             self.view_defaults.highlight_fields = on;
         }
         if let Some(closed) = v["comments_panel_closed"].as_bool() {
-            self.comments_panel_closed = closed;
+            self.win.comments_panel_closed = closed;
         }
         if let Some(closed) = v["right_panel_closed"].as_bool() {
-            self.right_panel_closed = closed;
+            self.win.right_panel_closed = closed;
         }
         // Scan & OCR choices (language, engine, strategy, output mode, preprocessing and skip
         // flags); unknown or malformed values keep the defaults.

@@ -219,12 +219,12 @@ fn removing_pages_drops_emptied_parts_and_joins_what_meets() {
 fn a_password_answered_after_combine_opens_behind_the_combine_tab() {
     let mut app = PdfCraftApp::new();
     app.open_bytes("locked.pdf", None, locked()).unwrap();
-    assert!(app.password_prompt.is_some() && app.views.is_empty());
+    assert!(app.password_prompt.is_some() && app.win.views.is_empty());
     app.combine_paths(&[]);
     assert!(app.combine_showing());
     app.submit_password(Some("pw".into()));
     assert!(app.password_prompt.is_none());
-    assert_eq!(app.views.len(), 1, "the document is open");
+    assert_eq!(app.win.views.len(), 1, "the document is open");
     assert!(app.combine_showing(), "and the Combine files tab still shows");
 
     let mut app = PdfCraftApp::new();

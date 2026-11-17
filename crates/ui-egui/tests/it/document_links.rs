@@ -122,7 +122,7 @@ fn click_at(h: &mut Harness<'static, PdfCraftApp>, at: egui::Pos2) {
 
 /// Click the link on page 1, at the middle of its rectangle.
 fn click_link_at(h: &mut Harness<'static, PdfCraftApp>, y: f32) {
-    let r = h.state().views[0].page_screen_rect(0).expect("page 1 on screen");
+    let r = h.state().win.views[0].page_screen_rect(0).expect("page 1 on screen");
     let at = egui::pos2(r.min.x + r.width() * (150.0 / 300.0), r.min.y + r.height() * (1.0 - y / 400.0));
     click_at(h, at);
 }
@@ -138,9 +138,9 @@ fn click_link(h: &mut Harness<'static, PdfCraftApp>) {
 fn click_field(h: &mut Harness<'static, PdfCraftApp>, name: &str) {
     let at = {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         let f = doc.form.iter().find(|f| f.name == name).unwrap();
-        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.views[0], &doc.info, f, 0).expect("on screen").center()
+        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.win.views[0], &doc.info, f, 0).expect("on screen").center()
     };
     click_at(h, at);
 }
@@ -229,13 +229,13 @@ fn a_web_bookmark_asks_first_like_a_link() {
     click_bookmark(&mut h, "Website");
     assert_eq!(h.state().pending_link, pending(BOOKMARK_URL, LinkOrigin::Link));
     assert_eq!(h.state().last_opened_url, None, "nothing opens before the user answers");
-    assert_eq!(h.state().views[0].current, 0);
+    assert_eq!(h.state().win.views[0].current, 0);
     h.get_by_label("Cancel").click();
     h.run_steps(3);
     assert_eq!((h.state().pending_link.clone(), h.state().last_opened_url.clone()), (None, None));
 
     click_bookmark(&mut h, "Appendix");
-    assert_eq!(h.state().views[0].current, 2);
+    assert_eq!(h.state().win.views[0].current, 2);
 }
 
 /// A bookmark to another PDF opens that file at its page, as a link does. Its `[1 /Fit]` is the
@@ -249,10 +249,10 @@ fn a_bookmark_to_another_pdf_opens_it_instead_of_moving_here() {
     std::fs::write(dir.join("target.pdf"), linked_pages(2, None)).unwrap();
     let mut h = bookmark_harness(Some(dir.join("source.pdf").to_string_lossy().into_owned()));
     click_bookmark(&mut h, "Chapter in target");
-    support::wait_until(&mut h, "remote document", |app| app.views.len() == 2);
-    assert_eq!(h.state().views[0].current, 0, "the source stays on its page");
-    assert_eq!(h.state().active, Some(1));
-    assert_eq!(h.state().views[1].current, 1, "the other file opens at the bookmark's page");
+    support::wait_until(&mut h, "remote document", |app| app.win.views.len() == 2);
+    assert_eq!(h.state().win.views[0].current, 0, "the source stays on its page");
+    assert_eq!(h.state().win.active, Some(1));
+    assert_eq!(h.state().win.views[1].current, 1, "the other file opens at the bookmark's page");
 }
 
 /// Bookmarks go through the link policy, not around it. A script action is named and not run (its
@@ -281,16 +281,16 @@ fn bookmarks_go_through_the_link_policy() {
         ("Program", Some("This PDF uses the unsupported Launch action.")),
         ("Missing", None),
     ] {
-        h.state_mut().toast = None;
+        h.state_mut().win.toast = None;
         click_bookmark(&mut h, title);
         let s = h.state();
-        assert_eq!(s.toast.as_ref().map(|t| t.0.as_str()), notice, "{title}");
-        assert_eq!((&s.pending_link, &s.last_opened_url, s.views.len(), s.views[0].current), (&None, &None, 1, 0), "{title}: nothing opened");
+        assert_eq!(s.win.toast.as_ref().map(|t| t.0.as_str()), notice, "{title}");
+        assert_eq!((&s.pending_link, &s.last_opened_url, s.win.views.len(), s.win.views[0].current), (&None, &None, 1, 0), "{title}: nothing opened");
     }
     click_bookmark(&mut h, "Absolute");
     assert_eq!(h.state().pending_remote_link.as_ref().map(|p| p.path.clone()), Some(target));
-    assert_eq!(h.state().views.len(), 1);
-    assert!(h.state().toast.is_none(), "the file is not touched before consent");
+    assert_eq!(h.state().win.views.len(), 1);
+    assert!(h.state().win.toast.is_none(), "the file is not touched before consent");
 }
 
 #[test]
@@ -316,10 +316,10 @@ fn a_local_gotor_link_opens_in_a_tab_and_applies_its_destination() {
     std::fs::write(dir.join("target.pdf"), linked_pages(2, None)).unwrap();
     let mut h = remote_harness(Some(dir.join("source.pdf").to_string_lossy().into_owned()), "target.pdf", "[1 /FitH 200]");
     click_remote_link(&mut h);
-    support::wait_until(&mut h, "remote document", |app| app.views.len() == 2);
-    assert_eq!(h.state().views.len(), 2);
-    assert_eq!(h.state().active, Some(1));
-    assert_eq!(h.state().views[1].current, 1, "the remote page destination is applied");
+    support::wait_until(&mut h, "remote document", |app| app.win.views.len() == 2);
+    assert_eq!(h.state().win.views.len(), 2);
+    assert_eq!(h.state().win.active, Some(1));
+    assert_eq!(h.state().win.views[1].current, 1, "the remote page destination is applied");
     assert_eq!(h.state().last_opened_url, None, "no URL or external launcher is involved");
 }
 
@@ -358,15 +358,15 @@ fn a_gotor_link_to_a_named_destination_opens_at_its_page() {
         let mut h = remote_harness(Some(dir.join("source.pdf").to_string_lossy().into_owned()), "target.pdf", destination);
         click_remote_link(&mut h);
         // The name is looked up off the UI thread, so the tab may open before it moves there.
-        support::wait_until(&mut h, "remote document at its destination", |app| app.views.len() == 2 && app.views[1].current == page);
-        assert_eq!(h.state().toast, None, "{destination}: applied, so nothing to warn about");
+        support::wait_until(&mut h, "remote document at its destination", |app| app.win.views.len() == 2 && app.win.views[1].current == page);
+        assert_eq!(h.state().win.toast, None, "{destination}: applied, so nothing to warn about");
     }
     // A name the target doesn't define opens it at its first page, with the warning.
     let mut h = remote_harness(Some(dir.join("source.pdf").to_string_lossy().into_owned()), "target.pdf", "/elsewhere");
     click_remote_link(&mut h);
-    support::wait_until(&mut h, "remote document and the warning", |app| app.views.len() == 2 && app.toast.is_some());
-    assert_eq!(h.state().views[1].current, 0);
-    assert!(h.state().toast.as_ref().is_some_and(|(text, _)| text.contains("named destination was not applied")), "{:?}", h.state().toast);
+    support::wait_until(&mut h, "remote document and the warning", |app| app.win.views.len() == 2 && app.win.toast.is_some());
+    assert_eq!(h.state().win.views[1].current, 0);
+    assert!(h.state().win.toast.as_ref().is_some_and(|(text, _)| text.contains("named destination was not applied")), "{:?}", h.state().win.toast);
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -381,16 +381,16 @@ fn a_remote_destination_survives_password_retries_and_cancel_opens_no_tab() {
     click_remote_link(&mut h);
     support::wait_until(&mut h, "remote password prompt", |app| app.password_prompt.as_ref().is_some_and(|p| p.name == "target.pdf"));
     assert!(h.state().password_prompt.is_some());
-    assert_eq!(h.state().views.len(), 1);
+    assert_eq!(h.state().win.views.len(), 1);
     h.state_mut().submit_password(Some("wrong-password".into()));
     support::wait_until(&mut h, "wrong-password reply", |app| {
         app.password_prompt.as_ref().is_some_and(|p| p.name == "target.pdf" && p.error.as_deref() == Some("Incorrect password. Try again."))
     });
     assert!(h.state().password_prompt.as_ref().is_some_and(|p| p.error.is_some()));
     h.state_mut().submit_password(Some("test-password".into()));
-    support::wait_until(&mut h, "authenticated remote document", |app| app.views.len() == 2 && app.password_prompt.is_none());
-    assert_eq!(h.state().views.len(), 2);
-    assert_eq!(h.state().views[1].current, 1, "the destination survives a wrong-password retry");
+    support::wait_until(&mut h, "authenticated remote document", |app| app.win.views.len() == 2 && app.password_prompt.is_none());
+    assert_eq!(h.state().win.views.len(), 2);
+    assert_eq!(h.state().win.views[1].current, 1, "the destination survives a wrong-password retry");
 
     let mut cancelled = remote_harness(Some(dir.join("source.pdf").to_string_lossy().into_owned()), "target.pdf", "[1 /Fit]");
     click_remote_link(&mut cancelled);
@@ -398,7 +398,7 @@ fn a_remote_destination_survives_password_retries_and_cancel_opens_no_tab() {
         app.password_prompt.as_ref().is_some_and(|p| p.name == "target.pdf")
     });
     cancelled.state_mut().submit_password(None);
-    assert_eq!(cancelled.state().views.len(), 1, "cancelling does not leave a half-open target tab");
+    assert_eq!(cancelled.state().win.views.len(), 1, "cancelling does not leave a half-open target tab");
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -420,9 +420,9 @@ fn a_gotor_link_to_a_directory_or_device_is_refused_without_reading_it() {
     for target in targets {
         let mut h = remote_harness(Some(dir.join("source.pdf").to_string_lossy().into_owned()), target, "[0 /Fit]");
         click_remote_link(&mut h);
-        support::wait_until(&mut h, "relative invalid target refusal", |app| app.toast.is_some());
-        assert_eq!(h.state().views.len(), 1, "{target} opens no tab");
-        let toast = &h.state().toast.as_ref().unwrap().0;
+        support::wait_until(&mut h, "relative invalid target refusal", |app| app.win.toast.is_some());
+        assert_eq!(h.state().win.views.len(), 1, "{target} opens no tab");
+        let toast = &h.state().win.toast.as_ref().unwrap().0;
         assert!(toast.contains("not a regular file"), "{target}: {toast}");
     }
     let _ = std::fs::remove_dir_all(&dir);
@@ -434,8 +434,8 @@ fn an_in_memory_source_does_not_resolve_a_relative_gotor_against_cwd() {
     let _gpu = gpu();
     let mut h = remote_harness(None, "target.pdf", "[0 /Fit]");
     click_remote_link(&mut h);
-    assert_eq!(h.state().views.len(), 1);
-    let toast = &h.state().toast.as_ref().unwrap().0;
+    assert_eq!(h.state().win.views.len(), 1);
+    let toast = &h.state().win.toast.as_ref().unwrap().0;
     assert!(toast.contains("relative link needs a source document path"), "{toast}");
 }
 
@@ -446,9 +446,9 @@ fn unsupported_launch_action_is_reported_without_claiming_javascript() {
     click_link_at(&mut h, 230.0);
     assert_eq!(h.state().pending_link, None);
     assert_eq!(h.state().last_opened_url, None);
-    assert_eq!(h.state().views.len(), 1);
-    assert_eq!(h.state().views[0].current, 0);
-    let toast = h.state().toast.clone().expect("the unsupported action is reported").0;
+    assert_eq!(h.state().win.views.len(), 1);
+    assert_eq!(h.state().win.views[0].current, 0);
+    let toast = h.state().win.toast.clone().expect("the unsupported action is reported").0;
     assert_eq!(toast, "This PDF uses the unsupported Launch action.");
 }
 
@@ -490,10 +490,10 @@ fn a_button_script_cannot_open_a_local_program() {
     let _gpu = gpu();
     let mut h = harness();
     click_field(&mut h, "sneaky");
-    support::wait_until(&mut h, "script link refusal", |app| app.pending_link.is_some() || app.toast.is_some());
+    support::wait_until(&mut h, "script link refusal", |app| app.pending_link.is_some() || app.win.toast.is_some());
     assert_eq!(h.state().pending_link, None, "a file: address is never offered");
     assert_eq!(h.state().last_opened_url, None);
-    let toast = h.state().toast.clone().expect("the user is told").0;
+    let toast = h.state().win.toast.clone().expect("the user is told").0;
     assert!(toast.contains("“file:” address"), "{toast}");
 }
 
@@ -501,7 +501,7 @@ fn a_button_script_cannot_open_a_local_program() {
 fn a_script_asks_first_and_only_once() {
     let _gpu = gpu();
     let mut h = harness();
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let script = "app.launchURL('https://example.org/?q=' + 'first'); app.launchURL('https://example.org/second');";
     h.state_mut().run_button_script(id, "web", script);
     support::wait_until(&mut h, "script link request", |app| app.pending_link.is_some());
@@ -524,13 +524,13 @@ fn a_script_cannot_open_other_kinds_of_address() {
         "https://a^b/",
     ] {
         let mut h = harness();
-        let id = h.state().views[0].id;
+        let id = h.state().win.views[0].id;
         let script = format!("app.launchURL({});", serde_json::to_string(url).unwrap());
         h.state_mut().run_button_script(id, "web", &script);
-        support::wait_until(&mut h, "script link decision", |app| app.pending_link.is_some() || app.toast.is_some());
+        support::wait_until(&mut h, "script link decision", |app| app.pending_link.is_some() || app.win.toast.is_some());
         assert_eq!(h.state().pending_link, None, "{url}");
         assert_eq!(h.state().last_opened_url, None, "{url}");
-        assert!(h.state().toast.clone().is_some_and(|t| t.0.contains("won't open")), "{url}: {:?}", h.state().toast);
+        assert!(h.state().win.toast.clone().is_some_and(|t| t.0.contains("won't open")), "{url}: {:?}", h.state().win.toast);
     }
 }
 
@@ -539,13 +539,13 @@ fn an_email_link_cannot_attach_a_local_file() {
     let _gpu = gpu();
     for url in ["mailto:a@example.org?attach=/home/me/.ssh/id_ed25519", "mailto:a@example.org?subject=Hi&%61ttachment=C:/Users/me/x.txt"] {
         let mut h = harness();
-        let id = h.state().views[0].id;
+        let id = h.state().win.views[0].id;
         let script = format!("app.launchURL({});", serde_json::to_string(url).unwrap());
         h.state_mut().run_button_script(id, "web", &script);
-        support::wait_until(&mut h, "script link decision", |app| app.pending_link.is_some() || app.toast.is_some());
+        support::wait_until(&mut h, "script link decision", |app| app.pending_link.is_some() || app.win.toast.is_some());
         assert_eq!(h.state().pending_link, None, "{url}");
         assert_eq!(h.state().last_opened_url, None, "{url}");
-        let toast = h.state().toast.clone().expect("the user is told").0;
+        let toast = h.state().win.toast.clone().expect("the user is told").0;
         assert!(toast.contains("attach or insert a file"), "{url}: {toast}");
     }
 }
@@ -553,7 +553,7 @@ fn an_email_link_cannot_attach_a_local_file() {
 /// Ask to open `url` from a script and return the harness with the prompt showing.
 fn prompt_for(url: &str) -> Harness<'static, PdfCraftApp> {
     let mut h = harness();
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let script = format!("app.launchURL({});", serde_json::to_string(url).unwrap());
     h.state_mut().run_button_script(id, "web", &script);
     assert!(support::step_until(&mut h, |h| h.query_by_label("Open link").is_some()), "script link prompt rendered");
@@ -599,31 +599,31 @@ fn an_absolute_gotor_waits_for_consent_and_keeps_its_destination_across_tabs() {
     let target = dir.join("target with spaces.pdf");
     let file = target.to_str().unwrap();
     let mut h = remote_harness(None, file, "[1 /FitH 200]");
-    let source = h.state().views[0].id;
+    let source = h.state().win.views[0].id;
     click_remote_link(&mut h);
     let pending = h.state().pending_remote_link.as_ref().unwrap();
     assert_eq!(pending.source, source);
     assert_eq!(pending.path, target);
     h.get_by_label(file);
     h.get_by_label("Allow");
-    assert_eq!(h.state().views.len(), 1);
+    assert_eq!(h.state().win.views.len(), 1);
     assert_eq!(h.state().session.docs().len(), 1);
-    assert!(h.state().toast.is_none(), "the nonexistent target is not accessed before consent");
+    assert!(h.state().win.toast.is_none(), "the nonexistent target is not accessed before consent");
     assert!(h.state().password_prompt.is_none());
     // The target only appears AFTER the confirmation is displayed.
     let target_bytes = linked_pages(2, None);
     std::fs::write(&target, &target_bytes).unwrap();
     h.state_mut().open_bytes("other.pdf", None, fixture()).unwrap();
-    assert_eq!(h.state().active, Some(1));
+    assert_eq!(h.state().win.active, Some(1));
     h.run_steps(3);
     h.get_by_label("Allow").click();
-    support::wait_until(&mut h, "approved absolute target", |app| app.views.len() == 3);
+    support::wait_until(&mut h, "approved absolute target", |app| app.win.views.len() == 3);
     assert!(h.state().pending_remote_link.is_none());
-    assert_eq!(h.state().views.len(), 3);
-    assert_eq!(h.state().views[2].current, 1);
-    assert_eq!(h.state().views[2].fit, pdfcraft_ui_egui::canvas::Fit::Width);
-    assert_eq!(h.state().active, Some(2));
-    let target_doc = h.state().session.get(h.state().views[2].id).unwrap();
+    assert_eq!(h.state().win.views.len(), 3);
+    assert_eq!(h.state().win.views[2].current, 1);
+    assert_eq!(h.state().win.views[2].fit, pdfcraft_ui_egui::canvas::Fit::Width);
+    assert_eq!(h.state().win.active, Some(2));
+    let target_doc = h.state().session.get(h.state().win.views[2].id).unwrap();
     assert_eq!(target_doc.path.as_deref(), Some(file));
     assert_eq!(target_doc.bytes.as_slice(), target_bytes.as_slice());
     assert!(!h.state().session.get(source).unwrap().dirty);
@@ -638,7 +638,7 @@ fn cancelling_an_absolute_gotor_by_button_escape_or_dismissal_changes_nothing() 
     let target = std::env::temp_dir().join(format!("pdfcraft-ui-gotor-cancel-{}.pdf", std::process::id()));
     for answer in ["button", "escape", "outside"] {
         let mut h = remote_harness(None, target.to_str().unwrap(), "[1 /Fit]");
-        let source = h.state().views[0].id;
+        let source = h.state().win.views[0].id;
         let before = h.state().session.get(source).unwrap().bytes.clone();
         click_remote_link(&mut h);
         assert!(h.state().pending_remote_link.is_some());
@@ -649,15 +649,15 @@ fn cancelling_an_absolute_gotor_by_button_escape_or_dismissal_changes_nothing() 
         }
         h.run_steps(3);
         assert!(h.state().pending_remote_link.is_none(), "{answer}");
-        assert_eq!(h.state().views.len(), 1);
+        assert_eq!(h.state().win.views.len(), 1);
         assert_eq!(h.state().session.docs().len(), 1);
-        assert_eq!(h.state().active, Some(0));
-        assert_eq!(h.state().views[0].current, 0);
+        assert_eq!(h.state().win.active, Some(0));
+        assert_eq!(h.state().win.views[0].current, 0);
         let doc = h.state().session.get(source).unwrap();
         assert_eq!(doc.bytes, before);
         assert!(!doc.dirty);
         assert!(doc.can_undo().is_none());
-        assert!(h.state().toast.is_none());
+        assert!(h.state().win.toast.is_none());
         assert!(h.state().password_prompt.is_none());
     }
 }
@@ -688,21 +688,21 @@ fn consenting_to_absolute_gotor_still_validates_the_target() {
     for (name, expected_error) in cases {
         let target = dir.join(name);
         let mut h = remote_harness(None, target.to_str().unwrap(), "[0 /Fit]");
-        let source = h.state().views[0].id;
+        let source = h.state().win.views[0].id;
         let before = h.state().session.get(source).unwrap().bytes.clone();
         click_remote_link(&mut h);
         assert!(h.state().pending_remote_link.is_some());
-        assert!(h.state().toast.is_none(), "{name} isn't checked before consent");
+        assert!(h.state().win.toast.is_none(), "{name} isn't checked before consent");
         h.get_by_label("Allow").click();
         support::wait_until(&mut h, "approved invalid target refusal", |app| {
-            app.toast.as_ref().is_some_and(|(message, _)| message.starts_with(expected_error))
+            app.win.toast.as_ref().is_some_and(|(message, _)| message.starts_with(expected_error))
         });
         assert!(h.state().pending_remote_link.is_none());
-        assert_eq!(h.state().views.len(), 1, "{name}");
-        assert!(h.state().toast.is_some(), "{name} is refused after consent");
+        assert_eq!(h.state().win.views.len(), 1, "{name}");
+        assert!(h.state().win.toast.is_some(), "{name} is refused after consent");
         assert_eq!(h.state().session.docs().len(), 1);
         assert_eq!(h.state().active_ids().map(|(_, id)| id), Some(source));
-        assert_eq!(h.state().views[0].current, 0);
+        assert_eq!(h.state().win.views[0].current, 0);
         let doc = h.state().session.get(source).unwrap();
         assert_eq!(doc.bytes, before);
         assert!(!doc.dirty);
@@ -735,16 +735,16 @@ fn an_approved_absolute_gotor_preserves_password_retries_and_cancellation() {
             app.password_prompt.as_ref().is_some_and(|p| p.name == "encrypted.pdf" && p.error.as_deref() == Some("Incorrect password. Try again."))
         });
         assert!(h.state().password_prompt.as_ref().unwrap().error.is_some());
-        assert_eq!(h.state().views.len(), 1);
+        assert_eq!(h.state().win.views.len(), 1);
         if cancel {
             h.state_mut().submit_password(None);
             assert!(h.state().password_prompt.is_none());
-            assert_eq!(h.state().views.len(), 1);
+            assert_eq!(h.state().win.views.len(), 1);
         } else {
             h.state_mut().submit_password(Some("test-password".into()));
-            support::wait_until(&mut h, "authenticated absolute target", |app| app.password_prompt.is_none() && app.views.len() == 2);
-            assert_eq!(h.state().views.len(), 2);
-            assert_eq!(h.state().views[1].current, 1);
+            support::wait_until(&mut h, "authenticated absolute target", |app| app.password_prompt.is_none() && app.win.views.len() == 2);
+            assert_eq!(h.state().win.views.len(), 2);
+            assert_eq!(h.state().win.views[1].current, 1);
         }
         assert!(h.state().pending_remote_link.is_none());
     }
@@ -760,10 +760,10 @@ fn closing_the_source_invalidates_pending_absolute_gotor_consent() {
     click_remote_link(&mut h);
     h.state_mut().close_tab(0);
     h.state_mut().resolve_pending_remote_link(true);
-    assert!(h.state().views.is_empty());
+    assert!(h.state().win.views.is_empty());
     assert!(h.state().session.docs().is_empty());
     assert!(h.state().pending_remote_link.is_none());
-    assert!(h.state().toast.is_none());
+    assert!(h.state().win.toast.is_none());
 }
 
 fn overlapping_annotation_fixture(subtype: &str, internal: bool) -> Vec<u8> {
@@ -829,7 +829,7 @@ fn highlighted_link_still_requires_confirmation() {
     click_link(&mut h);
     assert_eq!(h.state().pending_link, pending(LINK_URL, LinkOrigin::Link));
     assert_eq!(h.state().last_opened_url, None);
-    assert_eq!(h.state().views[0].comments.selected, None);
+    assert_eq!(h.state().win.views[0].comments.selected, None);
     h.get_by_label("Open link").click();
     h.run_steps(3);
     assert_eq!(h.state().last_opened_url.as_deref(), Some(LINK_URL));
@@ -864,9 +864,9 @@ fn highlighted_internal_link_navigates_after_save_and_reopen() {
     let id = session.open("highlighted-link.pdf", None, std::sync::Arc::new(bytes), None).unwrap();
     let saved = session.save_bytes(id).unwrap().as_ref().clone();
     let mut h = overlapping_annotation_harness(saved);
-    assert_eq!(h.state().views[0].current, 0);
+    assert_eq!(h.state().win.views[0].current, 0);
     click_link(&mut h);
-    assert_eq!(h.state().views[0].current, 1);
+    assert_eq!(h.state().win.views[0].current, 1);
     assert_eq!(h.state().pending_link, None);
     assert_eq!(h.state().last_opened_url, None);
 }
@@ -875,10 +875,10 @@ fn highlighted_internal_link_navigates_after_save_and_reopen() {
 fn highlight_outside_link_remains_selectable() {
     let _gpu = gpu();
     let mut h = overlapping_annotation_harness(overlapping_annotation_fixture("Highlight", false));
-    let rect = h.state().views[0].page_screen_rect(0).unwrap();
+    let rect = h.state().win.views[0].page_screen_rect(0).unwrap();
     let at = egui::pos2(rect.min.x + rect.width() * (60.0 / 300.0), rect.min.y + rect.height() * (1.0 - 325.0 / 400.0));
     click_at(&mut h, at);
-    assert_eq!(h.state().views[0].comments.selected, Some((0, 1)));
+    assert_eq!(h.state().win.views[0].comments.selected, Some((0, 1)));
     assert_eq!(h.state().pending_link, None);
     assert_eq!(h.state().last_opened_url, None);
 }
@@ -889,7 +889,7 @@ fn other_annotations_over_links_keep_select_click() {
     for subtype in ["Text", "Square"] {
         let mut h = overlapping_annotation_harness(overlapping_annotation_fixture(subtype, false));
         click_link(&mut h);
-        assert_eq!(h.state().views[0].comments.selected, Some((0, 1)), "{subtype}");
+        assert_eq!(h.state().win.views[0].comments.selected, Some((0, 1)), "{subtype}");
         assert_eq!(h.state().pending_link, None, "{subtype}");
         assert_eq!(h.state().last_opened_url, None, "{subtype}");
     }
@@ -915,13 +915,13 @@ fn form_widget_keeps_priority_over_highlighted_link() {
 fn active_comment_gesture_keeps_highlighted_link_click() {
     let _gpu = gpu();
     let mut h = overlapping_annotation_harness(overlapping_annotation_fixture("Highlight", false));
-    let r = h.state().views[0].page_screen_rect(0).unwrap();
+    let r = h.state().win.views[0].page_screen_rect(0).unwrap();
     let at = egui::pos2(r.min.x + r.width() * 0.5, r.min.y + r.height() * (1.0 - 325.0 / 400.0));
     h.hover_at(at);
     h.run_steps(2);
     h.drag_at(at);
     h.run_steps(1);
-    h.state_mut().views[0].comments.gesture = Some(pdfcraft_ui_egui::comments::Gesture::Move { page: 0, index: 1, from: at });
+    h.state_mut().win.views[0].comments.gesture = Some(pdfcraft_ui_egui::comments::Gesture::Move { page: 0, index: 1, from: at });
     h.drop_at(at);
     h.run_steps(4);
     assert_eq!(h.state().pending_link, None);
@@ -932,7 +932,7 @@ fn active_comment_gesture_keeps_highlighted_link_click() {
 fn highlighted_link_context_click_selects_comment_without_opening_url() {
     let _gpu = gpu();
     let mut h = overlapping_annotation_harness(overlapping_annotation_fixture("Highlight", false));
-    let r = h.state().views[0].page_screen_rect(0).unwrap();
+    let r = h.state().win.views[0].page_screen_rect(0).unwrap();
     let at = egui::pos2(r.min.x + r.width() * 0.5, r.min.y + r.height() * (1.0 - 325.0 / 400.0));
     h.hover_at(at);
     h.run_steps(1);
@@ -940,7 +940,7 @@ fn highlighted_link_context_click_selects_comment_without_opening_url() {
         h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed, modifiers: Default::default() });
     }
     h.run_steps(3);
-    assert_eq!(h.state().views[0].comments.selected, Some((0, 1)));
+    assert_eq!(h.state().win.views[0].comments.selected, Some((0, 1)));
     assert_eq!(h.state().pending_link, None);
     assert_eq!(h.state().last_opened_url, None);
 }
@@ -1068,7 +1068,7 @@ fn a_drag_from_an_address_in_the_page_text_selects_it() {
     h.run_steps(4);
     // Glyphs 2 to 12 of the first line are inside "https://example.com/plain-text-url.".
     let (from, to) = {
-        let v = &h.state().views[0];
+        let v = &h.state().win.views[0];
         (v.glyph_screen_pos(0, 2).expect("text layer"), v.glyph_screen_pos(0, 12).expect("glyph"))
     };
     h.hover_at(from);
@@ -1081,7 +1081,7 @@ fn a_drag_from_an_address_in_the_page_text_selects_it() {
     }
     h.drop_at(to);
     h.run_steps(3);
-    let selected = h.state().views[0].selected_text();
+    let selected = h.state().win.views[0].selected_text();
     assert!(selected.as_deref().is_some_and(|t| t.starts_with("tp")), "the drag selects the address's text: {selected:?}");
     assert_eq!(h.state().pending_link, None, "a drag opens nothing");
 }
@@ -1132,7 +1132,7 @@ fn relative_links_use_the_base_and_quad_points_limit_where_a_link_is_active() {
     h.get_by_label("Cancel").click();
     h.run_steps(4);
     let point = |h: &Harness<'static, PdfCraftApp>, x: f32, y: f32| {
-        let r = h.state().views[0].page_screen_rect(0).expect("page 1 on screen");
+        let r = h.state().win.views[0].page_screen_rect(0).expect("page 1 on screen");
         egui::pos2(r.min.x + r.width() * (x / 300.0), r.min.y + r.height() * (1.0 - y / 400.0))
     };
     // Inside /Rect, outside the quadrilateral: nothing.

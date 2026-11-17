@@ -6,7 +6,7 @@ impl crate::PdfCraftApp {
     /// Open Field Properties for a field of the active document.
     pub fn open_field_props(&mut self, name: &str, widget: usize) {
         let Some((index, id)) = self.active_ids() else { return };
-        let names = self.views[index].prepare.names();
+        let names = self.win.views[index].prepare.names();
         if names.len() > 1 && names.iter().any(|n| n == name) {
             let draft = self.session.get(id).map_or(Err("The document is no longer open."), |doc| crate::bulk_fields::Draft::new(doc, names));
             match draft {

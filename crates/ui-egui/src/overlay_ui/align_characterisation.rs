@@ -58,7 +58,7 @@ fn wizard(old: &[(u32, u32)], new: &[(u32, u32)]) -> (PdfCraftApp, Wizard) {
     // New first, so Old is the second tab and the first other document is New.
     app.open_bytes("new.pdf", None, sized(new)).expect("New opens");
     app.open_bytes("old.pdf", None, sized(old)).expect("Old opens");
-    let old_id = app.views.iter().map(|v| v.id).nth(1).expect("Old's tab");
+    let old_id = app.win.views.iter().map(|v| v.id).nth(1).expect("Old's tab");
     let w = Wizard::new(&app, old_id);
     assert_eq!(w.b.as_ref().map(|b| b.name.as_str()), Some("new.pdf"));
     assert_eq!(w.matched_rows().len(), old.len().min(new.len()));

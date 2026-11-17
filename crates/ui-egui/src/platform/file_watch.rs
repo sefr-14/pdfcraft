@@ -337,8 +337,8 @@ impl PdfCraftApp {
     /// The documents to watch: every open one with a file, while the preference is on. A
     /// document shown in several tabs (Duplicate Tab) is watched once.
     fn watched(&self) -> impl Iterator<Item = (DocId, &str, Option<Stamp>, u64)> {
-        let first_tab = |i: usize, v: &crate::DocView| self.views.iter().position(|w| w.id == v.id) == Some(i);
-        self.views.iter().enumerate().filter(move |(i, v)| self.reload_changed_files && first_tab(*i, v)).filter_map(|(_, v)| {
+        let first_tab = |i: usize, v: &crate::DocView| self.win.views.iter().position(|w| w.id == v.id) == Some(i);
+        self.win.views.iter().enumerate().filter(move |(i, v)| self.reload_changed_files && first_tab(*i, v)).filter_map(|(_, v)| {
             let path = self.session.get(v.id)?.path.as_deref()?;
             Some((v.id, path, self.watch.known.get(&v.id).copied(), self.watch.epoch(v.id)))
         })
@@ -357,7 +357,7 @@ impl PdfCraftApp {
             && sent.next().is_none();
         if !unchanged {
             let list: Vec<Watched> = self.watched().map(|(doc, path, known, epoch)| Watched { doc, path: path.to_owned(), known, epoch }).collect();
-            let open: Vec<DocId> = self.views.iter().map(|v| v.id).collect();
+            let open: Vec<DocId> = self.win.views.iter().map(|v| v.id).collect();
             self.watch.known.retain(|doc, _| open.contains(doc));
             self.watch.basis.retain(|doc, _| open.contains(doc));
             self.watch.epoch.retain(|doc, _| open.contains(doc));
@@ -424,7 +424,7 @@ impl PdfCraftApp {
         // A dialog acts on the active document when its OK is pressed: replacing the document
         // under it would apply the dialog to another version (#3917). Keep the newest version
         // found until the dialog closes; the checks below run then.
-        if self.holds_reload() && self.active == Some(i) {
+        if self.holds_reload() && self.win.active == Some(i) {
             self.watch.held = Some(c);
             return;
         }
@@ -449,7 +449,7 @@ impl PdfCraftApp {
         // Unsaved work in any tab of the document holds the reload back, and every tab of it
         // shows the Reload notice.
         if self.document_has_unsaved_work(c.doc) {
-            for view in self.views.iter_mut().filter(|v| v.id == c.doc) {
+            for view in self.win.views.iter_mut().filter(|v| v.id == c.doc) {
                 view.disk_changed = true;
             }
             return;
@@ -479,7 +479,7 @@ impl PdfCraftApp {
     /// version that can't be opened leaves the document as it was, and says so. Every tab of the
     /// document (Duplicate Tab) shows the new version, each keeping its own place.
     fn reload_view(&mut self, i: usize, bytes: Arc<Vec<u8>>) {
-        let Some(id) = self.views.get(i).map(|v| v.id) else { return };
+        let Some(id) = self.win.views.get(i).map(|v| v.id) else { return };
         // Rulers and guides catch up with the document as it is before it is replaced (OV11).
         self.sync_doc_prefs();
         match self.session.reload(id, bytes) {
@@ -492,7 +492,7 @@ impl PdfCraftApp {
                     // Guides stay with their page numbers (this fork, OV11).
                     self.doc_prefs.rebase(doc);
                     let version = crate::content_version(doc);
-                    for view in self.views.iter_mut().filter(|v| v.id == id) {
+                    for view in self.win.views.iter_mut().filter(|v| v.id == id) {
                         view.document_replaced(&doc.info);
                         view.content_seen = Some(version);
                     }
@@ -594,7 +594,7 @@ mod tests {
 
     fn doc<'a>(h: &'a Harness<'static, PdfCraftApp>) -> &'a pdfcraft_engine::Document {
         let app = h.state();
-        app.session.get(app.views[0].id).unwrap()
+        app.session.get(app.win.views[0].id).unwrap()
     }
 
     /// #2348 review (CodeRabbit): a reload from disk replaces the document, so a signature
@@ -605,7 +605,7 @@ mod tests {
         let (_dir, path) = TempDir::new("lock-reload", &fixture(1));
         let mut h = harness(&path);
         h.run_steps(3);
-        let id = h.state().views[0].id;
+        let id = h.state().win.views[0].id;
         h.state_mut().placed_signatures.insert(id);
         h.state_mut().reload_view(0, Arc::new(b"not a pdf".to_vec()));
         assert!(h.state().placed_signatures.contains(&id), "a failed reload keeps the mark");
@@ -621,7 +621,7 @@ mod tests {
         let (_dir, path) = TempDir::new("association-metadata", &fixture(2));
         let mut h = harness(&path);
         let app = h.state_mut();
-        app.views[0].select_pages(&[0]);
+        app.win.views[0].select_pages(&[0]);
         app.apply_edit(pdfcraft_engine::Edit::RotatePages { pages: vec![0], degrees: 90 });
         xattr::set(&path, "com.apple.quarantine", b"2082;1234;Preview;").unwrap();
         // Exercise Save before the worker has consumed the metadata change.
@@ -629,7 +629,7 @@ mod tests {
         xattr::set(&path, "com.apple.quarantine", b"2082;5678;Preview;").unwrap();
         h.run_steps(4);
         assert!(doc(&h).can_undo().is_some(), "metadata-only events must not reload and clear history");
-        assert!(!h.state().views[0].disk_changed);
+        assert!(!h.state().win.views[0].disk_changed);
     }
 
     /// The repair parser's 64 KiB cap must not override the shared writer's larger limit.
@@ -641,7 +641,7 @@ mod tests {
         xattr::set(&path, "com.apple.quarantine", b"0082;1234;Preview;").unwrap();
         let mut h = harness(&path);
         let app = h.state_mut();
-        app.views[0].select_pages(&[0]);
+        app.win.views[0].select_pages(&[0]);
         app.apply_edit(pdfcraft_engine::Edit::RotatePages { pages: vec![0], degrees: 90 });
         assert!(app.save_active(SaveTarget::InPlace), "the document save uses upstream preservation limits");
         assert_eq!(xattr::get(&path, "com.apple.LaunchServices.OpenWith").unwrap().unwrap().len(), 65537);
@@ -659,7 +659,7 @@ mod tests {
         std::fs::write(&path, changed).unwrap();
         std::fs::File::options().write(true).open(&path).unwrap().set_modified(old).unwrap();
         let app = h.state_mut();
-        app.views[0].select_pages(&[0]);
+        app.win.views[0].select_pages(&[0]);
         app.apply_edit(pdfcraft_engine::Edit::RotatePages { pages: vec![0], degrees: 90 });
         assert!(!app.save_active(SaveTarget::InPlace));
         assert!(matches!(app.dialog, Some(crate::Dialog::OverwriteChanged)));
@@ -674,7 +674,7 @@ mod tests {
         let mut h = harness(&path);
         let stale = find_new_version(h.state_mut(), &path, &fixture(3));
         let app = h.state_mut();
-        app.views[0].select_pages(&[0]);
+        app.win.views[0].select_pages(&[0]);
         app.apply_edit(pdfcraft_engine::Edit::RotatePages { pages: vec![0], degrees: 90 });
         // B is on disk, not the A the document came from: Save asks first (#2166), and the
         // user saves C over it.
@@ -687,7 +687,7 @@ mod tests {
         let d = doc(&h);
         assert_eq!(d.info.pages.len(), 2, "the stale version was not applied over the saved one");
         assert!(d.can_undo().is_some() && !d.dirty, "the saved document and its history stay");
-        assert_eq!(Stamp::at(&path), h.state().watch.known.get(&h.state().views[0].id).copied(), "C is still on disk");
+        assert_eq!(Stamp::at(&path), h.state().watch.known.get(&h.state().win.views[0].id).copied(), "C is still on disk");
     }
 
     /// #1802: version B found under the old path, then Save As to another file: B is not applied
@@ -699,7 +699,7 @@ mod tests {
         let stale = find_new_version(h.state_mut(), &path, &fixture(3));
         let new_path = dir.0.join("copy.pdf").to_string_lossy().into_owned();
         let app = h.state_mut();
-        app.views[0].select_pages(&[0]);
+        app.win.views[0].select_pages(&[0]);
         app.apply_edit(pdfcraft_engine::Edit::RotatePages { pages: vec![0], degrees: 90 });
         app.save_override = Some(new_path.clone());
         assert!(app.save_active(SaveTarget::As), "saved as the new file");
@@ -720,25 +720,25 @@ mod tests {
         std::fs::write(&b, fixture(3)).unwrap();
         let mut h = harness(&a);
         h.state_mut().open_path(&b);
-        h.state_mut().active = Some(0);
+        h.state_mut().win.active = Some(0);
         h.run_steps(2);
         (dir, a, b, h)
     }
 
     fn rotate(app: &mut PdfCraftApp, tab: usize) {
-        let id = app.views[tab].id;
+        let id = app.win.views[tab].id;
         app.session.apply(id, pdfcraft_engine::Edit::RotatePages { pages: vec![0], degrees: 90 }).unwrap();
     }
 
     fn state(app: &PdfCraftApp, tab: usize) -> (Option<String>, String, bool, usize) {
-        let d = app.session.get(app.views[tab].id).unwrap();
+        let d = app.session.get(app.win.views[tab].id).unwrap();
         (d.path.clone(), d.name.clone(), d.dirty, d.info.pages.len())
     }
 
     const REFUSED: &str = "other.pdf is open in another tab. Close it or choose another name.";
 
     fn toast(app: &PdfCraftApp) -> &str {
-        app.toast.as_ref().map_or("", |t| t.0.as_str())
+        app.win.toast.as_ref().map_or("", |t| t.0.as_str())
     }
 
     #[test]
@@ -783,14 +783,14 @@ mod tests {
         let app = h.state_mut();
         // A new document: Save asks where, and the answer is B's file.
         app.open_bytes("new.pdf", None, fixture(1)).unwrap();
-        let new = app.views.len() - 1;
+        let new = app.win.views.len() - 1;
         rotate(app, new);
         app.save_override = Some(b.clone());
         app.request_close_tab(new);
         assert!(app.close_request.is_some(), "asks to save first");
         app.resolve_close(&egui::Context::default(), Some(true));
         assert_eq!(toast(app), REFUSED);
-        assert_eq!(app.views.len(), 3, "the tab stays open");
+        assert_eq!(app.win.views.len(), 3, "the tab stays open");
         assert_eq!(state(app, new), (None, "new.pdf".into(), true, 1), "with its unsaved changes");
         assert_eq!(std::fs::read(&b).unwrap(), fixture(3));
     }
@@ -838,7 +838,7 @@ mod tests {
         assert!(matches!(app.dialog, Some(crate::Dialog::OverwriteChanged)), "asks first");
         let alias = alias_of(&dir, &a);
         app.open_path(&alias);
-        assert_eq!(app.views.len(), 2, "opened as a second document");
+        assert_eq!(app.win.views.len(), 2, "opened as a second document");
         rotate(app, 1);
         let before_b = state(app, 1);
         app.overwrite_changed_file();
@@ -859,7 +859,7 @@ mod tests {
         assert!(!state(app, 0).2);
         // Its own file again, from a Duplicate Tab.
         let dup = app.duplicate_view(0).unwrap();
-        app.active = Some(dup);
+        app.win.active = Some(dup);
         rotate(app, dup);
         app.save_override = Some(a.clone());
         assert!(app.save_active(SaveTarget::As), "a duplicate is the same document");
@@ -870,9 +870,9 @@ mod tests {
         assert!(app.save_active(SaveTarget::As));
         assert_eq!(state(app, dup).0, Some(copy));
         // B's file once B is closed.
-        let b_tab = (0..app.views.len()).find(|&i| state(app, i).1 == "other.pdf").unwrap();
+        let b_tab = (0..app.win.views.len()).find(|&i| state(app, i).1 == "other.pdf").unwrap();
         app.close_tab(b_tab);
-        app.active = Some(0);
+        app.win.active = Some(0);
         rotate(app, 0);
         app.save_override = Some(b.clone());
         assert!(app.save_active(SaveTarget::As));

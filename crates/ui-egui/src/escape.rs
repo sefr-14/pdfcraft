@@ -31,11 +31,11 @@ impl PdfCraftApp {
             return;
         }
         let field = self.keyboard_owner.or_else(|| ctx.memory(|m| m.focused()));
-        let measuring = matches!(self.quick_tool, QuickTool::Measure(_));
-        let active = self.active.filter(|&i| i < self.views.len());
+        let measuring = matches!(self.win.quick_tool, QuickTool::Measure(_));
+        let active = self.win.active.filter(|&i| i < self.win.views.len());
         if let Some(field) = field {
             if let Some(i) = active {
-                let view = &mut self.views[i];
+                let view = &mut self.win.views[i];
                 let step = if measuring && view.measure.calibrating() && view.measure.known_field == Some(field) {
                     view.measure.cancel_calibration()
                 } else {
@@ -55,12 +55,12 @@ impl PdfCraftApp {
             return;
         }
         // A tool-key pair half typed (D, R) is dropped, and that is all this press does (KEY.1).
-        if self.pending_keys.take().is_some() {
+        if self.win.pending_keys.take().is_some() {
             take(ctx);
             return;
         }
         let Some(i) = active else { return };
-        let view = &mut self.views[i];
+        let view = &mut self.win.views[i];
         // A guide held by the pointer goes back; else the selected guide is let go of.
         let id = view.id;
         if crate::guides::cancel_drag(view, &mut self.doc_prefs, id) || view.guides.selected.take().is_some() {
@@ -92,7 +92,7 @@ impl PdfCraftApp {
         }
         if measuring {
             view.measure.cancel();
-            self.quick_tool = QuickTool::Select;
+            self.win.quick_tool = QuickTool::Select;
             take(ctx);
         }
     }
@@ -101,7 +101,7 @@ impl PdfCraftApp {
     /// press. Also notes which widget has the keyboard, for the next frame's first step (egui lets
     /// go of a focused field on Escape before the app sees the press).
     pub(crate) fn escape_late(&mut self, ctx: &egui::Context) {
-        if self.full_screen
+        if self.win.full_screen
             && !self.escape_reserved
             && self.combine_tab.preview.is_none()
             && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape))
@@ -113,7 +113,7 @@ impl PdfCraftApp {
 
     /// The command palette is drawn this frame (full screen shows the page only).
     fn palette_shown(&self) -> bool {
-        self.palette_open && !(self.full_screen && self.active.is_some())
+        self.win.palette_open && !(self.win.full_screen && self.win.active.is_some())
     }
 }
 

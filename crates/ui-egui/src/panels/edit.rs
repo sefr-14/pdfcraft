@@ -27,7 +27,7 @@ pub(super) fn edit_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens, g
     let from_all_tools = app.mode != crate::Mode::Edit;
     ui.horizontal(|ui| {
         if from_all_tools && icons::button(ui, "chevron-left", 26.0, false, tl!("Back to all tools")).clicked() {
-            app.left = LeftPanel::AllTools;
+            app.win.left = LeftPanel::AllTools;
             app.enter_mode(crate::Mode::AllTools);
         }
         // "Edit" under the Edit tab, as Acrobat titles it; the tool's own name from All tools.
@@ -39,14 +39,14 @@ pub(super) fn edit_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens, g
             run = Some("app.preferences");
         }
         if icons::button(ui, "x", 26.0, false, tl!("Close panel")).clicked() {
-            app.left_open = false;
+            app.win.left_open = false;
         }
     });
     ui.add_space(4.0);
     ui.separator();
     ui.add_space(6.0);
     // Several objects selected: how many, and how to move them. Acrobat's panel has no idle hint.
-    let count = app.active_ids().filter(|_| app.quick_tool == crate::QuickTool::EditText).map_or(0, |(i, _)| app.views[i].objects.count());
+    let count = app.active_ids().filter(|_| app.win.quick_tool == crate::QuickTool::EditText).map_or(0, |(i, _)| app.win.views[i].objects.count());
     if count > 0 {
         ui.label(crate::i18n::trn(crate::i18n::current(), count as u64, "{n} object selected", "{n} objects selected"));
         ui.label(tl!("Drag the selection to move it. Esc clears the selection."));
@@ -74,7 +74,7 @@ pub(super) fn edit_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens, g
             && edit_row(ui, t, i.icon, tl!(i.label), i.availability).clicked()
         {
             // With no document there is no grid to open: the command asks for a file first.
-            if app.active.is_some() {
+            if app.win.active.is_some() {
                 tool = Some("organize");
             } else {
                 run = Some("page.organize");
@@ -149,7 +149,7 @@ pub(super) fn actions_menu(
         for (n, id) in item.actions.iter().enumerate() {
             let Some(spec) = pdfcraft_engine::commands::command(id) else { continue };
             // Add stays usable with no document open: it asks for a file first.
-            let enabled = (n == 0 && app.active.is_none()) || app.command_enabled(spec);
+            let enabled = (n == 0 && app.win.active.is_none()) || app.command_enabled(spec);
             let label = crate::i18n::menu_label(spec.id, spec.label);
             if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
                 run = Some(spec.id);
@@ -194,7 +194,7 @@ pub(super) fn stamp_palette(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens
         ] {
             widgets::section_title(ui, title);
             for kind in StampKind::ALL.into_iter().filter(|k| k.group() == group) {
-                let active = app.quick_tool == crate::QuickTool::Stamp(kind);
+                let active = app.win.quick_tool == crate::QuickTool::Stamp(kind);
                 let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 38.0), Sense::click());
                 resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, active, kind.label()));
                 let press = theme::Press::track(ui, &resp);
@@ -243,7 +243,7 @@ pub(super) fn stamp_palette(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens
                     }
                 }
                 if theme::hand(resp).clicked() {
-                    app.quick_tool = crate::QuickTool::Stamp(kind);
+                    app.win.quick_tool = crate::QuickTool::Stamp(kind);
                 }
             }
         }
@@ -256,13 +256,13 @@ pub(super) fn stamp_palette(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens
 fn format_section(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens) {
     // Editing a paragraph of existing text: its formatting, applied as it changes.
     if let Some((i, _)) = app.active_ids()
-        && let Some(ed) = app.views[i].line_editor.clone()
+        && let Some(ed) = app.win.views[i].line_editor.clone()
     {
         use crate::format_text_ui::{FontChoice, Fonts};
         let mut ed = ed;
         let sources: Vec<(String, String)> = app
             .session
-            .get(app.views[i].id)
+            .get(app.win.views[i].id)
             .map(|d| d.text_editor_fonts(ed.page))
             .unwrap_or_default()
             .into_iter()
@@ -316,9 +316,9 @@ fn format_section(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens) {
     }
     // Typing added text: the box's formatting, and alignment for the lines a selection touches.
     if let Some(i) = app.active_ids().map(|(i, _)| i)
-        && let Some(draft) = app.views[i].content.draft.clone()
+        && let Some(draft) = app.win.views[i].content.draft.clone()
     {
-        if draft.index.is_none() && app.quick_tool == crate::QuickTool::AddText {
+        if draft.index.is_none() && app.win.quick_tool == crate::QuickTool::AddText {
             crate::content_ui::hint(ui, t);
         }
         let mut style = draft.style.clone();
@@ -327,7 +327,7 @@ fn format_section(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens) {
         if let Some(script) = out.script {
             let mut toggled = draft.clone();
             if crate::edit_text_ui::toggle_script(&mut toggled.text, &mut toggled.selection, script) {
-                app.views[i].content.draft = Some(toggled);
+                app.win.views[i].content.draft = Some(toggled);
             }
         }
         if style != draft.style {
@@ -336,7 +336,7 @@ fn format_section(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens) {
         return;
     }
     let image = app.active_ids().and_then(|(i, id)| {
-        let (page, index) = app.views[i].content.selected?;
+        let (page, index) = app.win.views[i].content.selected?;
         let doc = app.session.get(id)?;
         match &doc.added().iter().filter(|a| a.page == page).nth(index)?.content {
             pdfcraft_engine::AddedContent::Image(img) => Some((page, index, img.clone())),
@@ -356,7 +356,7 @@ fn format_section(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens) {
         return;
     }
     let selected = app.active_ids().and_then(|(i, id)| {
-        let (page, index) = app.views[i].content.selected?;
+        let (page, index) = app.win.views[i].content.selected?;
         let doc = app.session.get(id)?;
         let a = doc.added().iter().filter(|a| a.page == page).nth(index)?;
         match &a.content {
@@ -375,7 +375,7 @@ fn format_section(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens) {
                 }
             }
         }
-        None if app.quick_tool == crate::QuickTool::AddText => {
+        None if app.win.quick_tool == crate::QuickTool::AddText => {
             crate::content_ui::hint(ui, t);
             let mut style = app.text_style.clone();
             added_text_format(ui, t, &mut style, None);
@@ -411,7 +411,7 @@ impl PdfCraftApp {
         // differ from the item the page reads back without it, and a later pick of the ink's
         // look would bring it back.
         style.drop_stale_ink();
-        let Some(view) = self.views.get_mut(index) else { return };
+        let Some(view) = self.win.views.get_mut(index) else { return };
         // Text the standard fonts can't draw stays in the box, unwritten, until it is corrected (#125).
         let blocked = view.content.blocked().is_some();
         let Some(d) = view.content.draft.as_mut() else { return };
@@ -429,7 +429,7 @@ impl PdfCraftApp {
             return;
         }
         if self.apply_edit(pdfcraft_engine::Edit::UpdateContent { page, index: item, content: pdfcraft_engine::AddedContent::Text(updated.clone()) })
-            && let Some(d) = self.views.get_mut(index).and_then(|v| v.content.draft.as_mut())
+            && let Some(d) = self.win.views.get_mut(index).and_then(|v| v.content.draft.as_mut())
         {
             // What the page has now. The aligns stay those of the text in the box.
             d.style = pdfcraft_engine::AddedText { aligns: std::mem::take(&mut d.style.aligns), ..updated };
@@ -444,7 +444,7 @@ impl PdfCraftApp {
         let edit = pdfcraft_engine::Edit::EditTextBlock { page: ed.page, block: ed.block, text: ed.text.clone(), style: ed.style() };
         if self.apply_edit(edit) {
             ed.applied();
-            if let Some(doc) = self.session.get(self.views[index].id)
+            if let Some(doc) = self.session.get(self.win.views[index].id)
                 && let Some(block) = doc.text_blocks(ed.page).get(ed.block)
             {
                 ed.refresh_source(block, doc.text_lines(ed.page));
@@ -453,6 +453,6 @@ impl PdfCraftApp {
                 }
             }
         }
-        self.views[index].line_editor = Some(ed);
+        self.win.views[index].line_editor = Some(ed);
     }
 }

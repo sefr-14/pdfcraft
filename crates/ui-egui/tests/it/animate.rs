@@ -60,7 +60,7 @@ fn push_buttons_alone_show_no_form_bar_and_a_screen_annotation_is_not_a_comment(
     let h = open(pdf(&[&a, &b, &c, SCREEN]));
     {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         assert_eq!(doc.info.fields.len(), 3, "the frames are still fields");
         assert!(doc.info.fields.iter().all(|f| f.kind == pdfcraft_render::FieldKind::PushButton));
         assert!(doc.info.annotations.is_empty(), "no comments: {:?}", doc.info.annotations);

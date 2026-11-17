@@ -459,7 +459,7 @@ impl PdfCraftApp {
 
     /// The most recently opened tab came from `meta`: keep its recovery entry and path.
     pub(crate) fn finish_recovery(&mut self, meta: &RecoveryMeta) {
-        let Some(id) = self.views.last().map(|v| v.id) else { return };
+        let Some(id) = self.win.views.last().map(|v| v.id) else { return };
         self.session.mark_recovered(id, meta.path.clone());
         if meta.path.is_some() {
             self.recovered_paths.insert(id);
@@ -722,7 +722,7 @@ mod sidecar_tests {
         let keys: Vec<String> = app.recoverable.iter().map(|m| m.key.clone()).collect();
         assert_eq!(keys.len(), 1);
         app.recover(&keys);
-        assert_eq!(app.views.len(), 1);
+        assert_eq!(app.win.views.len(), 1);
         let chosen = dir.path().join("chosen.pdf");
         app.pick_override = Some(vec![chosen.to_string_lossy().into_owned()]);
 

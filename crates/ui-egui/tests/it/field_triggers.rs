@@ -55,7 +55,7 @@ fn centre(h: &Harness<'static, PdfCraftApp>, name: &str) -> egui::Pos2 {
     let app = h.state();
     let (index, id) = app.active_ids().unwrap();
     let doc = app.session.get(id).unwrap();
-    pdfcraft_ui_egui::forms_ui::field_screen_rect(&app.views[index], &doc.info, field(app, name), 0).unwrap().center()
+    pdfcraft_ui_egui::forms_ui::field_screen_rect(&app.win.views[index], &doc.info, field(app, name), 0).unwrap().center()
 }
 
 fn log(h: &Harness<'static, PdfCraftApp>) -> String {

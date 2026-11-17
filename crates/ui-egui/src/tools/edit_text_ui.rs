@@ -1279,7 +1279,7 @@ C", &picked
         let mut app = crate::PdfCraftApp::new();
         let bytes = app.session.create_from_text("Preview", "Preview text").unwrap();
         app.open_bytes("preview.pdf", None, bytes.as_ref().clone()).unwrap();
-        let doc = app.session.get(app.views[0].id).unwrap();
+        let doc = app.session.get(app.win.views[0].id).unwrap();
         let block = doc.text_blocks(0).remove(0);
         let ed = LineEditor {
             selection: None,
@@ -1356,14 +1356,14 @@ C", &picked
         // Loading a font used to only register it on the page: the paragraph kept its source
         // face until the font was found again in the document-font menu (#2591).
         let (mut app, ed) = preview_app();
-        app.views[0].line_editor = Some(ed);
+        app.win.views[0].line_editor = Some(ed);
         let inter = include_bytes!("../../../../assets/fonts/Inter-Regular.ttf").to_vec();
         app.use_files(crate::files::FilePurpose::TextFont { page: 0 }, vec![("Inter-Regular.ttf".into(), inter)]);
-        let doc = app.session.get(app.views[0].id).unwrap();
+        let doc = app.session.get(app.win.views[0].id).unwrap();
         let lines = doc.text_lines(0);
         assert_eq!(lines.iter().map(|l| l.text.as_str()).collect::<String>(), "Preview text");
         assert!(lines.iter().all(|l| l.base_font == "Inter-Regular"), "{:?}", lines.iter().map(|l| &l.base_font).collect::<Vec<_>>());
-        assert!(app.views[0].line_editor.is_some(), "the paragraph stays open for editing");
+        assert!(app.win.views[0].line_editor.is_some(), "the paragraph stays open for editing");
     }
 
     #[test]
@@ -1371,15 +1371,15 @@ C", &picked
         // Save wrote the file without the paragraph still open in the editor (#3496).
         let (mut app, mut ed) = preview_app();
         ed.text = "Text preview".into();
-        app.views[0].line_editor = Some(ed);
+        app.win.views[0].line_editor = Some(ed);
         let dir = std::env::temp_dir().join(format!("pdfcraft-ui-open-paragraph-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         app.save_override = Some(dir.join("out.pdf").to_string_lossy().into_owned());
 
         assert!(app.save_active(crate::SaveTarget::InPlace));
-        assert!(app.views[0].line_editor.is_none());
-        let doc = app.session.get(app.views[0].id).unwrap();
+        assert!(app.win.views[0].line_editor.is_none());
+        let doc = app.session.get(app.win.views[0].id).unwrap();
         assert_eq!(doc.text_lines(0).iter().map(|l| l.text.as_str()).collect::<String>(), "Text preview");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1388,7 +1388,7 @@ C", &picked
     fn a_refused_text_box_does_not_lose_the_open_paragraph() {
         let (mut app, mut ed) = preview_app();
         ed.text = "Text preview".into();
-        app.views[0].line_editor = Some(ed);
+        app.win.views[0].line_editor = Some(ed);
         let draft = crate::content_ui::TextDraft {
             page: 9,
             index: None,
@@ -1399,12 +1399,12 @@ C", &picked
             selection: None,
             typing_from: None,
         };
-        app.views[0].content.draft = Some(draft.clone());
+        app.win.views[0].content.draft = Some(draft.clone());
 
-        assert!(!app.commit_typing_in(app.views[0].id));
-        assert_eq!(app.views[0].content.draft, Some(draft), "the refused text box stays open");
-        assert!(app.views[0].line_editor.is_none(), "the paragraph was applied");
-        let doc = app.session.get(app.views[0].id).unwrap();
+        assert!(!app.commit_typing_in(app.win.views[0].id));
+        assert_eq!(app.win.views[0].content.draft, Some(draft), "the refused text box stays open");
+        assert!(app.win.views[0].line_editor.is_none(), "the paragraph was applied");
+        let doc = app.session.get(app.win.views[0].id).unwrap();
         assert_eq!(doc.text_lines(0).iter().map(|l| l.text.as_str()).collect::<String>(), "Text preview");
     }
 
@@ -1426,7 +1426,7 @@ C", &picked
         let png = pdfcraft_engine::export::encode_png(200, 100, &[235u8; 200 * 100 * 4]).unwrap();
         let bytes = app.session.create_from_images(&[("scan.png".into(), png)]).unwrap();
         app.open_bytes("scan.pdf", None, bytes.as_ref().clone()).unwrap();
-        let id = app.views[0].id;
+        let id = app.win.views[0].id;
         let words = vec![word("JOHN", 20.0, 45.0, 15.0), word("SMITH", 49.0, 78.0, 9.0), word("EXAMPLE", 82.0, 124.0, 11.0)];
         app.session.apply(id, Edit::AddOcrText { page: 0, words }).unwrap();
         let doc = app.session.get(id).unwrap();
@@ -1456,16 +1456,16 @@ C", &picked
         let (mut app, mut ed) = preview_app();
         ed.text = "Text preview".into();
         ed.page = 9;
-        app.views[0].line_editor = Some(ed.clone());
+        app.win.views[0].line_editor = Some(ed.clone());
 
-        assert!(!app.commit_typing_in(app.views[0].id));
-        assert_eq!(app.views[0].line_editor, Some(ed), "the paragraph keeps its unsaved text");
+        assert!(!app.commit_typing_in(app.win.views[0].id));
+        assert_eq!(app.win.views[0].line_editor, Some(ed), "the paragraph keeps its unsaved text");
     }
 
     #[test]
     fn text_background_is_cached_without_editing_and_released_on_cancel() {
         let (app, ed) = preview_app();
-        let doc = app.session.get(app.views[0].id).unwrap();
+        let doc = app.session.get(app.win.views[0].id).unwrap();
         let source = doc.bytes.clone();
         let generation = doc.edit_generation();
         let ctx = egui::Context::default();
@@ -1495,7 +1495,7 @@ C", &picked
         // asked for at the tiling threshold, not the 2048-pixel backdrop side, which went soft
         // beyond about 1.2x on a Retina display.
         let (app, ed) = preview_app();
-        let doc = app.session.get(app.views[0].id).unwrap();
+        let doc = app.session.get(app.win.views[0].id).unwrap();
         let page = &doc.info.pages[0];
         let ctx = egui::Context::default();
         ctx.begin_pass(egui::RawInput { max_texture_side: Some(16384), ..Default::default() });

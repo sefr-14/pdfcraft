@@ -25,13 +25,13 @@ fn each_panes_find_input_has_its_own_id() {
     // ⌘\ splits the document: a second view of it in the second pane.
     h.key_press_modifiers(Modifiers::COMMAND, Key::Backslash);
     h.run_steps(4);
-    assert_eq!(h.state().views.len(), 2);
-    let (first, second) = (h.state().views[0].find_input_id(), h.state().views[1].find_input_id());
+    assert_eq!(h.state().win.views.len(), 2);
+    let (first, second) = (h.state().win.views[0].find_input_id(), h.state().win.views[1].find_input_id());
     assert_ne!(first, second, "one find field id per pane");
 
     // Find open in both panes, the second one asking for the focus last.
-    h.state_mut().views[0].open_find();
-    h.state_mut().views[1].open_find();
+    h.state_mut().win.views[0].open_find();
+    h.state_mut().win.views[1].open_find();
     h.run_steps(4);
     let focused = h.ctx.memory(|m| m.focused());
     assert_eq!(focused, Some(second), "the focus is in the pane that asked last");
@@ -40,8 +40,8 @@ fn each_panes_find_input_has_its_own_id() {
     // Typing goes to one query only.
     h.event(egui::Event::Text("abc".into()));
     h.run_steps(2);
-    assert_eq!(h.state().views[1].find.as_ref().unwrap().query, "abc");
-    assert!(h.state().views[0].find.as_ref().unwrap().query.is_empty());
+    assert_eq!(h.state().win.views[1].find.as_ref().unwrap().query, "abc");
+    assert!(h.state().win.views[0].find.as_ref().unwrap().query.is_empty());
 }
 
 /// With the same document in both panes, Find and Close act on the second pane, the one in use.
@@ -50,18 +50,18 @@ fn find_and_close_act_on_the_second_pane() {
     let mut h = harness();
     h.key_press_modifiers(Modifiers::COMMAND, Key::Backslash);
     h.run_steps(4);
-    assert_eq!(h.state().active, Some(1), "the new pane is the one in use");
+    assert_eq!(h.state().win.active, Some(1), "the new pane is the one in use");
 
     h.key_press_modifiers(Modifiers::COMMAND, Key::F);
     h.run_steps(4);
-    assert!(h.state().views[1].find.is_some(), "Find opens in the pane in use");
-    assert!(h.state().views[0].find.is_none(), "and not in the other");
+    assert!(h.state().win.views[1].find.is_some(), "Find opens in the pane in use");
+    assert!(h.state().win.views[0].find.is_none(), "and not in the other");
 
-    let (kept, id) = (h.state().views[0].view_key(), h.state().views[0].id);
+    let (kept, id) = (h.state().win.views[0].view_key(), h.state().win.views[0].id);
     h.key_press_modifiers(Modifiers::COMMAND, Key::W);
     h.run_steps(4);
-    assert_eq!(h.state().views.len(), 1, "Close closes that pane's tab");
-    assert_eq!(h.state().views[0].view_key(), kept, "and not the first pane's");
+    assert_eq!(h.state().win.views.len(), 1, "Close closes that pane's tab");
+    assert_eq!(h.state().win.views[0].view_key(), kept, "and not the first pane's");
     assert!(h.state().session.get(id).is_some(), "the document stays open");
 }
 
@@ -73,9 +73,9 @@ fn altgr_backslash_does_not_split() {
     let altgr = Modifiers { alt: true, ctrl: true, command: true, ..Modifiers::NONE };
     h.key_press_modifiers(altgr, Key::Backslash);
     h.run_steps(4);
-    assert_eq!(h.state().views.len(), 1, "AltGr+key types a backslash");
-    assert!(h.state().panes.split.is_none());
+    assert_eq!(h.state().win.views.len(), 1, "AltGr+key types a backslash");
+    assert!(h.state().win.panes.split.is_none());
     h.key_press_modifiers(Modifiers::COMMAND, Key::Backslash);
     h.run_steps(4);
-    assert!(h.state().panes.split.is_some(), "Ctrl+backslash splits");
+    assert!(h.state().win.panes.split.is_some(), "Ctrl+backslash splits");
 }

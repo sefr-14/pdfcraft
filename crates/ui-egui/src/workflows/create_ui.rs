@@ -138,11 +138,11 @@ impl PdfCraftApp {
         let mut view = crate::DocView::new(id, &doc.info, self.view_defaults);
         // This fork (SYNC.16m, SYNC.17): its comment selection starts in this version of the document.
         view.comments.stamp(crate::content_version(doc));
-        if self.full_screen {
+        if self.win.full_screen {
             view.enter_presentation();
         }
-        self.views.push(view);
-        self.active = Some(self.views.len() - 1);
+        self.win.views.push(view);
+        self.win.active = Some(self.win.views.len() - 1);
         Ok(())
     }
 

@@ -59,7 +59,7 @@ fn harness_with(pdf: Vec<u8>, setup: impl FnOnce(&mut PdfCraftApp) + 'static) ->
 
 /// The screen position of a point given in PDF user space (y up) on the 300 × 400 page.
 fn at(h: &Harness<'static, PdfCraftApp>, x: f32, y: f32) -> Pos2 {
-    let r = h.state().views[0].page_screen_rect(0).unwrap();
+    let r = h.state().win.views[0].page_screen_rect(0).unwrap();
     let k = r.width() / 300.0;
     r.min + egui::vec2(x * k, (400.0 - y) * k)
 }
@@ -76,7 +76,7 @@ fn click(h: &mut Harness<'static, PdfCraftApp>, p: Pos2) {
 /// Whether Red and Green are shown.
 fn shown(h: &Harness<'static, PdfCraftApp>) -> Vec<(String, bool)> {
     let s = h.state();
-    s.session.get(s.views[0].id).unwrap().info.layers.iter().map(|l| (l.name.clone(), l.visible)).collect()
+    s.session.get(s.win.views[0].id).unwrap().info.layers.iter().map(|l| (l.name.clone(), l.visible)).collect()
 }
 
 fn layers(red: bool, green: bool) -> Vec<(String, bool)> {
@@ -98,7 +98,7 @@ fn links_set_layer_visibility() {
     click(&mut h, link);
     assert_eq!(shown(&h), layers(false, false));
     let s = h.state();
-    assert!(!s.session.get(s.views[0].id).unwrap().dirty, "showing and hiding layers doesn't change the document");
+    assert!(!s.session.get(s.win.views[0].id).unwrap().dirty, "showing and hiding layers doesn't change the document");
 }
 
 #[test]
@@ -111,7 +111,7 @@ fn push_buttons_set_layer_visibility() {
     click(&mut h, button);
     assert_eq!(shown(&h), layers(true, false));
     let s = h.state();
-    assert!(!s.session.get(s.views[0].id).unwrap().dirty, "showing and hiding layers doesn't change the document");
+    assert!(!s.session.get(s.win.views[0].id).unwrap().dirty, "showing and hiding layers doesn't change the document");
 }
 
 #[test]
@@ -129,7 +129,7 @@ fn layer_options_reset_to_initial_visibility() {
     h.run_steps(3);
     assert_eq!(shown(&h), layers(true, false));
     let s = h.state();
-    let doc = s.session.get(s.views[0].id).unwrap();
+    let doc = s.session.get(s.win.views[0].id).unwrap();
     assert!(!doc.dirty, "showing and hiding layers doesn't change the document");
     assert_eq!(doc.can_undo(), None, "nor is it an edit to undo");
 }

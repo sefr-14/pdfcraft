@@ -19,20 +19,20 @@ impl PdfCraftApp {
         if matches!(key, "rulers" | "guides" | "ruler_unit") {
             return self.set_ruler_option(key, value);
         }
-        let view = self.active.and_then(|i| self.views.get_mut(i));
+        let view = self.win.active.and_then(|i| self.win.views.get_mut(i));
         match (key, view) {
             ("hotbar-size", _) => {
                 let size: f32 = value.parse().map_err(|_| "hotbar-size must be 24–64 pixels")?;
                 if !size.is_finite() || !(24.0..=64.0).contains(&size) {
                     return Err("hotbar-size must be 24–64 pixels".into());
                 }
-                self.hotbar.button_size = size;
+                self.win.hotbar.button_size = size;
             }
             ("hotbar-full-side", _) => {
-                self.hotbar.full_side = value.parse().map_err(|_| "hotbar-full-side must be true or false")?;
+                self.win.hotbar.full_side = value.parse().map_err(|_| "hotbar-full-side must be true or false")?;
             }
-            ("hotbar-tools", _) => self.hotbar.set_tools(value)?,
-            ("hotbar-side", _) => self.hotbar.place(value)?,
+            ("hotbar-tools", _) => self.win.hotbar.set_tools(value)?,
+            ("hotbar-side", _) => self.win.hotbar.place(value)?,
             ("language", _) => {
                 let language = i18n::normalize_pref(value).ok_or_else(|| {
                     let codes: Vec<&str> = std::iter::once(i18n::AUTO).chain(i18n::Lang::all().map(i18n::Lang::code)).collect();
@@ -65,7 +65,7 @@ impl PdfCraftApp {
                 self.animation_effects = motion::AnimationEffects::parse(value).ok_or("animation_effects must be system, on, or off")?;
             }
             ("panel", _) => {
-                self.right = match value {
+                self.win.right = match value {
                     "comments" => Some(RightPanel::Comments),
                     "bookmarks" => Some(RightPanel::Bookmarks),
                     "pages" => Some(RightPanel::Pages),
@@ -87,7 +87,7 @@ impl PdfCraftApp {
                 self.mode = mode;
                 // As switch_mode: another workspace puts the expanded All tools view away.
                 if mode != Mode::AllTools {
-                    self.all_tools_full = false;
+                    self.win.all_tools_full = false;
                 }
             }
             ("default-mode", _) => {
@@ -99,12 +99,12 @@ impl PdfCraftApp {
                 let g = pdfcraft_engine::catalog::group(value).ok_or_else(|| format!("unknown tool {value}"))?;
                 self.select_tool(g.id);
             }
-            ("left", _) => self.left_open = value != "closed",
+            ("left", _) => self.win.left_open = value != "closed",
             ("home", _) => {
-                self.active = None;
+                self.win.active = None;
                 // With no document open the expanded All tools view covers Home itself, so no
                 // other tab comes forward to put it away.
-                self.all_tools_full = false;
+                self.win.all_tools_full = false;
             }
             ("dialog", _) => {
                 self.dialog = match value {
@@ -139,7 +139,7 @@ impl PdfCraftApp {
                     "optimize" => Some(Dialog::Optimize),
                     "sign" | "certify" => {
                         // Sign with a Digital ID for an invisible signature on the current page.
-                        let page = self.active.map_or(0, |i| self.views[i].current);
+                        let page = self.win.active.map_or(0, |i| self.win.views[i].current);
                         self.start_signing(page, None, None, (value == "certify").then_some(2));
                         Some(Dialog::Sign)
                     }
@@ -170,12 +170,12 @@ impl PdfCraftApp {
             }
             ("tools", _) if value == "full" => self.expand_all_tools(),
             ("tools", _) => {
-                self.all_tools_full = false;
-                self.all_tools_expanded = value != "collapsed";
+                self.win.all_tools_full = false;
+                self.win.all_tools_expanded = value != "collapsed";
             }
             ("palette", _) => {
-                self.palette_open = true;
-                self.palette_query = value.to_string();
+                self.win.palette_open = true;
+                self.win.palette_query = value.to_string();
             }
             ("page", Some(v)) => v.go_to_page(value.parse::<usize>().map_err(|e| e.to_string())?.saturating_sub(1)),
             ("zoom", Some(v)) => v.set_zoom(DocView::parse_zoom_percent(value).ok_or("zoom must be a percentage above 0")?),
@@ -244,14 +244,14 @@ impl PdfCraftApp {
                 };
             }
             ("tools-side", _) => {
-                self.side_panels.tools_side = match value {
+                self.win.side_panels.tools_side = match value {
                     "left" => side_panels::ToolsSide::Left,
                     "right" => side_panels::ToolsSide::Right,
                     _ => return Err("tools-side must be left or right".into()),
                 }
             }
             ("rail-side", _) => {
-                self.side_panels.rail_side = match value {
+                self.win.side_panels.rail_side = match value {
                     "left" => side_panels::ToolsSide::Left,
                     "right" => side_panels::ToolsSide::Right,
                     _ => return Err("rail-side must be left or right".into()),
@@ -299,7 +299,7 @@ impl PdfCraftApp {
                     .and_then(|d| d.info.layers.iter().position(|l| l.name == name))
                     .ok_or_else(|| format!("no layer named {name}"))?;
                 if self.session.set_layer_visible(id, idx, state != "off") {
-                    self.views[i].invalidate_content();
+                    self.win.views[i].invalidate_content();
                 }
             }
             ("find", Some(v)) => {
@@ -318,7 +318,7 @@ impl PdfCraftApp {
             ("notice", Some(v)) => v.notice_dismissed = value == "off",
             ("quick", _) => {
                 // `--quick select|hand|note|freetext|highlight|underline|strikeout|ink|line|arrow|square|circle`
-                self.quick_tool = match value {
+                self.win.quick_tool = match value {
                     "select" => QuickTool::Select,
                     measure if measure.starts_with("measure-") => QuickTool::Measure(
                         measure_ui::Tool::from_name(measure.trim_start_matches("measure-")).ok_or_else(|| format!("unknown tool {measure}"))?,

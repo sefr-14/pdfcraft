@@ -190,8 +190,8 @@ impl crate::PdfCraftApp {
     pub(crate) fn apply_viewer_preferences(&mut self, index: usize, v: &pdfcraft_engine::InitialView, activate: bool) {
         use pdfcraft_engine::{InitialLayout as L, Magnification as M};
         let own_view = self.always_default_view;
-        let only_document = self.views.len() == 1 && !self.combine_tab.open;
-        let Some(view) = self.views.get_mut(index) else { return };
+        let only_document = self.win.views.len() == 1 && !self.combine_tab.open;
+        let Some(view) = self.win.views.get_mut(index) else { return };
         view.interface = TabInterface::opening(HiddenInterface::asked_by(v), own_view);
         if !own_view && v.magnification == M::Default && matches!(v.layout, L::SinglePage | L::TwoUp | L::TwoUpCoverPage) {
             view.fit = crate::canvas::Fit::Page;
@@ -201,19 +201,19 @@ impl crate::PdfCraftApp {
             self.notify_interface_hidden();
         }
         // A browser page can't resize or move its window.
-        if !cfg!(target_arch = "wasm32") && activate && only_document && !self.full_screen && (v.fit_window || v.center_window) {
+        if !cfg!(target_arch = "wasm32") && activate && only_document && !self.win.full_screen && (v.fit_window || v.center_window) {
             self.pending_window = Some(PendingWindow { doc, fit: v.fit_window, center: v.center_window, frames_left: 30 });
         }
     }
 
     /// The parts of the interface hidden in the active tab.
     pub fn hidden_interface(&self) -> HiddenInterface {
-        self.active.and_then(|i| self.views.get(i)).map_or(HiddenInterface::NONE, |v| v.interface.hidden)
+        self.win.active.and_then(|i| self.win.views.get(i)).map_or(HiddenInterface::NONE, |v| v.interface.hidden)
     }
 
     /// [`TOGGLE`] in the active tab.
     pub(crate) fn toggle_interface(&mut self) {
-        let Some(view) = self.active.and_then(|i| self.views.get_mut(i)) else { return };
+        let Some(view) = self.win.active.and_then(|i| self.win.views.get_mut(i)) else { return };
         if view.interface.toggle() {
             self.notify_interface_hidden();
         }
@@ -230,10 +230,10 @@ impl crate::PdfCraftApp {
     pub(crate) fn window_preferences_frame(&mut self, ctx: &egui::Context) {
         let Some(mut pending) = self.pending_window.take() else { return };
         let Some((index, id)) = self.active_ids() else { return };
-        if id != pending.doc || self.views.len() != 1 || self.combine_tab.open {
+        if id != pending.doc || self.win.views.len() != 1 || self.combine_tab.open {
             return;
         }
-        let Some(view) = self.views.get(index) else { return };
+        let Some(view) = self.win.views.get(index) else { return };
         let area = view.viewport_rect();
         let page = self.session.get(id).and_then(|d| view.first_page_now(&d.info));
         let Some(page) = page.filter(|_| area.is_positive()) else {

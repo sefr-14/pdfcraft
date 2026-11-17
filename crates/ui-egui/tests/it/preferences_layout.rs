@@ -140,7 +140,7 @@ fn segmented_pill_controls_switch_modes_and_layouts() {
     h.run_steps(3);
     h.get_by_label("Left").click();
     h.run_steps(2);
-    assert_eq!(h.state().side_panels.tools_side, pdfcraft_ui_egui::side_panels::ToolsSide::Left);
+    assert_eq!(h.state().win.side_panels.tools_side, pdfcraft_ui_egui::side_panels::ToolsSide::Left);
 
     // Switch measurement units via segmented pill
     h.get_by_label("pt").scroll_to_me();

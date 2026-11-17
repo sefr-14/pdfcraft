@@ -4,7 +4,7 @@ use super::{Host, Reply, Value, json};
 impl Host for crate::PdfCraftApp {
     /// Cancel any in-progress pointer gesture in every open view.
     fn cancel_pointer_gestures(&mut self) {
-        for view in &mut self.views {
+        for view in &mut self.win.views {
             view.cancel_pointer_gestures();
         }
     }
@@ -28,15 +28,15 @@ impl Host for crate::PdfCraftApp {
     fn capture_epoch(&self) -> u64 {
         use std::hash::{Hash as _, Hasher as _};
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        let doc = self.active.and_then(|i| self.views.get(i)).map(|v| v.id.0);
+        let doc = self.win.active.and_then(|i| self.win.views.get(i)).map(|v| v.id.0);
         doc.hash(&mut hasher);
         format!(
             "{:?}/{:?}/{:?}/{:?}/{:?}",
             self.dialog,
             self.password_prompt.is_some(),
-            self.palette_open,
+            self.win.palette_open,
             self.close_request.is_some(),
-            self.active.and_then(|i| self.views.get(i)).and_then(|v| v.find.as_ref().map(|_| true)),
+            self.win.active.and_then(|i| self.win.views.get(i)).and_then(|v| v.find.as_ref().map(|_| true)),
         )
         .hash(&mut hasher);
         hasher.finish()
@@ -57,14 +57,14 @@ impl Host for crate::PdfCraftApp {
     }
 
     fn state(&self) -> Value {
-        let active = self.active.and_then(|i| self.views.get(i));
+        let active = self.win.active.and_then(|i| self.win.views.get(i));
         let docs: Vec<Value> = self
-            .views
+            .win.views
             .iter()
             .enumerate()
             .filter_map(|(i, v)| {
                 let d = self.session.get(v.id)?;
-                Some(json!({ "tab": i, "doc": v.id.0, "name": d.name, "path": d.path, "pages": d.info.pages.len(), "dirty": d.dirty, "active": self.active == Some(i) }))
+                Some(json!({ "tab": i, "doc": v.id.0, "name": d.name, "path": d.path, "pages": d.info.pages.len(), "dirty": d.dirty, "active": self.win.active == Some(i) }))
             })
             .collect();
         #[cfg(not(target_arch = "wasm32"))]
@@ -121,7 +121,7 @@ impl Host for crate::PdfCraftApp {
                 "expanded": self.combine_expanded().iter().filter_map(|i| self.combine_draft.get(*i).map(|f| f.name.clone())).collect::<Vec<_>>(),
                 "preview": self.combine_preview().map(|(file, page, render)| json!({ "file": file, "page": page + 1, "render": format!("{render:?}") })),
             },
-            "quick_tool": match self.quick_tool {
+            "quick_tool": match self.win.quick_tool {
                 crate::QuickTool::Measure(t) => format!("measure-{}", t.name()),
                 crate::QuickTool::Select => "select".to_string(),
                 crate::QuickTool::Hand => "hand".to_string(),
@@ -142,25 +142,25 @@ impl Host for crate::PdfCraftApp {
                 crate::QuickTool::Field(f) => format!("field-{}", f.command().trim_start_matches("form.add.")),
                 crate::QuickTool::Comment(t) => t.command().trim_start_matches("comment.").to_string(),
             },
-            "home": self.active.is_none(),
+            "home": self.win.active.is_none(),
             "mode": format!("{:?}", self.mode),
             "default_mode": self.default_mode,
-            "hotbar": self.hotbar,
+            "hotbar": self.win.hotbar,
             "comment_tool_pinned": self.comment_prefs.pinned,
             // Home's pinned folders, in order, and whether each is folded down to its heading.
             "pinned_folders": self.pinned.folders.iter().map(|f| json!({ "folder": f, "collapsed": self.pinned.collapsed.contains(f) })).collect::<Vec<_>>(),
-            "left_panel": if self.left_open { json!(format!("{:?}", self.left)) } else { Value::Null },
-            "tools_side": if self.side_panels.tools_on_right() { "right" } else { "left" },
-            "rail_side": if self.side_panels.rail_on_right() { "right" } else { "left" },
-            "right_panel": self.right.map(|r| format!("{r:?}")),
+            "left_panel": if self.win.left_open { json!(format!("{:?}", self.win.left)) } else { Value::Null },
+            "tools_side": if self.win.side_panels.tools_on_right() { "right" } else { "left" },
+            "rail_side": if self.win.side_panels.rail_on_right() { "right" } else { "left" },
+            "right_panel": self.win.right.map(|r| format!("{r:?}")),
             "hidden_interface": self.hidden_interface().to_json(),
             "dialog": self.dialog.map(|d| format!("{d:?}")),
-            "palette_open": self.palette_open,
+            "palette_open": self.win.palette_open,
             "theme": format!("{:?}", self.theme),
             "theme_preference": self.theme_preference,
             "show_page_edge_shadows": self.show_page_edge_shadows,
             "language": self.language,
-            "notice": self.toast.as_ref().map(|t| t.0.clone()),
+            "notice": self.win.toast.as_ref().map(|t| t.0.clone()),
             "progress": self.progress_notice.as_ref().map(|p| json!({ "label": p.label, "fraction": p.fraction })),
             "password_prompt": self.password_prompt.is_some(),
             "close_prompt": self.close_request.is_some(),
@@ -211,7 +211,7 @@ impl Host for crate::PdfCraftApp {
             crate::OpenOutcome::Opened => Ok(json!({ "opened": path, "password_prompt": self.password_prompt.is_some() })),
             crate::OpenOutcome::Focused => Ok(json!({ "opened": path, "focused": true })),
             crate::OpenOutcome::Pending => Ok(json!({ "accepted": path, "pending": true })),
-            crate::OpenOutcome::Failed => Err(self.toast.as_ref().map(|t| t.0.clone()).unwrap_or_else(|| format!("couldn't open {path}"))),
+            crate::OpenOutcome::Failed => Err(self.win.toast.as_ref().map(|t| t.0.clone()).unwrap_or_else(|| format!("couldn't open {path}"))),
         }
     }
 

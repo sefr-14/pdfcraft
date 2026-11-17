@@ -45,7 +45,7 @@ fn protecting_for_viewing_requires_matching_passwords_and_saves_encrypted() {
     h.get_by_label("Apply").click();
     h.run_steps(3);
     assert_eq!(h.state().dialog, None);
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let doc = h.state().session.get(id).unwrap();
     assert!(doc.info.encrypted && doc.dirty);
     assert!(doc.security_summary().unwrap().pending);
@@ -76,7 +76,7 @@ fn editing_restrictions_via_advanced_options() {
     type_into(&mut h, "Re-type Password", "boss");
     h.get_by_label("Apply").click();
     h.run_steps(3);
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let sec = h.state().session.get(id).unwrap().security_summary().unwrap();
     assert!(sec.permissions.copy() && sec.permissions.print() && !sec.permissions.modify() && !sec.permissions.annotate());
     // Remove security is disabled for nobody here: this session set it.

@@ -14,18 +14,18 @@ pub fn left_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     // Organize closed another way (the grid's Close, or a page opened from it) closes the tool too,
     // as its panel's Close does, back to the workspace's own panel.
-    if app.left == LeftPanel::Tool("organize") && app.active.and_then(|i| app.views.get(i)).is_some_and(|v| !v.organize) {
-        app.left = crate::organize_panel::workspace_panel(app.mode);
+    if app.win.left == LeftPanel::Tool("organize") && app.win.active.and_then(|i| app.win.views.get(i)).is_some_and(|v| !v.organize) {
+        app.win.left = crate::organize_panel::workspace_panel(app.mode);
     }
     egui::Frame::NONE.fill(t.panel).inner_margin(egui::Margin { left: 14, right: 14, top: 12, bottom: 10 }).stroke(Stroke::new(1.0, t.divider)).show(
         ui,
-        |ui| match app.left {
+        |ui| match app.win.left {
             // Organize pages has its own panel whenever the grid shows (with a document open).
-            _ if app.active.is_some() && crate::organize_panel::showing(app) => crate::organize_panel::panel(app, ui, &t),
+            _ if app.win.active.is_some() && crate::organize_panel::showing(app) => crate::organize_panel::panel(app, ui, &t),
             LeftPanel::AllTools => all_tools(app, ui, &t),
             LeftPanel::Tool(id) => match catalog::group(id) {
                 Some(g) => tool_detail(app, ui, &t, g),
-                None => app.left = LeftPanel::AllTools,
+                None => app.win.left = LeftPanel::AllTools,
             },
             LeftPanel::CalculationOrder => crate::calc_order_ui::panel(app, ui, &t),
         },
@@ -76,12 +76,12 @@ fn all_tools(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens) {
         app.expand_all_tools();
     }
     if close {
-        app.left_open = false;
+        app.win.left_open = false;
     }
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         clear_of_scrollbar(ui);
         ui.add_space(2.0);
-        let shown = if app.all_tools_expanded { TOOL_GROUPS.len() } else { COLLAPSED_TOOLS.min(TOOL_GROUPS.len()) };
+        let shown = if app.win.all_tools_expanded { TOOL_GROUPS.len() } else { COLLAPSED_TOOLS.min(TOOL_GROUPS.len()) };
         for g in &TOOL_GROUPS[..shown] {
             let (resp, pin_clicked) = tool_row(ui, t, g, app.is_tool_pinned(g.id));
             if pin_clicked {
@@ -91,7 +91,7 @@ fn all_tools(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens) {
             }
         }
         ui.add_space(4.0);
-        let more = if app.all_tools_expanded { "View less" } else { "View more" };
+        let more = if app.win.all_tools_expanded { "View less" } else { "View more" };
         if ui
             .add(
                 egui::Label::new(egui::RichText::new(tl!(more)).color(t.accent_text).font(theme::medium(13.0)))
@@ -101,7 +101,7 @@ fn all_tools(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens) {
             .on_hover_cursor(egui::CursorIcon::PointingHand)
             .clicked()
         {
-            app.all_tools_expanded = !app.all_tools_expanded;
+            app.win.all_tools_expanded = !app.win.all_tools_expanded;
         }
     });
 }
@@ -202,11 +202,11 @@ fn tool_detail(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens, g: &'static
     }
     let (back, close) = panel_header(ui, t, g.label, Some(("chevron-left", tl!("Back to all tools"))));
     if back {
-        app.left = LeftPanel::AllTools;
+        app.win.left = LeftPanel::AllTools;
         app.enter_mode(crate::Mode::AllTools);
     }
     if close {
-        app.left_open = false;
+        app.win.left_open = false;
     }
     if let Availability::Planned(m) = g.availability {
         egui::Frame::NONE.fill(t.accent_soft).corner_radius(CornerRadius::same(8)).inner_margin(egui::Margin::same(10)).show(ui, |ui| {
@@ -229,7 +229,7 @@ fn tool_detail(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens, g: &'static
     }
     // Prepare a form: Preview fills the form as a reader would; Edit goes back.
     if g.id == "form" {
-        if let Some(view) = app.active.and_then(|i| app.views.get_mut(i)) {
+        if let Some(view) = app.win.active.and_then(|i| app.win.views.get_mut(i)) {
             ui.add(widgets::checkbox(&mut view.prepare.show_tab_numbers, tl!("Show tab numbers")));
             ui.add_space(4.0);
         }
@@ -239,7 +239,7 @@ fn tool_detail(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens, g: &'static
             {
                 app.form_preview = !app.form_preview;
                 if app.form_preview {
-                    app.quick_tool = crate::QuickTool::Select;
+                    app.win.quick_tool = crate::QuickTool::Select;
                 }
             }
         });

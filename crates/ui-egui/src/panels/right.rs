@@ -9,7 +9,7 @@ use super::{
 pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     let Some((index, id)) = app.active_ids() else { return };
-    let Some(panel) = app.right else { return };
+    let Some(panel) = app.win.right else { return };
     let mut nav: Option<Nav> = None;
     let mut close = false;
     let mut toggle_layer: Option<(usize, bool)> = None;
@@ -29,11 +29,11 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
     // Prepare a form is open: the Fields panel orders tabs.
     let preparing = app.is_preparing();
     // The Pages panel's Escape and Delete act on the pages: not while something is over them.
-    let keys = app.page_keys.also(app.covers_pages());
+    let keys = app.win.page_keys.also(app.covers_pages());
     {
         let Some(doc) = app.session.get(id) else { return };
         let info = &doc.info;
-        let view = &mut app.views[index];
+        let view = &mut app.win.views[index];
         let prefs = &app.comment_prefs;
         let sig_expanded = &mut app.sig_expanded;
         let a11y = &mut app.a11y;
@@ -41,7 +41,7 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
         let compare = &app.compare;
         let comment_allowed = doc.allows_annotation();
         // A dialog or the palette owns the keyboard: the panel leaves Escape to it.
-        let modal = app.dialog.is_some() || app.palette_open;
+        let modal = app.dialog.is_some() || app.win.palette_open;
         egui::Frame::NONE
             .fill(t.panel)
             .inner_margin(egui::Margin { left: 14, right: 12, top: 12, bottom: 8 })
@@ -470,7 +470,7 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
     }
     match sig_action {
         Some(crate::sign_ui::PanelAction::Validate) => app.run_command("sign.validate"),
-        Some(crate::sign_ui::PanelAction::GoTo(p)) => app.views[index].go_to_page(p),
+        Some(crate::sign_ui::PanelAction::GoTo(p)) => app.win.views[index].go_to_page(p),
         Some(crate::sign_ui::PanelAction::Trust(c)) => app.trust_certificate(*c),
         Some(crate::sign_ui::PanelAction::ViewCertificate(chain)) => {
             app.cert_viewer = Some(crate::sign_ui::CertViewer { chain, selected: 0, tab: crate::sign_ui::CertTab::Summary });
@@ -478,7 +478,7 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
         }
         Some(crate::sign_ui::PanelAction::ViewSigned { len, revision }) => app.view_signed_version(len, revision),
         Some(crate::sign_ui::PanelAction::Sign(field)) => {
-            let page = app.views[index].current;
+            let page = app.win.views[index].current;
             app.start_signing(page, None, Some(field), None);
         }
         Some(crate::sign_ui::PanelAction::ExportCertificate(c)) => {
@@ -487,16 +487,16 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
         None => {}
     }
     // COMMENTS.1 fallback (inactive, SYNC.17; f3ccab72): Delete selected, confirmed first.
-    // if app.views.get_mut(index).is_some_and(|v| std::mem::take(&mut v.comments.delete_request)) {
+    // if app.win.views.get_mut(index).is_some_and(|v| std::mem::take(&mut v.comments.delete_request)) {
     //     app.ask_delete_comments();
     // }
-    if let Some((p, i)) = app.views.get_mut(index).and_then(|v| v.comments.default_request.take()) {
+    if let Some((p, i)) = app.win.views.get_mut(index).and_then(|v| v.comments.default_request.take()) {
         app.make_comment_default(p, i);
     }
-    if let Some((p, i, open)) = app.views.get_mut(index).and_then(|v| v.comments.attachment_request.take()) {
+    if let Some((p, i, open)) = app.win.views.get_mut(index).and_then(|v| v.comments.attachment_request.take()) {
         app.comment_attachment_action(id, p, i, open);
     }
-    if let Some((p, i)) = app.views.get_mut(index).and_then(|v| v.comments.props_request.take()) {
+    if let Some((p, i)) = app.win.views.get_mut(index).and_then(|v| v.comments.props_request.take()) {
         app.open_comment_props(p, i);
     }
     app.bookmark_rename = bm_rename;
@@ -509,16 +509,16 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
     if let Some((layer, visible)) = toggle_layer
         && app.session.set_layer_visible(id, layer, visible)
     {
-        app.views[index].invalidate_content();
+        app.win.views[index].invalidate_content();
     }
     if reset_layers && app.session.reset_layers(id) {
-        app.views[index].invalidate_content();
+        app.win.views[index].invalidate_content();
     }
     match nav {
-        Some(Nav::Page(p)) => app.views[index].go_to_page(p),
+        Some(Nav::Page(p)) => app.win.views[index].go_to_page(p),
         Some(Nav::Dest(p, dest)) => match app.session.get(id) {
-            Some(doc) => app.views[index].go_to_dest(p, dest, &doc.info),
-            None => app.views[index].go_to_page(p),
+            Some(doc) => app.win.views[index].go_to_dest(p, dest, &doc.info),
+            None => app.win.views[index].go_to_page(p),
         },
         Some(Nav::Action(target)) => {
             if let Some((source, file, destination)) = crate::canvas::follow_link(app, index, Some(target)) {
@@ -526,7 +526,7 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
             }
         }
         Some(Nav::Flash(p, r)) => {
-            let v = &mut app.views[index];
+            let v = &mut app.win.views[index];
             if let Some(doc) = app.session.get(id) {
                 v.reveal_rect(p, r, &doc.info);
             } else {
