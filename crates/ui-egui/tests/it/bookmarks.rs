@@ -558,7 +558,7 @@ fn cut_copy_and_paste_a_bookmark_subtree_within_and_between_documents() {
     h.get_by_label("Paste bookmarks").click();
     h.run_steps(3);
     assert_eq!(active_outline(&h), [("Intro".to_string(), Some(0), 0), ("Results".to_string(), None, 1)]);
-    let toast = h.state().toast.as_ref().map(|t| t.0.clone()).unwrap_or_default();
+    let toast = h.state().win.toast.as_ref().map(|t| t.0.clone()).unwrap_or_default();
     assert!(toast.contains("1 pasted bookmark points past the last page"), "{toast}");
     h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     h.run_steps(3);
@@ -598,7 +598,7 @@ fn cutting_a_subtree_too_deep_to_copy_keeps_it() {
     assert_eq!(before.first().map(|b| b.0.as_str()), Some("Top"));
     menu(&mut h, "Top", "Cut");
     assert_eq!(active_outline(&h), before, "nothing was cut");
-    let toast = h.state().toast.as_ref().map(|t| t.0.clone()).unwrap_or_default();
+    let toast = h.state().win.toast.as_ref().map(|t| t.0.clone()).unwrap_or_default();
     assert!(toast.contains("so nothing was cut"), "{toast}");
     assert!(h.state().bookmark_clipboard.is_some(), "the copy is still on the bookmark clipboard");
 }

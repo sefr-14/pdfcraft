@@ -53,7 +53,7 @@ fn enhance_scanned_file_cleans_the_chosen_pages_and_says_what_it_did() {
     h.run_steps(3);
     let app = h.state();
     assert!(app.scan_clean_run.is_none() && app.dialog.is_none(), "finished and closed");
-    let toast = app.toast.clone().unwrap().0;
+    let toast = app.win.toast.clone().unwrap().0;
     assert_eq!(toast, "Cleaned up the scan on 1 page.");
     let doc = app.session.get(id).unwrap();
     assert_eq!(doc.can_undo(), Some("Enhance scanned file"));
@@ -72,6 +72,6 @@ fn nothing_to_enhance_is_said_not_done() {
     h.state_mut().start_scan_clean();
     h.run_steps(2);
     let app = h.state();
-    assert!(app.toast.clone().unwrap().0.starts_with("No scanned pages were cleaned up."), "{:?}", app.toast);
+    assert!(app.win.toast.clone().unwrap().0.starts_with("No scanned pages were cleaned up."), "{:?}", app.win.toast);
     assert_eq!(app.session.get(id).unwrap().can_undo(), None);
 }

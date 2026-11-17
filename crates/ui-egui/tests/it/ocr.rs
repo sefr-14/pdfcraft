@@ -37,7 +37,7 @@ fn recognize_text_dialog_adds_searchable_text() {
     h.get_by_label("Recognize text").click();
     h.run_steps(3);
     assert!(h.state().ocr_run.is_none(), "finished");
-    let toast = h.state().toast.clone().unwrap().0;
+    let toast = h.state().win.toast.clone().unwrap().0;
     assert!(toast.starts_with("Recognized ") && toast.contains("on 1 page"), "{toast}");
     let app = h.state();
     let id = app.active_ids().unwrap().1;
@@ -59,7 +59,7 @@ fn recognize_text_in_multiple_files_writes_searchable_copies() {
     app.export_dir_override = Some(dir.to_string_lossy().into_owned());
     app.use_files(pdfcraft_ui_egui::FilePurpose::Ocr, vec![("one.pdf".into(), scan()), ("two.pdf".into(), scan())]);
     assert!(app.ocr_batch.is_none(), "finished");
-    let toast = app.toast.clone().unwrap().0;
+    let toast = app.win.toast.clone().unwrap().0;
     assert!(toast.starts_with("Recognized ") && toast.ends_with("in 2 files"), "{toast}");
     for name in ["one.pdf", "two.pdf"] {
         let bytes = std::fs::read(dir.join(name)).unwrap();
@@ -104,7 +104,7 @@ fn recognize_text_can_read_pictures_on_pages_with_text() {
     h.get_by_label("Recognize text").click();
     h.run_steps(3);
     assert!(h.state().ocr_run.is_none(), "finished");
-    let toast = h.state().toast.clone().unwrap().0;
+    let toast = h.state().win.toast.clone().unwrap().0;
     assert!(toast.starts_with("Recognized ") && toast.ends_with("on 1 page"), "{toast}");
     let app = h.state();
     let id = app.active_ids().unwrap().1;
@@ -276,7 +276,7 @@ fn editing_a_page_with_text_over_a_background_picture_changes_nothing() {
     assert_eq!(h.state().session.get(id).unwrap().can_undo(), None, "nothing was recognized or marked modified");
     assert!(!h.state().session.get(id).unwrap().dirty, "the file is not marked modified");
     // And Edit says nothing about recognizing: no progress, no "0 words ... already had text".
-    let toast = h.state().toast.as_ref().map(|t| t.0.clone()).unwrap_or_default();
+    let toast = h.state().win.toast.as_ref().map(|t| t.0.clone()).unwrap_or_default();
     assert!(!toast.contains("ecogniz") && !toast.contains("already had text"), "{toast:?}");
 }
 
@@ -425,7 +425,7 @@ fn ocr_verify_screen_controls_keyboard_and_accept() {
     let app = h.state();
     let id = app.active_ids().unwrap().1;
     assert_eq!(app.session.get(id).unwrap().can_undo(), Some("Recognize text"));
-    let toast = app.toast.clone().map(|t| t.0).unwrap_or_default();
+    let toast = app.win.toast.clone().map(|t| t.0).unwrap_or_default();
     assert!(toast.contains("one undoable step"), "{toast}");
 }
 

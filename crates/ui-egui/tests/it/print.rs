@@ -260,7 +260,7 @@ fn a_failed_save_as_pdf_keeps_the_dialog_open() {
     h.get_by_label("Save as PDF").click();
     h.run_steps(3);
     assert_eq!(h.state().dialog, Some(Dialog::Print), "the dialog stays open, with its settings");
-    let toast = h.state().toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
+    let toast = h.state().win.toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
     assert!(toast.contains("Could not save"), "the user is told why: {toast:?}");
 }
 
@@ -980,7 +980,7 @@ fn print_restricted_documents_say_so_before_the_dialog() {
     assert!(!h.state_mut().execute("print.dialog"));
     h.run_steps(2);
     assert_eq!(h.state().dialog, None);
-    assert_eq!(h.state().toast.as_ref().map(|t| t.0.as_str()), Some("The document's security settings don't allow printing"));
+    assert_eq!(h.state().win.toast.as_ref().map(|t| t.0.as_str()), Some("The document's security settings don't allow printing"));
 }
 
 /// With no document open the top bar's Print button is disabled too, but not for security

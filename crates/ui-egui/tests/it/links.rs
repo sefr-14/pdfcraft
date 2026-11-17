@@ -127,5 +127,5 @@ fn the_artcraft_logo_files_stay_removed() {
 #[test]
 fn the_window_is_called_pdf_overlay() {
     let h = harness(|_| {});
-    assert_eq!(h.state().window_title, "PDF Overlay");
+    assert_eq!(h.state().win.window_title, "PDF Overlay");
 }

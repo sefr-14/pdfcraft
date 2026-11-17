@@ -1470,7 +1470,7 @@ fn dialog_signature(ui: &mut egui::Ui, app: &mut PdfCraftApp, req: &mut Pending)
         };
         app.fill_tool = tool;
         app.win.quick_tool = crate::QuickTool::Fill(tool);
-        app.toast = None;
+        app.win.toast = None;
     }
     req.close = req.apply || cancel;
     false

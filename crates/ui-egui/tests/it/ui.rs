@@ -425,11 +425,11 @@ fn a_document_asking_for_full_screen_is_asked_about_first() {
     let deck = || String::from_utf8(FIXTURE.to_vec()).unwrap().replace("/Outlines 6 0 R", "/Outlines 6 0 R /PageMode /FullScreen").into_bytes();
     let mut h = harness(move |app| app.open_bytes("deck.pdf", None, deck()).expect("opens"));
     h.run_steps(3);
-    assert!(!h.state().full_screen, "nothing happens before the answer");
+    assert!(!h.state().win.full_screen, "nothing happens before the answer");
     h.get_by_label("Open in Full Screen mode?");
     h.get_by_label("Not now").click();
     h.run_steps(3);
-    assert!(!h.state().full_screen);
+    assert!(!h.state().win.full_screen);
     assert!(h.query_by_label("Open in Full Screen mode?").is_none() && h.state().pending_full_screen.is_none());
     // Asked again for the next such document; Full Screen enters it.
     let again = String::from_utf8(FIXTURE.to_vec()).unwrap().replace("/Outlines 6 0 R", "/Outlines 6 0 R /PageMode /FullScreen").into_bytes();
@@ -437,14 +437,14 @@ fn a_document_asking_for_full_screen_is_asked_about_first() {
     h.run_steps(3);
     h.get_by_label("Full Screen").click();
     h.run_steps(3);
-    assert!(h.state().full_screen, "Full Screen enters it");
+    assert!(h.state().win.full_screen, "Full Screen enters it");
     assert!(h.state().pending_full_screen.is_none());
     // A plain document asks nothing.
     h.key_press(egui::Key::Escape);
     h.run_steps(2);
     h.state_mut().open_bytes("plain.pdf", None, FIXTURE.to_vec()).expect("opens");
     h.run_steps(3);
-    assert!(h.query_by_label("Open in Full Screen mode?").is_none() && !h.state().full_screen);
+    assert!(h.query_by_label("Open in Full Screen mode?").is_none() && !h.state().win.full_screen);
 }
 
 /// Switching to Read mode closes the open pane, and switching back reopens it.
@@ -2128,7 +2128,7 @@ fn full_screen_neither_is_remembered_nor_hides_the_last_view() {
     let p = path.clone();
     let mut h = harness(move |app| {
         app.restore(&saved);
-        app.full_screen = true;
+        app.win.full_screen = true;
         app.open_bytes("doc.pdf", Some(p), pages_fixture(3)).expect("opens");
     });
     let v = &h.state().win.views[0];

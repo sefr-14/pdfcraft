@@ -217,7 +217,7 @@ fn a_place_the_bookmarks_cannot_go_takes_no_drop() {
     assert_eq!(undo_label(&h), before, "no undo step");
     assert!(!h.state().win.views[0].bookmarks.dragging(), "the drag is over");
     // The panel itself takes no drop there: the move is never asked for, so nothing is reported.
-    assert!(h.state().toast.is_none(), "{:?}", h.state().toast);
+    assert!(h.state().win.toast.is_none(), "{:?}", h.state().win.toast);
     // A group with a bookmark the target is under.
     click(&mut h, "B", Modifiers::NONE);
     click(&mut h, "A", Modifiers::COMMAND);
@@ -225,7 +225,7 @@ fn a_place_the_bookmarks_cannot_go_takes_no_drop() {
     assert_eq!(outline(&h), "A[a1,a2],B,C");
     assert_eq!(undo_label(&h), before);
     assert_eq!(selected(&h), [vec![0], vec![1]], "the selection stays");
-    assert!(h.state().toast.is_none(), "{:?}", h.state().toast);
+    assert!(h.state().win.toast.is_none(), "{:?}", h.state().win.toast);
     // Asked for all the same (as a stale preview could), the move is refused and says why.
     let id = h.state().win.views[0].id;
     let stamp = {
@@ -235,7 +235,7 @@ fn a_place_the_bookmarks_cannot_go_takes_no_drop() {
     h.state_mut().move_bookmarks_to(vec![vec![0]], vec![0, 0], 0, stamp);
     assert_eq!(outline(&h), "A[a1,a2],B,C");
     assert_eq!(undo_label(&h), before);
-    assert!(h.state().toast.as_ref().is_some_and(|(text, _)| text.contains("inside itself")), "{:?}", h.state().toast);
+    assert!(h.state().win.toast.as_ref().is_some_and(|(text, _)| text.contains("inside itself")), "{:?}", h.state().win.toast);
 }
 
 #[test]

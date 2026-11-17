@@ -101,7 +101,7 @@ impl PdfCraftApp {
     /// press. Also notes which widget has the keyboard, for the next frame's first step (egui lets
     /// go of a focused field on Escape before the app sees the press).
     pub(crate) fn escape_late(&mut self, ctx: &egui::Context) {
-        if self.full_screen
+        if self.win.full_screen
             && !self.escape_reserved
             && self.combine_tab.preview.is_none()
             && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape))
@@ -113,7 +113,7 @@ impl PdfCraftApp {
 
     /// The command palette is drawn this frame (full screen shows the page only).
     fn palette_shown(&self) -> bool {
-        self.win.palette_open && !(self.full_screen && self.win.active.is_some())
+        self.win.palette_open && !(self.win.full_screen && self.win.active.is_some())
     }
 }
 

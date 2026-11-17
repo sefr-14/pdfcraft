@@ -526,7 +526,7 @@ impl PdfCraftApp {
             "view.continuous" => Some(view.is_some_and(|v| v.continuous())),
             "view.page_gaps" => Some(view.is_some_and(|v| v.show_page_gaps)),
             "view.layout.cover" => Some(view.is_some_and(|v| v.cover)),
-            "view.full_screen" => Some(self.full_screen),
+            "view.full_screen" => Some(self.win.full_screen),
             "view.read_mode" => Some(self.mode == crate::Mode::Read),
             "view.side_panel" => Some(self.win.right.is_some()),
             "view.tools_pane" => Some(self.win.left_open),

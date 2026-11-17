@@ -545,7 +545,7 @@ mod review_tests {
         let mut app = PdfCraftApp::new();
         app.system_clipboard = false;
         app.create_blank();
-        app.toast = None;
+        app.win.toast = None;
         let ctx = egui::Context::default();
         ctx.run_ui(
             egui::RawInput {
@@ -561,9 +561,9 @@ mod review_tests {
             |ui| app.clipboard_keys(0, ui.ctx()),
         )
         .drop_without_applying_deltas();
-        assert!(app.toast.is_none());
+        assert!(app.win.toast.is_none());
         assert!(!app.paste_image(0, None));
-        assert!(app.toast.is_some(), "an explicit menu action still explains why there is no image");
+        assert!(app.win.toast.is_some(), "an explicit menu action still explains why there is no image");
     }
 
     #[test]
@@ -578,7 +578,7 @@ mod review_tests {
             .drop_without_applying_deltas();
         assert!(app.last_copied_image.is_none());
         app.win.palette_open = false;
-        app.toast = None;
+        app.win.toast = None;
         ctx.run_ui(
             egui::RawInput {
                 events: vec![egui::Event::Key {
@@ -593,7 +593,7 @@ mod review_tests {
             |ui| app.clipboard_keys(0, ui.ctx()),
         )
         .drop_without_applying_deltas();
-        assert!(app.toast.is_none(), "the text gesture's key release must be silent");
+        assert!(app.win.toast.is_none(), "the text gesture's key release must be silent");
         app.clipboard_override = None;
         let delivered = egui::Event::PasteImage(std::sync::Arc::new(egui::ColorImage::filled([1, 1], egui::Color32::GREEN)));
         ctx.run_ui(egui::RawInput { events: vec![delivered], ..Default::default() }, |ui| app.clipboard_keys(0, ui.ctx()))

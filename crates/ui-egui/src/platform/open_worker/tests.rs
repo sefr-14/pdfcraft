@@ -275,7 +275,7 @@ fn a_chosen_tool_does_not_run_when_native_preparation_rejects_the_file() {
     held.complete(&mut harness);
     assert!(harness.state().win.views.is_empty() && harness.state().pending_opens.is_empty());
     assert!(harness.state().dialog.is_none() && harness.state().password_prompt.is_none());
-    assert!(harness.state().toast.as_ref().is_some_and(|(message, _)| message.contains("Couldn't open")), "the open failure is reported");
+    assert!(harness.state().win.toast.as_ref().is_some_and(|(message, _)| message.contains("Couldn't open")), "the open failure is reported");
 }
 
 #[test]
@@ -1035,7 +1035,7 @@ fn file_open_converts_an_office_document_on_the_worker() {
         assert_eq!(doc.name, format!("pdfcraft-open-tool-{}-office.pdf", std::process::id()));
         assert!(doc.path.is_none(), "the converted PDF is new and unsaved, not the .docx on disk");
     } else {
-        let message = app.toast.as_ref().map(|(message, _)| message.clone()).unwrap_or_default();
+        let message = app.win.toast.as_ref().map(|(message, _)| message.clone()).unwrap_or_default();
         assert!(message.contains("LibreOffice, which isn't installed"), "the failure names the missing dependency: {message}");
     }
 }

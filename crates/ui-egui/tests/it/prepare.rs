@@ -583,14 +583,14 @@ fn renaming_a_field_says_how_many_calculations_now_use_the_new_name() {
         let s = h.state();
         s.session.get(s.win.views[0].id).unwrap().form.iter().find(|f| f.name == "city").unwrap().actions.calculate.clone()
     };
-    h.state_mut().toast = None;
+    h.state_mut().win.toast = None;
     rename(&mut h, "name", "full_name");
     assert_eq!(calculation(&h), Calculate::Notation("full_name * 2".into()));
-    assert_eq!(h.state().toast.as_ref().map(|t| t.0.as_str()), Some("1 calculation now uses the new name."));
-    h.state_mut().toast = None;
+    assert_eq!(h.state().win.toast.as_ref().map(|t| t.0.as_str()), Some("1 calculation now uses the new name."));
+    h.state_mut().win.toast = None;
     rename(&mut h, "city", "town");
     assert!(names(&h).contains(&"town".to_string()));
-    assert_eq!(h.state().toast, None, "no formula reads the calculated field itself");
+    assert_eq!(h.state().win.toast, None, "no formula reads the calculated field itself");
     h.state_mut().execute("edit.undo");
     h.state_mut().execute("edit.undo");
     h.run_steps(2);

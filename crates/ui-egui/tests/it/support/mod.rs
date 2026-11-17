@@ -48,7 +48,7 @@ pub fn wait_until(h: &mut Harness<'static, PdfCraftApp>, what: &str, ready: impl
         h.state().win.views.len(),
         h.state().win.active,
         h.state().password_prompt.as_ref().map(|p| (&p.name, &p.error)),
-        h.state().toast
+        h.state().win.toast
     );
 }
 

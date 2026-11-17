@@ -457,10 +457,10 @@ impl PdfCraftApp {
                 shown.push(i);
             }
         };
-        let main = if self.full_screen { self.win.active } else { self.pane_front(Place::Main) };
+        let main = if self.win.full_screen { self.win.active } else { self.pane_front(Place::Main) };
         add(main);
         add(main.and_then(|i| crate::compare_ui::side_by_side(self, i)).map(|(old, _)| old));
-        if !self.full_screen && self.win.panes.split.is_some() {
+        if !self.win.full_screen && self.win.panes.split.is_some() {
             add(self.pane_front(Place::Second));
         }
         shown

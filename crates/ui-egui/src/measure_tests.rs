@@ -703,7 +703,7 @@ fn one_escape_never_also_closes_the_find_bar_or_full_screen() {
     let (mut h, id) = harness(plain());
     let steps = |h: &Harness<'static, PdfCraftApp>| {
         let app = h.state();
-        (app.win.views[0].measure.points.len(), app.win.views[0].find.is_some(), app.win.quick_tool, app.full_screen)
+        (app.win.views[0].measure.points.len(), app.win.views[0].find.is_some(), app.win.quick_tool, app.win.full_screen)
     };
     // Measuring with the find bar open: the points, then the find bar, then the tool.
     tool(&mut h, Tool::Distance);

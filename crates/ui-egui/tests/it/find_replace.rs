@@ -84,10 +84,10 @@ fn replace_all_from_the_find_bar_is_one_undo_step() {
     h.run_steps(8);
     h.get_by_label("Replace all").click();
     h.run_steps(4);
-    assert_eq!(texts(&h), ["dog and dog", "a dog"], "{:?}", h.state().toast);
+    assert_eq!(texts(&h), ["dog and dog", "a dog"], "{:?}", h.state().win.toast);
     let s = h.state();
     assert_eq!(s.session.get(s.win.views[0].id).unwrap().can_undo(), Some("Replace all"));
-    assert_eq!(s.toast.as_ref().map(|t| t.0.as_str()), Some("Replaced 3 on 2 pages"));
+    assert_eq!(s.win.toast.as_ref().map(|t| t.0.as_str()), Some("Replaced 3 on 2 pages"));
     // One Undo puts every page back.
     assert!(h.state_mut().execute("edit.undo"));
     h.run_steps(2);

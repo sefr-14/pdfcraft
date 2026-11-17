@@ -52,17 +52,17 @@ impl PdfCraftApp {
         // The web page's title is what an embedding host reads to tell which file opened, so it
         // names the file even when the document asks to show its own title.
         let page_title = titled(front.and_then(|i| self.win.views.get(i)).and_then(|v| self.session.get(v.id)).map(|d| d.name.clone()));
-        if title != self.window_title {
+        if title != self.win.window_title {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
-            self.window_title = title;
+            self.win.window_title = title;
         }
-        if page_title != self.page_title {
+        if page_title != self.win.page_title {
             // eframe's web runner ignores Title: set the page's own.
             #[cfg(target_arch = "wasm32")]
             if let Some(document) = web_sys::window().and_then(|w| w.document()) {
                 document.set_title(&page_title);
             }
-            self.page_title = page_title;
+            self.win.page_title = page_title;
         }
     }
 
@@ -164,11 +164,6 @@ impl PdfCraftApp {
             recent_check: Default::default(),
             pinned_tools: Vec::new(),
             pin_tool_search: String::new(),
-            toast: None,
-            toast_script: None,
-            script_messages: std::collections::VecDeque::new(),
-            script_messages_dropped: 0,
-            toast_dropped: 0,
             integrated_titlebar: false,
             window_controls: None,
             system_title_bar: false,
@@ -176,7 +171,6 @@ impl PdfCraftApp {
             password_prompt: None,
             document_copy: None,
             unlock_prompt: None,
-            full_screen: false,
             inbox: Default::default(),
             startup_inbox: Default::default(),
             startup_superseded: false,
@@ -285,8 +279,6 @@ impl PdfCraftApp {
             page_props_draft: None,
             field_table_draft: None,
             form_preview: false,
-            window_title: String::new(),
-            page_title: String::new(),
             recovery: None,
             recoverable: Vec::new(),
             recovery_keys: Default::default(),
@@ -447,7 +439,7 @@ impl PdfCraftApp {
 
     /// Read mode and full screen hide the hotbar (the quick tools), and its tools window with it.
     pub(crate) fn hotbar_hidden(&self) -> bool {
-        self.mode == crate::Mode::Read || self.full_screen
+        self.mode == crate::Mode::Read || self.win.full_screen
     }
 
     /// The pages are covered, and no page key reaches them, a menu click's included: by a dialog or
@@ -457,7 +449,7 @@ impl PdfCraftApp {
     pub(crate) fn covers_pages(&self) -> bool {
         // Full screen draws the page alone: not the palette, nor the OCR Verify screen it was
         // entered over. Dialogs and prompts show there too.
-        let shown = !(self.full_screen && self.win.active.is_some());
+        let shown = !(self.win.full_screen && self.win.active.is_some());
         self.modal_open() || self.pending_full_screen.is_some() || self.updates.open || (self.win.palette_open || self.ocr_verify.open) && shown
     }
 
@@ -481,9 +473,9 @@ impl PdfCraftApp {
     /// show after it.
     pub fn notify(&mut self, msg: impl Into<String>) {
         // A left-out count it replaces is said again once the toast is free.
-        self.script_messages_dropped = self.script_messages_dropped.saturating_add(std::mem::take(&mut self.toast_dropped));
-        self.toast = Some((msg.into(), 0.0));
-        self.toast_script = None;
+        self.win.script_messages_dropped = self.win.script_messages_dropped.saturating_add(std::mem::take(&mut self.win.toast_dropped));
+        self.win.toast = Some((msg.into(), 0.0));
+        self.win.toast_script = None;
     }
 
     /// Notify with a static message in the UI language.
@@ -881,8 +873,8 @@ impl PdfCraftApp {
         self.sync_titles(&ctx);
         // The accessible window takes the same name, so a screen reader (AT-SPI on Linux, UIA on
         // Windows) can tell it apart (#4614). egui builds the root node afresh every pass.
-        ctx.accesskit_node_builder(egui::accesskit_root_id(), |root| root.set_label(self.window_title.as_str()));
-        if self.full_screen && self.win.active.is_some() {
+        ctx.accesskit_node_builder(egui::accesskit_root_id(), |root| root.set_label(self.win.window_title.as_str()));
+        if self.win.full_screen && self.win.active.is_some() {
             // Full screen: the page on black, nothing else, as Acrobat's Full Screen Mode (Esc
             // or ⌘L to leave).
             egui::CentralPanel::default().frame(egui::Frame::NONE.fill(egui::Color32::BLACK)).show(ui, |ui| {

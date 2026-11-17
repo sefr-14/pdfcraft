@@ -1068,7 +1068,7 @@ mod tests {
         tx.send(JobNews::Done(Ok(String::new()))).unwrap();
         app.poll_print();
         assert!(app.progress_notice.is_none() && app.print_tasks.jobs.is_empty());
-        assert_eq!(app.toast.as_ref().map(|t| t.0.as_str()), Some("Sent to Office"));
+        assert_eq!(app.win.toast.as_ref().map(|t| t.0.as_str()), Some("Sent to Office"));
 
         // Another job's card stays; a worker that vanished is reported, not left spinning.
         let other = crate::widgets::ProgressNotice { label: "Optimizing…".into(), fraction: 0.5, cancellable: true };
@@ -1081,7 +1081,7 @@ mod tests {
         drop(tx);
         app.poll_print();
         assert!(app.print_tasks.jobs.is_empty() && app.progress_notice.is_some());
-        assert_eq!(app.toast.as_ref().map(|t| t.0.as_str()), Some("the print job stopped unexpectedly"));
+        assert_eq!(app.win.toast.as_ref().map(|t| t.0.as_str()), Some("the print job stopped unexpectedly"));
     }
 
     /// Issue #1308: Current page is the page on screen, even when a later page is labelled with

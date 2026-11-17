@@ -1220,7 +1220,7 @@ fn tab_and_window_show_the_document_title_when_asked() {
     use pdfcraft_engine::Edit;
     let mut h = harness();
     h.run_steps(2);
-    assert_eq!(h.state().window_title, "b.pdf — PDF Overlay");
+    assert_eq!(h.state().win.window_title, "b.pdf — PDF Overlay");
     {
         let s = h.state_mut();
         let id = s.win.views[s.win.active.unwrap()].id;
@@ -1231,7 +1231,7 @@ fn tab_and_window_show_the_document_title_when_asked() {
     }
     h.run_steps(2);
     // The edits are unsaved, so the title says so (#3640).
-    assert_eq!(h.state().window_title, "Quarterly report • — PDF Overlay");
+    assert_eq!(h.state().win.window_title, "Quarterly report • — PDF Overlay");
     h.get_by_label_contains("Quarterly report");
 }
 
@@ -1240,14 +1240,14 @@ fn the_window_title_marks_unsaved_changes_until_saved() {
     use pdfcraft_engine::Edit;
     let mut h = harness();
     h.run_steps(2);
-    assert_eq!(h.state().window_title, "b.pdf — PDF Overlay");
+    assert_eq!(h.state().win.window_title, "b.pdf — PDF Overlay");
     {
         let s = h.state_mut();
         let id = s.win.views[s.win.active.unwrap()].id;
         s.session.apply(id, Edit::SetInfo { key: "Subject".into(), value: "Budget".into() }).unwrap();
     }
     h.run_steps(2);
-    assert_eq!(h.state().window_title, "b.pdf • — PDF Overlay", "unsaved changes (#3640)");
+    assert_eq!(h.state().win.window_title, "b.pdf • — PDF Overlay", "unsaved changes (#3640)");
     // Removed on drop, so a failing assert below doesn't leave it behind.
     struct Dir(std::path::PathBuf);
     impl Drop for Dir {
@@ -1263,7 +1263,7 @@ fn the_window_title_marks_unsaved_changes_until_saved() {
     h.run_steps(2);
     let s = h.state();
     assert!(!s.session.get(s.win.views[s.win.active.unwrap()].id).unwrap().dirty);
-    assert_eq!(s.window_title, "b.pdf — PDF Overlay", "saved");
+    assert_eq!(s.win.window_title, "b.pdf — PDF Overlay", "saved");
 }
 
 /// #3640: text typed but not yet applied is unsaved work too, as closing the tab says, so the
@@ -1273,7 +1273,7 @@ fn the_window_title_marks_a_draft_that_is_not_applied_yet() {
     use pdfcraft_ui_egui::fill_sign::TypeBox;
     let mut h = harness();
     h.run_steps(2);
-    assert_eq!(h.state().window_title, "b.pdf — PDF Overlay");
+    assert_eq!(h.state().win.window_title, "b.pdf — PDF Overlay");
     let i = h.state().win.active.unwrap();
     h.state_mut().win.views[i].fill_text = Some(TypeBox {
         page: 0,
@@ -1287,8 +1287,8 @@ fn the_window_title_marks_a_draft_that_is_not_applied_yet() {
     h.run_steps(2);
     let s = h.state();
     assert!(!s.session.get(s.win.views[i].id).unwrap().dirty, "nothing applied to the document yet");
-    assert_eq!(s.window_title, "b.pdf • — PDF Overlay");
-    assert_eq!(s.page_title, "b.pdf • — PDF Overlay");
+    assert_eq!(s.win.window_title, "b.pdf • — PDF Overlay");
+    assert_eq!(s.win.page_title, "b.pdf • — PDF Overlay");
 }
 
 /// #3640: a document that arrives while the window or browser tab is hidden, when eframe runs
@@ -1312,8 +1312,8 @@ fn a_document_opened_while_hidden_names_the_titles() {
     }
     let s = h.state();
     assert_eq!(s.win.views.len(), before + 1, "the document opened in logic");
-    assert_eq!(s.page_title, "arrived.pdf — PDF Overlay");
-    assert_eq!(s.window_title, "arrived.pdf — PDF Overlay");
+    assert_eq!(s.win.page_title, "arrived.pdf — PDF Overlay");
+    assert_eq!(s.win.window_title, "arrived.pdf — PDF Overlay");
 }
 
 /// #3640: a document that asks to show its own title shows it in the window, but the web page's
@@ -1331,8 +1331,8 @@ fn the_web_page_title_names_the_file_when_the_document_shows_its_title() {
         s.session.apply(id, Edit::SetInitialView(Box::new(v))).unwrap();
     }
     h.run_steps(2);
-    assert_eq!(h.state().window_title, "Budget 2026 • — PDF Overlay");
-    assert_eq!(h.state().page_title, "b.pdf • — PDF Overlay");
+    assert_eq!(h.state().win.window_title, "Budget 2026 • — PDF Overlay");
+    assert_eq!(h.state().win.page_title, "b.pdf • — PDF Overlay");
 }
 
 #[test]
@@ -1350,7 +1350,7 @@ fn a_placeholder_title_leaves_the_file_name_on_the_tab_and_window() {
         s.session.apply(id, Edit::SetInitialView(Box::new(v))).unwrap();
     }
     h.run_steps(2);
-    assert_eq!(h.state().window_title, "b.pdf • — PDF Overlay");
+    assert_eq!(h.state().win.window_title, "b.pdf • — PDF Overlay");
     assert!(h.query_by_label_contains("about:blank").is_none());
 }
 
@@ -1402,7 +1402,10 @@ fn an_earlier_revision_opens_from_document_properties() {
     h.run_steps(1);
     let s = h.state();
     assert_eq!(s.win.views.len(), views);
-    assert!(h.state().toast.as_ref().is_some_and(|t| t.0.starts_with("Couldn't open revision 99")), "unknown revisions error without opening a tab");
+    assert!(
+        h.state().win.toast.as_ref().is_some_and(|t| t.0.starts_with("Couldn't open revision 99")),
+        "unknown revisions error without opening a tab"
+    );
     // Another tab over the same original shares the snapshot: b.pdf's first revision is
     // byte-identical to updated.pdf's (incremental saves append), so it reuses the tab.
     let ids: Vec<_> = h.state().win.views.iter().map(|v| v.id).collect();
@@ -2857,5 +2860,5 @@ fn the_accessible_window_has_the_window_title_as_its_name() {
     h.run_steps(2);
     // Unsaved, so it carries the window title's mark too (#3640).
     assert_eq!(name(&h).as_deref(), Some("Quarterly report • — PDF Overlay"));
-    assert_eq!(name(&h), Some(h.state().window_title.clone()));
+    assert_eq!(name(&h), Some(h.state().win.window_title.clone()));
 }

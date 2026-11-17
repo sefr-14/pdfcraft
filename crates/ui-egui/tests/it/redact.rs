@@ -730,7 +730,7 @@ fn applying_says_where_the_removed_text_is_still_held() {
     h.get_by_label("Apply").click();
     h.run_steps(4);
     assert_eq!(marks(&h), 0);
-    let toast = h.state().toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
+    let toast = h.state().win.toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
     assert_eq!(
         toast,
         "Applied 1 redaction mark. Save to remove the content from the file. The redacted text also appears in 1 bookmark title, which redaction doesn't change. Remove hidden information removes them."
@@ -783,7 +783,7 @@ fn applying_says_the_pdfa_identification_was_written_back() {
     h.get_by_label("Apply").click();
     h.run_steps(4);
     assert_eq!(marks(&h), 0);
-    let toast = h.state().toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
+    let toast = h.state().win.toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
     assert_eq!(
         toast,
         "Applied 1 redaction mark. Save to remove the content from the file. The document's XMP metadata held the redacted text and was removed. Its PDF/A identification was written back on its own."

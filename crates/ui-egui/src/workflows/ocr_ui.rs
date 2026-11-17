@@ -861,7 +861,7 @@ impl PdfCraftApp {
                         tl!("Recognizing text… file {d} of {t}"),
                         &[("d", &(done + 1).min(total.max(1)).to_string()), ("t", &total.max(1).to_string())],
                     );
-                    if self.toast.as_ref().is_none_or(|t| t.0 != m) {
+                    if self.win.toast.as_ref().is_none_or(|t| t.0 != m) {
                         self.notify(m);
                     }
                     if let Some(ctx) = &self.ctx {
@@ -904,7 +904,7 @@ impl PdfCraftApp {
                 &[("d", &(s.done + 1).min(s.total.max(1)).to_string()), ("t", &s.total.max(1).to_string())],
             );
             drop(s);
-            if !automatic && self.toast.as_ref().is_none_or(|t| t.0 != msg) {
+            if !automatic && self.win.toast.as_ref().is_none_or(|t| t.0 != msg) {
                 self.notify(msg);
             }
             if let Some(ctx) = &self.ctx {
@@ -1286,7 +1286,7 @@ mod tests {
         app.ocr_run = Some(OcrRun { doc: id, progress, guard, automatic: None, editable: false });
         app.poll_ocr();
         assert!(app.ocr_run.is_none(), "the next run isn't refused as already running");
-        let toast = app.toast.take().map(|t| t.0).unwrap_or_default();
+        let toast = app.win.toast.take().map(|t| t.0).unwrap_or_default();
         assert!(toast.starts_with("Recognize text failed"), "{toast}");
 
         let batch = Arc::new(Mutex::new(BatchProgress { total: 2, ..Default::default() }));
@@ -1294,7 +1294,7 @@ mod tests {
         app.ocr_batch = Some(batch);
         app.poll_ocr();
         assert!(app.ocr_batch.is_none());
-        let toast = app.toast.take().map(|t| t.0).unwrap_or_default();
+        let toast = app.win.toast.take().map(|t| t.0).unwrap_or_default();
         assert!(toast.starts_with("Recognize text failed"), "{toast}");
     }
 
@@ -1441,7 +1441,7 @@ mod tests {
         let pdf = s.create_from_text("t", "scanned words here").expect("fixture");
         app.ocr_files(vec![("scan.pdf".into(), pdf.to_vec()), ("other.pdf".into(), pdf.to_vec()), ("Scan.PDF".into(), pdf.to_vec())]);
         assert!(app.ocr_batch.is_none(), "the batch never starts");
-        let toast = app.toast.clone().map(|t| t.0).unwrap_or_default();
+        let toast = app.win.toast.clone().map(|t| t.0).unwrap_or_default();
         assert!(toast.contains("same name") && toast.contains("Scan.PDF"), "{toast}");
         assert_eq!(std::fs::read_dir(&dir).expect("fixture").count(), 0, "nothing was written");
         let _ = std::fs::remove_dir_all(&dir);
@@ -1461,7 +1461,7 @@ mod tests {
         let pdf = s.create_from_text("t", "scanned words here").expect("fixture");
         app.ocr_files(vec![("a.pdf".into(), pdf.to_vec()), ("b.pdf".into(), pdf.to_vec())]);
         assert!(app.ocr_batch.is_none(), "the collision stops the batch before anything is read");
-        let toast = app.toast.clone().map(|t| t.0).unwrap_or_default();
+        let toast = app.win.toast.clone().map(|t| t.0).unwrap_or_default();
         assert!(toast.contains("already holds files of these names"), "{toast}");
         assert!(toast.contains("a.pdf"), "the colliding names are in the error: {toast}");
         assert_eq!(app.ocr_draft.output_folder.as_deref(), Some(dir.to_string_lossy().as_ref()), "the folder stays remembered for the next batch");
@@ -1493,7 +1493,7 @@ mod tests {
         app.ocr_run = Some(OcrRun { doc: id, progress, guard, automatic: None, editable: false });
         app.poll_ocr();
         assert!(app.ocr_run.is_none(), "the run is over");
-        let toast = app.toast.clone().map(|t| t.0).unwrap_or_default();
+        let toast = app.win.toast.clone().map(|t| t.0).unwrap_or_default();
         assert!(toast.contains("changed since recognition started"), "{toast}");
         assert_eq!(
             app.session.get(id).and_then(|d| d.can_undo().map(str::to_owned)),
@@ -1528,7 +1528,7 @@ mod tests {
         let progress = Arc::new(Mutex::new(OcrProgress { total: 1, done: 1, result: Some(Ok(vec![page])), cancel: false }));
         app.ocr_run = Some(OcrRun { doc: id, progress, guard, automatic: None, editable: false });
         app.poll_ocr();
-        let toast = app.toast.take().map(|t| t.0).unwrap_or_default();
+        let toast = app.win.toast.take().map(|t| t.0).unwrap_or_default();
         assert!(toast.contains("3 characters had no font"), "{toast}");
     }
 

@@ -2606,7 +2606,7 @@ mod tests {
 
     /// The status the tests see, from the app's last toast.
     fn toast(app: &mut PdfCraftApp) -> String {
-        app.toast.take().map(|t| t.0).unwrap_or_default()
+        app.win.toast.take().map(|t| t.0).unwrap_or_default()
     }
 
     /// A region re-read whose worker has finished with `result`, already asked for.
@@ -3206,7 +3206,7 @@ mod tests {
         assert_eq!(app.win.active, Some(0), "and comes to the front");
         assert!(app.ocr_verify.open, "with its review");
         assert_eq!(app.ocr_verify.text_of((0, 0)), Some("Edited"), "as it was");
-        assert!(app.toast.is_some(), "a notice says to accept or reject it first");
+        assert!(app.win.toast.is_some(), "a notice says to accept or reject it first");
         app.ocr_verify.open = false;
         app.request_close_tab(2);
         assert_eq!(app.win.views.len(), 2, "another document closes as usual");
@@ -3399,7 +3399,7 @@ mod tests {
         assert!(!app.allow_quit);
         assert_eq!(app.win.active, Some(0), "the reviewed document comes to the front");
         assert!(app.ocr_verify.open, "with its review");
-        assert!(app.toast.is_some(), "a notice says to accept or reject it first");
+        assert!(app.win.toast.is_some(), "a notice says to accept or reject it first");
         assert!(app.close_request.is_none(), "no save question: nothing is unsaved");
         // Closing the window, as the operating system does.
         app.win.active = Some(1);

@@ -662,7 +662,7 @@ fn an_undelimited_date_field_takes_a_typed_date_and_its_calendar_opens_on_it() {
     h.run_steps(2);
     h.key_press(egui::Key::Tab);
     h.run_steps(4);
-    assert_eq!(h.state().toast, None, "the typed date was not refused");
+    assert_eq!(h.state().win.toast, None, "the typed date was not refused");
     assert_eq!(value(&h, "due"), ["20250314"]);
     click_field(&mut h, "due", 0);
     h.get_by_label("March 2025");
@@ -1011,11 +1011,11 @@ fn pressing_another_text_field_validates_the_refused_value_once() {
     h.run_steps(1);
     h.drag_at(p);
     h.run_steps(2);
-    assert!(h.state().toast.is_some(), "the press committed 4500 and the script refused it");
-    h.state_mut().toast = None;
+    assert!(h.state().win.toast.is_some(), "the press committed 4500 and the script refused it");
+    h.state_mut().win.toast = None;
     h.drop_at(p);
     h.run_steps(3);
-    assert_eq!(h.state().toast, None, "the release did not validate it again");
+    assert_eq!(h.state().win.toast, None, "the release did not validate it again");
     let focus = h.state().win.views[0].forms.focus.clone().expect("the refused field stays open");
     assert_eq!((focus.name.as_str(), focus.text.as_str()), ("qty", "4500"));
 }
@@ -1838,7 +1838,7 @@ fn a_form_button_opens_only_a_real_pdf_and_returns_to_the_tab_it_opened() {
     h.state_mut().pick_override = Some(vec![saved.to_string_lossy().into_owned()]);
     h.state_mut().run_button_script(id, "go", "this.exportDataObject({cName: 'fake.pdf', nLaunch: 2});");
     wait_for_file(&mut h, &saved);
-    assert_eq!(tabs(&h), 2, "no tab for a file that isn't a PDF: {:?}", h.state().toast);
+    assert_eq!(tabs(&h), 2, "no tab for a file that isn't a PDF: {:?}", h.state().win.toast);
     assert_eq!(std::fs::read(&saved).ok().as_deref(), Some(&b"not a PDF at"[..]), "offered to save instead");
     let _ = std::fs::remove_file(&saved);
     // The real attached PDF opens in a tab of its own, though another inner.pdf starts with it.
@@ -1883,14 +1883,14 @@ fn a_form_button_opens_its_attached_instructions_in_a_new_tab() {
     // A file the document doesn't have is said so.
     h.state_mut().win.active = Some(0);
     h.state_mut().run_button_script(id, "go", "this.exportDataObject({cName: 'nope.pdf', nLaunch: 2});");
-    crate::support::wait_until(&mut h, "the missing attachment notice", |app| app.toast.as_ref().is_some_and(|t| t.0.contains("nope.pdf")));
-    assert!(h.state().toast.as_ref().is_some_and(|t| t.0.contains("nope.pdf")), "{:?}", h.state().toast);
+    crate::support::wait_until(&mut h, "the missing attachment notice", |app| app.win.toast.as_ref().is_some_and(|t| t.0.contains("nope.pdf")));
+    assert!(h.state().win.toast.as_ref().is_some_and(|t| t.0.contains("nope.pdf")), "{:?}", h.state().win.toast);
     assert_eq!(tabs(&h).len(), 2);
     // A name of the form's own is shortened in the message, keeping its end. (Past a line's
     // length, the script engine cuts it first, as it cuts every name a script passes.)
     h.state_mut().run_button_script(id, "go", "this.exportDataObject({cName: new Array(3001).join('x') + '.pdf', nLaunch: 2});");
-    crate::support::wait_until(&mut h, "the shortened attachment notice", |app| app.toast.as_ref().is_some_and(|t| t.0.contains("x.pdf")));
-    let toast = h.state().toast.as_ref().map(|t| t.0.clone()).unwrap_or_default();
+    crate::support::wait_until(&mut h, "the shortened attachment notice", |app| app.win.toast.as_ref().is_some_and(|t| t.0.contains("x.pdf")));
+    let toast = h.state().win.toast.as_ref().map(|t| t.0.clone()).unwrap_or_default();
     assert!(toast.contains('…') && toast.contains("x.pdf"), "{toast}");
     assert!(toast.chars().count() < 200, "{} characters", toast.chars().count());
 }
@@ -2149,7 +2149,7 @@ fn a_read_only_radio_button_is_focused_but_not_selected() {
     h.run_steps(6);
     click_field(&mut h, "size", 0);
     assert_eq!(value(&h, "size"), ["S"]);
-    let toast = |h: &Harness<'static, PdfCraftApp>| h.state().toast.as_ref().map(|(m, _)| m.clone());
+    let toast = |h: &Harness<'static, PdfCraftApp>| h.state().win.toast.as_ref().map(|(m, _)| m.clone());
     assert_eq!(toast(&h), None);
     h.key_press(egui::Key::ArrowRight);
     h.run_steps(3);

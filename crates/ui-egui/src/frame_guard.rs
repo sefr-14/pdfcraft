@@ -154,7 +154,7 @@ mod tests {
     }
 
     fn toast(h: &Harness<'static, PdfCraftApp>) -> String {
-        h.state().toast.as_ref().map(|t| t.0.clone()).unwrap_or_default()
+        h.state().win.toast.as_ref().map(|t| t.0.clone()).unwrap_or_default()
     }
 
     #[test]

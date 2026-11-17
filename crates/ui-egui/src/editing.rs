@@ -1699,7 +1699,7 @@ mod revert_draft_tests {
         let fill =
             |app: &mut PdfCraftApp, text: &str| app.apply_edit(Edit::SetFieldValue { name: "name".into(), value: FieldValue::Text(text.into()) });
         assert!(fill(&mut app, "张三"));
-        let toast = app.toast.as_ref().map(|t| t.0.clone()).expect("a notice");
+        let toast = app.win.toast.as_ref().map(|t| t.0.clone()).expect("a notice");
         assert!(toast.contains("“张” (U+5F20)") && toast.contains("other PDF viewers redraw the field"), "{toast}");
         assert_eq!(app.session.get(app.win.views[0].id).unwrap().form.iter().find(|f| f.name == "name").unwrap().value, ["张三"]);
         // The shell sets the drawing language each frame; here, directly (per thread).
@@ -1707,11 +1707,11 @@ mod revert_draft_tests {
         crate::i18n::set_current(crate::i18n::Lang::from_code("zh-hans").expect("registered"));
         assert!(fill(&mut app, "李四"));
         crate::i18n::set_current(previous);
-        let toast = app.toast.as_ref().map(|t| t.0.clone()).expect("a notice");
+        let toast = app.win.toast.as_ref().map(|t| t.0.clone()).expect("a notice");
         assert!(toast.contains("此字段的字体无法显示“李”（U+674E）"), "{toast}");
-        app.toast = None;
+        app.win.toast = None;
         assert!(fill(&mut app, "Ada"));
-        assert!(app.toast.is_none(), "{:?}", app.toast);
+        assert!(app.win.toast.is_none(), "{:?}", app.win.toast);
     }
 
     #[test]
@@ -1931,7 +1931,7 @@ mod revert_draft_tests {
             matches!(&app.win.views[0].pending_edit, Some(Edit::SetFieldValue { name, value: FieldValue::Text(text) }) if name == "name" && text == "Queued draft")
         );
         assert_eq!(app.active_ids(), Some((0, source)));
-        assert_eq!(app.toast.as_ref().unwrap().0, pdfcraft_engine::EditError::NoDocument.to_string());
+        assert_eq!(app.win.toast.as_ref().unwrap().0, pdfcraft_engine::EditError::NoDocument.to_string());
     }
 }
 

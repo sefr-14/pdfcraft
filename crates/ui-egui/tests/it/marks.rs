@@ -278,7 +278,7 @@ fn remove_background_says_which_pages_keep_their_own_backdrop_off() {
     h.state_mut().execute("edit.background.remove");
     h.run_steps(2);
     assert!(marks(&h).is_empty());
-    let toast = h.state().toast.as_ref().map(|(t, _)| t.clone()).unwrap_or_default();
+    let toast = h.state().win.toast.as_ref().map(|(t, _)| t.clone()).unwrap_or_default();
     assert_eq!(toast, "Page 1 changed after the background was added, so its own white backdrop stays off. It looks the same on white paper.");
 }
 

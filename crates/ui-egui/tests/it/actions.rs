@@ -48,7 +48,7 @@ fn run_and_create_actions() {
     h.get_by_label("1. Remove hidden information");
     h.get_by_label("Start").click();
     h.run_steps(3);
-    assert_eq!(h.state().toast.clone().unwrap().0, "Prepare for Distribution: 1 file done");
+    assert_eq!(h.state().win.toast.clone().unwrap().0, "Prepare for Distribution: 1 file done");
     assert!(std::fs::read(dir.join("out/r.pdf")).unwrap().starts_with(b"%PDF"));
 
     // A new action of our own.
@@ -73,7 +73,7 @@ fn run_and_create_actions() {
     assert_eq!(fresh.custom_actions, h.state().custom_actions);
     h.get_by_label("Start").click();
     h.run_steps(3);
-    assert_eq!(h.state().toast.clone().unwrap().0, "Stamp drafts: 1 file done");
+    assert_eq!(h.state().win.toast.clone().unwrap().0, "Stamp drafts: 1 file done");
 }
 
 #[test]
@@ -106,7 +106,7 @@ fn desktop_actions_preserve_duplicate_names_and_results_from_earlier_runs() {
         h.run_steps(2);
         h.get_by_label("Start").click();
         h.run_steps(3);
-        assert_eq!(h.state().toast.clone().unwrap().0, "Prepare for Distribution: 2 files done");
+        assert_eq!(h.state().win.toast.clone().unwrap().0, "Prepare for Distribution: 2 files done");
         for (number, pages) in [(first, 3), (second, 1)] {
             let path = dir.join(format!("out/report ({number}).PDF"));
             let mut reopened = Session::new();

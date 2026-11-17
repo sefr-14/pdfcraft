@@ -348,7 +348,7 @@ impl PdfCraftApp {
                 }
             }
             "view.full_screen" => {
-                let on = !self.full_screen;
+                let on = !self.win.full_screen;
                 match self.ctx.clone() {
                     Some(ctx) => self.set_full_screen(&ctx, on),
                     None => self.apply_full_screen(on),

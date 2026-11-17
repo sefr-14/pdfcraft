@@ -201,7 +201,7 @@ impl crate::PdfCraftApp {
             self.notify_interface_hidden();
         }
         // A browser page can't resize or move its window.
-        if !cfg!(target_arch = "wasm32") && activate && only_document && !self.full_screen && (v.fit_window || v.center_window) {
+        if !cfg!(target_arch = "wasm32") && activate && only_document && !self.win.full_screen && (v.fit_window || v.center_window) {
             self.pending_window = Some(PendingWindow { doc, fit: v.fit_window, center: v.center_window, frames_left: 30 });
         }
     }

@@ -301,5 +301,5 @@ fn pinning_is_limited_and_never_duplicates() {
     assert!(app.pin_folder(&folders[0]), "pinning again is fine");
     assert_eq!(app.pinned.folders.len(), MAX_PINNED, "and adds nothing");
     assert!(!app.pin_folder(&Path::new(root).join("one-too-many").to_string_lossy()));
-    assert!(app.toast.as_ref().is_some_and(|(m, _)| m.contains("Unpin one first")), "the user is told");
+    assert!(app.win.toast.as_ref().is_some_and(|(m, _)| m.contains("Unpin one first")), "the user is told");
 }

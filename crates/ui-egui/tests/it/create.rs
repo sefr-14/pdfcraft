@@ -198,7 +198,7 @@ fn notes_on_disk(path: &std::path::Path) -> Vec<String> {
 }
 
 fn toast(app: &PdfCraftApp) -> &str {
-    app.toast.as_ref().map_or("", |t| t.0.as_str())
+    app.win.toast.as_ref().map_or("", |t| t.0.as_str())
 }
 
 #[test]
@@ -624,7 +624,7 @@ fn multiple_files_that_cannot_be_converted_open_nothing() {
     app.set_option("language", "en").unwrap();
     app.use_files(pdfcraft_ui_egui::FilePurpose::CreateMultiple, vec![("report.docx".into(), b"PK\x03\x04".to_vec())]);
     assert!(app.win.views.is_empty());
-    assert!(app.toast.is_some());
+    assert!(app.win.toast.is_some());
 }
 
 #[test]

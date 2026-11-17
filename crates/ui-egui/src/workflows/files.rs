@@ -914,7 +914,7 @@ impl PdfCraftApp {
                 let mut view = crate::DocView::new(id, &doc.info, self.view_defaults);
                 // This fork (SYNC.16m, SYNC.17): its comment selection starts in this version of the document.
                 view.comments.stamp(crate::content_version(doc));
-                if self.full_screen {
+                if self.win.full_screen {
                     view.enter_presentation();
                 }
                 self.win.views.push(view);
@@ -1222,7 +1222,7 @@ mod stem_tests {
             assert!(!is_plain_file_name(bad), "{bad}");
             // A plain name first: nothing is written when any name in the batch is refused.
             app.write_files(&[("ok.pdf".into(), std::sync::Arc::new(b"%PDF".to_vec())), (bad.into(), std::sync::Arc::new(b"%PDF".to_vec()))], "t");
-            assert!(app.toast.as_ref().is_some_and(|t| t.0.contains("not a plain file name")), "{bad}");
+            assert!(app.win.toast.as_ref().is_some_and(|t| t.0.contains("not a plain file name")), "{bad}");
         }
         let names: Vec<_> = walk(&dir);
         assert!(names.is_empty(), "{names:?}");

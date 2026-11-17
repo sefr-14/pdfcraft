@@ -32,7 +32,7 @@ impl PdfCraftApp {
     /// Whether the document area shows the views as tiles now: Tile View, a document tab
     /// selected (Home and Combine files show as usual), more than one view, not full screen.
     pub fn tiled(&self) -> bool {
-        self.win.layout_mode == ViewLayout::Tiles && self.win.active.is_some() && self.win.views.len() > 1 && !self.full_screen
+        self.win.layout_mode == ViewLayout::Tiles && self.win.active.is_some() && self.win.views.len() > 1 && !self.win.full_screen
     }
 
     /// Switch between Tab View and Tile View. Only the arrangement changes: no view is closed,

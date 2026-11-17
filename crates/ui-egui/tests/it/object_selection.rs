@@ -238,7 +238,7 @@ fn refusing_one_object_keeps_the_whole_group_and_its_selection() {
     drag(&mut h, a, b);
     assert_eq!(objects(&h), before);
     h.get_by_label("3 objects selected");
-    assert!(h.state().toast.as_ref().unwrap().0.contains("Text used as a clipping path cannot be moved with this selection."));
+    assert!(h.state().win.toast.as_ref().unwrap().0.contains("Text used as a clipping path cannot be moved with this selection."));
     assert!(!h.state().session.get(h.state().win.views[0].id).unwrap().dirty);
 }
 
@@ -405,7 +405,7 @@ fn a_shift_click_with_a_changed_paragraph_open_shows_the_notice_and_moves_nothin
     );
     h.run_steps(2);
     let notice = "Finish or discard the text being edited before selecting several objects.";
-    assert!(h.state().toast.as_ref().is_some_and(|t| t.0.contains(notice)), "the notice says why");
+    assert!(h.state().win.toast.as_ref().is_some_and(|t| t.0.contains(notice)), "the notice says why");
     for k in 1..=3 {
         h.hover_at(a + (b - a) * (k as f32 / 3.0));
         h.run_steps(2);

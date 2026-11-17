@@ -253,7 +253,7 @@ impl Adapter {
         });
         json!({
             "error": error, "properties_open": self.properties_open(), "active": doc.map(|d| &d.name),
-            "notice": app.toast.as_ref().map(|(message, _)| message),
+            "notice": app.win.toast.as_ref().map(|(message, _)| message),
             "document": doc.map(document_state), "draft": draft, "original_bytes": original_bytes,
             "reopened": self.reopened,
         })

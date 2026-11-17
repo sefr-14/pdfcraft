@@ -281,16 +281,16 @@ fn bookmarks_go_through_the_link_policy() {
         ("Program", Some("This PDF uses the unsupported Launch action.")),
         ("Missing", None),
     ] {
-        h.state_mut().toast = None;
+        h.state_mut().win.toast = None;
         click_bookmark(&mut h, title);
         let s = h.state();
-        assert_eq!(s.toast.as_ref().map(|t| t.0.as_str()), notice, "{title}");
+        assert_eq!(s.win.toast.as_ref().map(|t| t.0.as_str()), notice, "{title}");
         assert_eq!((&s.pending_link, &s.last_opened_url, s.win.views.len(), s.win.views[0].current), (&None, &None, 1, 0), "{title}: nothing opened");
     }
     click_bookmark(&mut h, "Absolute");
     assert_eq!(h.state().pending_remote_link.as_ref().map(|p| p.path.clone()), Some(target));
     assert_eq!(h.state().win.views.len(), 1);
-    assert!(h.state().toast.is_none(), "the file is not touched before consent");
+    assert!(h.state().win.toast.is_none(), "the file is not touched before consent");
 }
 
 #[test]
@@ -359,14 +359,14 @@ fn a_gotor_link_to_a_named_destination_opens_at_its_page() {
         click_remote_link(&mut h);
         // The name is looked up off the UI thread, so the tab may open before it moves there.
         support::wait_until(&mut h, "remote document at its destination", |app| app.win.views.len() == 2 && app.win.views[1].current == page);
-        assert_eq!(h.state().toast, None, "{destination}: applied, so nothing to warn about");
+        assert_eq!(h.state().win.toast, None, "{destination}: applied, so nothing to warn about");
     }
     // A name the target doesn't define opens it at its first page, with the warning.
     let mut h = remote_harness(Some(dir.join("source.pdf").to_string_lossy().into_owned()), "target.pdf", "/elsewhere");
     click_remote_link(&mut h);
-    support::wait_until(&mut h, "remote document and the warning", |app| app.win.views.len() == 2 && app.toast.is_some());
+    support::wait_until(&mut h, "remote document and the warning", |app| app.win.views.len() == 2 && app.win.toast.is_some());
     assert_eq!(h.state().win.views[1].current, 0);
-    assert!(h.state().toast.as_ref().is_some_and(|(text, _)| text.contains("named destination was not applied")), "{:?}", h.state().toast);
+    assert!(h.state().win.toast.as_ref().is_some_and(|(text, _)| text.contains("named destination was not applied")), "{:?}", h.state().win.toast);
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -420,9 +420,9 @@ fn a_gotor_link_to_a_directory_or_device_is_refused_without_reading_it() {
     for target in targets {
         let mut h = remote_harness(Some(dir.join("source.pdf").to_string_lossy().into_owned()), target, "[0 /Fit]");
         click_remote_link(&mut h);
-        support::wait_until(&mut h, "relative invalid target refusal", |app| app.toast.is_some());
+        support::wait_until(&mut h, "relative invalid target refusal", |app| app.win.toast.is_some());
         assert_eq!(h.state().win.views.len(), 1, "{target} opens no tab");
-        let toast = &h.state().toast.as_ref().unwrap().0;
+        let toast = &h.state().win.toast.as_ref().unwrap().0;
         assert!(toast.contains("not a regular file"), "{target}: {toast}");
     }
     let _ = std::fs::remove_dir_all(&dir);
@@ -435,7 +435,7 @@ fn an_in_memory_source_does_not_resolve_a_relative_gotor_against_cwd() {
     let mut h = remote_harness(None, "target.pdf", "[0 /Fit]");
     click_remote_link(&mut h);
     assert_eq!(h.state().win.views.len(), 1);
-    let toast = &h.state().toast.as_ref().unwrap().0;
+    let toast = &h.state().win.toast.as_ref().unwrap().0;
     assert!(toast.contains("relative link needs a source document path"), "{toast}");
 }
 
@@ -448,7 +448,7 @@ fn unsupported_launch_action_is_reported_without_claiming_javascript() {
     assert_eq!(h.state().last_opened_url, None);
     assert_eq!(h.state().win.views.len(), 1);
     assert_eq!(h.state().win.views[0].current, 0);
-    let toast = h.state().toast.clone().expect("the unsupported action is reported").0;
+    let toast = h.state().win.toast.clone().expect("the unsupported action is reported").0;
     assert_eq!(toast, "This PDF uses the unsupported Launch action.");
 }
 
@@ -490,10 +490,10 @@ fn a_button_script_cannot_open_a_local_program() {
     let _gpu = gpu();
     let mut h = harness();
     click_field(&mut h, "sneaky");
-    support::wait_until(&mut h, "script link refusal", |app| app.pending_link.is_some() || app.toast.is_some());
+    support::wait_until(&mut h, "script link refusal", |app| app.pending_link.is_some() || app.win.toast.is_some());
     assert_eq!(h.state().pending_link, None, "a file: address is never offered");
     assert_eq!(h.state().last_opened_url, None);
-    let toast = h.state().toast.clone().expect("the user is told").0;
+    let toast = h.state().win.toast.clone().expect("the user is told").0;
     assert!(toast.contains("“file:” address"), "{toast}");
 }
 
@@ -527,10 +527,10 @@ fn a_script_cannot_open_other_kinds_of_address() {
         let id = h.state().win.views[0].id;
         let script = format!("app.launchURL({});", serde_json::to_string(url).unwrap());
         h.state_mut().run_button_script(id, "web", &script);
-        support::wait_until(&mut h, "script link decision", |app| app.pending_link.is_some() || app.toast.is_some());
+        support::wait_until(&mut h, "script link decision", |app| app.pending_link.is_some() || app.win.toast.is_some());
         assert_eq!(h.state().pending_link, None, "{url}");
         assert_eq!(h.state().last_opened_url, None, "{url}");
-        assert!(h.state().toast.clone().is_some_and(|t| t.0.contains("won't open")), "{url}: {:?}", h.state().toast);
+        assert!(h.state().win.toast.clone().is_some_and(|t| t.0.contains("won't open")), "{url}: {:?}", h.state().win.toast);
     }
 }
 
@@ -542,10 +542,10 @@ fn an_email_link_cannot_attach_a_local_file() {
         let id = h.state().win.views[0].id;
         let script = format!("app.launchURL({});", serde_json::to_string(url).unwrap());
         h.state_mut().run_button_script(id, "web", &script);
-        support::wait_until(&mut h, "script link decision", |app| app.pending_link.is_some() || app.toast.is_some());
+        support::wait_until(&mut h, "script link decision", |app| app.pending_link.is_some() || app.win.toast.is_some());
         assert_eq!(h.state().pending_link, None, "{url}");
         assert_eq!(h.state().last_opened_url, None, "{url}");
-        let toast = h.state().toast.clone().expect("the user is told").0;
+        let toast = h.state().win.toast.clone().expect("the user is told").0;
         assert!(toast.contains("attach or insert a file"), "{url}: {toast}");
     }
 }
@@ -608,7 +608,7 @@ fn an_absolute_gotor_waits_for_consent_and_keeps_its_destination_across_tabs() {
     h.get_by_label("Allow");
     assert_eq!(h.state().win.views.len(), 1);
     assert_eq!(h.state().session.docs().len(), 1);
-    assert!(h.state().toast.is_none(), "the nonexistent target is not accessed before consent");
+    assert!(h.state().win.toast.is_none(), "the nonexistent target is not accessed before consent");
     assert!(h.state().password_prompt.is_none());
     // The target only appears AFTER the confirmation is displayed.
     let target_bytes = linked_pages(2, None);
@@ -657,7 +657,7 @@ fn cancelling_an_absolute_gotor_by_button_escape_or_dismissal_changes_nothing() 
         assert_eq!(doc.bytes, before);
         assert!(!doc.dirty);
         assert!(doc.can_undo().is_none());
-        assert!(h.state().toast.is_none());
+        assert!(h.state().win.toast.is_none());
         assert!(h.state().password_prompt.is_none());
     }
 }
@@ -692,14 +692,14 @@ fn consenting_to_absolute_gotor_still_validates_the_target() {
         let before = h.state().session.get(source).unwrap().bytes.clone();
         click_remote_link(&mut h);
         assert!(h.state().pending_remote_link.is_some());
-        assert!(h.state().toast.is_none(), "{name} isn't checked before consent");
+        assert!(h.state().win.toast.is_none(), "{name} isn't checked before consent");
         h.get_by_label("Allow").click();
         support::wait_until(&mut h, "approved invalid target refusal", |app| {
-            app.toast.as_ref().is_some_and(|(message, _)| message.starts_with(expected_error))
+            app.win.toast.as_ref().is_some_and(|(message, _)| message.starts_with(expected_error))
         });
         assert!(h.state().pending_remote_link.is_none());
         assert_eq!(h.state().win.views.len(), 1, "{name}");
-        assert!(h.state().toast.is_some(), "{name} is refused after consent");
+        assert!(h.state().win.toast.is_some(), "{name} is refused after consent");
         assert_eq!(h.state().session.docs().len(), 1);
         assert_eq!(h.state().active_ids().map(|(_, id)| id), Some(source));
         assert_eq!(h.state().win.views[0].current, 0);
@@ -763,7 +763,7 @@ fn closing_the_source_invalidates_pending_absolute_gotor_consent() {
     assert!(h.state().win.views.is_empty());
     assert!(h.state().session.docs().is_empty());
     assert!(h.state().pending_remote_link.is_none());
-    assert!(h.state().toast.is_none());
+    assert!(h.state().win.toast.is_none());
 }
 
 fn overlapping_annotation_fixture(subtype: &str, internal: bool) -> Vec<u8> {

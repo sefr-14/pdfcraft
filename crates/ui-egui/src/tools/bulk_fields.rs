@@ -225,7 +225,7 @@ impl crate::PdfCraftApp {
                 if self.apply_edit(Edit::Batch { label: "Change field properties".into(), edits }) {
                     return true;
                 }
-                self.toast.as_ref().map(|(message, _)| message.clone()).unwrap_or_else(|| "The field properties could not be changed.".into())
+                self.win.toast.as_ref().map(|(message, _)| message.clone()).unwrap_or_else(|| "The field properties could not be changed.".into())
             }
             Err(error) => error,
         };

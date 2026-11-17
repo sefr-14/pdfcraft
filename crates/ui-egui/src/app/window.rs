@@ -35,13 +35,13 @@ impl PdfCraftApp {
     pub fn apply_full_screen(&mut self, on: bool) {
         // A click turns the page only with the Select tool, and full screen hides the tools:
         // select it there, and give the tool back on leaving (review on #2070).
-        if on && !self.full_screen {
+        if on && !self.win.full_screen {
             self.win.full_screen_tool = Some(self.win.quick_tool);
             self.win.quick_tool = QuickTool::Select;
         } else if !on && let Some(tool) = self.win.full_screen_tool.take() {
             self.win.quick_tool = tool;
         }
-        self.full_screen = on;
+        self.win.full_screen = on;
         for view in &mut self.win.views {
             if on {
                 view.enter_presentation();

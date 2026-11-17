@@ -254,8 +254,8 @@ fn a_form_whose_scripts_were_turned_off_at_open_says_so() {
     let id = h.state().win.views[0].id;
     assert!(h.state().session.get(id).unwrap().xfa_scripts_off(), "script console: {:?}", h.state().js_console.log);
     // A toast says so as it happens; the notice bar keeps saying so after the toast is gone.
-    assert!(says_scripts_are_off(&h.state().toast), "{:?}", h.state().toast);
-    h.state_mut().toast = None;
+    assert!(says_scripts_are_off(&h.state().win.toast), "{:?}", h.state().win.toast);
+    h.state_mut().win.toast = None;
     h.run_steps(2);
     assert!(h.query_by_label_contains(SCRIPTS_OFF).is_some());
     // The bar leads to the console, where the script's error is.
@@ -273,16 +273,16 @@ fn scripts_turned_off_by_a_click_bring_a_closed_notice_bar_back() {
     // The form opens with its scripts on, and the user closes the notice bar.
     let id = h.state().win.views[0].id;
     assert!(!h.state().session.get(id).unwrap().xfa_scripts_off());
-    assert!(h.query_by_label_contains(SCRIPTS_OFF).is_none() && !says_scripts_are_off(&h.state().toast));
+    assert!(h.query_by_label_contains(SCRIPTS_OFF).is_none() && !says_scripts_are_off(&h.state().win.toast));
     h.get_by_label("Dismiss").click();
     h.run_steps(2);
     assert!(h.state().win.views[0].notice_dismissed);
     // The button's script runs away: a toast says the scripts are off and the bar is back.
     click_field(&mut h, "hello");
     assert!(h.state().session.get(id).unwrap().xfa_scripts_off(), "script console: {:?}", h.state().js_console.log);
-    assert!(says_scripts_are_off(&h.state().toast), "{:?}", h.state().toast);
+    assert!(says_scripts_are_off(&h.state().win.toast), "{:?}", h.state().win.toast);
     assert!(!h.state().win.views[0].notice_dismissed);
-    h.state_mut().toast = None;
+    h.state_mut().win.toast = None;
     h.run_steps(2);
     assert!(h.query_by_label_contains(SCRIPTS_OFF).is_some());
     // It is said once: closed again, the bar stays closed through what the user does next.
@@ -290,7 +290,7 @@ fn scripts_turned_off_by_a_click_bring_a_closed_notice_bar_back() {
     h.run_steps(2);
     click_field(&mut h, "addRow");
     assert!(h.state().win.views[0].notice_dismissed);
-    assert!(!says_scripts_are_off(&h.state().toast), "{:?}", h.state().toast);
+    assert!(!says_scripts_are_off(&h.state().win.toast), "{:?}", h.state().win.toast);
 }
 
 /// On an encrypted dynamic XFA form that allows filling, the notice bar shows the layout note and

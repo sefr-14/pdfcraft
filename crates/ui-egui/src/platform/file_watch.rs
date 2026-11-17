@@ -738,7 +738,7 @@ mod tests {
     const REFUSED: &str = "other.pdf is open in another tab. Close it or choose another name.";
 
     fn toast(app: &PdfCraftApp) -> &str {
-        app.toast.as_ref().map_or("", |t| t.0.as_str())
+        app.win.toast.as_ref().map_or("", |t| t.0.as_str())
     }
 
     #[test]

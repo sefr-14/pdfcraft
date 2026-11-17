@@ -2206,7 +2206,7 @@ fn navigation_history_for_os(os: egui::os::OperatingSystem) {
     // Empty-history shortcuts were silent before registry integration and must stay silent.
     for key in ["[", "]"] {
         ok(&mut h, &c, "ui.key", json!({"key": key, "modifiers": ["command"]}));
-        assert!(h.state().toast.is_none(), "an unavailable history action must not ask to open the already-open document");
+        assert!(h.state().win.toast.is_none(), "an unavailable history action must not ask to open the already-open document");
     }
     let before = h.state().session.get(h.state().win.views[0].id).unwrap().bytes.clone();
     ok(&mut h, &c, "ui.set", json!({"key": "page", "value": "4"}));

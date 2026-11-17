@@ -366,7 +366,7 @@ fn a_confirmation_from_before_a_change_deletes_nothing() {
     h.state_mut().confirm_delete_comments();
     h.run_steps(2);
     assert_eq!(texts(&h), before, "nothing deleted");
-    assert!(h.state().toast.as_ref().is_some_and(|(m, _)| m.contains("changed")), "{:?}", h.state().toast);
+    assert!(h.state().win.toast.as_ref().is_some_and(|(m, _)| m.contains("changed")), "{:?}", h.state().win.toast);
 }
 
 #[test]

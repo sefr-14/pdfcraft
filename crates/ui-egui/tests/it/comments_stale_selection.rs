@@ -184,7 +184,7 @@ fn an_automation_edit_never_makes_the_selection_delete_another() {
         press(&mut h, 0, k);
         deletes_only_the_selected_or_nothing(&h, &before, &["C2", "C3", "R3"], &format!("{k:?} after an automation edit"));
         assert_eq!(snapshot(&h), before, "{k:?}: the selection was dropped, so nothing was deleted");
-        let toast = h.state().toast.as_ref().map(|t| t.0.clone()).unwrap_or_default();
+        let toast = h.state().win.toast.as_ref().map(|t| t.0.clone()).unwrap_or_default();
         assert!(toast.contains("selected comments were deselected"), "{k:?}: said why: {toast:?}");
     }
 }

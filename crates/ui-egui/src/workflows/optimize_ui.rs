@@ -535,7 +535,7 @@ mod tests {
         progress.lock().unwrap().result = Some(Err(EditError::Cancelled));
         h.run_steps(2);
         assert!(h.state().optimize_run.is_none() && h.state().progress_notice.is_none());
-        assert_eq!(h.state().toast.as_ref().map(|t| t.0.as_str()), Some("Optimization cancelled"));
+        assert_eq!(h.state().win.toast.as_ref().map(|t| t.0.as_str()), Some("Optimization cancelled"));
     }
 
     #[test]
@@ -556,7 +556,7 @@ mod tests {
         let (_, doc) = app.active_ids().unwrap();
         app.optimize_run = Some(OptimizeRun { doc, kind: OptimizeKind::Reduce, destination: None, progress: Arc::default(), generation: 0 });
         app.optimize_with_draft();
-        assert_eq!(app.toast.as_ref().map(|t| t.0.as_str()), Some("Optimization is already running"));
+        assert_eq!(app.win.toast.as_ref().map(|t| t.0.as_str()), Some("Optimization is already running"));
     }
 
     #[test]
@@ -567,13 +567,13 @@ mod tests {
         let (_, doc) = app.active_ids().unwrap();
         app.scan_clean_run = Some(crate::scan_clean_ui::ScanCleanRun { doc, progress: Arc::default() });
         app.optimize_with_draft();
-        assert_eq!(app.toast.as_ref().map(|t| t.0.as_str()), Some("Scanned pages are already being enhanced"));
+        assert_eq!(app.win.toast.as_ref().map(|t| t.0.as_str()), Some("Scanned pages are already being enhanced"));
         assert!(app.optimize_run.is_none());
 
         app.scan_clean_run = None;
         app.optimize_run = Some(OptimizeRun { doc, kind: OptimizeKind::Reduce, destination: None, progress: Arc::default(), generation: 0 });
         app.start_scan_clean();
-        assert_eq!(app.toast.as_ref().map(|t| t.0.as_str()), Some("Optimization is already running"));
+        assert_eq!(app.win.toast.as_ref().map(|t| t.0.as_str()), Some("Optimization is already running"));
         assert!(app.scan_clean_run.is_none());
     }
 }

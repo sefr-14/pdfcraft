@@ -143,11 +143,11 @@ impl PdfCraftApp {
     /// what the toast shows (another message, or a notice such as the run's own submit request)
     /// to go ([`Self::next_script_message`]).
     pub fn show_script_messages(&mut self, messages: Vec<Message>) {
-        let room = MAX_WAITING_MESSAGES.saturating_sub(self.script_messages.len());
+        let room = MAX_WAITING_MESSAGES.saturating_sub(self.win.script_messages.len());
         let left_out = u64::try_from(messages.len().saturating_sub(room)).unwrap_or(u64::MAX);
-        self.script_messages_dropped = self.script_messages_dropped.saturating_add(left_out);
-        self.script_messages.extend(messages.into_iter().take(room));
-        if self.toast.is_none() {
+        self.win.script_messages_dropped = self.win.script_messages_dropped.saturating_add(left_out);
+        self.win.script_messages.extend(messages.into_iter().take(room));
+        if self.win.toast.is_none() {
             self.next_script_message();
         }
     }
@@ -182,12 +182,12 @@ impl PdfCraftApp {
     /// Put the next waiting script message in the toast, or, once none waits, a notice of how many
     /// the queue had no room for. False when there is neither.
     pub fn next_script_message(&mut self) -> bool {
-        let Some(m) = self.script_messages.pop_front() else {
+        let Some(m) = self.win.script_messages.pop_front() else {
             // Every message the queue held has been shown: say how many it had no room for.
-            if self.script_messages_dropped == 0 {
+            if self.win.script_messages_dropped == 0 {
                 return false;
             }
-            let n = std::mem::take(&mut self.script_messages_dropped);
+            let n = std::mem::take(&mut self.win.script_messages_dropped);
             self.notify(crate::i18n::trn(
                 crate::i18n::current(),
                 n,
@@ -195,11 +195,11 @@ impl PdfCraftApp {
                 "{n} more messages from the form's scripts were left out.",
             ));
             // Kept with the toast until it has been shown its time (the toast's own expiry).
-            self.toast_dropped = n;
+            self.win.toast_dropped = n;
             return true;
         };
-        self.toast = Some((m.text.clone(), 0.0));
-        self.toast_script = Some(m);
+        self.win.toast = Some((m.text.clone(), 0.0));
+        self.win.toast_script = Some(m);
         true
     }
 

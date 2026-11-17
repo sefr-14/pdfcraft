@@ -161,7 +161,7 @@ fn a_full_screen_document_shows_its_non_full_screen_panel_outside_full_screen() 
         let ctx = h.ctx.clone();
         h.state_mut().resolve_full_screen_prompt(&ctx, false);
         h.run_steps(2);
-        assert_eq!((h.state().full_screen, h.state().win.right), (false, want), "{mode}: declined");
+        assert_eq!((h.state().win.full_screen, h.state().win.right), (false, want), "{mode}: declined");
         // Entering and leaving full screen comes back to it.
         h.state_mut().apply_full_screen(true);
         h.run_steps(2);
@@ -221,14 +221,14 @@ fn a_file_named_with_open_parameters_opens_at_their_destination() {
             Some(path.as_str()),
             "{parameters}: the file itself"
         );
-        assert_eq!(app.toast, None, "{parameters}");
+        assert_eq!(app.win.toast, None, "{parameters}");
     }
     // A name the file doesn't define: it opens where it would have, and says so.
     let mut app = PdfCraftApp::new();
     app.set_option("language", "en").unwrap();
     assert_eq!(app.open_path(&format!("{path}#nameddest=Nowhere")), OpenOutcome::Opened);
     assert_eq!(app.win.views[0].current, 2);
-    assert!(app.toast.as_ref().is_some_and(|(text, _)| text.contains("named destination was not applied")), "{:?}", app.toast);
+    assert!(app.win.toast.as_ref().is_some_and(|(text, _)| text.contains("named destination was not applied")), "{:?}", app.win.toast);
     // A path that names no file, before a `#` or as a whole, still fails as before.
     let mut app = PdfCraftApp::new();
     app.set_option("language", "en").unwrap();

@@ -25,7 +25,7 @@ fn compare_two_versions() {
     h.get_by_label("Compare").click();
     h.run_steps(3);
     assert_eq!(h.state().win.right, Some(RightPanel::Compare));
-    assert_eq!(h.state().toast.clone().unwrap().0, "2 differences found");
+    assert_eq!(h.state().win.toast.clone().unwrap().0, "2 differences found");
     h.get_by_label("2 Replaced");
     h.get_by_label("\"five\" → \"three\"").click();
     h.run_steps(2);

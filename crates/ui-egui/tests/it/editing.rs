@@ -984,7 +984,7 @@ fn opening_a_missing_file_fails_and_tells_the_user() {
     let missing = std::env::temp_dir().join(format!("pdfcraft-no-such-file-{}.pdf", std::process::id()));
     assert_eq!(app.open_path(&missing.to_string_lossy()), OpenOutcome::Failed);
     assert!(app.win.views.is_empty());
-    assert!(app.toast.is_some(), "the failure is still reported to the user");
+    assert!(app.win.toast.is_some(), "the failure is still reported to the user");
 }
 
 #[test]
@@ -1014,7 +1014,7 @@ fn opening_a_file_whose_copy_vanished_from_disk_focuses_its_tab() {
     h.run_steps(2);
     assert_eq!(h.state().win.views.len(), 1, "no second tab");
     assert_eq!(h.state().win.active, Some(0), "the open tab is focused");
-    assert!(h.state().toast.is_none(), "no read error: the file is never read again");
+    assert!(h.state().win.toast.is_none(), "no read error: the file is never read again");
 }
 
 #[test]
@@ -2650,7 +2650,7 @@ fn asynchronous_launch_display(explicit: bool) {
                 h.state().win.views.len(),
                 h.state().password_prompt.is_some(),
                 h.state().password_prompt.as_ref().is_some_and(|p| p.error.is_some()),
-                h.state().toast.is_some()
+                h.state().win.toast.is_some()
             );
             h.run_steps(2);
             std::thread::sleep(std::time::Duration::from_millis(5));
@@ -3119,7 +3119,7 @@ fn copying_out_of_a_document_honours_its_security() {
         h
     }
     fn copy(h: &mut Harness<'static, PdfCraftApp>) -> bool {
-        h.state_mut().toast = None;
+        h.state_mut().win.toast = None;
         h.event(egui::Event::Copy);
         let mut copied = false;
         for _ in 0..4 {
@@ -3146,18 +3146,18 @@ fn copying_out_of_a_document_honours_its_security() {
 
     let mut h = open("pw");
     assert!(!copy(&mut h), "⌘C copies nothing");
-    assert_eq!(h.state().toast.as_ref().map(|t| t.0.as_str()), refused);
+    assert_eq!(h.state().win.toast.as_ref().map(|t| t.0.as_str()), refused);
     for command in ["edit.snapshot", "export.image", "export.text", "export.docx", "export.pptx", "export.html", "export.rtf", "export.all_images"] {
-        h.state_mut().toast = None;
+        h.state_mut().win.toast = None;
         assert!(!h.state_mut().execute(command), "{command} is refused");
-        assert_eq!(h.state().toast.as_ref().map(|t| t.0.as_str()), refused, "{command} says why");
+        assert_eq!(h.state().win.toast.as_ref().map(|t| t.0.as_str()), refused, "{command} says why");
     }
     assert_eq!(h.state().dialog, None, "no export dialog");
     // The snapshot tool, chosen on another tab, takes nothing here either.
     h.state_mut().set_option("quick", "snapshot").unwrap();
     snapshot(&mut h);
     assert!(h.state().last_snapshot.is_none());
-    assert_eq!(h.state().toast.as_ref().map(|t| t.0.as_str()), refused);
+    assert_eq!(h.state().win.toast.as_ref().map(|t| t.0.as_str()), refused);
 
     let mut h = open("owner");
     assert!(copy(&mut h), "the owner may copy");
@@ -3903,7 +3903,7 @@ fn a_paragraph_whose_edit_fails_stays_open_with_its_typing() {
     h.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
     h.run_steps(3);
     let s = h.state();
-    assert!(s.toast.as_ref().is_some_and(|(m, _)| m.starts_with("Edit text failed")), "the failure is said: {:?}", s.toast);
+    assert!(s.win.toast.as_ref().is_some_and(|(m, _)| m.starts_with("Edit text failed")), "the failure is said: {:?}", s.win.toast);
     assert_eq!(s.session.get(s.win.views[0].id).unwrap().can_undo(), None, "nothing was applied");
     let ed = s.win.views[0].line_editor.as_ref().expect("the paragraph is still open");
     assert_eq!((ed.block, ed.text.as_str()), (0, "Top ก"), "with what was typed");
@@ -5963,7 +5963,7 @@ fn an_ordinary_paragraph_drag_refusal_never_rewrites_the_text() {
     assert!(doc.can_undo().is_none());
     assert!(!doc.dirty);
     assert_dragged_paragraphs(&dragged_paragraphs(&h), &before);
-    assert!(h.state().toast.as_ref().unwrap().0.contains("Text used as a clipping path cannot be moved with this selection."));
+    assert!(h.state().win.toast.as_ref().unwrap().0.contains("Text used as a clipping path cannot be moved with this selection."));
 }
 
 /// A delete the engine refuses (text used as a clipping path) leaves the document as it was and
@@ -5986,7 +5986,7 @@ fn a_refused_delete_keeps_the_object_selection() {
     let doc = h.state().session.get(id).unwrap();
     assert_eq!((doc.edit_generation(), &doc.bytes), (generation, &bytes), "the refused delete changed nothing");
     assert!(doc.can_undo().is_none());
-    assert!(h.state().toast.is_some(), "the refusal is reported");
+    assert!(h.state().win.toast.is_some(), "the refusal is reported");
     h.get_by_label("1 object selected");
 }
 
@@ -8542,7 +8542,7 @@ fn page_properties_does_not_apply_after_the_document_changes() {
     assert_eq!(doc.tab_orders(), [Annotations; 3]);
     assert_ne!(doc.can_undo(), Some("Set tab order"));
     assert_eq!(
-        h.state().toast.as_ref().map(|t| t.0.as_str()),
+        h.state().win.toast.as_ref().map(|t| t.0.as_str()),
         Some("The document changed while the dialog was open, so nothing was changed. Open Page properties again to set the tab order.")
     );
 }
@@ -9642,7 +9642,7 @@ fn printer_marks_are_added_from_the_dialog_and_removed() {
     assert!(doc.marks().contains(&pdfcraft_engine::MarkKind::PrinterMarks));
     // No trim box: the whole page is the trim box, so the page grew 36 pt a side for the marks.
     assert!((doc.info.pages[0].width - (before + 72.0)).abs() < 0.5, "{} → {}", before, doc.info.pages[0].width);
-    assert_eq!(h.state().toast.clone().unwrap().0, "Printer marks added");
+    assert_eq!(h.state().win.toast.clone().unwrap().0, "Printer marks added");
     assert!(h.state_mut().execute("prepress.marks.remove"));
     h.run_steps(3);
     let doc = h.state().session.get(id).unwrap();
@@ -9677,13 +9677,13 @@ fn convert_colours_from_the_dialog() {
     // The mode bar has a "Convert" too: the dialog's button is the last one.
     h.query_all_by_label("Convert").last().unwrap().click();
     h.run_steps(3);
-    assert_eq!(h.state().toast.clone().unwrap().0, "Converted 2 colours and 0 pictures on 1 pages");
+    assert_eq!(h.state().win.toast.clone().unwrap().0, "Converted 2 colours and 0 pictures on 1 pages");
     assert_eq!(h.state().session.get(id).unwrap().can_undo(), Some("Convert colours"));
     assert!(h.state_mut().execute("prepress.convert_colors"));
     h.run_steps(2);
     h.query_all_by_label("Convert").last().unwrap().click();
     h.run_steps(3);
-    assert_eq!(h.state().toast.clone().unwrap().0, "Nothing on those pages needed converting");
+    assert_eq!(h.state().win.toast.clone().unwrap().0, "Nothing on those pages needed converting");
 }
 
 /// Print production ▸ Fix hairlines: the dialog widens zero-width and too-thin
@@ -9711,14 +9711,14 @@ fn fix_hairlines_from_the_dialog() {
     h.get_by_label("Type 3 font glyphs");
     h.get_by_label("Fix").click();
     h.run_steps(3);
-    assert_eq!(h.state().toast.clone().unwrap().0, "Fixed 1 hairline on 1 page");
+    assert_eq!(h.state().win.toast.clone().unwrap().0, "Fixed 1 hairline on 1 page");
     assert_eq!(h.state().session.get(id).unwrap().can_undo(), Some("Fix hairlines"));
     // Nothing left: told, and no new undo step.
     assert!(h.state_mut().execute("prepress.hairlines"));
     h.run_steps(2);
     h.get_by_label("Fix").click();
     h.run_steps(3);
-    assert_eq!(h.state().toast.clone().unwrap().0, "No hairlines found on those pages");
+    assert_eq!(h.state().win.toast.clone().unwrap().0, "No hairlines found on those pages");
     assert_eq!(h.state().session.get(id).unwrap().can_undo(), Some("Fix hairlines"));
 }
 
@@ -9744,7 +9744,7 @@ fn fix_hairlines_notice_uses_singular_and_plural() {
     h.run_steps(2);
     h.get_by_label("Fix").click();
     h.run_steps(3);
-    assert_eq!(h.state().toast.clone().unwrap().0, "Fixed 2 hairlines on 1 page");
+    assert_eq!(h.state().win.toast.clone().unwrap().0, "Fixed 2 hairlines on 1 page");
 }
 
 /// The `dialog` option goes through the command: with no document it does not open the dialog.

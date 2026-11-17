@@ -111,7 +111,7 @@ fn a_pick_for_a_document_that_is_no_longer_active_is_dropped() {
     h.run_steps(2);
     assert_eq!(pages(h.state(), 0), 3, "the document the pick was for is unchanged");
     assert_eq!(pages(h.state(), 1), 4, "the newly active document is unchanged");
-    let toast = h.state().toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
+    let toast = h.state().win.toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
     assert!(toast.contains("document changed"), "the user is told why nothing happened: {toast:?}");
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -359,7 +359,7 @@ fn an_image_pick_for_a_document_that_is_no_longer_active_changes_nothing() {
     h.state_mut().win.active = Some(1);
     h.run_steps(2);
     assert!(!dirty(h.state(), 0) && !dirty(h.state(), 1), "neither document changed");
-    let toast = h.state().toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
+    let toast = h.state().win.toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
     assert!(toast.contains("document changed"), "the user is told why nothing happened: {toast:?}");
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -431,7 +431,7 @@ fn extracted_pages_are_not_deleted_if_the_document_was_edited_while_choosing_the
     h.run_steps(2);
     assert!(dir.join("doc0 (page 1).pdf").exists(), "the extracted file is still written");
     assert_eq!(pages(h.state(), 0), 2, "nothing more is deleted");
-    let toast = h.state().toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
+    let toast = h.state().win.toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
     assert!(toast.contains("not deleted"), "the user is told: {toast:?}");
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -475,7 +475,7 @@ fn an_image_pick_is_dropped_if_the_document_was_edited_meanwhile() {
     h.state_mut().apply_edit(pdfcraft_engine::Edit::DeletePages { pages: vec![0] });
     h.run_steps(2);
     assert_eq!(pages(h.state(), 0), 1);
-    let toast = h.state().toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
+    let toast = h.state().win.toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
     assert!(toast.contains("document changed"), "the pick is dropped and the user told why: {toast:?}");
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -535,7 +535,7 @@ fn a_browser_insert_that_arrives_after_switching_documents_changes_neither() {
     h.run_steps(2);
     assert_eq!(pages(h.state(), 0), 3, "A is unchanged");
     assert_eq!(pages(h.state(), 1), 1, "C is unchanged");
-    let toast = h.state().toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
+    let toast = h.state().win.toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
     assert!(toast.contains("document changed"), "the user is told why nothing happened: {toast:?}");
 }
 
@@ -566,7 +566,7 @@ fn replace_pages_applies_only_to_the_document_its_dialog_was_opened_on() {
         h.run_steps(2);
         if switch {
             assert!(!dirty(h.state(), 0) && !dirty(h.state(), 1), "neither document is changed");
-            let toast = h.state().toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
+            let toast = h.state().win.toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
             assert!(toast.contains("document changed"), "the user is told why: {toast:?}");
         } else {
             assert!(dirty(h.state(), 0) && !dirty(h.state(), 1), "the first document's page is replaced");
@@ -582,7 +582,7 @@ fn a_failed_startup_url_is_reported_in_the_app() {
     let failed = h.state().failed_inbox.clone();
     failed.lock().unwrap().push(("missing.pdf".into(), "HTTP 404".into()));
     h.run_steps(2);
-    let toast = h.state().toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
+    let toast = h.state().win.toast.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
     assert!(toast.contains("missing.pdf") && toast.contains("HTTP 404"), "{toast:?}");
     assert!(h.state().win.views.is_empty(), "no document was opened");
     assert!(failed.lock().unwrap().is_empty(), "each failure is reported once");
@@ -706,7 +706,7 @@ fn a_broken_late_startup_file_reports_its_error_without_changing_the_active_docu
     h.run_steps(2);
     assert_eq!(h.state().win.active, Some(0));
     assert_eq!(h.state().win.views.len(), 1);
-    let toast = &h.state().toast.as_ref().unwrap().0;
+    let toast = &h.state().win.toast.as_ref().unwrap().0;
     assert!(toast.contains("broken.pdf"), "{toast}");
     assert!(h.state().startup_inbox.lock().unwrap().is_empty());
 }
@@ -937,13 +937,13 @@ fn a_background_startup_forms_script_notice_waits_until_its_tab_is_selected() {
     deliver_startup(&h, "late-form.pdf", pdfcraft_xfa::fixtures::shell(&template));
     h.run_steps(2);
     assert_eq!(h.state().win.active, Some(0));
-    assert!(h.state().toast.is_none(), "the background form must not interrupt the current document");
+    assert!(h.state().win.toast.is_none(), "the background form must not interrupt the current document");
     h.get_by_label("late-form.pdf").click();
     h.run_steps(2);
-    assert_eq!(h.state().toast.as_ref().unwrap().0, "Late form opened");
-    h.state_mut().toast = None;
+    assert_eq!(h.state().win.toast.as_ref().unwrap().0, "Late form opened");
+    h.state_mut().win.toast = None;
     h.run_steps(2);
-    assert!(h.state().toast.is_none(), "the notice is delivered once");
+    assert!(h.state().win.toast.is_none(), "the notice is delivered once");
 }
 
 /// A form opened behind the current document that turns field highlighting on gets it at
@@ -1113,7 +1113,7 @@ fn files_written_from_an_attachment_tab_stay_inside_the_chosen_folder() {
         // Extract writes page 1 under the name Split gave it.
         h.state_mut().extract_draft = pdfcraft_ui_egui::ExtractDraft { separate: true, ..Default::default() };
         h.state_mut().extract_selection();
-        assert!(h.state().toast.as_ref().is_some_and(|t| t.0.starts_with("Wrote 1 file")), "{name}: {:?}", h.state().toast);
+        assert!(h.state().win.toast.as_ref().is_some_and(|t| t.0.starts_with("Wrote 1 file")), "{name}: {:?}", h.state().win.toast);
         assert_eq!(files_under(&dir.0), written, "{name}");
         std::fs::remove_dir_all(dir.0.join("a")).unwrap();
     }

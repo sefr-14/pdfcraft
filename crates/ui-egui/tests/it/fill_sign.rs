@@ -1467,7 +1467,7 @@ fn image_import_cancel_clear_and_errors_preserve_saved_signatures() {
     std::fs::write(&path, b"broken PNG").unwrap();
     browse_image(&mut h, &path);
     assert_eq!(h.state().signature_draft.image, loaded, "an invalid replacement keeps the previous draft");
-    assert!(h.state().toast.as_ref().unwrap().0.contains("Couldn't import"));
+    assert!(h.state().win.toast.as_ref().unwrap().0.contains("Couldn't import"));
     h.get_by_label("Clear").click();
     h.run_steps(2);
     assert!(h.state().signature_draft.saved().is_none());
@@ -2080,7 +2080,7 @@ fn scan_cancel_errors_and_stale_answers_preserve_saved_signatures() {
     std::fs::write(&broken, b"\xFF\xD8\xFF not a JPEG").unwrap();
     choose_photo(&mut h, &broken);
     assert_eq!(h.state().signature_draft, loaded, "an invalid photo keeps the previous one");
-    assert!(h.state().toast.as_ref().unwrap().0.contains("Couldn't use the photo"));
+    assert!(h.state().win.toast.as_ref().unwrap().0.contains("Couldn't use the photo"));
     // A photo picked for the Scan tab does not land in the Image tab.
     h.state_mut().pick_override = Some(vec![path.to_string_lossy().into_owned()]);
     h.get_by_label("Choose photo…").click();
@@ -2139,7 +2139,7 @@ fn photos_and_images_dropped_on_the_signature_pad_are_imported_not_opened() {
     h.input_mut().dropped_files.push(std::sync::Arc::new(Dropped("broken.png".into(), b"broken".to_vec())));
     h.run_steps(3);
     assert!(h.state().signature_draft.image.is_some(), "an invalid file keeps the previous draft");
-    assert!(h.state().toast.as_ref().unwrap().0.contains("Couldn't import"));
+    assert!(h.state().win.toast.as_ref().unwrap().0.contains("Couldn't import"));
     assert_eq!(h.state().win.views.len(), tabs, "nothing opened behind the dialog");
     std::fs::remove_file(photo).unwrap();
 }

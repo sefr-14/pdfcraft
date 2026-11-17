@@ -111,7 +111,7 @@ fn at_zero_the_menu_and_the_palette_have_nothing_to_open() {
     support::open_menu(&mut h, "File");
     assert!(h.query_by(|n| n.label().as_deref() == Some("Open Recent") && n.is_disabled()).is_some(), "Open Recent is disabled");
     assert!(h.state_mut().execute("file.open_recent"));
-    assert!(h.state().toast.as_ref().is_some_and(|(m, _)| m.contains("No recent files")));
+    assert!(h.state().win.toast.as_ref().is_some_and(|(m, _)| m.contains("No recent files")));
     assert!(h.state().win.views.is_empty(), "and nothing opened");
 }
 

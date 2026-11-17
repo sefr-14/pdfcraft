@@ -310,8 +310,8 @@ mod review13_ui_tests {
             let (mut app, id) = app();
             app.start_ui_script(id, "app.response({cQuestion:'Wait'});", None, None);
             app.start_ui_script(id, "var shouldNotRun=1;", None, None);
-            assert!(app.toast.as_ref().unwrap().0.contains("not run"));
-            app.toast = None;
+            assert!(app.win.toast.as_ref().unwrap().0.contains("not run"));
+            app.win.toast = None;
             if prompt {
                 let deadline = Instant::now() + Duration::from_secs(5);
                 while app.script_pending.as_ref().unwrap().prompt.is_none() && Instant::now() < deadline {
@@ -328,9 +328,9 @@ mod review13_ui_tests {
             app.poll_script_dialog(&ctx);
             assert!(app.script_pending.is_none());
             if timeout {
-                assert_eq!(app.toast.as_ref().unwrap().0, "The form script timed out; its result was discarded");
+                assert_eq!(app.win.toast.as_ref().unwrap().0, "The form script timed out; its result was discarded");
             } else {
-                assert!(app.toast.is_none());
+                assert!(app.win.toast.is_none());
             }
         }
     }

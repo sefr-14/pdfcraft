@@ -2542,7 +2542,7 @@ fn full_screen_shows_one_fitted_page_and_clicks_turn_it() {
     assert!(h.state().win.views[0].continuous(), "continuous before");
     h.key_press_modifiers(Modifiers::COMMAND, Key::L);
     h.run_steps(6);
-    assert!(h.state().full_screen);
+    assert!(h.state().win.full_screen);
     let v = &h.state().win.views[0];
     assert!(!v.continuous(), "one page at a time");
     assert_eq!(v.fit, Fit::Page, "fitted to the screen");
@@ -2567,7 +2567,7 @@ fn full_screen_shows_one_fitted_page_and_clicks_turn_it() {
     assert_eq!(h.state().win.views[0].current, 1, "Space goes forward");
     h.key_press(Key::Escape);
     h.run_steps(4);
-    assert!(!h.state().full_screen, "Escape leaves full screen");
+    assert!(!h.state().win.full_screen, "Escape leaves full screen");
     let v = &h.state().win.views[0];
     assert!(v.continuous(), "the display from before comes back");
     assert_eq!(v.fit, Fit::None);
@@ -2645,7 +2645,7 @@ fn full_screen_clicks_turn_pages_whatever_tool_was_on() {
     h.state_mut().win.quick_tool = QuickTool::Hand;
     h.key_press_modifiers(Modifiers::COMMAND, Key::L);
     h.run_steps(6);
-    assert!(h.state().full_screen);
+    assert!(h.state().win.full_screen);
     assert_eq!(h.state().win.quick_tool, QuickTool::Select, "Select in full screen");
     // Entering again (a second document asking for it) keeps the tool to give back.
     h.state_mut().apply_full_screen(true);
@@ -2654,7 +2654,7 @@ fn full_screen_clicks_turn_pages_whatever_tool_was_on() {
     assert_eq!(h.state().win.views[0].current, 1, "a click goes forward");
     h.key_press(Key::Escape);
     h.run_steps(4);
-    assert!(!h.state().full_screen);
+    assert!(!h.state().win.full_screen);
     assert_eq!(h.state().win.quick_tool, QuickTool::Hand, "the tool from before is back");
 }
 
@@ -2828,10 +2828,10 @@ fn escape_leaves_full_screen_entered_over_the_ocr_verify_screen() {
     h.run_steps(3);
     h.key_press_modifiers(Modifiers::COMMAND, Key::L);
     h.run_steps(4);
-    assert!(h.state().full_screen, "⌘L entered full screen");
+    assert!(h.state().win.full_screen, "⌘L entered full screen");
     h.key_press(Key::Escape);
     h.run_steps(4);
-    assert!(!h.state().full_screen, "Escape left full screen");
+    assert!(!h.state().win.full_screen, "Escape left full screen");
     assert!(h.state().ocr_verify.open, "the OCR Verify screen is back");
 }
 
@@ -2868,7 +2868,7 @@ fn presenting_pdf(pdf: &'static [u8], options: &'static [(&'static str, &'static
     h.run_steps(4);
     h.key_press_modifiers(Modifiers::COMMAND, Key::L);
     h.run_steps(4);
-    assert!(h.state().full_screen);
+    assert!(h.state().win.full_screen);
     settle(&mut h);
     h
 }
@@ -2984,7 +2984,7 @@ fn full_screen_right_click_goes_back_a_page() {
     let mut h = harness(&[]);
     h.key_press_modifiers(Modifiers::COMMAND, Key::L);
     h.run_steps(6);
-    assert!(h.state().full_screen);
+    assert!(h.state().win.full_screen);
     h.key_press(Key::ArrowRight);
     h.run_steps(4);
     assert_eq!(h.state().win.views[0].current, 1);
@@ -3007,7 +3007,7 @@ fn full_screen_shift_enter_goes_back_a_page() {
     let mut h = harness(&[]);
     h.key_press_modifiers(Modifiers::COMMAND, Key::L);
     h.run_steps(6);
-    assert!(h.state().full_screen);
+    assert!(h.state().win.full_screen);
     h.key_press(Key::Enter);
     h.run_steps(4);
     assert_eq!(h.state().win.views[0].current, 1, "Enter goes forward");
@@ -3039,7 +3039,7 @@ fn full_screen_hides_a_still_pointer_over_a_link() {
     let mut h = harness(&[]);
     h.key_press_modifiers(Modifiers::COMMAND, Key::L);
     h.run_steps(6);
-    assert!(h.state().full_screen);
+    assert!(h.state().win.full_screen);
     // Page 1's link covers x 50–250, y 300–350 of the 300×400 pt page (from its bottom).
     let r = rect(&h, 0).expect("page 1 on screen");
     let on_link = egui::pos2(r.left() + r.width() * 150.0 / 300.0, r.top() + r.height() * 75.0 / 400.0);
@@ -3256,7 +3256,7 @@ fn escape_leaves_full_screen_mid_transition_and_stops_the_display_time() {
         }
         h.key_press(Key::Escape);
         h.run_steps(1);
-        assert!(!h.state().full_screen, "Escape leaves full screen (mid-transition: {mid_transition})");
+        assert!(!h.state().win.full_screen, "Escape leaves full screen (mid-transition: {mid_transition})");
         assert!(!h.state().win.views[0].presenting_a_transition());
         h.run_steps(30);
         assert_eq!(h.state().win.views[0].current, 1, "no page turns by itself after leaving (mid-transition: {mid_transition})");
@@ -3319,7 +3319,7 @@ fn full_screen_every_key_and_click_goes_where_it_says() {
     let mut h = harness(&[]);
     h.key_press_modifiers(Modifiers::COMMAND, Key::L);
     h.run_steps(6);
-    assert!(h.state().full_screen);
+    assert!(h.state().win.full_screen);
     for (input, from, to) in moves {
         h.state_mut().win.views[0].go_to_page(from);
         h.run_steps(4);
@@ -3342,17 +3342,17 @@ fn full_screen_every_key_and_click_goes_where_it_says() {
             }
         }
         assert_eq!(h.state().win.views[0].current, to, "{input:?} from page {}", from + 1);
-        assert!(h.state().full_screen, "{input:?} stays in full screen");
+        assert!(h.state().win.full_screen, "{input:?} stays in full screen");
     }
     for (key, modifiers) in [(Key::Escape, Modifiers::NONE), (Key::L, Modifiers::COMMAND)] {
-        if !h.state().full_screen {
+        if !h.state().win.full_screen {
             h.key_press_modifiers(Modifiers::COMMAND, Key::L);
             h.run_steps(6);
         }
-        assert!(h.state().full_screen);
+        assert!(h.state().win.full_screen);
         h.key_press_modifiers(modifiers, key);
         h.run_steps(4);
-        assert!(!h.state().full_screen, "{key:?} leaves full screen");
+        assert!(!h.state().win.full_screen, "{key:?} leaves full screen");
     }
 }
 

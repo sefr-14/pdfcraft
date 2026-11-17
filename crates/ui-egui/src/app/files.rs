@@ -415,7 +415,7 @@ impl PdfCraftApp {
         // viewer preferences open at (#1767).
         self.apply_last_view(self.win.views.len() - 1);
         // After all of them, so full screen shows one fitted page and leaving it comes back to them.
-        if self.full_screen
+        if self.win.full_screen
             && let Some(view) = self.win.views.last_mut()
         {
             view.enter_presentation();

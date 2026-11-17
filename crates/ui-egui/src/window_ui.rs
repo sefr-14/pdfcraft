@@ -1,8 +1,7 @@
-// Modified by the PdfCraft Overlay fork (sefr-14/pdfcraft); changes are recorded in its Git history.
-//! The state of one PdfCraft window (TAB.WINDOW.1): its tabs, panes and layout, side panels,
-//! tool, keys, palette, notices and titles. [`crate::PdfCraftApp`] keeps what every window shares
-//! (the session, dialogs, preferences, clipboards, background work) and holds its one window's
-//! state in [`crate::PdfCraftApp::win`].
+//! The state of one PdfCraft window (this fork, TAB.WINDOW.1): its tabs, panes and layout, side
+//! panels, tool, keys, palette, notices and titles. [`crate::PdfCraftApp`] keeps what every window
+//! shares (the session, dialogs, preferences, clipboards, background work) and holds its one
+//! window's state in [`crate::PdfCraftApp::win`].
 
 use pdfcraft_engine::DocId;
 
@@ -57,6 +56,20 @@ pub struct WindowUi {
     /// ([`crate::PdfCraftApp::shown_tab`]). Another tab coming to the front (Home, a document,
     /// Combine files) puts the view away.
     pub(crate) all_tools_tab: (Option<DocId>, bool),
+    pub toast: Option<(String, f64)>,
+    /// The form script message the toast shows now, if it shows one: drawn with its title and
+    /// icon (#4293).
+    pub toast_script: Option<pdfcraft_engine::js::Message>,
+    /// Form script messages waiting for the toast, in the order the scripts showed them: each
+    /// takes the toast when the one before it is gone, so every one is seen (#4294).
+    pub script_messages: std::collections::VecDeque<pdfcraft_engine::js::Message>,
+    /// Form script messages the waiting queue had no room for, since the toast last said how many.
+    pub script_messages_dropped: u64,
+    /// The left-out count the toast is saying now ([`crate::PdfCraftApp::next_script_message`]):
+    /// put back to be said again if another notice replaces the toast before it has been shown
+    /// its time.
+    pub toast_dropped: u64,
+    pub full_screen: bool,
     /// Shortcuts pressed while a text field had the keyboard, run on the next frame (see
     /// `registry_shortcuts`).
     pub(crate) deferred_commands: Vec<(&'static str, Option<canvas::ViewKey>)>,
@@ -68,6 +81,10 @@ pub struct WindowUi {
     pub(crate) menu_pastes: usize,
     /// This frame's keys as the pages see them: none while something is over them.
     pub(crate) page_keys: page_keys::PageKeys,
+    /// The window title last sent to the platform.
+    pub window_title: String,
+    /// The web page's title last set: the window title, but always with the file's name.
+    pub page_title: String,
 }
 
 impl WindowUi {
@@ -99,10 +116,18 @@ impl WindowUi {
             all_tools_full: false,
             all_tools_query: String::new(),
             all_tools_tab: (None, false),
+            toast: None,
+            toast_script: None,
+            script_messages: std::collections::VecDeque::new(),
+            script_messages_dropped: 0,
+            toast_dropped: 0,
+            full_screen: false,
             deferred_commands: Vec::new(),
             menu_input: Vec::new(),
             menu_pastes: 0,
             page_keys: Default::default(),
+            window_title: String::new(),
+            page_title: String::new(),
         }
     }
 }

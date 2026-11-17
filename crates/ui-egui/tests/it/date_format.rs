@@ -171,6 +171,6 @@ fn a_date_the_pdf_cannot_hold_is_refused_with_a_warning_first() {
     h.run_steps(4);
     let s = h.state();
     assert!(s.session.get(s.win.views[0].id).unwrap().info.annotations.is_empty(), "nothing placed");
-    let toast = s.toast.as_ref().map(|t| t.0.clone()).unwrap_or_default();
+    let toast = s.win.toast.as_ref().map(|t| t.0.clone()).unwrap_or_default();
     assert!(toast.contains("can't be written into the PDF yet"), "{toast}");
 }

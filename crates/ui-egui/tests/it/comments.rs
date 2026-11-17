@@ -310,7 +310,7 @@ trailer << /Root 1 0 R >>
     let doc = state.session.get(id).expect("document");
     assert_eq!(doc.comment_props(0, 0).and_then(|props| props.color), Some([1.0, 0.94, 0.0]), "the comment keeps its colour");
     assert_eq!(doc.can_undo(), None, "no edit was made");
-    assert_eq!(state.toast, None, "picking a colour is not reported as a failed edit");
+    assert_eq!(state.win.toast, None, "picking a colour is not reported as a failed edit");
     assert_eq!(state.comment_prefs.style(CommentTool::Highlight).color, [0.0, 0.47, 0.84], "the tool default still changes");
 }
 
@@ -5754,12 +5754,12 @@ fn full_screen_closes_the_hotbar_tools_window() {
     assert!(h.query_by_label("Close menu").is_some(), "the Hotbar tools window is open");
     assert!(h.state_mut().execute("view.full_screen"));
     h.run_steps(4);
-    assert!(h.state().full_screen, "full screen");
+    assert!(h.state().win.full_screen, "full screen");
     // Back, as a native menu's click is, between passes.
     assert!(h.state_mut().execute("view.full_screen"));
     h.key_press(egui::Key::Delete);
     h.run_steps(4);
-    assert!(!h.state().full_screen, "back from full screen");
+    assert!(!h.state().win.full_screen, "back from full screen");
     assert!(h.query_by_label("Close menu").is_none(), "the Hotbar tools window came back");
     assert!(comments(&h).is_empty(), "Delete removed the comment");
 }
@@ -5775,7 +5775,7 @@ fn edit_delete_from_a_native_menu_under_the_full_screen_prompt_leaves_the_commen
         if full_screen {
             assert!(h.state_mut().execute("view.full_screen"));
             h.run_steps(4);
-            assert!(h.state().full_screen, "full screen");
+            assert!(h.state().win.full_screen, "full screen");
         }
         let deck = String::from_utf8(TEXT_FIXTURE.to_vec()).unwrap().replace("/Type /Catalog", "/Type /Catalog /PageMode /FullScreen").into_bytes();
         h.state_mut().open_bytes("deck.pdf", None, deck).expect("the deck opens");
@@ -5796,7 +5796,7 @@ fn edit_delete_from_a_native_menu_under_the_full_screen_prompt_leaves_the_commen
         h.key_press(egui::Key::Escape);
         h.run_steps(3);
         assert!(h.state().pending_full_screen.is_none(), "Escape answered the prompt");
-        assert_eq!(h.state().full_screen, full_screen, "the Escape that answered the prompt is the prompt's alone");
+        assert_eq!(h.state().win.full_screen, full_screen, "the Escape that answered the prompt is the prompt's alone");
     }
 }
 

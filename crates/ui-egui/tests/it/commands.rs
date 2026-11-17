@@ -196,13 +196,13 @@ fn disabled_commands_explain_themselves() {
     let mut app = PdfCraftApp::new();
     app.set_option("language", "en").unwrap();
     assert!(!app.execute("file.save"));
-    assert_eq!(app.toast.as_ref().map(|t| t.0.as_str()), Some("Open a document first"));
+    assert_eq!(app.win.toast.as_ref().map(|t| t.0.as_str()), Some("Open a document first"));
     app.open_bytes("doc.pdf", None, fixture(2)).unwrap();
     assert!(!app.execute("edit.undo"));
-    assert_eq!(app.toast.as_ref().map(|t| t.0.as_str()), Some("Nothing to undo"));
+    assert_eq!(app.win.toast.as_ref().map(|t| t.0.as_str()), Some("Nothing to undo"));
     // View state counts too: the cover page exists only in two-page view.
     assert!(!app.execute("view.layout.cover"));
-    assert_eq!(app.toast.as_ref().map(|t| t.0.as_str()), Some("Switch to two-page view first to show the cover page"));
+    assert_eq!(app.win.toast.as_ref().map(|t| t.0.as_str()), Some("Switch to two-page view first to show the cover page"));
     assert!(!app.execute("no.such.command"));
 }
 
@@ -221,7 +221,7 @@ fn a_tool_chosen_with_no_document_asks_for_one_and_runs_on_it() {
     });
     h.run_steps(2);
     h.state_mut().run_command("export.text");
-    assert!(h.state().toast.as_ref().is_none_or(|t| t.0 != "Open a document first"));
+    assert!(h.state().win.toast.as_ref().is_none_or(|t| t.0 != "Open a document first"));
     support::wait_until(&mut h, "picked document and chosen tool", |app| app.win.active.is_some() && matches!(app.dialog, Some(Dialog::Export(_))));
     assert!(h.state().win.active.is_some(), "the picked file is open");
     assert!(matches!(h.state().dialog, Some(Dialog::Export(_))), "and the tool runs on it: {:?}", h.state().dialog);
@@ -412,7 +412,7 @@ fn clear_recent_files_runs_from_the_palette_and_is_saved() {
     restarted.restore(&app.persist());
     assert!(restarted.recent.is_empty(), "the empty list is what's saved");
     app.execute("file.clear_recent");
-    assert!(app.toast.as_ref().is_some_and(|(m, _)| m.contains("No recent files")), "nothing to clear is said, not silent");
+    assert!(app.win.toast.as_ref().is_some_and(|(m, _)| m.contains("No recent files")), "nothing to clear is said, not silent");
 }
 
 #[test]
@@ -523,16 +523,16 @@ fn full_screen_toggles_by_shortcut_and_command_and_escape_leaves() {
     let mut h = harness();
     h.key_press_modifiers(Modifiers::COMMAND, Key::L);
     h.run_steps(2);
-    assert!(h.state().full_screen, "⌘L / Ctrl+L enters full screen");
+    assert!(h.state().win.full_screen, "⌘L / Ctrl+L enters full screen");
     h.key_press(Key::Escape);
     h.run_steps(2);
-    assert!(!h.state().full_screen, "Escape leaves full screen");
+    assert!(!h.state().win.full_screen, "Escape leaves full screen");
     h.state_mut().execute("view.full_screen");
     h.run_steps(2);
-    assert!(h.state().full_screen);
+    assert!(h.state().win.full_screen);
     h.state_mut().execute("view.full_screen");
     h.run_steps(2);
-    assert!(!h.state().full_screen, "the command toggles back");
+    assert!(!h.state().win.full_screen, "the command toggles back");
 }
 
 #[test]
