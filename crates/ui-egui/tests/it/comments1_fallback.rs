@@ -87,28 +87,28 @@ fn harness(bytes: Vec<u8>) -> Harness<'static, PdfCraftApp> {
 
 /// The annotation whose text is `text`.
 fn annot(h: &Harness<'static, PdfCraftApp>, text: &str) -> pdfcraft_render::Annotation {
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let doc = h.state().session.get(id).unwrap();
     doc.info.annotations.iter().find(|a| a.contents.as_deref() == Some(text)).cloned().unwrap_or_else(|| panic!("no {text:?}"))
 }
 
 /// The texts of the selected cards, in list order.
 fn group(h: &Harness<'static, PdfCraftApp>) -> Vec<String> {
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let doc = h.state().session.get(id).unwrap();
-    let g = h.state().views[0].comments.group();
+    let g = h.state().win.views[0].comments.group();
     doc.info.annotations.iter().filter(|a| g.contains(&CommentKey::of(a))).filter_map(|a| a.contents.clone()).collect()
 }
 
 fn active(h: &Harness<'static, PdfCraftApp>) -> Option<String> {
-    let (p, i) = h.state().views[0].comments.selected?;
-    let id = h.state().views[0].id;
+    let (p, i) = h.state().win.views[0].comments.selected?;
+    let id = h.state().win.views[0].id;
     let doc = h.state().session.get(id).unwrap();
     doc.info.annotations.iter().find(|a| (a.page, a.index) == (p, i)).and_then(|a| a.contents.clone())
 }
 
 fn texts(h: &Harness<'static, PdfCraftApp>) -> Vec<String> {
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     h.state().session.get(id).unwrap().info.annotations.iter().filter_map(|a| a.contents.clone()).collect()
 }
 
@@ -128,7 +128,7 @@ fn click(h: &mut Harness<'static, PdfCraftApp>, text: &str, modifiers: Modifiers
 /// Where the document view is: its page, the first page's place on screen, and whether a
 /// comment was flashed or is being revealed.
 fn place(h: &Harness<'static, PdfCraftApp>) -> (usize, Option<egui::Rect>, bool, bool) {
-    let v = &h.state().views[0];
+    let v = &h.state().win.views[0];
     (v.current, v.page_screen_rect(0), v.flash.is_some(), v.comments.reveal)
 }
 
@@ -144,14 +144,14 @@ fn a_plain_click_selects_the_card_and_shows_it_as_before() {
     click(&mut h, "Card C", Modifiers::NONE);
     assert_eq!(active(&h).as_deref(), Some("Card C"));
     assert_eq!(group(&h), ["Card C"]);
-    assert!(h.state().views[0].flash.is_some(), "it is shown on the page, as before");
+    assert!(h.state().win.views[0].flash.is_some(), "it is shown on the page, as before");
 }
 
 #[test]
 fn ctrl_and_shift_select_cards_without_touching_the_page_or_the_active_comment() {
     let mut h = harness(cards());
     click(&mut h, "Card A", Modifiers::NONE);
-    h.state_mut().views[0].flash = None;
+    h.state_mut().win.views[0].flash = None;
     h.run_steps(2);
     let before = place(&h);
     click(&mut h, "Card C", Modifiers::COMMAND);
@@ -177,7 +177,7 @@ fn a_comment_chosen_on_the_page_becomes_the_selection() {
     click(&mut h, "Card A", Modifiers::NONE);
     click(&mut h, "Card C", Modifiers::COMMAND);
     let d = annot(&h, "Card D");
-    h.state_mut().views[0].comments.selected = Some((d.page, d.index));
+    h.state_mut().win.views[0].comments.selected = Some((d.page, d.index));
     h.run_steps(3);
     assert_eq!(group(&h), ["Card D"]);
 }
@@ -215,20 +215,20 @@ fn one_escape_clears_the_active_comment_and_the_selected_cards() {
     click(&mut h, "Card B", Modifiers::COMMAND);
     h.state_mut().choose_right_panel(None);
     h.run_steps(2);
-    assert_eq!(h.state().views[0].comments.group().len(), 2);
+    assert_eq!(h.state().win.views[0].comments.group().len(), 2);
     h.key_press(Key::Escape);
     h.run_steps(2);
-    assert_eq!(h.state().views[0].comments.selected, None);
-    assert!(h.state().views[0].comments.group().is_empty(), "one press, panel closed");
+    assert_eq!(h.state().win.views[0].comments.selected, None);
+    assert!(h.state().win.views[0].comments.group().is_empty(), "one press, panel closed");
     h.state_mut().set_option("panel", "comments").unwrap();
     h.run_steps(3);
     // A gesture in progress goes first, alone; the next press clears both.
     click(&mut h, "Card A", Modifiers::NONE);
     click(&mut h, "Card B", Modifiers::COMMAND);
-    h.state_mut().views[0].comments.gesture = Some(pdfcraft_ui_egui::comments::Gesture::Move { page: 0, index: 0, from: egui::pos2(1.0, 1.0) });
+    h.state_mut().win.views[0].comments.gesture = Some(pdfcraft_ui_egui::comments::Gesture::Move { page: 0, index: 0, from: egui::pos2(1.0, 1.0) });
     h.key_press(Key::Escape);
     h.run_steps(2);
-    assert!(h.state().views[0].comments.gesture.is_none());
+    assert!(h.state().win.views[0].comments.gesture.is_none());
     assert_eq!((active(&h).as_deref(), group(&h).len()), (Some("Card A"), 2), "the selection stays");
     h.key_press(Key::Escape);
     h.run_steps(2);
@@ -246,7 +246,7 @@ fn delete_and_backspace_do_nothing_while_several_cards_are_selected() {
     click(&mut h, "Card A", Modifiers::COMMAND);
     assert_eq!(group(&h), ["Card C", "Card D"]);
     assert_eq!(active(&h).as_deref(), Some("Card A"));
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let (before, undo) = (texts(&h), h.state().session.get(id).unwrap().can_undo().map(str::to_owned));
     for key in [Key::Delete, Key::Backspace] {
         h.key_press(key);
@@ -254,7 +254,7 @@ fn delete_and_backspace_do_nothing_while_several_cards_are_selected() {
     }
     assert_eq!(texts(&h), before, "nothing deleted");
     assert_eq!(h.state().session.get(id).unwrap().can_undo().map(str::to_owned), undo);
-    assert!(h.state().views[0].pending_edit.is_none());
+    assert!(h.state().win.views[0].pending_edit.is_none());
     // The active comment inside the group: nothing either.
     click(&mut h, "Card A", Modifiers::COMMAND);
     h.key_press(Key::Delete);
@@ -269,7 +269,7 @@ fn with_one_card_selected_the_keys_delete_as_before() {
     h.key_press(Key::Delete);
     h.run_steps(3);
     assert!(!texts(&h).contains(&"Card C".to_string()));
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     assert_eq!(h.state().session.get(id).unwrap().can_undo(), Some("Delete comment"));
 }
 
@@ -288,13 +288,13 @@ fn a_right_click_keeps_a_group_and_elsewhere_selects_that_card_alone() {
     // Outside the group: that card alone, its own menu, no navigation, the active comment kept.
     click(&mut h, "Card A", Modifiers::NONE);
     click(&mut h, "Card C", Modifiers::COMMAND);
-    h.state_mut().views[0].flash = None;
+    h.state_mut().win.views[0].flash = None;
     h.get_by_label("Card D").click_secondary();
     h.run_steps(2);
     assert_eq!(group(&h), ["Card D"]);
     assert_eq!(active(&h).as_deref(), Some("Card A"));
     assert_eq!(place(&h).0, before.0);
-    assert!(h.state().views[0].flash.is_none());
+    assert!(h.state().win.views[0].flash.is_none());
     h.get_by_label("Properties…");
 }
 
@@ -303,7 +303,7 @@ fn delete_selected_asks_once_with_the_counts_and_is_one_undo_step() {
     let mut h = harness(cards());
     click(&mut h, "Card B", Modifiers::NONE);
     click(&mut h, "Card D", Modifiers::COMMAND);
-    h.state_mut().views[0].flash = None;
+    h.state_mut().win.views[0].flash = None;
     let before_place = place(&h);
     let before = texts(&h);
     h.get_by_label("Card D").click_secondary();
@@ -325,7 +325,7 @@ fn delete_selected_asks_once_with_the_counts_and_is_one_undo_step() {
     assert!(group(&h).is_empty());
     assert_eq!(active(&h), None, "the active comment went with them");
     assert_eq!((place(&h).0, place(&h).1), (before_place.0, before_place.1), "the page view never moved");
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     assert_eq!(h.state().session.get(id).unwrap().can_undo(), Some("Delete comments"));
     h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     h.run_steps(3);
@@ -359,7 +359,7 @@ fn a_confirmation_from_before_a_change_deletes_nothing() {
     h.state_mut().ask_delete_comments();
     h.run_steps(1);
     assert!(h.state().comment_delete.is_some());
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let e = annot(&h, "Card E");
     h.state_mut().session.apply(id, Edit::SetAnnotationContents { page: e.page, index: e.index, text: "Card E2".into() }).unwrap();
     let before = texts(&h);
@@ -378,7 +378,7 @@ fn collapse_and_expand_selected_fold_the_selected_cards_page_groups() {
     h.get_by_label("Card D").click_secondary();
     h.run_steps(2);
     pick(&mut h, "Collapse selected");
-    let mut folded = h.state().views[0].comments.collapsed_pages.clone();
+    let mut folded = h.state().win.views[0].comments.collapsed_pages.clone();
     folded.sort_unstable();
     assert_eq!(folded, [0, 1, 2], "pages 1-3, each once");
     assert!(h.query_by_label("Card B").is_none(), "an unselected card on a folded page is hidden too");
@@ -388,15 +388,15 @@ fn collapse_and_expand_selected_fold_the_selected_cards_page_groups() {
     h.get_by_label("More options").click();
     h.run_steps(2);
     pick(&mut h, "Expand selected");
-    assert!(h.state().views[0].comments.collapsed_pages.is_empty());
+    assert!(h.state().win.views[0].comments.collapsed_pages.is_empty());
     h.get_by_label("Card B");
     // Not sorted by page: no page groups, so both are disabled.
-    h.state_mut().views[0].comments.sort = pdfcraft_ui_egui::comments::SortBy::Author;
+    h.state_mut().win.views[0].comments.sort = pdfcraft_ui_egui::comments::SortBy::Author;
     h.run_steps(2);
     h.get_by_label("More options").click();
     h.run_steps(2);
     pick(&mut h, "Collapse selected");
-    assert!(h.state().views[0].comments.collapsed_pages.is_empty(), "disabled when sorted by author");
+    assert!(h.state().win.views[0].comments.collapsed_pages.is_empty(), "disabled when sorted by author");
 }
 
 #[test]
@@ -404,10 +404,10 @@ fn a_filter_drops_the_cards_it_hides_and_a_sort_keeps_the_selection() {
     let mut h = harness(cards());
     click(&mut h, "Card A", Modifiers::NONE);
     click(&mut h, "Card C", Modifiers::COMMAND);
-    h.state_mut().views[0].comments.sort = pdfcraft_ui_egui::comments::SortBy::Date;
+    h.state_mut().win.views[0].comments.sort = pdfcraft_ui_egui::comments::SortBy::Date;
     h.run_steps(3);
     assert_eq!(group(&h), ["Card A", "Card C"]);
-    h.state_mut().views[0].comments.search = Some("Card C".into());
+    h.state_mut().win.views[0].comments.search = Some("Card C".into());
     h.run_steps(3);
     assert_eq!(group(&h), ["Card C"]);
 }
@@ -456,7 +456,7 @@ fn each_tab_keeps_its_own_selection_and_a_duplicate_starts_empty() {
     click(&mut h, "Card C", Modifiers::COMMAND);
     assert!(h.state_mut().execute("view.duplicate_tab"));
     h.run_steps(4);
-    let views = &h.state().views;
+    let views = &h.state().win.views;
     assert_eq!(views.len(), 2);
     assert!(views[1].comments.group().is_empty(), "a duplicate tab starts with no selection");
     assert_eq!(views[0].comments.group().len(), 2, "the first tab keeps its own");

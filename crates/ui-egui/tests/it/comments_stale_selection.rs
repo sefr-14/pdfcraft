@@ -69,14 +69,14 @@ fn harness() -> Harness<'static, PdfCraftApp> {
 fn with_duplicate() -> Harness<'static, PdfCraftApp> {
     let mut h = harness();
     h.state_mut().duplicate_view(0).expect("duplicated");
-    h.state_mut().active = Some(0);
+    h.state_mut().win.active = Some(0);
     h.run_steps(3);
     h
 }
 
 /// The comments' texts, in `/Annots` order, with their object numbers.
 fn state(h: &Harness<'static, PdfCraftApp>) -> Vec<(String, Option<u32>)> {
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let doc = h.state().session.get(id).unwrap();
     doc.info.annotations.iter().map(|a| (a.contents.clone().unwrap_or_default(), a.object.map(|o| o.0))).collect()
 }
@@ -86,14 +86,14 @@ type Snapshot = (Vec<(String, Option<u32>)>, u64, Option<String>);
 
 /// What the document and its history are: the comments, the edit generation and Undo's label.
 fn snapshot(h: &Harness<'static, PdfCraftApp>) -> Snapshot {
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let doc = h.state().session.get(id).unwrap();
     (state(h), doc.edit_generation(), doc.can_undo().map(str::to_owned))
 }
 
 /// The (page, index) of the comment whose text is `text`, now.
 fn key(h: &Harness<'static, PdfCraftApp>, text: &str) -> (usize, usize) {
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let doc = h.state().session.get(id).unwrap();
     doc.info.annotations.iter().find(|a| a.contents.as_deref() == Some(text)).map(|a| (a.page, a.index)).unwrap_or_else(|| panic!("no {text:?}"))
 }
@@ -101,7 +101,7 @@ fn key(h: &Harness<'static, PdfCraftApp>, text: &str) -> (usize, usize) {
 /// In view `view`, select the comments `texts` as Ctrl+Click does (the last has the handles).
 fn select(h: &mut Harness<'static, PdfCraftApp>, view: usize, texts: &[&str]) {
     let keys: Vec<(usize, usize)> = texts.iter().map(|t| key(h, t)).collect();
-    let cv = &mut h.state_mut().views[view].comments;
+    let cv = &mut h.state_mut().win.views[view].comments;
     cv.clear_selection();
     for k in keys {
         cv.toggle(k);
@@ -111,7 +111,7 @@ fn select(h: &mut Harness<'static, PdfCraftApp>, view: usize, texts: &[&str]) {
 
 /// Make view `view` the active one and press `key` there.
 fn press(h: &mut Harness<'static, PdfCraftApp>, view: usize, key: Key) {
-    h.state_mut().active = Some(view);
+    h.state_mut().win.active = Some(view);
     h.run_steps(3);
     h.key_press(key);
     h.run_steps(4);
@@ -159,7 +159,7 @@ fn a_comment_put_back_by_undo_in_a_duplicate_tab_never_makes_the_selection_delet
         select(&mut h, 1, &["C1"]);
         press(&mut h, 1, Key::Delete);
         select(&mut h, 0, &["C2", "C4"]);
-        h.state_mut().active = Some(1);
+        h.state_mut().win.active = Some(1);
         h.run_steps(2);
         assert!(h.state_mut().execute("edit.undo"));
         h.run_steps(3);
@@ -176,7 +176,7 @@ fn an_automation_edit_never_makes_the_selection_delete_another() {
     for k in [Key::Delete, Key::Backspace] {
         let mut h = harness();
         select(&mut h, 0, &["C2", "C3"]);
-        let id = h.state().views[0].id;
+        let id = h.state().win.views[0].id;
         let (page, index) = key(&h, "C1");
         h.state_mut().session.apply(id, Edit::DeleteAnnotation { page, index }).expect("deleted");
         h.run_steps(3);
@@ -197,10 +197,10 @@ fn a_ctrl_click_after_another_tabs_delete_adds_to_nothing_stale() {
     select(&mut h, 0, &["C2", "C3"]);
     select(&mut h, 1, &["C1"]);
     press(&mut h, 1, Key::Delete);
-    h.state_mut().active = Some(0);
+    h.state_mut().win.active = Some(0);
     h.run_steps(3);
     let c5 = key(&h, "C5");
-    h.state_mut().views[0].comments.toggle(c5);
+    h.state_mut().win.views[0].comments.toggle(c5);
     h.run_steps(2);
     let before = state(&h);
     press(&mut h, 0, Key::Delete);
@@ -303,12 +303,12 @@ fn a_selection_set_before_the_first_pass_is_kept() {
         let mut app = PdfCraftApp::new();
         app.set_option("language", "en").unwrap();
         app.open_bytes("comments.pdf", None, comments()).expect("opens");
-        app.views[0].comments.select_only((0, 1));
+        app.win.views[0].comments.select_only((0, 1));
         app
     });
     h.run_steps(4);
     let before = state(&h);
-    assert!(h.state().views[0].comments.selected.is_some(), "the selection survives the first pass");
+    assert!(h.state().win.views[0].comments.selected.is_some(), "the selection survives the first pass");
     press(&mut h, 0, Key::Delete);
     assert_eq!(state(&h), without(&before, &["C2"]));
 }
@@ -333,14 +333,14 @@ fn harness_with(setup: impl FnOnce(&mut PdfCraftApp) + 'static) -> Harness<'stat
 
 /// The (page, index) of `text` in `app`'s first document, now.
 fn key_in(app: &PdfCraftApp, text: &str) -> (usize, usize) {
-    let doc = app.session.get(app.views[0].id).unwrap();
+    let doc = app.session.get(app.win.views[0].id).unwrap();
     doc.info.annotations.iter().find(|a| a.contents.as_deref() == Some(text)).map(|a| (a.page, a.index)).unwrap_or_else(|| panic!("no {text:?}"))
 }
 
 /// In view `view` of `app`, select `texts` as Ctrl+Click does.
 fn select_in(app: &mut PdfCraftApp, view: usize, texts: &[&str]) {
     let keys: Vec<(usize, usize)> = texts.iter().map(|t| key_in(app, t)).collect();
-    let cv = &mut app.views[view].comments;
+    let cv = &mut app.win.views[view].comments;
     cv.clear_selection();
     for k in keys {
         cv.toggle(k);
@@ -349,7 +349,7 @@ fn select_in(app: &mut PdfCraftApp, view: usize, texts: &[&str]) {
 
 /// The texts and objects of the first document's comments, before any frame (for builders).
 fn state_in(app: &PdfCraftApp) -> Vec<(String, Option<u32>)> {
-    let doc = app.session.get(app.views[0].id).unwrap();
+    let doc = app.session.get(app.win.views[0].id).unwrap();
     doc.info.annotations.iter().map(|a| (a.contents.clone().unwrap_or_default(), a.object.map(|o| o.0))).collect()
 }
 
@@ -382,7 +382,7 @@ fn an_automation_edit_before_the_first_pass_drops_an_earlier_selection() {
                 } else {
                     select_in(app, 0, &["C2"]);
                 }
-                let id = app.views[0].id;
+                let id = app.win.views[0].id;
                 let (page, index) = key_in(app, "C1");
                 app.session.apply(id, Edit::DeleteAnnotation { page, index }).expect("deleted");
             });
@@ -403,7 +403,7 @@ fn a_duplicate_tabs_delete_before_the_first_pass_never_makes_the_selection_delet
             app.duplicate_view(0).expect("duplicated");
             let (page, index) = key_in(app, "C1");
             assert!(app.apply_edit(Edit::DeleteAnnotation { page, index }), "deleted in the duplicate");
-            app.active = Some(0);
+            app.win.active = Some(0);
         });
         let before = snapshot(&h);
         press(&mut h, 0, k);
@@ -422,7 +422,7 @@ fn an_insertion_before_the_first_pass_never_makes_the_selection_delete_another()
             select_in(app, 0, &["C2", "C4"]);
             app.duplicate_view(0).expect("duplicated");
             assert!(app.execute("edit.undo"), "undo in the duplicate");
-            app.active = Some(0);
+            app.win.active = Some(0);
         });
         assert_eq!(state(&h).first().map(|(t, _)| t.as_str()), Some("C1"));
         let before = snapshot(&h);
@@ -492,13 +492,13 @@ fn the_page_menus_delete_after_an_automation_edit_deletes_only_the_comment_click
     h.run_steps(4);
     crate::support::settle(&mut h);
     select(&mut h, 0, &["Q2", "Q3"]);
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let (page, index) = key(&h, "Q1");
     h.state_mut().session.apply(id, Edit::DeleteAnnotation { page, index }).expect("deleted");
     h.run_steps(3);
     let before = state(&h);
     // Q4's middle, in page space (300 × 200, y up).
-    let r = h.state().views[0].page_screen_rect(0).expect("the page is shown");
+    let r = h.state().win.views[0].page_screen_rect(0).expect("the page is shown");
     let p = egui::pos2(r.left() + 194.0 / 300.0 * r.width(), r.top() + (200.0 - 90.0) / 200.0 * r.height());
     h.hover_at(p);
     h.run_steps(1);
@@ -518,12 +518,12 @@ fn the_page_menus_delete_after_an_automation_edit_deletes_only_the_comment_click
 fn cut_and_copy_with_a_stale_selection_take_nothing() {
     let mut h = harness();
     select(&mut h, 0, &["C2", "C3"]);
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let (page, index) = key(&h, "C1");
     h.state_mut().session.apply(id, Edit::DeleteAnnotation { page, index }).expect("deleted");
     h.run_steps(3);
     let before = snapshot(&h);
-    h.state_mut().active = Some(0);
+    h.state_mut().win.active = Some(0);
     h.key_press_modifiers(egui::Modifiers::COMMAND, Key::X);
     h.run_steps(3);
     assert_eq!(snapshot(&h), before, "Ctrl+X changes nothing");
@@ -555,7 +555,7 @@ fn a_save_keeps_the_selection() {
 
 /// The texts of view 0's selected comments, in list order.
 fn group_texts(h: &Harness<'static, PdfCraftApp>) -> Vec<String> {
-    let v = &h.state().views[0];
+    let v = &h.state().win.views[0];
     let doc = h.state().session.get(v.id).unwrap();
     let keys = v.comments.selection();
     doc.info.annotations.iter().filter(|a| keys.contains(&(a.page, a.index))).filter_map(|a| a.contents.clone()).collect()

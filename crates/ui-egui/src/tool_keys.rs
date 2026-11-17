@@ -103,11 +103,11 @@ impl PdfCraftApp {
                 self.quick_tool = previous;
             }
         }
-        let Some(view) = self.views.get(i).map(|v| v.key) else { return };
+        let Some(view) = self.win.views.get(i).map(|v| v.key) else { return };
         let free = self.dialog.is_none()
             && !self.palette_open
             && !ctx.egui_wants_keyboard_input()
-            && self.views.get(i).is_some_and(|v| v.forms.focus.is_none())
+            && self.win.views.get(i).is_some_and(|v| v.forms.focus.is_none())
             && !craft_menu::bar::is_open(ctx)
             && !craft_menu::bar::is_focused(ctx)
             && !egui::Popup::is_any_open(ctx)

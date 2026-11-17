@@ -52,7 +52,7 @@ fn automatic_text_tagging_opens_reviewable_tags() {
     assert!(h.state_mut().execute("a11y.autotag"));
     h.run_steps(2);
     assert_eq!(h.state().right, Some(RightPanel::Tags));
-    let doc = h.state().session.get(h.state().views[h.state().active.unwrap()].id).unwrap();
+    let doc = h.state().session.get(h.state().win.views[h.state().win.active.unwrap()].id).unwrap();
     let tags = doc.tags();
     assert_eq!(tags.len(), 2);
     assert_eq!(tags[1].kind, "P");
@@ -130,7 +130,7 @@ fn a_rule_skipped_in_one_document_is_not_skipped_in_another() {
         app.set_option("language", "en").unwrap();
         app.open_bytes("a.pdf", None, FIXTURE.to_vec()).unwrap();
         app.open_bytes("b.pdf", None, FIXTURE.to_vec()).unwrap();
-        app.active = Some(0);
+        app.win.active = Some(0);
         app.a11y_options.show_dialog = false;
         app
     });
@@ -149,7 +149,7 @@ fn a_rule_skipped_in_one_document_is_not_skipped_in_another() {
     h.run_steps(2);
     assert_eq!(tagged(&h), (Status::Skipped, 0));
 
-    h.state_mut().active = Some(1);
+    h.state_mut().win.active = Some(1);
     h.run_steps(2);
     assert!(h.state_mut().execute("a11y.check"));
     h.run_steps(3);
@@ -167,7 +167,7 @@ fn a_rule_skipped_in_one_document_is_not_skipped_in_another() {
     h.run_steps(3);
     assert_eq!(tagged(&h), (Status::Failed, 2));
 
-    h.state_mut().active = Some(0);
+    h.state_mut().win.active = Some(0);
     h.run_steps(2);
     h.state_mut().run_accessibility_check();
     h.run_steps(2);
@@ -231,7 +231,7 @@ fn tagging_form_fields_opens_the_tags_panel() {
     assert!(h.state_mut().execute("a11y.autotag_fields"));
     h.run_steps(3);
     assert_eq!(h.state().right, Some(RightPanel::Tags));
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let report = h
         .state()
         .session
@@ -275,7 +275,7 @@ fn checker_shows_a_figure_finding_on_its_page() {
     h.run_steps(2);
     h.get_by_label_contains("Figure element on page 1: no alternate text").click();
     h.run_steps(1);
-    let flash = h.state().views[0].flash.map(|(page, rect, _)| (page, rect));
+    let flash = h.state().win.views[0].flash.map(|(page, rect, _)| (page, rect));
     assert_eq!(flash, Some((0, [10.0, 150.0, 50.0, 170.0])));
 }
 
@@ -302,7 +302,7 @@ fn setting_alternate_text_figure_by_figure() {
     h.get_by_label("Save & Close").click();
     h.run_steps(3);
     let s = h.state();
-    let doc = s.session.get(s.views[0].id).unwrap();
+    let doc = s.session.get(s.win.views[0].id).unwrap();
     assert_eq!(doc.can_undo(), Some("Set alternate text"));
     let f = doc.figures();
     assert_eq!(f.len(), 1, "the decorative one left the tags");
@@ -336,7 +336,7 @@ fn tags_panel_edits_a_tag_property_and_undoes_it() {
     h.get_by_label("Save tag properties").click();
     h.run_steps(3);
     let s = h.state();
-    let doc = s.session.get(s.views[0].id).unwrap();
+    let doc = s.session.get(s.win.views[0].id).unwrap();
     assert_eq!(doc.tags()[1].title.as_deref(), Some("First figure"));
     assert_eq!(doc.can_undo(), Some("Change tag properties"));
     let search = h.get_by_role_and_label(Role::TextInput, "Find a tag");
@@ -364,7 +364,7 @@ fn tags_panel_moves_a_tag_within_its_siblings() {
     h.get_by_label("Move tag earlier").click();
     h.run_steps(3);
     let s = h.state();
-    let doc = s.session.get(s.views[0].id).unwrap();
+    let doc = s.session.get(s.win.views[0].id).unwrap();
     assert_eq!(doc.tags().into_iter().map(|tag| tag.object.num).collect::<Vec<_>>(), [6, 8, 7]);
     assert_eq!(doc.can_undo(), Some("Move object"));
 }
@@ -385,7 +385,7 @@ fn tags_panel_marks_a_leaf_tag_as_an_artifact() {
     h.get_by_label("Mark as artifact").click();
     h.run_steps(3);
     let s = h.state();
-    let doc = s.session.get(s.views[0].id).unwrap();
+    let doc = s.session.get(s.win.views[0].id).unwrap();
     assert_eq!(doc.tags().into_iter().map(|tag| tag.object.num).collect::<Vec<_>>(), [6, 8]);
     assert_eq!(doc.can_undo(), Some("Mark content as artifact"));
 }

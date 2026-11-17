@@ -211,7 +211,7 @@ fn card(h: &Harness<'static, PdfCraftApp>, name: &str) -> egui::Rect {
 }
 
 fn texts_of(app: &PdfCraftApp, tab: usize) -> Vec<String> {
-    let doc = app.session.get(app.views[tab].id).unwrap();
+    let doc = app.session.get(app.win.views[tab].id).unwrap();
     let mut r = PageRenderer::new(doc.bytes.clone(), Default::default());
     (0..r.page_count())
         .map(|p| {
@@ -522,9 +522,9 @@ fn combine_follows_the_order_shown_in_the_grid() {
     h.get_by_label("Combine").click();
     h.run_steps(3);
     let app = h.state();
-    assert_eq!(app.views.len(), 1, "the result opens");
+    assert_eq!(app.win.views.len(), 1, "the result opens");
     assert_eq!(texts_of(app, 0), ["Page 1", "Page 1", "Page 2", "Page 1"]);
-    let doc = app.session.get(app.views[0].id).unwrap();
+    let doc = app.session.get(app.win.views[0].id).unwrap();
     assert_eq!(doc.info.outline.iter().map(|o| o.title.as_str()).collect::<Vec<_>>(), ["three", "one", "two"]);
 }
 
@@ -627,7 +627,7 @@ fn thumbnails_under_way_finish_on_home_and_in_a_document_tab() {
     h.run_steps(1);
     h.state_mut().open_bytes("doc.pdf", None, fixture(1)).unwrap();
     h.run_steps(1);
-    assert!(h.state().active.is_some());
+    assert!(h.state().win.active.is_some());
     assert!(settle(&mut h, |app| app.combine_thumbnails_rendering() == 0 && app.combine_thumbnail_threads_exited()));
 }
 
@@ -1657,7 +1657,7 @@ fn combining_with_files_expanded_gives_the_same_document() {
     h.get_by_label("Combine").click();
     h.run_steps(3);
     let app = h.state();
-    assert_eq!(app.views.len(), 1, "the result opens");
+    assert_eq!(app.win.views.len(), 1, "the result opens");
     assert_eq!(texts_of(app, 0), ["Page 1", "Page 2", "Page 3", "Page 1"]);
 }
 
@@ -1771,9 +1771,9 @@ fn a_split_file_counts_once_and_combines_with_one_bookmark() {
     h.get_by_label("Combine").click();
     h.run_steps(3);
     let app = h.state();
-    assert_eq!(app.views.len(), 1, "the result opens");
+    assert_eq!(app.win.views.len(), 1, "the result opens");
     assert_eq!(texts_of(app, 0), ["Page 1", "Page 1", "Page 2", "Page 2", "Page 3"], "the order shown");
-    let doc = app.session.get(app.views[0].id).unwrap();
+    let doc = app.session.get(app.win.views[0].id).unwrap();
     assert_eq!(doc.info.outline.iter().map(|o| o.title.as_str()).collect::<Vec<_>>(), ["one", "two"], "one bookmark per file");
 }
 

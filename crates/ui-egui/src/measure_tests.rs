@@ -52,7 +52,7 @@ fn harness(bytes: Vec<u8>) -> (Harness<'static, PdfCraftApp>, DocId) {
     let h = harness_with(1600.0, move |app| {
         app.open_bytes("plan.pdf", None, bytes).unwrap();
     });
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     (h, id)
 }
 
@@ -68,7 +68,7 @@ fn tool(h: &mut Harness<'static, PdfCraftApp>, t: Tool) {
 /// Screen position of user-space point (`x`, `y`) on page 1 of view `view`.
 fn at(h: &Harness<'static, PdfCraftApp>, view: usize, x: f32, y: f32) -> Pos2 {
     let app = h.state();
-    let v = &app.views[view];
+    let v = &app.win.views[view];
     let r = v.page_screen_rect(0).expect("page on screen");
     let info = &app.session.get(v.id).unwrap().info.pages[0];
     let [vx, vy] = info.user_to_view(x, y);
@@ -88,7 +88,7 @@ fn settle(h: &mut Harness<'static, PdfCraftApp>, p: Pos2) {
     h.run_steps(1);
     for _ in 0..500 {
         h.run_steps(1);
-        if h.state_mut().views.iter_mut().all(|v| !v.measure.snapping_loading()) {
+        if h.state_mut().win.views.iter_mut().all(|v| !v.measure.snapping_loading()) {
             // A frame that uses the lines (the worker may have finished after the last one).
             h.run_steps(2);
             return;
@@ -136,7 +136,7 @@ fn kept(h: &Harness<'static, PdfCraftApp>, id: DocId) -> usize {
 /// 50 mm"), so a calibration's two clicks read back as the distance between them.
 fn drawing_pt(h: &Harness<'static, PdfCraftApp>) -> f64 {
     let app = h.state();
-    let m = &app.views[0].measure;
+    let m = &app.win.views[0].measure;
     m.drawing_points * crate::measure_ui::page_unit_of(m.page_unit, &m.unit, app.units).points()
 }
 
@@ -154,8 +154,8 @@ fn the_second_click_keeps_a_distance_that_undo_delete_and_save_handle() {
     tool(&mut h, Tool::Distance);
     let (a, b) = (at(&h, 0, 100.0, 100.0), at(&h, 0, 300.0, 200.0));
     click(&mut h, a);
-    assert_eq!((kept(&h, id), h.state().views[0].measure.points.len()), (0, 1));
-    let read = h.state().views[0].measure.lines_read;
+    assert_eq!((kept(&h, id), h.state().win.views[0].measure.points.len()), (0, 1));
+    let read = h.state().win.views[0].measure.lines_read;
     assert_eq!(read, 1);
     click(&mut h, b);
     let saved = listing(&h, id);
@@ -165,10 +165,10 @@ fn the_second_click_keeps_a_distance_that_undo_delete_and_save_handle() {
     assert!(m.reading.value > 0.0);
     let app = h.state();
     assert!(app.session.get(id).unwrap().dirty, "the measurement is an edit");
-    assert!(app.views[0].measure.points.is_empty() && app.views[0].measure.notice.is_none());
+    assert!(app.win.views[0].measure.points.is_empty() && app.win.views[0].measure.notice.is_none());
     // The measurement doesn't change the drawing, so its lines aren't read again (and the next
     // click isn't held up while they would be).
-    assert_eq!(app.views[0].measure.lines_read, read);
+    assert_eq!(app.win.views[0].measure.lines_read, read);
 
     assert!(h.state_mut().execute("edit.undo"));
     h.run_steps(2);
@@ -210,7 +210,7 @@ fn a_slow_or_drifting_second_click_still_finishes_the_distance() {
         assert_eq!(kept(&h, id), 1, "{name}");
         // The point is where the button came up.
         let end = listing(&h, id).measurements[0].points[1];
-        let pixels = f64::from(h.state().views[0].page_screen_rect(0).unwrap().width()) / 400.0;
+        let pixels = f64::from(h.state().win.views[0].page_screen_rect(0).unwrap().width()) / 400.0;
         assert!(close(end, [300.0 + f64::from(drift) / pixels, 200.0], 1.0), "{name}: {end:?}");
     }
 }
@@ -222,7 +222,7 @@ fn a_second_click_on_the_first_point_says_to_click_another() {
     // Both clicks snap onto the end of the bottom line.
     click_at(&mut h, 0, 351.0, 51.0);
     click_at(&mut h, 0, 349.0, 49.5);
-    assert_eq!((kept(&h, id), h.state().views[0].measure.points.len()), (0, 1));
+    assert_eq!((kept(&h, id), h.state().win.views[0].measure.points.len()), (0, 1));
     assert!(says(&h, "Click a different point"));
     click_at(&mut h, 0, 300.0, 200.0);
     assert_eq!(kept(&h, id), 1);
@@ -237,7 +237,7 @@ fn a_drawing_scale_that_cant_be_read_is_explained_and_feet_and_inches_are_read()
         let (mut h, id) = harness(with_scale(measure));
         tool(&mut h, Tool::Distance);
         click_at(&mut h, 0, 100.0, 100.0);
-        assert_eq!((kept(&h, id), h.state().views[0].measure.points.len()), (0, 0), "{name}");
+        assert_eq!((kept(&h, id), h.state().win.views[0].measure.points.len()), (0, 0), "{name}");
         assert!(says(&h, "drawing scale PDF Overlay can't read"), "{name}: nothing said");
         // Calibrating sets a scale: it isn't stopped by the one it replaces.
         tool(&mut h, Tool::Calibrate);
@@ -281,7 +281,7 @@ fn a_pdf_that_forbids_comments_measures_but_says_nothing_is_kept() {
     let app = h.state();
     assert_eq!(kept(&h, id), 0);
     assert!(!app.session.get(id).unwrap().dirty);
-    let reading = app.views[0].measure.reading.as_ref().expect("the reading stays");
+    let reading = app.win.views[0].measure.reading.as_ref().expect("the reading stays");
     assert!(reading.value > 0.0);
     assert!(says(&h, "doesn't allow comments"));
 }
@@ -292,17 +292,17 @@ fn the_snap_target_shows_before_the_first_point_with_every_tool() {
         let (mut h, id) = harness(plain());
         tool(&mut h, t);
         settle_at(&mut h, 0, 351.0, 51.0);
-        let m = &h.state().views[0].measure;
+        let m = &h.state().win.views[0].measure;
         assert!(m.points.is_empty());
         assert_eq!(m.snapped, Some(([350.0, 50.0], SnapKind::Endpoint)), "{t:?}");
         assert!(h.query_by_label("Endpoint").is_some(), "{t:?}: the target is named before the first point");
         click_at(&mut h, 0, 351.0, 51.0);
-        assert_eq!(h.state().views[0].measure.points, vec![[350.0, 50.0]], "{t:?}: the first point snaps");
+        assert_eq!(h.state().win.views[0].measure.points, vec![[350.0, 50.0]], "{t:?}: the first point snaps");
         click_at(&mut h, 0, 51.5, 249.0);
         match t {
             Tool::Distance => assert_eq!(listing(&h, id).measurements[0].points, vec![[350.0, 50.0], [50.0, 250.0]]),
             Tool::Calibrate => assert!((drawing_pt(&h) - 300f64.hypot(200.0)).abs() < 1e-9),
-            _ => assert_eq!(h.state().views[0].measure.points, vec![[350.0, 50.0], [50.0, 250.0]], "{t:?}"),
+            _ => assert_eq!(h.state().win.views[0].measure.points, vec![[350.0, 50.0], [50.0, 250.0]], "{t:?}"),
         }
     }
 }
@@ -314,41 +314,41 @@ fn no_point_is_placed_while_the_drawing_is_read_for_snapping() {
     let hold = |h: &mut Harness<'static, PdfCraftApp>| {
         let app = h.state_mut();
         let doc = app.session.get(id).unwrap();
-        app.views[0].measure.hold_snapping(doc, 0)
+        app.win.views[0].measure.hold_snapping(doc, 0)
     };
     let tx = hold(&mut h);
     let p = at(&h, 0, 351.0, 51.0);
     h.hover_at(p);
     h.run_steps(2);
-    assert!(h.state_mut().views[0].measure.snapping_loading());
+    assert!(h.state_mut().win.views[0].measure.snapping_loading());
     assert!(says(&h, "Reading the drawing for snapping"));
     button(&mut h, p, true);
     h.run_steps(1);
     button(&mut h, p, false);
     h.run_steps(3);
     // The release waited (half a second) for lines that never came: no point, and it says why.
-    assert!(h.state().views[0].measure.points.is_empty(), "no unsnapped point while loading");
-    assert_eq!(h.state().views[0].measure.click_waits, 1);
+    assert!(h.state().win.views[0].measure.points.is_empty(), "no unsnapped point while loading");
+    assert_eq!(h.state().win.views[0].measure.click_waits, 1);
     assert!(says(&h, "Reading the drawing for snapping"));
     // The lines arrive: the same click snaps.
     let bytes = h.state().session.get(id).unwrap().bytes.clone();
     tx.send(Snapper::read(bytes, None, 0, &HashSet::new())).unwrap();
     click(&mut h, p);
-    assert_eq!(h.state().views[0].measure.points, vec![[350.0, 50.0]]);
+    assert_eq!(h.state().win.views[0].measure.points, vec![[350.0, 50.0]]);
     assert!(!says(&h, "Reading the drawing for snapping"));
     assert_eq!(kept(&h, id), 0);
 
     // Snap to drawing off is the way around a slow sheet: the click lands where it is.
-    h.state_mut().views[0].measure.cancel();
+    h.state_mut().win.views[0].measure.cancel();
     let _held = hold(&mut h);
-    h.state_mut().views[0].measure.snap_enabled = false;
+    h.state_mut().win.views[0].measure.snap_enabled = false;
     button(&mut h, p, true);
     h.run_steps(1);
     button(&mut h, p, false);
     h.run_steps(3);
-    let points = h.state().views[0].measure.points.clone();
+    let points = h.state().win.views[0].measure.points.clone();
     assert!(points.len() == 1 && close(points[0], [351.0, 51.0], 1.0) && points[0] != [350.0, 50.0], "{points:?}");
-    assert_eq!(h.state().views[0].measure.click_waits, 1, "with snapping off nothing waits");
+    assert_eq!(h.state().win.views[0].measure.click_waits, 1, "with snapping off nothing waits");
 }
 
 /// Windows build #22: the control channel's click (one hover frame, then press and release in
@@ -361,7 +361,7 @@ fn a_click_while_the_lines_load_waits_for_them() {
     let tx = {
         let app = h.state_mut();
         let doc = app.session.get(id).unwrap();
-        app.views[0].measure.hold_snapping(doc, 0)
+        app.win.views[0].measure.hold_snapping(doc, 0)
     };
     let bytes = h.state().session.get(id).unwrap().bytes.clone();
     let slow = std::thread::spawn(move || {
@@ -374,15 +374,15 @@ fn a_click_while_the_lines_load_waits_for_them() {
     // The press alone places nothing, so it doesn't wait.
     button(&mut h, p, true);
     h.run_steps(1);
-    assert_eq!((h.state().views[0].measure.click_waits, h.state().views[0].measure.points.len()), (0, 0));
+    assert_eq!((h.state().win.views[0].measure.click_waits, h.state().win.views[0].measure.points.len()), (0, 0));
     // The release does: it waits for the lines once and lands snapped, in its own frame.
     button(&mut h, p, false);
     h.run_steps(1);
-    let m = &h.state().views[0].measure;
+    let m = &h.state().win.views[0].measure;
     assert_eq!(m.points, vec![[350.0, 50.0]], "the click is placed, snapped, in its own frame");
     assert_eq!(m.click_waits, 1);
     h.run_steps(3);
-    assert_eq!(h.state().views[0].measure.click_waits, 1, "nothing else waits once the lines are in");
+    assert_eq!(h.state().win.views[0].measure.click_waits, 1, "nothing else waits once the lines are in");
     slow.join().unwrap();
 }
 
@@ -399,10 +399,10 @@ fn hidden_layers_and_dense_sheets_snap_as_they_are_shown() {
     tool(&mut h, Tool::Distance);
     let end = at(&h, 0, 150.5, 220.5);
     settle(&mut h, end);
-    assert_eq!(h.state().views[0].measure.snapped, Some(([150.0, 220.0], SnapKind::Endpoint)));
+    assert_eq!(h.state().win.views[0].measure.snapped, Some(([150.0, 220.0], SnapKind::Endpoint)));
     assert!(h.state_mut().session.set_layer_visible(id, 0, false));
     settle(&mut h, end);
-    assert_eq!(h.state().views[0].measure.snapped, None, "a hidden layer's line isn't snapped to");
+    assert_eq!(h.state().win.views[0].measure.snapped, None, "a hidden layer's line isn't snapped to");
 
     // 25,000 short segments first, then the line to snap to: past the 20,000 segments the
     // measuring snapper reads.
@@ -415,7 +415,7 @@ fn hidden_layers_and_dense_sheets_snap_as_they_are_shown() {
     let (mut h, _) = harness(pdf("", "", "", &dense));
     tool(&mut h, Tool::Distance);
     settle_at(&mut h, 0, 160.5, 100.5);
-    assert_eq!(h.state().views[0].measure.snapped, Some(([160.0, 100.0], SnapKind::Endpoint)));
+    assert_eq!(h.state().win.views[0].measure.snapped, Some(([160.0, 100.0], SnapKind::Endpoint)));
 }
 
 #[test]
@@ -424,9 +424,9 @@ fn a_duplicate_tab_and_a_tile_keep_their_measurements() {
         app.open_bytes("plan.pdf", None, plain()).unwrap();
         app.duplicate_view(0);
     });
-    assert_eq!(h.state().views.len(), 2);
-    let view = h.state().active.unwrap();
-    let id = h.state().views[view].id;
+    assert_eq!(h.state().win.views.len(), 2);
+    let view = h.state().win.active.unwrap();
+    let id = h.state().win.views[view].id;
     tool(&mut h, Tool::Distance);
     click_at(&mut h, view, 100.0, 100.0);
     click_at(&mut h, view, 300.0, 200.0);
@@ -436,13 +436,13 @@ fn a_duplicate_tab_and_a_tile_keep_their_measurements() {
         app.open_bytes("plan.pdf", None, plain()).unwrap();
         app.open_bytes("detail.pdf", None, plain()).unwrap();
         app.set_view_layout(ViewLayout::Tiles);
-        app.active = Some(0);
+        app.win.active = Some(0);
     });
-    let (first, second) = (h.state().views[0].id, h.state().views[1].id);
+    let (first, second) = (h.state().win.views[0].id, h.state().win.views[1].id);
     tool(&mut h, Tool::Distance);
     // A press in the tile that isn't active only picks it (tile_view.rs, D1).
     click_at(&mut h, 1, 100.0, 100.0);
-    assert_eq!((h.state().active, h.state().views[1].measure.points.len()), (Some(1), 0));
+    assert_eq!((h.state().win.active, h.state().win.views[1].measure.points.len()), (Some(1), 0));
     click_at(&mut h, 1, 100.0, 100.0);
     click_at(&mut h, 1, 300.0, 200.0);
     h.run_steps(3);
@@ -457,20 +457,20 @@ fn feet_field<'a>(h: &'a Harness<'static, PdfCraftApp>, shown: &'a str) -> egui_
 }
 
 fn type_feet(h: &mut Harness<'static, PdfCraftApp>, text: &str) {
-    let shown = h.state().views[0].measure.known_text.clone();
+    let shown = h.state().win.views[0].measure.known_text.clone();
     feet_field(h, &shown).click();
     h.run_steps(1);
     h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
     h.run_steps(1);
     feet_field(h, &shown).type_text(text);
     h.run_steps(2);
-    assert_eq!(h.state().views[0].measure.known_text, text);
+    assert_eq!(h.state().win.views[0].measure.known_text, text);
 }
 
 fn pick_unit(h: &mut Harness<'static, PdfCraftApp>, from: &str, to: &str) {
     // Nothing read in the background changes the panel between finding the list and clicking it.
     for _ in 0..500 {
-        if h.state_mut().views.iter_mut().all(|v| !v.measure.snapping_loading()) {
+        if h.state_mut().win.views.iter_mut().all(|v| !v.measure.snapping_loading()) {
             break;
         }
         h.run_steps(1);
@@ -500,12 +500,12 @@ fn calibrating_in_feet_and_inches_from_the_panel() {
 
     // Inches to feet and inches: the 1 in the page started with is converted, not reset.
     pick_unit(&mut h, "Inches (in)", "Feet and inches (ft-in)");
-    let m = &h.state().views[0].measure;
+    let m = &h.state().win.views[0].measure;
     assert!(m.feet_inches && m.unit == "ft" && m.known_text == "0'-1\"", "{} {}", m.unit, m.known_text);
     assert!(says(&h, "Nearest 1/8 inch"));
     type_feet(&mut h, "100'-0\"");
-    assert!((h.state().views[0].measure.real_distance - 100.0).abs() < 1e-12);
-    let read = h.state().views[0].measure.lines_read;
+    assert!((h.state().win.views[0].measure.real_distance - 100.0).abs() < 1e-12);
+    let read = h.state().win.views[0].measure.lines_read;
     h.get_by_label("Apply scale").click();
     h.run_steps(3);
     let scale = h.state().session.get(id).unwrap().measurement_scale(0, [100.0, 100.0]).unwrap();
@@ -519,7 +519,7 @@ fn calibrating_in_feet_and_inches_from_the_panel() {
     let listed = listing(&h, id);
     assert_eq!(listed.measurements[0].reading.label, "66'-8\"");
     // The new scale is used at once, and the page's lines weren't read again for it.
-    assert_eq!(h.state().views[0].measure.lines_read, read);
+    assert_eq!(h.state().win.views[0].measure.lines_read, read);
     let bytes = h.state_mut().session.save_bytes(id).unwrap();
     let mut session = Session::new();
     let reopened = session.open("plan.pdf", None, Arc::new(bytes.as_ref().clone()), None).unwrap();
@@ -534,16 +534,16 @@ fn calibrating_in_feet_and_inches_from_the_panel() {
     h.run_steps(3);
     assert_eq!(h.state().session.get(id).unwrap().edit_generation(), edits, "no scale from the last length that could be read");
     type_feet(&mut h, "12' 6\"");
-    assert!((h.state().views[0].measure.real_distance - 12.5).abs() < 1e-12);
+    assert!((h.state().win.views[0].measure.real_distance - 12.5).abs() < 1e-12);
 
     // Feet and inches to metres keeps the scale: 12.5 ft is 3.81 m.
     pick_unit(&mut h, "Feet and inches (ft-in)", "Meters (m)");
-    let m = &h.state().views[0].measure;
+    let m = &h.state().win.views[0].measure;
     assert!(!m.feet_inches && m.unit == "m" && (m.real_distance - 3.81).abs() < 1e-9, "{} {}", m.unit, m.real_distance);
     assert!(!says(&h, "Nearest 1/8 inch"), "decimals again");
     // Custom keeps the label as it is, to type another.
     pick_unit(&mut h, "Meters (m)", "Custom");
-    let m = &h.state().views[0].measure;
+    let m = &h.state().win.views[0].measure;
     assert!(m.custom_unit && m.unit == "m");
     assert!(h.query_all_by_value("m").next().is_some(), "the unit is typed in");
 }
@@ -596,10 +596,10 @@ fn escape_cancels_the_points_in_progress_then_leaves_the_tool() {
         for (x, y) in [(100.0, 100.0), (300.0, 200.0), (300.0, 100.0)].into_iter().take(points) {
             click_at(&mut h, 0, x, y);
         }
-        assert_eq!(h.state().views[0].measure.points.len(), points, "{t:?}");
+        assert_eq!(h.state().win.views[0].measure.points.len(), points, "{t:?}");
         escape(&mut h);
         let app = h.state();
-        assert!(app.views[0].measure.points.is_empty() && app.views[0].measure.reading.is_none(), "{t:?}: the first press cancels");
+        assert!(app.win.views[0].measure.points.is_empty() && app.win.views[0].measure.reading.is_none(), "{t:?}: the first press cancels");
         assert_eq!(app.quick_tool, QuickTool::Measure(t), "{t:?}: the first press keeps the tool");
         assert_eq!(kept(&h, id), 0, "{t:?}: nothing is kept");
         untouched(&h, id);
@@ -626,18 +626,18 @@ fn escape_cancels_a_pending_calibration_and_puts_the_scale_fields_back() {
     let (mut h, id) = harness(plain());
     tool(&mut h, Tool::Calibrate);
     let before = {
-        let m = &h.state().views[0].measure;
+        let m = &h.state().win.views[0].measure;
         (m.drawing_points, m.real_distance, m.unit.clone(), m.known_text.clone(), m.page_unit)
     };
     click_at(&mut h, 0, 100.0, 100.0);
     click_at(&mut h, 0, 300.0, 100.0);
-    let m = &h.state().views[0].measure;
+    let m = &h.state().win.views[0].measure;
     assert!(m.calibrating() && m.points.is_empty(), "two clicks ask for the known distance");
     assert!((drawing_pt(&h) - 200.0).abs() < 1.0, "{}", m.drawing_points);
     // The known-distance field takes the keyboard; Escape there is the calibration's own step.
     assert!(h.ctx.memory(|mem| mem.focused()).is_some(), "the known-distance field has the keyboard");
     escape(&mut h);
-    let m = &h.state().views[0].measure;
+    let m = &h.state().win.views[0].measure;
     assert!(!m.calibrating(), "the first press cancels the calibration");
     assert_eq!((m.drawing_points, m.real_distance, m.unit.clone(), m.known_text.clone(), m.page_unit), before, "the fields are back");
     assert_eq!(h.state().quick_tool, QuickTool::Measure(Tool::Calibrate), "the tool stays for the next press");
@@ -652,7 +652,7 @@ fn escape_cancels_a_pending_calibration_and_puts_the_scale_fields_back() {
     h.ctx.memory_mut(|mem| mem.stop_text_input());
     h.run_steps(2);
     escape(&mut h);
-    assert!(!h.state().views[0].measure.calibrating());
+    assert!(!h.state().win.views[0].measure.calibrating());
     assert_eq!(h.state().quick_tool, QuickTool::Measure(Tool::Calibrate));
     untouched(&h, id);
 }
@@ -667,13 +667,13 @@ fn a_pending_calibration_is_not_taken_for_points_in_progress() {
     click_at(&mut h, 0, 300.0, 100.0);
     h.ctx.memory_mut(|mem| mem.stop_text_input());
     click_at(&mut h, 0, 100.0, 200.0);
-    let m = &h.state().views[0].measure;
+    let m = &h.state().win.views[0].measure;
     assert!(m.calibrating() && m.points.len() == 1);
     escape(&mut h);
-    let m = &h.state().views[0].measure;
+    let m = &h.state().win.views[0].measure;
     assert!(m.calibrating() && m.points.is_empty(), "the points first");
     escape(&mut h);
-    assert!(!h.state().views[0].measure.calibrating(), "then the calibration");
+    assert!(!h.state().win.views[0].measure.calibrating(), "then the calibration");
     assert_eq!(h.state().quick_tool, QuickTool::Measure(Tool::Calibrate));
     escape(&mut h);
     assert_eq!(h.state().quick_tool, QuickTool::Select);
@@ -690,11 +690,11 @@ fn escape_in_a_measure_panel_field_only_leaves_the_field() {
     h.run_steps(2);
     assert_eq!(h.ctx.memory(|mem| mem.focused()), Some(label));
     escape(&mut h);
-    assert_eq!(h.state().views[0].measure.points.len(), 2, "the perimeter in progress stays");
+    assert_eq!(h.state().win.views[0].measure.points.len(), 2, "the perimeter in progress stays");
     assert_eq!(h.state().quick_tool, QuickTool::Measure(Tool::Perimeter));
     assert_eq!(h.ctx.memory(|mem| mem.focused()), None, "the field let go of the keyboard");
     escape(&mut h);
-    assert!(h.state().views[0].measure.points.is_empty(), "the next press cancels it");
+    assert!(h.state().win.views[0].measure.points.is_empty(), "the next press cancels it");
     untouched(&h, id);
 }
 
@@ -703,11 +703,11 @@ fn one_escape_never_also_closes_the_find_bar_or_full_screen() {
     let (mut h, id) = harness(plain());
     let steps = |h: &Harness<'static, PdfCraftApp>| {
         let app = h.state();
-        (app.views[0].measure.points.len(), app.views[0].find.is_some(), app.quick_tool, app.full_screen)
+        (app.win.views[0].measure.points.len(), app.win.views[0].find.is_some(), app.quick_tool, app.full_screen)
     };
     // Measuring with the find bar open: the points, then the find bar, then the tool.
     tool(&mut h, Tool::Distance);
-    h.state_mut().views[0].find = Some(Default::default());
+    h.state_mut().win.views[0].find = Some(Default::default());
     h.run_steps(3);
     click_at(&mut h, 0, 100.0, 100.0);
     assert_eq!(steps(&h), (1, true, QuickTool::Measure(Tool::Distance), false));
@@ -722,7 +722,7 @@ fn one_escape_never_also_closes_the_find_bar_or_full_screen() {
     // (upstream, review on #2070), so nothing is measured in it. With the find bar open, one
     // press closes the find bar and the next leaves full screen, never both at once.
     tool(&mut h, Tool::Distance);
-    h.state_mut().views[0].find = Some(Default::default());
+    h.state_mut().win.views[0].find = Some(Default::default());
     let ctx = h.ctx.clone();
     h.state_mut().set_full_screen(&ctx, true);
     h.run_steps(3);
@@ -754,7 +754,7 @@ fn escape_for_a_dialog_the_palette_or_the_wizard_keeps_the_points() {
         }
         escape(&mut h);
         let app = h.state();
-        assert_eq!(app.views[0].measure.points.len(), 1, "{over}: Escape there leaves the measurement alone");
+        assert_eq!(app.win.views[0].measure.points.len(), 1, "{over}: Escape there leaves the measurement alone");
         assert_eq!(app.quick_tool, QuickTool::Measure(Tool::Distance), "{over}");
         match over {
             "dialog" => assert!(app.dialog.is_none(), "the dialog closes"),
@@ -772,14 +772,14 @@ fn the_wizard_over_the_page_doesnt_drive_the_measure_tool() {
     // The middle of the line from (200, 150) to (260, 150): a snap target while nothing covers it.
     let p = at(&h, 0, 230.0, 150.0);
     settle(&mut h, p);
-    assert_eq!(h.state().views[0].measure.snapped, Some(([230.0, 150.0], SnapKind::Midpoint)));
+    assert_eq!(h.state().win.views[0].measure.snapped, Some(([230.0, 150.0], SnapKind::Midpoint)));
     h.state_mut().overlay_open();
     h.run_steps(4);
     let r = h.ctx.memory(|mem| mem.area_rect(crate::overlay_ui::wizard_id())).expect("the wizard is shown");
     assert!(r.contains(p), "the wizard covers that point");
     h.hover_at(p + egui::vec2(0.5, 0.0));
     h.run_steps(3);
-    assert_eq!(h.state().views[0].measure.snapped, None, "no snap target through the wizard");
+    assert_eq!(h.state().win.views[0].measure.snapped, None, "no snap target through the wizard");
 }
 
 #[test]
@@ -788,15 +788,15 @@ fn escape_in_an_inactive_tile_leaves_its_measurement_alone() {
         app.open_bytes("plan.pdf", None, plain()).unwrap();
         app.open_bytes("detail.pdf", None, plain()).unwrap();
         app.set_view_layout(ViewLayout::Tiles);
-        app.active = Some(0);
+        app.win.active = Some(0);
     });
     tool(&mut h, Tool::Perimeter);
     click_at(&mut h, 0, 100.0, 100.0);
     click_at(&mut h, 0, 300.0, 200.0);
-    h.state_mut().active = Some(1);
+    h.state_mut().win.active = Some(1);
     h.run_steps(2);
     escape(&mut h);
-    assert_eq!(h.state().views[0].measure.points.len(), 2, "the inactive tile keeps its perimeter");
+    assert_eq!(h.state().win.views[0].measure.points.len(), 2, "the inactive tile keeps its perimeter");
     assert_eq!(h.state().quick_tool, QuickTool::Select, "the active tile had nothing to cancel");
 }
 
@@ -808,17 +808,17 @@ fn backspace_removes_a_vertex_and_never_a_selected_comment_too() {
     click_at(&mut h, 0, 100.0, 100.0);
     click_at(&mut h, 0, 300.0, 50.0);
     // A comment selected meanwhile (a right-click selects one with any tool).
-    h.state_mut().views[0].comments.selected = Some((0, 0));
+    h.state_mut().win.views[0].comments.selected = Some((0, 0));
     h.key_press(egui::Key::Backspace);
     h.run_steps(3);
-    assert_eq!(h.state().views[0].measure.points.len(), 1, "Backspace removed the last vertex");
+    assert_eq!(h.state().win.views[0].measure.points.len(), 1, "Backspace removed the last vertex");
     assert_eq!(h.state().session.get(id).unwrap().info.annotations.len(), 1, "and not the comment");
     untouched(&h, id);
     // Picking a measuring tool leaves no comment selected for a later Backspace to delete.
-    h.state_mut().views[0].comments.selected = Some((0, 0));
+    h.state_mut().win.views[0].comments.selected = Some((0, 0));
     h.state_mut().execute("measure.distance");
     h.run_steps(2);
-    assert_eq!(h.state().views[0].comments.selected, None);
+    assert_eq!(h.state().win.views[0].comments.selected, None);
 }
 
 /// An open menu takes Escape first, as upstream does since #3535: the menu closes and the
@@ -833,9 +833,9 @@ fn escape_closes_an_open_menu_before_the_points() {
     assert!(egui::Popup::is_any_open(&h.ctx), "the rail's Page display menu is open");
     escape(&mut h);
     assert!(!egui::Popup::is_any_open(&h.ctx), "the menu closed");
-    assert_eq!(h.state().views[0].measure.points.len(), 1, "and the points stay");
+    assert_eq!(h.state().win.views[0].measure.points.len(), 1, "and the points stay");
     escape(&mut h);
-    assert!(h.state().views[0].measure.points.is_empty(), "the next press cancels them");
+    assert!(h.state().win.views[0].measure.points.is_empty(), "the next press cancels them");
     assert_eq!(h.state().quick_tool, QuickTool::Measure(Tool::Distance));
     untouched(&h, id);
 }
@@ -849,21 +849,21 @@ fn a_centimetre_ratio_calibrated_in_feet_and_inches_escape_then_apply() {
     let (mut h, id) = harness(plain());
     tool(&mut h, Tool::Calibrate);
     pick_unit(&mut h, "Inches (in)", "Feet and inches (ft-in)");
-    h.state_mut().views[0].measure.page_unit = Some(PageUnit::Cm);
+    h.state_mut().win.views[0].measure.page_unit = Some(PageUnit::Cm);
     h.run_steps(2);
     let fields = |h: &Harness<'static, PdfCraftApp>| {
-        let m = &h.state().views[0].measure;
+        let m = &h.state().win.views[0].measure;
         (m.drawing_points, m.real_distance, m.unit.clone(), m.feet_inches, m.page_unit)
     };
     let before = fields(&h);
     click_at(&mut h, 0, 100.0, 100.0);
     click_at(&mut h, 0, 300.0, 100.0);
     let cm = 72.0 / 2.54;
-    assert!((h.state().views[0].measure.drawing_points - 200.0 / cm).abs() < 0.05, "200 pt in centimetres");
+    assert!((h.state().win.views[0].measure.drawing_points - 200.0 / cm).abs() < 0.05, "200 pt in centimetres");
     // Inches picked for the page side meanwhile: Escape gives the centimetres back too.
-    h.state_mut().views[0].measure.page_unit = Some(PageUnit::In);
+    h.state_mut().win.views[0].measure.page_unit = Some(PageUnit::In);
     escape(&mut h);
-    assert!(!h.state().views[0].measure.calibrating());
+    assert!(!h.state().win.views[0].measure.calibrating());
     assert_eq!(fields(&h), before, "every field back, the page unit included");
     // Calibrate again and apply: 200 pt is 50 ft, a centimetre ratio shown in feet and inches.
     click_at(&mut h, 0, 100.0, 100.0);
@@ -920,7 +920,7 @@ fn the_scale_equation_labels_both_sides() {
     );
     assert!(drawing_value.min.y >= drawing.max.y - 1.0, "{drawing:?} above {drawing_value:?}");
     assert!(actual_value.min.y >= actual.max.y - 1.0, "{actual:?} above {actual_value:?}");
-    let panel = h.state().views[0].viewport_rect().left();
+    let panel = h.state().win.views[0].viewport_rect().left();
     if panel - drawing.min.x < 420.0 {
         assert!(actual.min.y >= drawing_value.max.y - 1.0, "two rows in a narrow panel: {drawing_value:?} {actual:?}");
     } else {
@@ -934,12 +934,12 @@ fn the_scale_equation_labels_both_sides() {
 fn switching_the_actual_unit_keeps_the_physical_scale() {
     let (mut h, _) = harness(plain());
     tool(&mut h, Tool::Distance);
-    assert_eq!(h.state().views[0].measure.ratio_text, "1:1");
+    assert_eq!(h.state().win.views[0].measure.ratio_text, "1:1");
     for (from, to) in [("Inches (in)", "Millimeters (mm)"), ("Millimeters (mm)", "Centimeters (cm)"), ("Centimeters (cm)", "Meters (m)")] {
         pick_unit(&mut h, from, to);
-        assert_eq!(h.state().views[0].measure.ratio_text, "1:1", "{from} to {to}");
+        assert_eq!(h.state().win.views[0].measure.ratio_text, "1:1", "{from} to {to}");
     }
-    let m = &h.state().views[0].measure;
+    let m = &h.state().win.views[0].measure;
     assert_eq!((m.page_unit, m.drawing_points, m.unit.as_str()), (Some(PageUnit::In), 1.0, "m"));
     assert!((m.real_distance - 0.0254).abs() < 1e-12, "{}", m.real_distance);
 }
@@ -950,7 +950,7 @@ fn the_unit_system_only_changes_the_list() {
     let (mut h, _) = harness(plain());
     tool(&mut h, Tool::Distance);
     let fields = |h: &Harness<'static, PdfCraftApp>| {
-        let m = &h.state().views[0].measure;
+        let m = &h.state().win.views[0].measure;
         (m.drawing_points, m.real_distance, m.unit.clone(), m.page_unit, m.ratio_text.clone())
     };
     let before = fields(&h);
@@ -987,7 +987,7 @@ fn an_imperial_scale_applies_at_once_as_a_plan_writes_it() {
     assert_eq!((scale.ratio.as_str(), scale.unit.as_str(), scale.feet_inches), ("1/8\" = 1'-0\"", "ft", Some(8)));
     let reading = pdfcraft_engine::measure::reading(pdfcraft_engine::measure::Kind::Distance, &[[0.0, 0.0], [72.0, 0.0]], &scale).unwrap();
     assert_eq!(reading.label, "8'-0\"");
-    assert_eq!(h.state().views[0].measure.ratio_text, "1:96");
+    assert_eq!(h.state().win.views[0].measure.ratio_text, "1:96");
 }
 
 /// The drawing's lines arriving for snapping don't move the panel (FIX.1): the Windows build
@@ -1000,17 +1000,17 @@ fn the_snapping_notice_doesnt_move_the_panel() {
     let tx = {
         let app = h.state_mut();
         let doc = app.session.get(id).unwrap();
-        app.views[0].measure.hold_snapping(doc, 0)
+        app.win.views[0].measure.hold_snapping(doc, 0)
     };
     h.run_steps(2);
-    assert!(h.state_mut().views[0].measure.snapping_loading());
+    assert!(h.state_mut().win.views[0].measure.snapping_loading());
     assert!(says(&h, "Reading the drawing for snapping"));
     let unit = |h: &Harness<'static, PdfCraftApp>| h.get_by_value("Inches (in)").rect();
     let before = unit(&h);
     let bytes = h.state().session.get(id).unwrap().bytes.clone();
     tx.send(Snapper::read(bytes, None, 0, &HashSet::new())).unwrap();
     h.run_steps(2);
-    assert!(!h.state_mut().views[0].measure.snapping_loading());
+    assert!(!h.state_mut().win.views[0].measure.snapping_loading());
     assert_eq!(unit(&h), before, "the unit list stays where it was");
 }
 
@@ -1024,14 +1024,14 @@ fn a_held_read_replaces_the_pages_earlier_read() {
     let hold = |h: &mut Harness<'static, PdfCraftApp>| {
         let app = h.state_mut();
         let doc = app.session.get(id).unwrap();
-        app.views[0].measure.hold_snapping(doc, 0)
+        app.win.views[0].measure.hold_snapping(doc, 0)
     };
     let _never_answers = hold(&mut h);
     let tx = hold(&mut h);
-    assert!(h.state_mut().views[0].measure.snapping_loading());
+    assert!(h.state_mut().win.views[0].measure.snapping_loading());
     let bytes = h.state().session.get(id).unwrap().bytes.clone();
     tx.send(Snapper::read(bytes, None, 0, &HashSet::new())).unwrap();
-    assert!(!h.state_mut().views[0].measure.snapping_loading(), "only the held read counts");
+    assert!(!h.state_mut().win.views[0].measure.snapping_loading(), "only the held read counts");
 }
 
 /// This fork (MEASURE.UI.1): Apply scale, as drawn: its rect, whether an accent-filled shape
@@ -1117,7 +1117,7 @@ fn apply_scale_is_the_primary_action_and_keeps_its_size_and_disabled_look() {
 /// Screen position of user-space point (`x`, `y`) on page `page` of view `view`.
 fn at_page(h: &Harness<'static, PdfCraftApp>, view: usize, page: usize, x: f32, y: f32) -> Pos2 {
     let app = h.state();
-    let v = &app.views[view];
+    let v = &app.win.views[view];
     let r = v.page_screen_rect(page).expect("page on screen");
     let info = &app.session.get(v.id).unwrap().info.pages[page];
     let [vx, vy] = info.user_to_view(x, y);
@@ -1133,36 +1133,36 @@ fn each_page_and_drawing_version_is_read_once() {
     let (mut h, id) = harness(plain());
     tool(&mut h, Tool::Distance);
     settle_at(&mut h, 0, 351.0, 51.0);
-    assert_eq!(h.state().views[0].measure.snapped, Some(([350.0, 50.0], SnapKind::Endpoint)));
-    assert_eq!(h.state().views[0].measure.lines_read, 1);
+    assert_eq!(h.state().win.views[0].measure.snapped, Some(([350.0, 50.0], SnapKind::Endpoint)));
+    assert_eq!(h.state().win.views[0].measure.lines_read, 1);
     h.run_steps(20);
-    assert_eq!(h.state().views[0].measure.lines_read, 1, "hovering reads nothing again");
+    assert_eq!(h.state().win.views[0].measure.lines_read, 1, "hovering reads nothing again");
     click_at(&mut h, 0, 100.0, 100.0);
     click_at(&mut h, 0, 300.0, 200.0);
     assert_eq!(kept(&h, id), 1);
     settle_at(&mut h, 0, 351.0, 51.0);
-    assert_eq!(h.state().views[0].measure.lines_read, 1, "a measurement kept doesn't change the drawing");
+    assert_eq!(h.state().win.views[0].measure.lines_read, 1, "a measurement kept doesn't change the drawing");
     // The page turned over: its drawing is another version.
     assert!(h.state_mut().apply_edit(pdfcraft_engine::Edit::RotatePages { pages: vec![0], degrees: 180 }));
     h.run_steps(4);
     settle_at(&mut h, 0, 351.0, 51.0);
-    assert_eq!(h.state().views[0].measure.lines_read, 2, "a changed drawing is read again");
-    assert_eq!(h.state().views[0].measure.snapped, Some(([350.0, 50.0], SnapKind::Endpoint)), "and snapped to as it is now");
+    assert_eq!(h.state().win.views[0].measure.lines_read, 2, "a changed drawing is read again");
+    assert_eq!(h.state().win.views[0].measure.snapped, Some(([350.0, 50.0], SnapKind::Endpoint)), "and snapped to as it is now");
     // A second page: a read of its own.
     assert!(h.state_mut().apply_edit(pdfcraft_engine::Edit::DuplicatePages { pages: vec![0], at: None }));
     h.run_steps(4);
     settle_at(&mut h, 0, 351.0, 51.0);
-    let before = h.state().views[0].measure.lines_read;
-    h.state_mut().views[0].go_to_page(1);
+    let before = h.state().win.views[0].measure.lines_read;
+    h.state_mut().win.views[0].go_to_page(1);
     h.run_steps(6);
     let p = at_page(&h, 0, 1, 351.0, 51.0);
     settle(&mut h, p);
-    assert_eq!(h.state().views[0].measure.lines_read, before + 1, "page 2 is read once");
-    assert_eq!(h.state().views[0].measure.snapped, Some(([350.0, 50.0], SnapKind::Endpoint)), "and snaps on page 2");
-    h.state_mut().views[0].go_to_page(0);
+    assert_eq!(h.state().win.views[0].measure.lines_read, before + 1, "page 2 is read once");
+    assert_eq!(h.state().win.views[0].measure.snapped, Some(([350.0, 50.0], SnapKind::Endpoint)), "and snaps on page 2");
+    h.state_mut().win.views[0].go_to_page(0);
     h.run_steps(6);
     settle_at(&mut h, 0, 351.0, 51.0);
-    assert_eq!(h.state().views[0].measure.lines_read, before + 1, "page 1's lines were kept");
+    assert_eq!(h.state().win.views[0].measure.lines_read, before + 1, "page 1's lines were kept");
 }
 
 /// A worker that stops without an answer (upstream's `a_snapping_read_that_stops_is_an_error`):
@@ -1175,23 +1175,23 @@ fn a_snapping_worker_that_stops_says_so_and_the_next_version_reads_again() {
     let tx = {
         let app = h.state_mut();
         let doc = app.session.get(id).unwrap();
-        app.views[0].measure.hold_snapping(doc, 0)
+        app.win.views[0].measure.hold_snapping(doc, 0)
     };
     drop(tx);
     let p = at(&h, 0, 351.0, 51.0);
     h.hover_at(p);
     h.run_steps(3);
-    assert!(!h.state_mut().views[0].measure.snapping_loading(), "nothing waits for a stopped worker");
-    let error = h.state().views[0].measure.error.clone().unwrap_or_default();
+    assert!(!h.state_mut().win.views[0].measure.snapping_loading(), "nothing waits for a stopped worker");
+    let error = h.state().win.views[0].measure.error.clone().unwrap_or_default();
     assert!(error.contains("Snapping isn't available on this page") && error.contains("the worker stopped"), "{error}");
     click(&mut h, p);
-    let points = h.state().views[0].measure.points.clone();
+    let points = h.state().win.views[0].measure.points.clone();
     assert!(points.len() == 1 && close(points[0], [351.0, 51.0], 1.0) && points[0] != [350.0, 50.0], "placed where it is: {points:?}");
-    h.state_mut().views[0].measure.cancel();
+    h.state_mut().win.views[0].measure.cancel();
     assert!(h.state_mut().apply_edit(pdfcraft_engine::Edit::RotatePages { pages: vec![0], degrees: 180 }));
     h.run_steps(4);
     settle_at(&mut h, 0, 351.0, 51.0);
-    assert_eq!(h.state().views[0].measure.snapped, Some(([350.0, 50.0], SnapKind::Endpoint)), "the next version is read and snaps");
+    assert_eq!(h.state().win.views[0].measure.snapped, Some(([350.0, 50.0], SnapKind::Endpoint)), "the next version is read and snaps");
 }
 
 /// A read the view no longer wants: its answer, arriving after the drawing changed, is never
@@ -1204,7 +1204,7 @@ fn a_late_or_unwanted_read_never_stands_in_for_the_current_drawing() {
     let stale = {
         let app = h.state_mut();
         let doc = app.session.get(id).unwrap();
-        app.views[0].measure.hold_snapping(doc, 0)
+        app.win.views[0].measure.hold_snapping(doc, 0)
     };
     assert!(h.state_mut().apply_edit(pdfcraft_engine::Edit::RotatePages { pages: vec![0], degrees: 180 }));
     h.run_steps(4);
@@ -1212,16 +1212,16 @@ fn a_late_or_unwanted_read_never_stands_in_for_the_current_drawing() {
     let blank = Session::new().create_blank(400.0, 300.0, 1).unwrap();
     stale.send(Snapper::read(blank, None, 0, &HashSet::new())).unwrap();
     settle_at(&mut h, 0, 351.0, 51.0);
-    assert_eq!(h.state().views[0].measure.snapped, Some(([350.0, 50.0], SnapKind::Endpoint)), "the current drawing's own lines");
+    assert_eq!(h.state().win.views[0].measure.snapped, Some(([350.0, 50.0], SnapKind::Endpoint)), "the current drawing's own lines");
     // A read held for a tab that then closes: sending its answer neither fails loudly nor lands anywhere.
     let orphan = {
         let app = h.state_mut();
         let doc = app.session.get(id).unwrap();
-        app.views[0].measure.hold_snapping(doc, 0)
+        app.win.views[0].measure.hold_snapping(doc, 0)
     };
     h.state_mut().close_tab(0);
     h.run_steps(2);
-    assert!(h.state().views.is_empty());
+    assert!(h.state().win.views.is_empty());
     assert!(orphan.send(Err("late".into())).is_err(), "nobody is listening any more");
 }
 
@@ -1232,32 +1232,32 @@ fn each_view_of_a_document_snaps_with_its_own_read() {
     let mut h = harness_with(1600.0, |app| {
         app.open_bytes("plan.pdf", None, plain()).unwrap();
         app.duplicate_view(0);
-        app.active = Some(1);
+        app.win.active = Some(1);
     });
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     tool(&mut h, Tool::Distance);
     let held = {
         let app = h.state_mut();
         let doc = app.session.get(id).unwrap();
-        app.views[0].measure.hold_snapping(doc, 0)
+        app.win.views[0].measure.hold_snapping(doc, 0)
     };
     // The active view, the duplicate, reads and snaps while the first view's read is held.
     let p = at(&h, 1, 351.0, 51.0);
     h.hover_at(p);
     for _ in 0..200 {
         h.run_steps(1);
-        if h.state().views[1].measure.snapped.is_some() {
+        if h.state().win.views[1].measure.snapped.is_some() {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
-    assert_eq!(h.state().views[1].measure.snapped, Some(([350.0, 50.0], SnapKind::Endpoint)));
-    assert!(h.state_mut().views[0].measure.snapping_loading(), "the first view's read is still its own, and still held");
+    assert_eq!(h.state().win.views[1].measure.snapped, Some(([350.0, 50.0], SnapKind::Endpoint)));
+    assert!(h.state_mut().win.views[0].measure.snapping_loading(), "the first view's read is still its own, and still held");
     let bytes = h.state().session.get(id).unwrap().bytes.clone();
     held.send(Snapper::read(bytes, None, 0, &HashSet::new())).unwrap();
-    h.state_mut().active = Some(0);
+    h.state_mut().win.active = Some(0);
     h.run_steps(4);
     settle_at(&mut h, 0, 351.0, 51.0);
-    assert_eq!(h.state().views[0].measure.snapped, Some(([350.0, 50.0], SnapKind::Endpoint)));
-    assert_eq!(h.state().views[0].measure.lines_read, 0, "the held read was the first view's only one");
+    assert_eq!(h.state().win.views[0].measure.snapped, Some(([350.0, 50.0], SnapKind::Endpoint)));
+    assert_eq!(h.state().win.views[0].measure.lines_read, 0, "the held read was the first view's only one");
 }

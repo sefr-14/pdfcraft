@@ -91,14 +91,14 @@ fn another_key_cancels_a_pair_and_counts_alone() {
 #[test]
 fn escape_drops_a_pair_and_nothing_else() {
     let mut h = harness(1);
-    h.state_mut().views[0].all_text = true;
+    h.state_mut().win.views[0].all_text = true;
     press(&mut h, Key::D);
     press(&mut h, Key::Escape);
     assert_eq!(h.state().pending_keys, None);
-    assert!(h.state().views[0].all_text, "the same press doesn't also clear Select All");
+    assert!(h.state().win.views[0].all_text, "the same press doesn't also clear Select All");
     assert_eq!(press(&mut h, Key::I), QuickTool::Select);
     press(&mut h, Key::Escape);
-    assert!(!h.state().views[0].all_text, "the next press does");
+    assert!(!h.state().win.views[0].all_text, "the next press does");
 }
 
 /// With a modifier a letter is another shortcut, and a held key repeats nothing.
@@ -129,7 +129,7 @@ fn modified_and_repeated_keys_pick_no_tool() {
 #[test]
 fn letters_typed_in_the_find_bar_are_text() {
     let mut h = harness(1);
-    h.state_mut().views[0].open_find();
+    h.state_mut().win.views[0].open_find();
     h.run_steps(4);
     for key in [Key::D, Key::I, Key::R, Key::C, Key::H, Key::P, Key::V] {
         assert_eq!(press(&mut h, key), QuickTool::Select, "{key:?} in the find bar");
@@ -141,10 +141,10 @@ fn letters_typed_in_the_find_bar_are_text() {
 #[test]
 fn another_tab_drops_a_pair() {
     let mut h = harness(2);
-    h.state_mut().active = Some(0);
+    h.state_mut().win.active = Some(0);
     h.run_steps(2);
     press(&mut h, Key::D);
-    h.state_mut().active = Some(1);
+    h.state_mut().win.active = Some(1);
     h.run_steps(1);
     assert_eq!(h.state().pending_keys, None);
     assert_eq!(press(&mut h, Key::I), QuickTool::Select);

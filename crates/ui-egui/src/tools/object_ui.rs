@@ -624,7 +624,7 @@ mod tests {
         let mut app = PdfCraftApp::new();
         let bytes = app.session.create_blank(300.0, 400.0, 1).unwrap();
         app.open_bytes("blank.pdf", None, bytes.as_ref().clone()).unwrap();
-        let doc = app.session.get(app.views[0].id).unwrap();
+        let doc = app.session.get(app.win.views[0].id).unwrap();
 
         let info = pdfcraft_render::DocInfo {
             pages: vec![PageInfo { width: 300.0, height: 400.0, label: String::new(), crop: [0.0, 0.0, 300.0, 400.0], rotation: 0 }],

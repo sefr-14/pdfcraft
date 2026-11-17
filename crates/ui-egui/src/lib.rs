@@ -71,6 +71,8 @@ pub use redact_ui::{HiddenDraft, PagesDraft as RedactPagesDraft, RedactPrefs, Se
 pub mod i18n;
 pub mod theme;
 pub mod viewer_prefs;
+pub mod window_ui;
+pub use window_ui::WindowUi;
 mod widgets;
 
 use pdfcraft_engine::{DocId, Session};
@@ -339,21 +341,13 @@ struct PendingDestination {
 }
 
 pub struct PdfCraftApp {
-    /// Split view (`panes`); which pane shows each tab is its view's.
-    pub panes: panes::Panes,
+    /// This window's tabs, panes, panels, tool, keys and notices (TAB.WINDOW.1).
+    pub win: WindowUi,
     /// Tools side and pane widths; which panes are open is `left_open` and `right`.
     pub side_panels: side_panels::SidePanels,
     pub session: Session,
     /// The interface language signature status captions were last drawn in.
     pub(crate) status_captions_lang: Option<i18n::Lang>,
-    pub views: Vec<DocView>,
-    pub(crate) closed_tabs: Vec<String>,
-    /// `None` shows the Home tab.
-    pub active: Option<usize>,
-    /// Tab View or Tile View (OV7.2). Tab View at every start: it isn't kept in the settings.
-    pub layout_mode: ViewLayout,
-    /// The tiles drawn this frame in Tile View, which render alongside the active view.
-    pub(crate) tile_frame: Vec<usize>,
     pub mode: Mode,
     /// Workspace used for newly opened PDFs; independent of PDF Initial View metadata.
     pub default_mode: Mode,

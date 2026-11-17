@@ -45,8 +45,8 @@ pub fn wait_until(h: &mut Harness<'static, PdfCraftApp>, what: &str, ready: impl
     assert!(
         held,
         "timed out waiting for {what}: views={}, active={:?}, password={:?}, toast={:?}",
-        h.state().views.len(),
-        h.state().active,
+        h.state().win.views.len(),
+        h.state().win.active,
         h.state().password_prompt.as_ref().map(|p| (&p.name, &p.error)),
         h.state().toast
     );

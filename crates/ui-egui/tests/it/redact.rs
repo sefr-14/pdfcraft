@@ -19,14 +19,14 @@ fn harness() -> Harness<'static, PdfCraftApp> {
 }
 
 fn at(h: &Harness<'static, PdfCraftApp>, x: f32, y: f32) -> Pos2 {
-    let r = h.state().views[0].page_screen_rect(0).expect("on screen");
+    let r = h.state().win.views[0].page_screen_rect(0).expect("on screen");
     let k = r.width() / 300.0;
     r.min + egui::vec2(x * k, y * k)
 }
 
 fn marks(h: &Harness<'static, PdfCraftApp>) -> usize {
     let s = h.state();
-    s.session.get(s.views[0].id).unwrap().redaction_marks()
+    s.session.get(s.win.views[0].id).unwrap().redaction_marks()
 }
 
 #[test]
@@ -69,7 +69,7 @@ fn marking_applying_and_clearing() {
     h.get_by_label("Apply").click();
     h.run_steps(4);
     let s = h.state();
-    let doc = s.session.get(s.views[0].id).unwrap();
+    let doc = s.session.get(s.win.views[0].id).unwrap();
     assert_eq!((doc.redaction_marks(), doc.can_undo()), (0, Some("Apply redactions")));
     assert!(doc.form.is_empty(), "the whole page was redacted, fields included");
 }
@@ -103,7 +103,7 @@ fn saving_after_applying_redactions_asks_where() {
     h.get_by_label("Apply").click();
     h.run_steps(4);
     assert_eq!(marks(&h), 0);
-    assert_eq!(h.state().views[0].redactions_applied, 1);
+    assert_eq!(h.state().win.views[0].redactions_applied, 1);
     let copy = dir.join("contract_Redacted.pdf");
     h.state_mut().pick_override = Some(vec![copy.to_string_lossy().into_owned()]);
     assert!(!h.state_mut().save_active(SaveTarget::InPlace), "Save asks where first");
@@ -111,8 +111,8 @@ fn saving_after_applying_redactions_asks_where() {
     assert_eq!(std::fs::read(&original).unwrap(), source, "the opened file is left as it was");
     assert!(copy.exists(), "the redacted copy is written where the user chose");
     let s = h.state();
-    assert_eq!(s.session.get(s.views[0].id).unwrap().name, "contract_Redacted.pdf");
-    assert_eq!(s.views[0].redactions_applied, 0);
+    assert_eq!(s.session.get(s.win.views[0].id).unwrap().name, "contract_Redacted.pdf");
+    assert_eq!(s.win.views[0].redactions_applied, 0);
     h.state_mut().pick_override = None;
     assert!(h.state_mut().save_active(SaveTarget::InPlace), "the next Save writes the copy in place");
     let _ = std::fs::remove_dir_all(&dir);
@@ -154,12 +154,12 @@ fn undoing_saved_redactions_does_not_save_over_the_redacted_copy() {
     h.run_steps(3);
     h.state_mut().execute("edit.redo");
     h.run_steps(3);
-    assert_eq!((h.state().views[0].redactions_applied, h.state().views[0].redactions_undone_after_save), (0, 0));
+    assert_eq!((h.state().win.views[0].redactions_applied, h.state().win.views[0].redactions_undone_after_save), (0, 0));
     assert!(h.state_mut().save_active(SaveTarget::InPlace), "with the redactions back, Save writes the copy in place");
     let saved = std::fs::read(&copy).unwrap();
     h.state_mut().execute("edit.undo");
     h.run_steps(3);
-    assert_eq!(h.state().views[0].redactions_undone_after_save, 1);
+    assert_eq!(h.state().win.views[0].redactions_undone_after_save, 1);
     let elsewhere = dir.join("contract_restored.pdf");
     h.state_mut().pick_override = Some(vec![elsewhere.to_string_lossy().into_owned()]);
     assert!(!h.state_mut().save_active(SaveTarget::InPlace), "Save asks where instead of writing over the copy");
@@ -167,11 +167,11 @@ fn undoing_saved_redactions_does_not_save_over_the_redacted_copy() {
     h.state_mut().pick_override = None;
     assert_eq!(std::fs::read(&copy).unwrap(), saved, "the redacted copy is left as it was");
     assert!(elsewhere.exists(), "the restored version is written where the user chose");
-    assert_eq!(h.state().views[0].redactions_undone_after_save, 0);
+    assert_eq!(h.state().win.views[0].redactions_undone_after_save, 0);
     // The restored version is now the saved one: Redo applies the redactions to it again.
     h.state_mut().execute("edit.redo");
     h.run_steps(3);
-    assert_eq!(h.state().views[0].redactions_applied, 1);
+    assert_eq!(h.state().win.views[0].redactions_applied, 1);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -215,7 +215,7 @@ fn redoing_a_new_apply_after_undoing_saved_redactions_still_asks_where() {
     h.run_steps(4);
     h.state_mut().execute("edit.undo");
     h.run_steps(3);
-    let view = &h.state().views[0];
+    let view = &h.state().win.views[0];
     assert_eq!((view.redactions_applied, view.redactions_undone_after_save, view.saved_redactions_cut_off), (0, 0, true));
     h.state_mut().execute("edit.redo");
     h.run_steps(3);
@@ -225,7 +225,7 @@ fn redoing_a_new_apply_after_undoing_saved_redactions_still_asks_where() {
     h.run_steps(3);
     h.state_mut().pick_override = None;
     assert_eq!(std::fs::read(&copy).unwrap(), saved, "the redacted copy is left as it was");
-    assert!(!h.state().views[0].saved_redactions_cut_off);
+    assert!(!h.state().win.views[0].saved_redactions_cut_off);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -256,7 +256,7 @@ fn undoing_delivered_redactions_asks_where() {
     h.get_by_label("Apply").click();
     h.run_steps(4);
     // The state a web save leaves: the step is delivered and stays counted.
-    h.state_mut().views[0].redactions_downloaded = 1;
+    h.state_mut().win.views[0].redactions_downloaded = 1;
     h.state_mut().execute("edit.undo");
     h.run_steps(3);
     let elsewhere = dir.join("contract_restored.pdf");
@@ -266,8 +266,8 @@ fn undoing_delivered_redactions_asks_where() {
     h.state_mut().pick_override = None;
     assert!(elsewhere.exists());
     // A new Apply after Undo past a delivered step cannot be redone back to the delivered one.
-    h.state_mut().views[0].redactions_downloaded = 1;
-    h.state_mut().views[0].redactions_applied = 0;
+    h.state_mut().win.views[0].redactions_downloaded = 1;
+    h.state_mut().win.views[0].redactions_applied = 0;
     h.state_mut().execute("redact.pages");
     h.run_steps(2);
     h.get_by_label("OK").click();
@@ -276,7 +276,7 @@ fn undoing_delivered_redactions_asks_where() {
     h.run_steps(2);
     h.get_by_label("Apply").click();
     h.run_steps(4);
-    assert!(h.state().views[0].saved_redactions_cut_off);
+    assert!(h.state().win.views[0].saved_redactions_cut_off);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -306,7 +306,7 @@ fn delivered_redactions_save_in_place() {
     h.get_by_label("Apply").click();
     h.run_steps(4);
     // The state a web save leaves: the step is delivered and stays counted.
-    h.state_mut().views[0].redactions_downloaded = 1;
+    h.state_mut().win.views[0].redactions_downloaded = 1;
     assert!(h.state_mut().save_active(SaveTarget::InPlace), "Save writes in place after the step is delivered");
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -351,7 +351,7 @@ fn undoing_saved_redactions_while_the_save_dialog_is_open_asks_again() {
     for _ in 0..3 {
         h.state_mut().execute("edit.undo");
     }
-    assert_eq!(h.state().views[0].redactions_undone_after_save, 1);
+    assert_eq!(h.state().win.views[0].redactions_undone_after_save, 1);
     let elsewhere = dir.join("contract_restored.pdf");
     h.state_mut().pick_override = Some(vec![elsewhere.to_string_lossy().into_owned()]);
     h.run_steps(4);
@@ -390,7 +390,7 @@ fn undoing_apply_redactions_while_the_save_dialog_is_open_asks_again() {
     h.state_mut().pick_override = Some(vec![copy.to_string_lossy().into_owned()]);
     assert!(!h.state_mut().save_active(SaveTarget::InPlace));
     h.state_mut().execute("edit.undo");
-    assert_eq!(h.state().views[0].redactions_applied, 0);
+    assert_eq!(h.state().win.views[0].redactions_applied, 0);
     let elsewhere = dir.join("contract_copy.pdf");
     h.state_mut().pick_override = Some(vec![elsewhere.to_string_lossy().into_owned()]);
     h.run_steps(4);
@@ -426,25 +426,25 @@ fn undoing_apply_redactions_saves_in_place_again() {
         h.get_by_label("Apply").click();
         h.run_steps(4);
     }
-    assert_eq!(h.state().views[0].redactions_applied, 2);
+    assert_eq!(h.state().win.views[0].redactions_applied, 2);
     h.state_mut().execute("edit.undo");
     h.run_steps(3);
-    assert_eq!(h.state().views[0].redactions_applied, 1, "the first Apply redactions is still in effect");
+    assert_eq!(h.state().win.views[0].redactions_applied, 1, "the first Apply redactions is still in effect");
     // Undoing the second mark leaves the first Apply redactions in effect.
     h.state_mut().execute("edit.undo");
     h.run_steps(3);
-    assert_eq!(h.state().views[0].redactions_applied, 1);
+    assert_eq!(h.state().win.views[0].redactions_applied, 1);
     h.state_mut().execute("edit.undo");
     h.run_steps(3);
-    assert_eq!(h.state().views[0].redactions_applied, 0);
+    assert_eq!(h.state().win.views[0].redactions_applied, 0);
     h.state_mut().execute("edit.redo");
     h.run_steps(3);
-    assert_eq!(h.state().views[0].redactions_applied, 1);
+    assert_eq!(h.state().win.views[0].redactions_applied, 1);
     h.state_mut().execute("edit.undo");
     h.run_steps(3);
     assert!(h.state_mut().save_active(SaveTarget::InPlace), "with the redactions undone, Save writes in place");
     let s = h.state();
-    assert_eq!(s.session.get(s.views[0].id).unwrap().name, "contract.pdf");
+    assert_eq!(s.session.get(s.win.views[0].id).unwrap().name, "contract.pdf");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -472,16 +472,16 @@ fn reverting_after_apply_redactions_saves_in_place_again() {
     h.run_steps(2);
     h.get_by_label("Apply").click();
     h.run_steps(4);
-    assert_eq!(h.state().views[0].redactions_applied, 1);
+    assert_eq!(h.state().win.views[0].redactions_applied, 1);
     assert!(h.state_mut().execute("file.revert"));
     h.run_steps(2);
     assert_eq!(h.state().dialog, Some(Dialog::Revert));
     h.get_all_by_label("Revert").last().expect("the button").click();
     h.run_steps(3);
-    assert_eq!(h.state().views[0].redactions_applied, 0);
+    assert_eq!(h.state().win.views[0].redactions_applied, 0);
     assert!(h.state_mut().save_active(SaveTarget::InPlace), "after Revert, Save writes in place");
     let s = h.state();
-    assert_eq!(s.session.get(s.views[0].id).unwrap().name, "contract.pdf");
+    assert_eq!(s.session.get(s.win.views[0].id).unwrap().name, "contract.pdf");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -665,7 +665,7 @@ fn removing_hidden_information_and_sanitizing() {
     h.run_steps(3);
     {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         assert!(doc.form.is_empty());
         assert_eq!(doc.can_undo(), Some("Remove hidden information"));
     }
@@ -674,7 +674,7 @@ fn removing_hidden_information_and_sanitizing() {
     h.get_by_label("Sanitize").click();
     h.run_steps(3);
     let s = h.state();
-    assert_eq!(s.session.get(s.views[0].id).unwrap().can_undo(), Some("Sanitize document"));
+    assert_eq!(s.session.get(s.win.views[0].id).unwrap().can_undo(), Some("Sanitize document"));
 }
 
 /// A one-page PDF showing "Codename BLUEFIN report", with bookmarks "Bluefin plans" and

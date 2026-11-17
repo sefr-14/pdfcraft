@@ -47,10 +47,10 @@ fn unsupported_script_buttons_leave_hidden_text_bytes_history_and_saved_pixels_u
         h.run_steps(4);
         assert!(h.state_mut().execute("edit.edit_text"));
         h.run_steps(3);
-        let id = h.state().views[0].id;
+        let id = h.state().win.views[0].id;
         let block = h.state().session.get(id).unwrap().text_blocks(0).remove(0);
         assert_eq!(block.text, "QQQ");
-        let page = h.state().views[0].page_screen_rect(0).unwrap();
+        let page = h.state().win.views[0].page_screen_rect(0).unwrap();
         let x = (block.rect[0] + block.rect[2]) as f32 / 2.0;
         let y = (block.rect[1] + block.rect[3]) as f32 / 2.0;
         let at = egui::pos2(page.left() + x / 300.0 * page.width(), page.top() + (300.0 - y) / 300.0 * page.height());
@@ -60,7 +60,7 @@ fn unsupported_script_buttons_leave_hidden_text_bytes_history_and_saved_pixels_u
         h.run_steps(1);
         h.drop_at(at);
         h.run_steps(3);
-        let editor = h.state_mut().views[0].line_editor.as_mut().expect("hidden text editor opens");
+        let editor = h.state_mut().win.views[0].line_editor.as_mut().expect("hidden text editor opens");
         editor.selection = Some(1..2);
         editor.focus = true;
         h.run_steps(1);
@@ -75,6 +75,6 @@ fn unsupported_script_buttons_leave_hidden_text_bytes_history_and_saved_pixels_u
         assert!(doc.can_undo().is_none(), "no conversion must not create an edit");
         let mut reopened = PdfCraftApp::new();
         reopened.open_bytes("reopened.pdf", None, saved.as_ref().clone()).unwrap();
-        assert_eq!(reopened.session.get(reopened.views[0].id).unwrap().text_blocks(0)[0].text, "QQQ");
+        assert_eq!(reopened.session.get(reopened.win.views[0].id).unwrap().text_blocks(0)[0].text, "QQQ");
     }
 }

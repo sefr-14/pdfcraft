@@ -1058,7 +1058,7 @@ impl crate::PdfCraftApp {
         if !self.copy_page_image(page, index) || !self.apply_edit(Edit::EditPageImage { page, index, change: pdfcraft_engine::ImageEdit::Delete }) {
             return false;
         }
-        if let Some(view) = self.views.get_mut(view) {
+        if let Some(view) = self.win.views.get_mut(view) {
             view.image_selection = None;
         }
         true
@@ -1119,7 +1119,7 @@ impl crate::PdfCraftApp {
                 };
                 match app.session.apply(id, edit) {
                     Ok(_) => {
-                        if let Some(view) = app.views.iter_mut().find(|v| v.id == id)
+                        if let Some(view) = app.win.views.iter_mut().find(|v| v.id == id)
                             && let Some(doc) = app.session.get(id)
                         {
                             view.document_changed(&doc.info);
@@ -1151,13 +1151,13 @@ impl crate::PdfCraftApp {
     /// Place image `bytes` in the middle of the current page and select it.
     pub fn add_image(&mut self, name: String, bytes: Vec<u8>) {
         let Some((i, id)) = self.active_ids() else { return };
-        let page = self.views[i].current;
+        let page = self.win.views[i].current;
         let before_img = self.session.get(id).map_or(0, |d| d.page_images(page).len());
         let before_added = self.session.get(id).map_or(0, |d| d.added().iter().filter(|a| a.page == page).count());
         if self.apply_edit(Edit::AddImage { page, rect: None, name, bytes: std::sync::Arc::new(bytes) }) {
-            self.views[i].content.selected = Some((page, before_added));
-            self.views[i].content.select_added = Some((page, before_added));
-            self.views[i].image_selection = Some(crate::edit_text_ui::ImageSelection::at(page, before_img));
+            self.win.views[i].content.selected = Some((page, before_added));
+            self.win.views[i].content.select_added = Some((page, before_added));
+            self.win.views[i].image_selection = Some(crate::edit_text_ui::ImageSelection::at(page, before_img));
             self.quick_tool = crate::QuickTool::EditText;
             self.left = crate::LeftPanel::Tool("edit");
             self.left_open = true;
@@ -1338,7 +1338,7 @@ impl crate::PdfCraftApp {
                 let pasted_idx = doc.page_images(page).iter().rposition(|placed| placed.object == Some(image.image))?;
                 Some((added_idx, pasted_idx))
             });
-            if let Some(v) = self.views.get_mut(i) {
+            if let Some(v) = self.win.views.get_mut(i) {
                 v.current = page;
                 v.content.selected = selection.map(|(added, _)| (page, added));
                 v.content.select_added = v.content.selected;
@@ -1456,7 +1456,7 @@ mod tests {
             assert!(!app.paste_received_image(0, &image));
             assert_eq!(app.last_copied_image, before);
         }
-        assert!(app.session.get(app.views[0].id).unwrap().page_images(0).is_empty());
+        assert!(app.session.get(app.win.views[0].id).unwrap().page_images(0).is_empty());
     }
 
     #[test]

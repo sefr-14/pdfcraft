@@ -15,7 +15,7 @@ const SIZE: Vec2 = vec2(2600.0, 1000.0);
 fn open(app: &mut PdfCraftApp, name: &str, pages: usize) -> DocId {
     let bytes = app.session.create_blank(612.0, 792.0, pages).unwrap();
     app.open_bytes(name, None, bytes.as_ref().clone()).unwrap();
-    app.views.last().unwrap().id
+    app.win.views.last().unwrap().id
 }
 
 fn harness(setup: impl FnOnce(&mut PdfCraftApp) + 'static) -> Harness<'static, PdfCraftApp> {
@@ -49,7 +49,7 @@ struct Place {
 }
 
 fn place(h: &Harness<'static, PdfCraftApp>, tab: usize) -> Place {
-    let v = &h.state().views[tab];
+    let v = &h.state().win.views[tab];
     Place { current: v.current, zoom: v.zoom, fit: v.fit, scroll: v.last_scroll, back: v.back.clone(), forward: v.forward.clone() }
 }
 
@@ -58,7 +58,7 @@ fn close_enough(a: Vec2, b: Vec2) -> bool {
 }
 
 fn viewport(h: &Harness<'static, PdfCraftApp>, tab: usize) -> Rect {
-    h.state().views[tab].viewport_rect()
+    h.state().win.views[tab].viewport_rect()
 }
 
 fn wheel_at(h: &mut Harness<'static, PdfCraftApp>, p: Pos2, dy: f32, modifiers: egui::Modifiers) {
@@ -104,7 +104,7 @@ fn tiles_stand_side_by_side_in_columns_and_scroll_past_the_minimum_width() {
     h.state_mut().set_option("panel", "none").ok();
     let id = open(h.state_mut(), "third.pdf", 3);
     h.run_steps(6);
-    assert_eq!(h.state().views.last().map(|v| v.id), Some(id));
+    assert_eq!(h.state().win.views.last().map(|v| v.id), Some(id));
     let widths: Vec<f32> = (0..3).map(|i| viewport(&h, i).width()).collect();
     assert!(widths.iter().all(|w| (w - widths[0]).abs() < 2.0), "three equal columns: {widths:?}");
     assert!(widths[0] < two, "a third column narrows them");
@@ -116,7 +116,7 @@ fn tiles_stand_side_by_side_in_columns_and_scroll_past_the_minimum_width() {
         open(h.state_mut(), &format!("more-{k}.pdf"), 2);
     }
     h.run_steps(8);
-    let drawn = h.state().tile_frame.clone();
+    let drawn = h.state().win.tile_frame.clone();
     assert!(!drawn.is_empty() && drawn.len() < 8, "only the tiles in view are drawn: {drawn:?}");
     for i in drawn {
         assert!(viewport(&h, i).width() >= MIN_TILE - 1.0, "tile {i} keeps the minimum width");
@@ -126,20 +126,20 @@ fn tiles_stand_side_by_side_in_columns_and_scroll_past_the_minimum_width() {
 #[test]
 fn tab_view_is_the_default_and_switching_closes_nothing() {
     let mut h = two_tiles();
-    assert_eq!(PdfCraftApp::new().layout_mode, ViewLayout::Tabs, "Tab View at every start");
-    let id = h.state().views[0].id;
+    assert_eq!(PdfCraftApp::new().win.layout_mode, ViewLayout::Tabs, "Tab View at every start");
+    let id = h.state().win.views[0].id;
     let generation = h.state().session.get(id).unwrap().edit_generation();
     for layout in [ViewLayout::Tabs, ViewLayout::Tiles, ViewLayout::Tabs] {
         h.state_mut().set_view_layout(layout);
         h.run_steps(4);
-        assert_eq!(h.state().views.len(), 2);
+        assert_eq!(h.state().win.views.len(), 2);
         assert_eq!(h.state().open_documents().len(), 2);
         assert_eq!(h.state().session.get(id).unwrap().edit_generation(), generation, "nothing reloaded or edited");
     }
     assert!(h.state_mut().execute("view.tile_view"));
     assert!(!h.state_mut().execute("view.tile_view"), "the arrangement already shown is disabled");
     assert!(h.state_mut().execute("view.tab_view"));
-    assert_eq!(h.state().layout_mode, ViewLayout::Tabs);
+    assert_eq!(h.state().win.layout_mode, ViewLayout::Tabs);
 }
 
 /// Tab 1 on page 3 at 100% at the top of the sheet; tab 2, its duplicate, on page 18 at 150%,
@@ -148,13 +148,13 @@ fn two_places() -> Harness<'static, PdfCraftApp> {
     let mut h = harness(|app| {
         open(app, "plan.pdf", 30);
     });
-    h.state_mut().views[0].set_zoom(1.0);
-    h.state_mut().views[0].go_to_page(2);
+    h.state_mut().win.views[0].set_zoom(1.0);
+    h.state_mut().win.views[0].go_to_page(2);
     h.run_steps(6);
     h.state_mut().duplicate_view(0);
     h.run_steps(4);
-    h.state_mut().views[1].set_zoom(1.5);
-    h.state_mut().views[1].go_to_page(17);
+    h.state_mut().win.views[1].set_zoom(1.5);
+    h.state_mut().win.views[1].go_to_page(17);
     h.run_steps(6);
     let p = viewport(&h, 1).center();
     wheel_at(&mut h, p, -300.0, egui::Modifiers::NONE);
@@ -180,7 +180,7 @@ fn switching_between_tab_and_tile_view_keeps_each_views_place() {
         h.state_mut().set_view_layout(ViewLayout::Tabs);
         h.run_steps(8);
         for (tab, before) in [(1, &second), (0, &first)] {
-            h.state_mut().active = Some(tab);
+            h.state_mut().win.active = Some(tab);
             h.run_steps(6);
             let now = place(&h, tab);
             assert_eq!(now.current, before.current);
@@ -194,7 +194,7 @@ fn switching_between_tab_and_tile_view_keeps_each_views_place() {
 fn a_fit_width_view_keeps_its_fit_and_gets_its_zoom_back() {
     let mut h = two_tiles();
     h.state_mut().set_view_layout(ViewLayout::Tabs);
-    h.state_mut().active = Some(0);
+    h.state_mut().win.active = Some(0);
     h.run_steps(6);
     let before = place(&h, 0);
     assert_eq!(before.fit, Fit::Width);
@@ -215,13 +215,13 @@ fn a_fit_width_view_keeps_its_fit_and_gets_its_zoom_back() {
 #[test]
 fn the_wheel_scrolls_the_tile_under_the_pointer_without_a_click() {
     let mut h = two_tiles();
-    assert_eq!(h.state().active, Some(1));
+    assert_eq!(h.state().win.active, Some(1));
     let (a, b) = (place(&h, 0), place(&h, 1));
     let left = viewport(&h, 0).center();
     wheel_at(&mut h, left, -300.0, egui::Modifiers::NONE);
     assert!(place(&h, 0).scroll.y > a.scroll.y + 100.0, "the hovered tile scrolls");
     assert_eq!(place(&h, 1), b, "the other doesn't");
-    assert_eq!(h.state().active, Some(1), "hovering doesn't change the active tile");
+    assert_eq!(h.state().win.active, Some(1), "hovering doesn't change the active tile");
     let a = place(&h, 0);
     let right = viewport(&h, 1).center();
     wheel_at(&mut h, right, -300.0, egui::Modifiers::NONE);
@@ -237,7 +237,7 @@ fn ctrl_wheel_zooms_only_the_hovered_tile() {
     wheel_at(&mut h, left, 120.0, egui::Modifiers::COMMAND);
     assert!(place(&h, 0).zoom > a.zoom * 1.01, "the hovered tile zooms: {} → {}", a.zoom, place(&h, 0).zoom);
     assert_eq!(place(&h, 1).zoom, b.zoom, "the other keeps its zoom");
-    assert_eq!(h.state().active, Some(1));
+    assert_eq!(h.state().win.active, Some(1));
 }
 
 #[cfg(target_os = "linux")]
@@ -246,7 +246,7 @@ fn the_middle_button_scrolls_the_hovered_tile_without_a_click() {
     let mut h = two_tiles();
     let b = place(&h, 1);
     let p = viewport(&h, 0).center();
-    let top = h.state().views[0].page_screen_rect(0).unwrap().top();
+    let top = h.state().win.views[0].page_screen_rect(0).unwrap().top();
     let button = |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Middle, pressed, modifiers: egui::Modifiers::NONE };
     h.event(egui::Event::PointerMoved(p));
     h.event(button(p, true));
@@ -254,10 +254,10 @@ fn the_middle_button_scrolls_the_hovered_tile_without_a_click() {
     h.run_steps(2);
     h.event(egui::Event::PointerMoved(p + vec2(0.0, 120.0)));
     h.run_steps(12);
-    assert!(h.state().views[0].auto_scrolling(), "the inactive tile keeps its auto-scroll");
-    assert!(h.state().views[0].page_screen_rect(0).unwrap().top() < top - 20.0, "and scrolls");
+    assert!(h.state().win.views[0].auto_scrolling(), "the inactive tile keeps its auto-scroll");
+    assert!(h.state().win.views[0].page_screen_rect(0).unwrap().top() < top - 20.0, "and scrolls");
     assert_eq!(place(&h, 1), b, "the active tile doesn't move");
-    assert_eq!(h.state().active, Some(1));
+    assert_eq!(h.state().win.active, Some(1));
 }
 
 #[test]
@@ -301,11 +301,11 @@ fn a_click_on_another_tile_only_makes_it_active() {
     let mut h = two_tiles();
     h.state_mut().set_option("quick", "ink").unwrap();
     h.run_steps(2);
-    let (left, right) = (h.state().views[0].id, h.state().views[1].id);
+    let (left, right) = (h.state().win.views[0].id, h.state().win.views[1].id);
     let r = viewport(&h, 0);
     let (from, to) = (r.center() - vec2(60.0, 0.0), r.center() + vec2(60.0, 40.0));
     drag(&mut h, from, to);
-    assert_eq!(h.state().active, Some(0), "the click picked the tile");
+    assert_eq!(h.state().win.active, Some(0), "the click picked the tile");
     assert_eq!(annotations(&h, left), 0, "and drew nothing");
     drag(&mut h, from, to);
     assert_eq!(annotations(&h, left), 1, "the next stroke lands in the tile picked");
@@ -346,7 +346,7 @@ fn text_pdf() -> Vec<u8> {
 
 /// Where a point of page 1 (PDF user space, 200 × 300) is on screen in tab `tab`.
 fn page_point(h: &Harness<'static, PdfCraftApp>, tab: usize, x: f32, y: f32) -> Pos2 {
-    let r = h.state().views[tab].page_screen_rect(0).unwrap();
+    let r = h.state().win.views[tab].page_screen_rect(0).unwrap();
     egui::pos2(r.left() + x / 200.0 * r.width(), r.top() + (300.0 - y) / 300.0 * r.height())
 }
 
@@ -359,24 +359,24 @@ fn a_click_on_another_tile_doesnt_start_a_text_selection_there() {
         app.set_view_layout(ViewLayout::Tiles);
     });
     for tab in 0..2 {
-        h.state_mut().views[tab].set_zoom(2.0);
+        h.state_mut().win.views[tab].set_zoom(2.0);
     }
     for _ in 0..300 {
         h.run_steps(1);
-        if (0..2).all(|tab| h.state().views[tab].texts.contains_key(&0)) {
+        if (0..2).all(|tab| h.state().win.views[tab].texts.contains_key(&0)) {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    assert!((0..2).all(|tab| h.state().views[tab].texts.contains_key(&0)), "the text layers are read");
-    assert_eq!(h.state().active, Some(1));
+    assert!((0..2).all(|tab| h.state().win.views[tab].texts.contains_key(&0)), "the text layers are read");
+    assert_eq!(h.state().win.active, Some(1));
     // The Select tool (the default) across "Page 1" in the left tile, which isn't active.
     let (from, to) = (page_point(&h, 0, 10.0, 160.0), page_point(&h, 0, 150.0, 160.0));
     drag(&mut h, from, to);
-    assert_eq!(h.state().active, Some(0), "the press picked the tile");
-    assert_eq!(h.state().views[0].selected_text(), None, "and selected nothing");
+    assert_eq!(h.state().win.active, Some(0), "the press picked the tile");
+    assert_eq!(h.state().win.views[0].selected_text(), None, "and selected nothing");
     drag(&mut h, from, to);
-    assert!(h.state().views[0].selected_text().is_some_and(|t| t.contains("Page")), "the next drag selects in the tile picked");
+    assert!(h.state().win.views[0].selected_text().is_some_and(|t| t.contains("Page")), "the next drag selects in the tile picked");
 }
 
 #[test]
@@ -387,7 +387,7 @@ fn the_hand_tool_pans_another_tile_with_its_first_drag() {
     let a = place(&h, 0);
     let r = viewport(&h, 0);
     drag(&mut h, r.center(), r.center() - vec2(0.0, 200.0));
-    assert_eq!(h.state().active, Some(0), "the drag picked the tile");
+    assert_eq!(h.state().win.active, Some(0), "the drag picked the tile");
     assert!(place(&h, 0).scroll.y > a.scroll.y + 100.0, "and panned it at once: {:?} → {:?}", a.scroll, place(&h, 0).scroll);
 }
 
@@ -399,12 +399,12 @@ fn two_tiles_of_one_document_both_render() {
     h.state_mut().duplicate_view(0);
     h.state_mut().set_view_layout(ViewLayout::Tiles);
     h.run_steps(2);
-    h.state_mut().views[0].set_zoom(1.0);
-    h.state_mut().views[1].set_zoom(2.5);
+    h.state_mut().win.views[0].set_zoom(1.0);
+    h.state_mut().win.views[1].set_zoom(2.5);
     let mut sharp = false;
     for _ in 0..600 {
         h.run_steps(1);
-        if h.state().views[0].current_page_sharp() && h.state().views[1].current_page_sharp() {
+        if h.state().win.views[0].current_page_sharp() && h.state().win.views[1].current_page_sharp() {
             sharp = true;
             break;
         }
@@ -413,10 +413,10 @@ fn two_tiles_of_one_document_both_render() {
     assert!(sharp, "each tile gets its own page images from the shared document");
     // Closing either duplicate leaves the other where it was.
     let survivor = place(&h, 0);
-    let key = h.state().views[1].key;
+    let key = h.state().win.views[1].key;
     h.state_mut().tab_action(crate::tab_context::Action::Close(key.0));
     h.run_steps(6);
-    assert_eq!(h.state().views.len(), 1);
+    assert_eq!(h.state().win.views.len(), 1);
     let now = place(&h, 0);
     assert_eq!((now.current, now.zoom), (survivor.current, survivor.zoom));
 }
@@ -433,13 +433,13 @@ fn the_tab_menu_switches_between_tab_and_tile_view() {
     assert!(h.get_by_label("Tab View").accesskit_node().is_disabled(), "Tab View is already shown");
     h.get_by_label("Tile View").click();
     h.run_steps(4);
-    assert_eq!(h.state().layout_mode, ViewLayout::Tiles);
+    assert_eq!(h.state().win.layout_mode, ViewLayout::Tiles);
     h.get_by_role_and_label(egui::accesskit::Role::Tab, "left.pdf").click_secondary();
     h.run_steps(2);
     assert!(h.get_by_label("Tile View").accesskit_node().is_disabled());
     h.get_by_label("Tab View").click();
     h.run_steps(4);
-    assert_eq!(h.state().layout_mode, ViewLayout::Tabs);
+    assert_eq!(h.state().win.layout_mode, ViewLayout::Tabs);
 }
 
 #[test]
@@ -463,7 +463,7 @@ fn tile_view_shows_the_hotbar_over_the_active_tile() {
     let mut h = two_tiles();
     let bar = |h: &Harness<'static, PdfCraftApp>| h.ctx.memory(|m| m.area_rect(egui::Id::unique("quick-bar")));
     for active in [0, 1] {
-        h.state_mut().active = Some(active);
+        h.state_mut().win.active = Some(active);
         h.run_steps(4);
         let (Some(bar), tile) = (bar(&h), viewport(&h, active)) else { panic!("no hotbar") };
         assert!(tile.expand(1.0).contains_rect(bar), "tile {active} active: the bar {bar:?} is over it ({tile:?})");

@@ -244,7 +244,7 @@ fn page_hover_cursors_stay_off_while_a_dialog_is_open() {
         h.run_steps(2);
     }
     // The middle of the "country" drop-down (/Rect [20 220 200 240] on a 300 × 400 page).
-    let page = h.state().views[0].page_screen_rect(0).expect("on screen");
+    let page = h.state().win.views[0].page_screen_rect(0).expect("on screen");
     let k = page.width() / 300.0;
     let field = page.min + egui::vec2(110.0 * k, (400.0 - 230.0) * k);
     h.hover_at(field);

@@ -244,7 +244,7 @@ fn scrollbar_and_panel_resize_handle_do_not_collide_on_either_dock_side() {
         h.drop_at(at + egui::vec2(0.0, 60.0));
         h.run_steps(2);
     };
-    let page_top = |h: &Harness<'static, PdfCraftApp>| h.state().views[0].page_screen_rect(0).expect("page on screen").min.y;
+    let page_top = |h: &Harness<'static, PdfCraftApp>| h.state().win.views[0].page_screen_rect(0).expect("page on screen").min.y;
     let before = page_top(&h_right);
     drag(&mut h_right, egui::pos2(page_bar.max.x - 1.0, page_bar.center().y));
     assert!(page_top(&h_right) < before, "dragging the page's scrollbar scrolls the page");

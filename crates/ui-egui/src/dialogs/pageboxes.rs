@@ -66,7 +66,7 @@ fn box_index(b: PageBox) -> usize {
 /// Draw the dialog body; returns (apply, cancel).
 pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens) -> (bool, bool) {
     let Some((i, id)) = app.active_ids() else { return (false, true) };
-    let current = app.views[i].current;
+    let current = app.win.views[i].current;
     let Some(doc) = app.session.get(id) else { return (false, true) };
     let boxes = doc.page_boxes();
     let count = boxes.len().max(1);

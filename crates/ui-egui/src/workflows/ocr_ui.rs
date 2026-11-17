@@ -434,7 +434,7 @@ impl PdfCraftApp {
         let d = &self.ocr_draft;
         let pages: Vec<usize> = match d.pages {
             OcrPages::All => Vec::new(),
-            OcrPages::Current => vec![self.views[vi].current],
+            OcrPages::Current => vec![self.win.views[vi].current],
             OcrPages::Range => (d.from.saturating_sub(1)..d.to).collect(),
         };
         let settings = d.settings();
@@ -458,7 +458,7 @@ impl PdfCraftApp {
             self.await_ocr_models(&scan);
             return;
         }
-        self.views[scan.view].auto_ocr_tried.insert(scan.page);
+        self.win.views[scan.view].auto_ocr_tried.insert(scan.page);
         // Only a page with no text of its own is read. Comments and text boxes over the picture do
         // not count as its text (a scan with a few comments is still a scan, as in Acrobat), but
         // a page with real text and a background picture is left alone.
@@ -472,7 +472,7 @@ impl PdfCraftApp {
     /// Recognize Text does. After a failed download it doesn't try again by itself: Recognize
     /// Text does, and the page is read once the models are in.
     fn await_ocr_models(&mut self, scan: &ScanToRead) {
-        self.views[scan.view].auto_ocr_awaiting_models.insert(scan.page, scan.generation);
+        self.win.views[scan.view].auto_ocr_awaiting_models.insert(scan.page, scan.generation);
         #[cfg(target_arch = "wasm32")]
         if crate::ocr_web::state() == crate::ocr_web::State::NotStarted
             && let Some(ctx) = self.ctx.clone()
@@ -486,7 +486,7 @@ impl PdfCraftApp {
     /// Only the web build loads them while running.
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     pub(crate) fn ocr_models_loaded(&mut self) {
-        for view in &mut self.views {
+        for view in &mut self.win.views {
             view.auto_ocr_awaiting_models.clear();
         }
     }
@@ -508,8 +508,8 @@ impl PdfCraftApp {
             return None;
         }
         let (view, doc) = self.active_ids()?;
-        let page = self.views[view].current;
-        if self.views[view].auto_ocr_tried.contains(&page) {
+        let page = self.win.views[view].current;
+        if self.win.views[view].auto_ocr_tried.contains(&page) {
             return None;
         }
         let document = self.session.get(doc)?;
@@ -519,8 +519,8 @@ impl PdfCraftApp {
         // A page found not to be a scan is judged again only once the document has changed, not
         // every frame (listing its images parses the page).
         let generation = document.edit_generation();
-        if self.views[view].auto_ocr_skipped.get(&page) == Some(&generation)
-            || self.views[view].auto_ocr_awaiting_models.get(&page) == Some(&generation)
+        if self.win.views[view].auto_ocr_skipped.get(&page) == Some(&generation)
+            || self.win.views[view].auto_ocr_awaiting_models.get(&page) == Some(&generation)
         {
             return None;
         }
@@ -531,7 +531,7 @@ impl PdfCraftApp {
             page_area > 0.0 && ((x1 - x0) * (y1 - y0)).abs() >= 0.5 * page_area
         });
         if !covered {
-            self.views[view].auto_ocr_skipped.insert(page, generation);
+            self.win.views[view].auto_ocr_skipped.insert(page, generation);
             return None;
         }
         Some(ScanToRead { view, doc, page, generation })
@@ -801,7 +801,7 @@ impl PdfCraftApp {
     #[cfg(target_arch = "wasm32")]
     fn pump_web_ocr(&mut self) {
         self.start_waiting_web_batch();
-        if self.views.iter().any(|v| !v.auto_ocr_awaiting_models.is_empty())
+        if self.win.views.iter().any(|v| !v.auto_ocr_awaiting_models.is_empty())
             && pdfcraft_engine::ocr::engine_unavailable_reason(EngineChoice::Ocrs).is_none()
         {
             self.ocr_models_loaded();
@@ -921,7 +921,7 @@ impl PdfCraftApp {
             && self.session.get(doc).map(|d| d.edit_generation()) != Some(a.generation)
         {
             // Every tab of the document (this fork's Duplicate Tab) judges the page again.
-            for view in self.views.iter_mut().filter(|v| v.id == doc) {
+            for view in self.win.views.iter_mut().filter(|v| v.id == doc) {
                 view.auto_ocr_tried.remove(&a.page);
             }
             return;
@@ -949,7 +949,7 @@ impl PdfCraftApp {
         match self.session.apply_ocr_checked(doc, &found, &guard) {
             Ok(words) => {
                 if let Some(info) = self.session.get(doc).map(|d| d.info.clone())
-                    && let Some(view) = self.views.iter_mut().find(|v| v.id == doc)
+                    && let Some(view) = self.win.views.iter_mut().find(|v| v.id == doc)
                 {
                     view.document_changed(&info);
                 }
@@ -1138,14 +1138,14 @@ mod tests {
     #[test]
     fn a_page_is_read_once_and_a_page_found_no_scan_is_judged_again_after_a_change() {
         let mut app = app_with(scan());
-        app.views[0].auto_ocr_tried.insert(0);
+        app.win.views[0].auto_ocr_tried.insert(0);
         assert_eq!(found(&mut app), None, "a page already read is not read again (Undo sticks)");
 
         // A blank page is no scan; it is judged again only once the document changes.
         let blank = Session::new().create_blank(595.0, 842.0, 1).unwrap().to_vec();
         let mut app = app_with(blank);
         assert_eq!(found(&mut app), None);
-        assert!(app.views[0].auto_ocr_skipped.contains_key(&0), "remembered with the document's generation");
+        assert!(app.win.views[0].auto_ocr_skipped.contains_key(&0), "remembered with the document's generation");
         let id = app.active_ids().unwrap().1;
         let mut png = std::io::Cursor::new(Vec::new());
         image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(8, 8, image::Rgba([250, 250, 250, 255])))
@@ -1165,7 +1165,7 @@ mod tests {
         assert_eq!(found(&mut app), None, "it waits for the models, not judged every frame");
         app.ocr_models_loaded();
         assert_eq!(found(&mut app), Some(0), "read once they are in");
-        assert!(app.views[0].auto_ocr_skipped.is_empty(), "never taken for no scan");
+        assert!(app.win.views[0].auto_ocr_skipped.is_empty(), "never taken for no scan");
     }
     /// A finished run Edit started is applied only once Read mode and dialogs are gone; one the user
     /// asked for is applied at once. The result is made up, so no OCR models are needed.
@@ -1240,7 +1240,7 @@ mod tests {
         let progress = Arc::new(Mutex::new(OcrProgress { done: 1, total: 1, result: Some(Ok(vec![page])), cancel: false }));
         let guard = app.session.ocr_guard(id).unwrap();
         app.ocr_run = Some(OcrRun { doc: id, progress, guard, automatic: Some(AutoOcr { page: 0, generation }), editable: false });
-        app.views[0].auto_ocr_tried.insert(0);
+        app.win.views[0].auto_ocr_tried.insert(0);
         // The document changes while the run is out.
         let mut png = std::io::Cursor::new(Vec::new());
         image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(8, 8, image::Rgba([250, 250, 250, 255])))
@@ -1252,7 +1252,7 @@ mod tests {
         app.poll_ocr();
         assert!(app.ocr_run.is_none(), "the run is over");
         assert_eq!(app.session.get(id).unwrap().can_undo(), Some("Add image"), "its result was not applied");
-        assert!(!app.views[0].auto_ocr_tried.contains(&0), "the page may be judged again");
+        assert!(!app.win.views[0].auto_ocr_tried.contains(&0), "the page may be judged again");
     }
 
     #[test]

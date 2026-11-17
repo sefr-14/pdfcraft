@@ -26,13 +26,13 @@ impl PdfCraftApp {
     /// the view opened with, and the view goes to the opening page's top.
     fn apply_initial_view(&mut self, index: usize, v: &pdfcraft_engine::InitialView) {
         use pdfcraft_engine::{InitialLayout as L, Magnification as M, Navigation as N};
-        let pages = self.session.get(self.views[index].id).map_or(0, |d| d.info.pages.len());
+        let pages = self.session.get(self.win.views[index].id).map_or(0, |d| d.info.pages.len());
         // A right panel the user closed stays closed, whatever the document asks for (#2884).
         // A document that asks for full screen gets the panel it names for outside it
         // (`/NonFullScreenPageMode`, Table 147), there when the prompt is declined or full
         // screen is left.
         let navigation = if v.full_screen { v.non_full_screen } else { v.navigation };
-        if self.active == Some(index) && !self.right_panel_closed {
+        if self.win.active == Some(index) && !self.right_panel_closed {
             match navigation {
                 N::PageOnly => {}
                 N::Bookmarks => self.right = Some(RightPanel::Bookmarks),
@@ -41,7 +41,7 @@ impl PdfCraftApp {
                 N::Layers => self.right = Some(RightPanel::Layers),
             }
         }
-        let view = &mut self.views[index];
+        let view = &mut self.win.views[index];
         if !self.always_default_view {
             match v.layout {
                 // The view opened in Default page display already.
@@ -94,10 +94,10 @@ impl PdfCraftApp {
         // interface language, rather than in English and again when the frame applies it.
         self.apply_status_captions(i18n::Lang::from_pref(&self.language));
         // Images and text files become new, unsaved PDFs (Create a PDF).
-        let active = self.active;
+        let active = self.win.active;
         if let Some(r) = self.open_converted(name, &bytes) {
             if !activate {
-                self.active = active;
+                self.win.active = active;
             }
             return r;
         }
@@ -276,7 +276,7 @@ impl PdfCraftApp {
                             self.apply_remote_destination(destination);
                         }
                         if let Some((layout, continuous)) = pending.display_override
-                            && let Some(view) = self.views.iter_mut().find(|view| view.id == id)
+                            && let Some(view) = self.win.views.iter_mut().find(|view| view.id == id)
                         {
                             view.set_display(layout, continuous);
                             self.launch_display_target = Some(id);
@@ -405,18 +405,18 @@ impl PdfCraftApp {
         let mut view = DocView::new(id, &doc.info, self.view_defaults);
         // This fork (SYNC.16m, SYNC.17): its comment selection starts in this version of the document.
         view.comments.stamp(crate::content_version(doc));
-        self.views.push(view);
+        self.win.views.push(view);
         if activate {
-            self.active = Some(self.views.len() - 1);
+            self.win.active = Some(self.win.views.len() - 1);
         }
-        self.apply_initial_view(self.views.len() - 1, &initial);
-        self.apply_viewer_preferences(self.views.len() - 1, &initial, activate);
+        self.apply_initial_view(self.win.views.len() - 1, &initial);
+        self.apply_viewer_preferences(self.win.views.len() - 1, &initial, activate);
         // Where the reader left off wins over the file's own initial view and the zoom its
         // viewer preferences open at (#1767).
-        self.apply_last_view(self.views.len() - 1);
+        self.apply_last_view(self.win.views.len() - 1);
         // After all of them, so full screen shows one fitted page and leaving it comes back to them.
         if self.full_screen
-            && let Some(view) = self.views.last_mut()
+            && let Some(view) = self.win.views.last_mut()
         {
             view.enter_presentation();
         }
@@ -438,7 +438,7 @@ impl PdfCraftApp {
         if activate
             && self.left_open
             && self.left == LeftPanel::Tool("organize")
-            && let Some(view) = self.views.last_mut()
+            && let Some(view) = self.win.views.last_mut()
         {
             view.open_organize();
         }
@@ -528,16 +528,16 @@ impl PdfCraftApp {
                 // Already open: the tab opened from this attachment of this document (its bytes
                 // may have grown since, as a form laid out on open appends its layout).
                 let origin = (doc, att.name.clone());
-                let open_in = self.views.iter().position(|v| v.from_attachment.as_ref() == Some(&origin) && self.session.get(v.id).is_some());
+                let open_in = self.win.views.iter().position(|v| v.from_attachment.as_ref() == Some(&origin) && self.session.get(v.id).is_some());
                 if let Some(i) = open_in {
-                    self.active = Some(i);
+                    self.win.active = Some(i);
                     return;
                 }
-                let before = self.views.len();
+                let before = self.win.views.len();
                 match self.open_bytes(&name, None, bytes) {
                     // Opening bytes adds their tab at once (unless a password is asked for first).
-                    Ok(()) if self.views.len() > before => {
-                        if let Some(v) = self.views.last_mut() {
+                    Ok(()) if self.win.views.len() > before => {
+                        if let Some(v) = self.win.views.last_mut() {
                             v.from_attachment = Some(origin);
                         }
                     }
@@ -725,6 +725,7 @@ impl PdfCraftApp {
                 #[cfg(not(target_arch = "wasm32"))]
                 if let Some(path) = path_for_watch.as_deref()
                     && let Some(id) = self
+                        .win
                         .views
                         .iter()
                         .rev()
@@ -736,7 +737,7 @@ impl PdfCraftApp {
                     self.apply_remote_destination(destination);
                 }
                 if let Some((layout, continuous)) = p.display_override
-                    && let Some(view) = self.views.last_mut()
+                    && let Some(view) = self.win.views.last_mut()
                 {
                     view.set_display(layout, continuous);
                     #[cfg(not(target_arch = "wasm32"))]
@@ -798,15 +799,15 @@ impl PdfCraftApp {
     /// The tab already showing the file at `path` (the same path, or one that names the same
     /// file once made absolute). Of several tabs on it (Duplicate Tab), the active one.
     pub(crate) fn tab_showing(&self, path: &str) -> Option<usize> {
-        let i = self.views.iter().position(|v| self.session.get(v.id).and_then(|d| d.path.as_deref()).is_some_and(|p| same_file(p, path)))?;
-        self.views.get(i).and_then(|v| self.view_of(v.id))
+        let i = self.win.views.iter().position(|v| self.session.get(v.id).and_then(|d| d.path.as_deref()).is_some_and(|p| same_file(p, path)))?;
+        self.win.views.get(i).and_then(|v| self.view_of(v.id))
     }
 
     /// Open a file from a recent list: focus the tab already showing it, else open it (File ▸
     /// Open Recent and the Home view's list share this).
     pub fn open_recent(&mut self, path: &str) {
         if let Some(i) = self.tab_showing(path) {
-            self.active = Some(i);
+            self.win.active = Some(i);
         } else {
             #[cfg(not(target_arch = "wasm32"))]
             self.open_path(path);
@@ -852,9 +853,9 @@ impl PdfCraftApp {
         // and the tool it was opened for runs on it. One still being opened is left to that.
         if let Some(i) = self.tab_showing(path) {
             self.startup_superseded = true;
-            self.active = Some(i);
+            self.win.active = Some(i);
             if let Some((layout, continuous)) = display_override
-                && let Some(view) = self.views.get_mut(i)
+                && let Some(view) = self.win.views.get_mut(i)
             {
                 view.set_display(layout, continuous);
                 self.launch_display_target = Some(view.id);
@@ -916,7 +917,7 @@ impl PdfCraftApp {
         if (self.ctx.is_none() || self.run_inline) && !held {
             match std::fs::read(path) {
                 Ok(bytes) => {
-                    let before = self.views.len();
+                    let before = self.win.views.len();
                     let previous_prompt = self.password_prompt.as_ref().map(|p| p.bytes.clone());
                     if let Err(error) = self.open_bytes(&name, Some(path.to_string()), bytes) {
                         self.notify_fmt("Couldn't open {name}: {e}", &[("name", &name), ("e", &error)]);
@@ -929,14 +930,14 @@ impl PdfCraftApp {
                         prompt.then = then;
                         prompt.display_override = display_override;
                         prompt.after_open = after_open;
-                    } else if self.views.len() > before {
+                    } else if self.win.views.len() > before {
                         if let Some((layout, continuous)) = display_override
-                            && let Some(view) = self.views.last_mut()
+                            && let Some(view) = self.win.views.last_mut()
                         {
                             view.set_display(layout, continuous);
                             self.launch_display_target = Some(view.id);
                         }
-                        if let Some(doc) = self.views.last().map(|view| view.id) {
+                        if let Some(doc) = self.win.views.last().map(|view| view.id) {
                             self.watch.known_as(doc, stamp);
                         }
                         if let Some(destination) = after_open {
@@ -1011,7 +1012,7 @@ impl PdfCraftApp {
         // Failed or cancelled opens cannot cause the layout to land on a restored document.
         if let Some((layout, continuous)) = self.launch_layout.take()
             && let Some(id) = self.launch_display_target
-            && let Some(view) = self.views.iter_mut().find(|view| view.id == id)
+            && let Some(view) = self.win.views.iter_mut().find(|view| view.id == id)
         {
             view.set_display(layout, continuous);
         }
@@ -1072,27 +1073,27 @@ impl PdfCraftApp {
     /// tab still shows it (Duplicate Tab), only this view goes, and the document, its unsaved
     /// changes and their autosave stay with the other tab.
     pub fn close_tab(&mut self, index: usize) {
-        if index >= self.views.len() {
+        if index >= self.win.views.len() {
             return;
         }
         self.remember_view(index);
-        let view = self.views.remove(index);
+        let view = self.win.views.remove(index);
         let (id, place) = (view.id, view.place());
         // Another tab showing the same document (split view) keeps it open.
-        if !self.views.iter().any(|v| v.id == id) {
+        if !self.win.views.iter().any(|v| v.id == id) {
             #[cfg(not(target_arch = "wasm32"))]
             if let Some(path) = self.session.get(id).and_then(|d| d.path.clone()) {
-                if self.closed_tabs.len() == 10 {
-                    self.closed_tabs.remove(0);
+                if self.win.closed_tabs.len() == 10 {
+                    self.win.closed_tabs.remove(0);
                 }
-                self.closed_tabs.push(path);
+                self.win.closed_tabs.push(path);
             }
             self.placed_signatures.remove(&id);
             self.forget_recovery(id);
             self.session.close(id);
         }
-        self.active = match self.active {
-            _ if self.views.is_empty() => None,
+        self.win.active = match self.win.active {
+            _ if self.win.views.is_empty() => None,
             Some(a) if a > index => Some(a - 1),
             // The tab after it in its strip comes forward (or the last).
             Some(a) if a == index => self.after_close(place, index),
@@ -1102,7 +1103,7 @@ impl PdfCraftApp {
 
     /// Close every tab of document `id`, and the document with them, without asking.
     pub fn close_document(&mut self, id: DocId) {
-        while let Some(i) = self.views.iter().rposition(|v| v.id == id) {
+        while let Some(i) = self.win.views.iter().rposition(|v| v.id == id) {
             self.close_tab(i);
         }
     }
@@ -1116,14 +1117,14 @@ impl PdfCraftApp {
     /// a second call with nothing changed in between does nothing (`logic` may run more than
     /// once per frame).
     pub(crate) fn sync_shared_views(&mut self) {
-        for i in 0..self.views.len() {
-            let Some(id) = self.views.get(i).map(|v| v.id) else { continue };
-            if self.views.iter().filter(|v| v.id == id).nth(1).is_none() {
+        for i in 0..self.win.views.len() {
+            let Some(id) = self.win.views.get(i).map(|v| v.id) else { continue };
+            if self.win.views.iter().filter(|v| v.id == id).nth(1).is_none() {
                 continue;
             }
             let Some(doc) = self.session.get(id) else { continue };
             let now = content_version(doc);
-            let Some(view) = self.views.get_mut(i) else { continue };
+            let Some(view) = self.win.views.get_mut(i) else { continue };
             match view.content_seen {
                 Some(seen) if seen == now => {}
                 // First seen shared (just duplicated, or never edited): its caches are its own.
@@ -1143,14 +1144,14 @@ impl PdfCraftApp {
     /// Moves the tab at `from` so it sits at `to` (#1537). The same document stays active
     /// wherever it lands; an index out of range changes nothing.
     pub fn move_tab(&mut self, from: usize, to: usize) {
-        if from >= self.views.len() || to >= self.views.len() || from == to {
+        if from >= self.win.views.len() || to >= self.win.views.len() || from == to {
             return;
         }
         let active = self.active_ids().map(|(_, id)| id);
-        let view = self.views.remove(from);
-        self.views.insert(to, view);
+        let view = self.win.views.remove(from);
+        self.win.views.insert(to, view);
         if let Some(id) = active {
-            self.active = self.views.iter().position(|v| v.id == id);
+            self.win.active = self.win.views.iter().position(|v| v.id == id);
         }
     }
 }

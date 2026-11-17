@@ -141,8 +141,8 @@ impl PdfCraftApp {
         if self.full_screen {
             view.enter_presentation();
         }
-        self.views.push(view);
-        self.active = Some(self.views.len() - 1);
+        self.win.views.push(view);
+        self.win.active = Some(self.win.views.len() - 1);
         Ok(())
     }
 

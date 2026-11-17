@@ -384,7 +384,7 @@ fn open_panes(app: &PdfCraftApp) -> Vec<Pane> {
         open.push(Pane::Tools);
     }
     // Home and Combine files have no side panel; the choice is kept for the next document.
-    if app.active.is_some() && app.right.is_some() {
+    if app.win.active.is_some() && app.right.is_some() {
         open.push(Pane::Side);
     }
     open
@@ -421,7 +421,7 @@ pub fn show(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
         app.last_right = panel;
     }
     // The rail first: it is the outermost panel on the right.
-    if app.active.is_some() {
+    if app.win.active.is_some() {
         crate::chrome::right_rail(app, ui);
     }
     // The expanded All tools view covers the panes.

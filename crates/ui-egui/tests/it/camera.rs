@@ -28,13 +28,13 @@ fn harness() -> Harness<'static, PdfCraftApp> {
 
 fn size(h: &Harness<'static, PdfCraftApp>, page: usize) -> (f32, f32) {
     let s = h.state();
-    let p = &s.session.get(s.views[0].id).unwrap().info.pages[page];
+    let p = &s.session.get(s.win.views[0].id).unwrap().info.pages[page];
     (p.width, p.height)
 }
 
 fn undo_label(h: &Harness<'static, PdfCraftApp>) -> Option<String> {
     let s = h.state();
-    s.session.get(s.views[0].id).unwrap().can_undo().map(str::to_owned)
+    s.session.get(s.win.views[0].id).unwrap().can_undo().map(str::to_owned)
 }
 
 #[test]
@@ -43,12 +43,12 @@ fn dragging_a_corner_then_enhance_page_straightens_the_page() {
     assert!(h.state_mut().execute("ocr.enhance_camera"));
     assert_eq!(h.state().quick_tool, QuickTool::EnhanceCamera);
     h.run_steps(3);
-    let quad = h.state().views[0].camera.expect("the corners start on the current page");
+    let quad = h.state().win.views[0].camera.expect("the corners start on the current page");
     assert_eq!(quad.page, 0);
     assert_eq!(quad.corners, [[15.0, 20.0], [285.0, 20.0], [285.0, 380.0], [15.0, 380.0]], "inset by 5%");
 
     // Drag the top-left corner to (60, 80) on the page.
-    let r = h.state().views[0].page_screen_rect(0).unwrap();
+    let r = h.state().win.views[0].page_screen_rect(0).unwrap();
     let (a, b) = (r.min + r.size() * 0.05, r.min + r.size() * 0.2);
     h.hover_at(a);
     h.run_steps(1);
@@ -60,7 +60,7 @@ fn dragging_a_corner_then_enhance_page_straightens_the_page() {
     }
     h.drop_at(b);
     h.run_steps(2);
-    let c = h.state().views[0].camera.unwrap().corners[0];
+    let c = h.state().win.views[0].camera.unwrap().corners[0];
     assert!((c[0] - 60.0).abs() < 1.0 && (c[1] - 80.0).abs() < 1.0, "{c:?}");
     assert_eq!(undo_label(&h), None, "dragging changes nothing yet");
 
@@ -73,8 +73,8 @@ fn dragging_a_corner_then_enhance_page_straightens_the_page() {
     assert_eq!(undo_label(&h).as_deref(), Some("Enhance camera image"));
     // The tool stays open for the enhanced page: turn it, then Done.
     assert_eq!(h.state().quick_tool, QuickTool::EnhanceCamera);
-    assert!(h.state().views[0].camera.is_none());
-    assert_eq!(h.state().views[0].camera_done.map(|d| d.page), Some(0));
+    assert!(h.state().win.views[0].camera.is_none());
+    assert_eq!(h.state().win.views[0].camera_done.map(|d| d.page), Some(0));
     h.get_by_label("Rotate clockwise").click();
     h.run_steps(4);
     let (w, hh) = size(&h, 0);
@@ -83,7 +83,7 @@ fn dragging_a_corner_then_enhance_page_straightens_the_page() {
     h.get_by_label("Done").click();
     h.run_steps(3);
     assert_eq!(h.state().quick_tool, QuickTool::Select);
-    assert_eq!(h.state().views[0].camera_done, None);
+    assert_eq!(h.state().win.views[0].camera_done, None);
 }
 
 #[test]
@@ -93,7 +93,7 @@ fn the_clean_up_level_enhances_again_from_the_photo_and_keeps_the_turn() {
     h.run_steps(3);
     h.get_by_label("Enhance page").click();
     h.run_steps(4);
-    let done = h.state().views[0].camera_done.unwrap();
+    let done = h.state().win.views[0].camera_done.unwrap();
     assert_eq!((done.look, done.level, done.steps), (pdfcraft_engine::camera_clean::Look::Colour, 50, 1), "enhanced in colour at the default level");
     h.get_by_label("Rotate clockwise").click();
     h.run_steps(4);
@@ -101,18 +101,18 @@ fn the_clean_up_level_enhances_again_from_the_photo_and_keeps_the_turn() {
     assert!(turned.0 > turned.1, "{turned:?}");
 
     // Let go of the slider at 100.
-    let view = &mut h.state_mut().views[0];
+    let view = &mut h.state_mut().win.views[0];
     if let Some(d) = view.camera_done.as_mut() {
         d.level = 100;
     }
     view.pending_action = Some(pdfcraft_ui_egui::canvas::ViewAction::CameraLevel);
     h.run_steps(4);
-    let done = h.state().views[0].camera_done.unwrap();
+    let done = h.state().win.views[0].camera_done.unwrap();
     assert_eq!((done.applied.1, done.steps, done.turns), (100, 2, 90));
     assert_eq!(size(&h, 0), turned, "still turned");
     // The history holds one enhancement and one turn, not a pile of them.
     let s = h.state_mut();
-    let id = s.views[0].id;
+    let id = s.win.views[0].id;
     assert_eq!(s.session.undo(id).unwrap().as_str(), "Rotate page");
     assert_eq!(s.session.undo(id).unwrap().as_str(), "Enhance camera image");
     assert_eq!(s.session.get(id).unwrap().can_undo(), None);
@@ -131,10 +131,10 @@ fn choosing_a_look_enhances_again() {
     for (label, look) in [("Black and white", Look::BlackWhite), ("Greyscale", Look::Greyscale), ("Original", Look::Original)] {
         h.get_by_label(label).click();
         h.run_steps(4);
-        let done = h.state().views[0].camera_done.unwrap();
+        let done = h.state().win.views[0].camera_done.unwrap();
         assert_eq!((done.applied.0, done.steps), (look, 1), "{label}");
         let s = h.state();
-        assert_eq!(s.session.get(s.views[0].id).unwrap().can_undo(), Some("Enhance camera image"), "{label}");
+        assert_eq!(s.session.get(s.win.views[0].id).unwrap().can_undo(), Some("Enhance camera image"), "{label}");
     }
 }
 
@@ -146,13 +146,13 @@ fn after_enhance_page_crop_and_organize_take_over() {
         h.run_steps(3);
         h.get_by_label("Enhance page").click();
         h.run_steps(4);
-        assert_eq!(h.state().views[0].camera_done.map(|d| d.page), Some(0));
+        assert_eq!(h.state().win.views[0].camera_done.map(|d| d.page), Some(0));
         // The quick toolbar also has a "Crop pages" button; the camera panel's pill is the first match.
         h.get_all_by_label(button).next().unwrap().click();
         h.run_steps(3);
         assert_eq!(h.state().quick_tool, then, "{button}");
-        assert_eq!(h.state().views[0].camera_done, None, "{button}");
-        assert_eq!(h.state().views[0].organize, button == "Organize pages");
+        assert_eq!(h.state().win.views[0].camera_done, None, "{button}");
+        assert_eq!(h.state().win.views[0].organize, button == "Organize pages");
     }
 }
 
@@ -164,15 +164,15 @@ fn cancel_and_escape_leave_the_page_alone() {
     h.get_by_label("Cancel").click();
     h.run_steps(3);
     assert_eq!(h.state().quick_tool, QuickTool::Select);
-    assert!(h.state().views[0].camera.is_none());
+    assert!(h.state().win.views[0].camera.is_none());
 
     assert!(h.state_mut().execute("ocr.enhance_camera"));
     h.run_steps(3);
-    assert!(h.state().views[0].camera.is_some());
+    assert!(h.state().win.views[0].camera.is_some());
     h.key_press(egui::Key::Escape);
     h.run_steps(3);
     assert_eq!(h.state().quick_tool, QuickTool::Select);
-    assert!(h.state().views[0].camera.is_none());
+    assert!(h.state().win.views[0].camera.is_none());
     assert_eq!(size(&h, 0), (300.0, 400.0));
     assert_eq!(undo_label(&h), None);
 }
@@ -192,24 +192,24 @@ fn the_level_leaves_the_page_alone_when_another_edit_came_in_between() {
     // Another "Rotate page" from outside the tool, with the same history label.
     {
         let s = h.state_mut();
-        let id = s.views[0].id;
+        let id = s.win.views[0].id;
         s.session.apply(id, pdfcraft_engine::Edit::RotatePages { pages: vec![0], degrees: 90 }).unwrap();
     }
     h.run_steps(2);
     let before = size(&h, 0);
-    let applied = h.state().views[0].camera_done.unwrap().applied;
+    let applied = h.state().win.views[0].camera_done.unwrap().applied;
 
-    let view = &mut h.state_mut().views[0];
+    let view = &mut h.state_mut().win.views[0];
     if let Some(d) = view.camera_done.as_mut() {
         d.level = 100;
     }
     view.pending_action = Some(pdfcraft_ui_egui::canvas::ViewAction::CameraLevel);
     h.run_steps(4);
     assert_eq!(size(&h, 0), before, "the page is not warped again");
-    let done = h.state().views[0].camera_done.unwrap();
+    let done = h.state().win.views[0].camera_done.unwrap();
     assert_eq!((done.level, done.applied), (applied.1, applied), "the slider goes back");
     let s = h.state_mut();
-    let id = s.views[0].id;
+    let id = s.win.views[0].id;
     assert_eq!(s.session.undo(id).unwrap().as_str(), "Rotate page");
     assert_eq!(s.session.undo(id).unwrap().as_str(), "Rotate page");
     assert_eq!(s.session.undo(id).unwrap().as_str(), "Enhance camera image");

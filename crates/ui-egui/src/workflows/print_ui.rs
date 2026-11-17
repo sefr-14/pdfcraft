@@ -203,8 +203,8 @@ impl PdfCraftApp {
             }
             _ => (listed_printers(), false),
         };
-        let current = self.views[i].current;
-        let selected: Vec<usize> = self.views[i].selected.iter().copied().collect();
+        let current = self.win.views[i].current;
+        let selected: Vec<usize> = self.win.views[i].selected.iter().copied().collect();
         let mut keep = std::mem::take(&mut self.print_draft);
         // Leaving Label gives back the paper it replaced (#3564), before the layout resets below.
         if keep.handling == Handling::Label {

@@ -67,7 +67,7 @@ impl PdfCraftApp {
     }
 
     pub(super) fn apply_remote_destination(&mut self, destination: pdfcraft_render::RemoteDestination) {
-        if let Some(index) = self.views.len().checked_sub(1) {
+        if let Some(index) = self.win.views.len().checked_sub(1) {
             self.apply_destination_at(index, destination);
         }
     }
@@ -76,7 +76,7 @@ impl PdfCraftApp {
     /// parameters (#3425), or one already open that such a link or launch names. The latest request
     /// for a document wins over a named destination still being looked up.
     pub(super) fn apply_destination_at(&mut self, index: usize, destination: pdfcraft_render::RemoteDestination) {
-        let Some(id) = self.views.get(index).map(|view| view.id) else { return };
+        let Some(id) = self.win.views.get(index).map(|view| view.id) else { return };
         #[cfg(not(target_arch = "wasm32"))]
         self.pending_destinations.retain(|pending| pending.doc != id);
         let destination = match destination {
@@ -116,14 +116,14 @@ impl PdfCraftApp {
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
             };
-            if let Some(index) = self.views.iter().position(|view| view.id == pending.doc) {
+            if let Some(index) = self.win.views.iter().position(|view| view.id == pending.doc) {
                 self.show_destination_at(index, found_destination(found, pending.name));
             }
         }
     }
 
     fn show_destination_at(&mut self, index: usize, destination: pdfcraft_render::RemoteDestination) {
-        let Some(view) = self.views.get_mut(index) else { return };
+        let Some(view) = self.win.views.get_mut(index) else { return };
         let Some(doc) = self.session.get(view.id) else { return };
         let warning = match destination {
             pdfcraft_render::RemoteDestination::Default => None,

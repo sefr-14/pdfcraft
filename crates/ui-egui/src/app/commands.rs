@@ -12,7 +12,7 @@ impl PdfCraftApp {
                 .iter()
                 .flat_map(|g| g.sections.iter().flat_map(|s| s.items.iter()))
                 .any(|i| i.command == spec.id);
-            if self.active.is_none() && needs_document && is_tool && !self.command_enabled(spec) {
+            if self.win.active.is_none() && needs_document && is_tool && !self.command_enabled(spec) {
                 self.open_then_run(spec);
                 return;
             }
@@ -78,7 +78,7 @@ impl PdfCraftApp {
         }
         self.left = LeftPanel::Tool(id);
         self.reveal_tools();
-        if let Some(view) = self.active.and_then(|i| self.views.get_mut(i)) {
+        if let Some(view) = self.win.active.and_then(|i| self.win.views.get_mut(i)) {
             if id == "organize" {
                 view.open_organize();
             } else {
@@ -92,7 +92,7 @@ impl PdfCraftApp {
     pub(crate) fn select_mode(&mut self, mode: Mode) {
         self.enter_mode(mode);
         self.reveal_tools();
-        if let Some(view) = self.active.and_then(|i| self.views.get_mut(i)) {
+        if let Some(view) = self.win.active.and_then(|i| self.win.views.get_mut(i)) {
             view.organize = false;
         }
         self.left = match mode {
@@ -138,7 +138,7 @@ impl PdfCraftApp {
 
     /// The tab at the front: the active document, or else whether Combine files shows over Home.
     pub(super) fn shown_tab(&self) -> (Option<DocId>, bool) {
-        (self.active.and_then(|i| self.views.get(i)).map(|v| v.id), self.combine_showing())
+        (self.win.active.and_then(|i| self.win.views.get(i)).map(|v| v.id), self.combine_showing())
     }
 
     /// Back to the Select tool from an editing tool. A paragraph still open in the editor is
@@ -146,7 +146,7 @@ impl PdfCraftApp {
     /// paragraph's text removed with no editor over it.
     pub(crate) fn put_down_edit_text(&mut self) {
         self.quick_tool = QuickTool::Select;
-        if let Some(ed) = self.active.and_then(|i| self.views.get_mut(i)).and_then(|v| v.line_editor.take())
+        if let Some(ed) = self.win.active.and_then(|i| self.win.views.get_mut(i)).and_then(|v| v.line_editor.take())
             && let Some(edit) = edit_text_ui::finished_edit(ed)
         {
             self.apply_edit(edit);

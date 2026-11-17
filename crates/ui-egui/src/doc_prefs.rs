@@ -1027,7 +1027,7 @@ mod tests {
         let mut app = crate::PdfCraftApp::new();
         app.open_bytes("a.pdf", Some(path.clone()), pdf(2, Some("aa01"))).unwrap();
         app.sync_doc_prefs();
-        let id = app.views[0].id;
+        let id = app.win.views[0].id;
         let before = app.session.save_bytes(id).unwrap();
         app.doc_prefs.set_rulers(id, true);
         app.doc_prefs.set_unit(id, Unit::Centimetres);
@@ -1044,7 +1044,7 @@ mod tests {
         again.restore(&saved);
         again.open_bytes("a.pdf", Some(path), pdf(2, Some("aa01"))).unwrap();
         again.sync_doc_prefs();
-        let id = again.views[0].id;
+        let id = again.win.views[0].id;
         let state = again.doc_prefs.state(id).unwrap();
         assert_eq!(state.prefs, ViewPrefs { rulers: true, guides_shown: true, unit: Unit::Centimetres });
         assert_eq!(state.page(1).map(|g| g.y.clone()), Some(vec![123.5]));

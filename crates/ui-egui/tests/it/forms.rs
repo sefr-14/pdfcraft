@@ -33,16 +33,16 @@ fn harness_with_bytes(name: &'static str, bytes: Vec<u8>) -> Harness<'static, Pd
 
 fn value(h: &Harness<'static, PdfCraftApp>, name: &str) -> Vec<String> {
     let s = h.state();
-    s.session.get(s.views[0].id).unwrap().form.iter().find(|f| f.name == name).unwrap().value.clone()
+    s.session.get(s.win.views[0].id).unwrap().form.iter().find(|f| f.name == name).unwrap().value.clone()
 }
 
 /// Click the centre of a field's widget.
 fn click_field(h: &mut Harness<'static, PdfCraftApp>, name: &str, widget: usize) {
     let p = {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         let f = doc.form.iter().find(|f| f.name == name).unwrap();
-        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.views[0], &doc.info, f, widget).expect("on screen").center()
+        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.win.views[0], &doc.info, f, widget).expect("on screen").center()
     };
     click_at(h, p);
 }
@@ -60,9 +60,9 @@ fn click_at(h: &mut Harness<'static, PdfCraftApp>, p: egui::Pos2) {
 fn rest_on_field(h: &mut Harness<'static, PdfCraftApp>, name: &str) {
     let p = {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         let f = doc.form.iter().find(|f| f.name == name).unwrap();
-        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.views[0], &doc.info, f, 0).expect("on screen").center()
+        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.win.views[0], &doc.info, f, 0).expect("on screen").center()
     };
     h.hover_at(p);
     for _ in 0..40 {
@@ -116,7 +116,7 @@ fn read_only_widgets_are_skipped_by_tab_navigation() {
     ]);
     let mut h = harness_with_bytes("readonly-widget.pdf", bytes);
     {
-        let doc = h.state().session.get(h.state().views[0].id).unwrap();
+        let doc = h.state().session.get(h.state().win.views[0].id).unwrap();
         let locked = doc.form.iter().find(|field| field.name == "locked").unwrap();
         assert!(!locked.read_only(), "the field itself is editable");
         assert!(locked.widgets[0].read_only, "only its widget is read-only");
@@ -141,7 +141,7 @@ fn a_blank_tooltip_shows_nothing() {
     let mut h = harness();
     set_city(&mut h, pdfcraft_engine::FieldProps { tooltip: Some("   ".into()), ..Default::default() });
     let s = h.state();
-    let doc = s.session.get(s.views[0].id).unwrap();
+    let doc = s.session.get(s.win.views[0].id).unwrap();
     assert_eq!(doc.form.iter().find(|f| f.name == "city").unwrap().tooltip.as_deref(), Some("   "), "the blank /TU is in the file");
     rest_on_field(&mut h, "city");
     assert!(egui::Tooltip::seconds_since_last_tooltip(&h.ctx).is_infinite(), "no tooltip was shown");
@@ -159,9 +159,9 @@ fn a_field_that_doesnt_scroll_stops_taking_text_when_full() {
     );
     let text_box = |h: &Harness<'static, PdfCraftApp>| {
         let s = h.state();
-        s.session.get(s.views[0].id).unwrap().field_text_box("city", 0).expect("the city field's text box")
+        s.session.get(s.win.views[0].id).unwrap().field_text_box("city", 0).expect("the city field's text box")
     };
-    let typing = |h: &Harness<'static, PdfCraftApp>| h.state().views[0].forms.focus.as_ref().map(|f| f.text.clone()).unwrap_or_default();
+    let typing = |h: &Harness<'static, PdfCraftApp>| h.state().win.views[0].forms.focus.as_ref().map(|f| f.text.clone()).unwrap_or_default();
     click_field(&mut h, "city", 0);
     h.event(egui::Event::Text("W".repeat(80)));
     h.run_steps(2);
@@ -200,16 +200,16 @@ fn a_multi_line_auto_sized_field_that_doesnt_scroll_stops_when_full() {
     );
     let da = {
         let s = h.state();
-        s.session.get(s.views[0].id).unwrap().form.iter().find(|f| f.name == "city").unwrap().da.clone()
+        s.session.get(s.win.views[0].id).unwrap().form.iter().find(|f| f.name == "city").unwrap().da.clone()
     };
     assert!(da.contains(" 0 Tf"), "an automatic size: {da}");
     click_field(&mut h, "city", 0);
     h.event(egui::Event::Text("line\n".repeat(60)));
     h.run_steps(2);
-    let kept = h.state().views[0].forms.focus.as_ref().map(|f| f.text.clone()).unwrap_or_default();
+    let kept = h.state().win.views[0].forms.focus.as_ref().map(|f| f.text.clone()).unwrap_or_default();
     let tb = {
         let s = h.state();
-        s.session.get(s.views[0].id).unwrap().field_text_box("city", 0).expect("the city field's text box")
+        s.session.get(s.win.views[0].id).unwrap().field_text_box("city", 0).expect("the city field's text box")
     };
     let lines = kept.lines().count();
     assert!(lines > 1 && lines < 60, "{lines} of 60 lines kept");
@@ -227,14 +227,14 @@ fn a_turned_field_places_the_caret_along_its_turned_text() {
     set_city(&mut h, props);
     set_city(&mut h, pdfcraft_engine::FieldProps { rotation: Some((0, 90)), ..Default::default() });
     click_field(&mut h, "city", 0);
-    assert_eq!(h.state().views[0].forms.focus.as_ref().map(|f| f.name.as_str()), Some("city"));
+    assert_eq!(h.state().win.views[0].forms.focus.as_ref().map(|f| f.name.as_str()), Some("city"));
     h.event(egui::Event::Text("Paris".into()));
     h.run_steps(2);
     let field = {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         let f = doc.form.iter().find(|f| f.name == "city").unwrap();
-        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.views[0], &doc.info, f, 0).expect("on screen")
+        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.win.views[0], &doc.info, f, 0).expect("on screen")
     };
     click_at(&mut h, field.left_top() + egui::vec2(3.0, 2.0));
     h.event(egui::Event::Text("X".into()));
@@ -248,24 +248,24 @@ fn a_turned_field_places_the_caret_along_its_turned_text() {
 fn typing_into_a_text_field_and_tabbing_on() {
     let mut h = harness();
     click_field(&mut h, "name", 0);
-    assert!(h.state().views[0].forms.focus.is_some(), "the editor opened");
+    assert!(h.state().win.views[0].forms.focus.is_some(), "the editor opened");
     h.event(egui::Event::Text("Ada Lovelace".into()));
     h.run_steps(2);
     h.key_press(egui::Key::Tab);
     h.run_steps(4);
     assert_eq!(value(&h, "name"), ["Ada Lovelace"]);
-    assert_eq!(h.state().views[0].forms.focus.as_ref().map(|f| f.name.as_str()), Some("agree"), "Tab moves to the next field");
+    assert_eq!(h.state().win.views[0].forms.focus.as_ref().map(|f| f.name.as_str()), Some("agree"), "Tab moves to the next field");
     // Escape leaves the check box. It also abandons a draft.
     h.key_press(egui::Key::Escape);
     h.run_steps(2);
     click_field(&mut h, "city", 0);
-    assert_eq!(h.state().views[0].forms.focus.as_ref().map(|f| f.name.as_str()), Some("city"));
+    assert_eq!(h.state().win.views[0].forms.focus.as_ref().map(|f| f.name.as_str()), Some("city"));
     h.event(egui::Event::Text("Paris".into()));
     h.run_steps(1);
     h.key_press(egui::Key::Escape);
     h.run_steps(3);
     assert!(value(&h, "city").is_empty());
-    assert!(h.state().views[0].forms.focus.is_none());
+    assert!(h.state().win.views[0].forms.focus.is_none());
 }
 
 #[test]
@@ -293,7 +293,7 @@ fn check_boxes_radios_and_choices() {
 }
 
 fn focused(h: &Harness<'static, PdfCraftApp>) -> Option<(String, usize)> {
-    h.state().views[0].forms.focus.as_ref().map(|f| (f.name.clone(), f.widget))
+    h.state().win.views[0].forms.focus.as_ref().map(|f| (f.name.clone(), f.widget))
 }
 
 /// A text field, a check box, another text field and a pair of radio buttons, one under the
@@ -410,7 +410,7 @@ fn tab_and_shift_tab_follow_widget_order_across_pages() {
     h.run_steps(4);
     let order = {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         pdfcraft_ui_egui::forms_ui::tab_order(&doc.form, &doc.info)
             .into_iter()
             .filter_map(|(fi, wi)| doc.form.get(fi).map(|field| (field.name.clone(), wi)))
@@ -455,12 +455,12 @@ fn page_keys_still_work_with_a_check_box_or_radio_button_focused() {
     assert_eq!(focused(&h), Some(("agree".into(), 0)));
     h.key_press(egui::Key::End);
     h.run_steps(4);
-    assert_eq!(h.state().views[0].current, 2, "End goes to the last page");
-    assert!(h.state().views[0].page_screen_rect(0).is_none(), "where the check box is out of view");
+    assert_eq!(h.state().win.views[0].current, 2, "End goes to the last page");
+    assert!(h.state().win.views[0].page_screen_rect(0).is_none(), "where the check box is out of view");
     // Scrolled away, the box lets go: back on its page, Space no longer toggles it.
     h.key_press(egui::Key::Home);
     h.run_steps(4);
-    assert_eq!(h.state().views[0].current, 0);
+    assert_eq!(h.state().win.views[0].current, 0);
     assert_eq!(focused(&h), None, "the box let go of the focus");
     h.key_press(egui::Key::Space);
     h.run_steps(3);
@@ -470,7 +470,7 @@ fn page_keys_still_work_with_a_check_box_or_radio_button_focused() {
     h.key_press(egui::Key::ArrowRight);
     h.run_steps(3);
     assert_eq!(value(&h, "pick"), ["B"]);
-    assert_eq!(h.state().views[0].current, 0, "the arrow stayed in the group");
+    assert_eq!(h.state().win.views[0].current, 0, "the arrow stayed in the group");
     // Once scrolled away, an arrow scrolls again instead of changing the choice.
     h.key_press(egui::Key::End);
     h.run_steps(4);
@@ -533,7 +533,7 @@ fn tabbing_into_a_filled_field_selects_it_so_typing_replaces() {
     assert_eq!(focused(&h), Some(("country".into(), 0)));
     h.key_press(egui::Key::Tab);
     h.run_steps(4);
-    assert_eq!(h.state().views[0].forms.focus.as_ref().map(|f| f.name.as_str()), Some("city"));
+    assert_eq!(h.state().win.views[0].forms.focus.as_ref().map(|f| f.name.as_str()), Some("city"));
     h.event(egui::Event::Text("Lyon".into()));
     h.run_steps(1);
     h.key_press(egui::Key::Enter);
@@ -552,13 +552,13 @@ fn dragging_over_another_fields_text_focuses_it_and_selects_from_the_press() {
     h.key_press(egui::Key::Enter);
     h.run_steps(3);
     click_field(&mut h, "city", 0);
-    assert_eq!(h.state().views[0].forms.focus.as_ref().map(|f| f.name.as_str()), Some("city"));
+    assert_eq!(h.state().win.views[0].forms.focus.as_ref().map(|f| f.name.as_str()), Some("city"));
     let (rect, id) = {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         let f = doc.form.iter().find(|f| f.name == "name").unwrap();
-        let rect = pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.views[0], &doc.info, f, 0).expect("on screen");
-        (rect, egui::Id::unique(("form-field", s.views[0].view_key(), "name", 0usize)))
+        let rect = pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.win.views[0], &doc.info, f, 0).expect("on screen");
+        (rect, egui::Id::unique(("form-field", s.win.views[0].view_key(), "name", 0usize)))
     };
     // From inside the first word ("Ad|a" at the field's auto size, 13.9 pt) to past the end of the text.
     let (from, to) = (egui::pos2(rect.left() + 38.0, rect.center().y), egui::pos2(rect.right() - 8.0, rect.center().y));
@@ -572,7 +572,7 @@ fn dragging_over_another_fields_text_focuses_it_and_selects_from_the_press() {
     }
     h.drop_at(to);
     h.run_steps(3);
-    assert_eq!(h.state().views[0].forms.focus.as_ref().map(|f| f.name.as_str()), Some("name"), "the press moved the focus");
+    assert_eq!(h.state().win.views[0].forms.focus.as_ref().map(|f| f.name.as_str()), Some("name"), "the press moved the focus");
     let n = "Ada Lovelace".chars().count();
     let range = egui::TextEdit::load_state(&h.ctx, id).and_then(|s| s.cursor.char_range()).expect("a selection in the field");
     // "Ad|a": not the caret at the end that a newly focused editor gets on its own.
@@ -705,7 +705,7 @@ fn the_calendar_picks_today_in_the_fields_format_from_any_month() {
         h.get_by_label("Today").click();
         h.run_steps(4);
         assert_eq!(value(&h, name), [want], "today in {name}'s format");
-        assert!(h.state().views[0].forms.focus.is_none(), "picking closes the field, as a clicked day does");
+        assert!(h.state().win.views[0].forms.focus.is_none(), "picking closes the field, as a clicked day does");
         assert!(h.query_by_label("Today").is_none(), "and its calendar");
     }
     // One edit each, as a clicked day is.
@@ -751,7 +751,7 @@ fn saved_value(path: &std::path::Path, name: &str) -> Vec<String> {
     let mut app = PdfCraftApp::new();
     app.set_option("language", "en").unwrap();
     app.open_bytes("saved.pdf", None, std::fs::read(path).unwrap()).unwrap();
-    app.session.get(app.views[0].id).unwrap().form.iter().find(|f| f.name == name).unwrap().value.clone()
+    app.session.get(app.win.views[0].id).unwrap().form.iter().find(|f| f.name == name).unwrap().value.clone()
 }
 
 /// Step frames until the save has written `path`, instead of assuming it is there after a fixed
@@ -801,13 +801,13 @@ fn saving_while_still_typing_in_a_field_saves_the_text() {
     click_field(&mut h, "name", 0);
     h.event(egui::Event::Text("Browser Form 123".into()));
     h.run_steps(2);
-    assert!(h.state().views[0].forms.focus.is_some(), "still typing");
+    assert!(h.state().win.views[0].forms.focus.is_some(), "still typing");
     h.state_mut().save_override = Some(out.to_string_lossy().into_owned());
     h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::S);
     h.run_steps(3);
     assert_eq!(saved_value(&out, "name"), ["Browser Form 123"], "the saved PDF has the typed text");
     assert_eq!(value(&h, "name"), ["Browser Form 123"]);
-    let doc = h.state().session.get(h.state().views[0].id).unwrap();
+    let doc = h.state().session.get(h.state().win.views[0].id).unwrap();
     assert!(!doc.dirty, "and the document is saved, not left with an unsaved change");
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -882,7 +882,7 @@ fn closing_while_still_typing_in_a_field_asks_to_save() {
     h.run_steps(2);
     h.state_mut().request_close_tab(0);
     assert!(h.state().close_request.is_some(), "typed text is an unsaved change: the user is asked");
-    assert_eq!(h.state().views.len(), 1);
+    assert_eq!(h.state().win.views.len(), 1);
 }
 
 #[test]
@@ -944,7 +944,7 @@ fn escape_and_save_in_the_same_frame_discards_the_draft() {
     let before = value(&h, "name");
     type_then_save_in_one_frame(&mut h, "name", "Discard me", key(egui::Key::Escape, egui::Modifiers::NONE), &out);
     assert_eq!(value(&h, "name"), before, "Escape cancels typing, even with ⌘S right after it");
-    assert!(h.state().views[0].forms.focus.is_none());
+    assert!(h.state().win.views[0].forms.focus.is_none());
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -956,9 +956,9 @@ fn an_unrelated_command_leaves_the_field_being_typed_in_alone() {
     h.run_steps(2);
     assert!(h.state_mut().execute("view.theme.dark"));
     h.run_steps(2);
-    let focus = h.state().views[0].forms.focus.clone().expect("the editor stays open");
+    let focus = h.state().win.views[0].forms.focus.clone().expect("the editor stays open");
     assert_eq!(focus.text, "Still typing");
-    assert!(!h.state().session.get(h.state().views[0].id).unwrap().dirty, "nothing was committed");
+    assert!(!h.state().session.get(h.state().win.views[0].id).unwrap().dirty, "nothing was committed");
 }
 
 #[test]
@@ -1003,9 +1003,9 @@ fn pressing_another_text_field_validates_the_refused_value_once() {
     h.run_steps(2);
     let p = {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         let f = doc.form.iter().find(|f| f.name == "note").unwrap();
-        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.views[0], &doc.info, f, 0).expect("on screen").center()
+        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.win.views[0], &doc.info, f, 0).expect("on screen").center()
     };
     h.hover_at(p);
     h.run_steps(1);
@@ -1016,7 +1016,7 @@ fn pressing_another_text_field_validates_the_refused_value_once() {
     h.drop_at(p);
     h.run_steps(3);
     assert_eq!(h.state().toast, None, "the release did not validate it again");
-    let focus = h.state().views[0].forms.focus.clone().expect("the refused field stays open");
+    let focus = h.state().win.views[0].forms.focus.clone().expect("the refused field stays open");
     assert_eq!((focus.name.as_str(), focus.text.as_str()), ("qty", "4500"));
 }
 
@@ -1085,10 +1085,10 @@ fn buttons_over_text_show_the_pointing_hand_not_the_i_beam() {
     h.run_steps(6);
     let (agree, strength, background) = {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         let at = |name: &str| {
             let f = doc.form.iter().find(|f| f.name == name).unwrap();
-            pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.views[0], &doc.info, f, 0).expect("on screen")
+            pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.win.views[0], &doc.info, f, 0).expect("on screen")
         };
         (at("agree"), at("strength"), at("background"))
     };
@@ -1141,7 +1141,7 @@ fn a_rejected_value_keeps_the_typing_and_stops_the_save() {
     h.run_steps(4);
     assert!(!out.exists(), "nothing is saved without the typed value");
     assert_eq!(value(&h, "qty"), ["4"], "the field keeps its valid value");
-    let focus = h.state().views[0].forms.focus.clone().expect("the editor stays open");
+    let focus = h.state().win.views[0].forms.focus.clone().expect("the editor stays open");
     assert_eq!(focus.text, "4500", "with the text (typed after the 4), so the user can fix it");
     // And closing asks rather than dropping it.
     h.state_mut().request_close_tab(0);
@@ -1198,7 +1198,7 @@ fn refused_value_stops_save(commit_key: egui::Key, case: &str) {
     assert_eq!(value(&h, "qty"), ["4"]);
     assert!(!out.exists(), "nothing is saved right after the field refused its value");
     // The refused text is back in the field, so a later ⌘S stops again instead of saving 4.
-    assert_eq!(h.state().views[0].forms.focus.as_ref().map(|f| f.text.as_str()), Some("4500"));
+    assert_eq!(h.state().win.views[0].forms.focus.as_ref().map(|f| f.text.as_str()), Some("4500"));
     h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::S);
     h.run_steps(4);
     assert!(!out.exists());
@@ -1214,7 +1214,7 @@ fn flattening_while_typing_flattens_the_typed_text() {
     assert!(h.state_mut().execute("form.flatten"));
     h.run_steps(2);
     let s = h.state();
-    let doc = s.session.get(s.views[0].id).unwrap();
+    let doc = s.session.get(s.win.views[0].id).unwrap();
     assert!(doc.form.iter().all(|f| f.name != "name"), "the field is flattened");
     let mut r = pdfcraft_render::PageRenderer::new(doc.bytes.clone(), Default::default());
     let text = r
@@ -1279,13 +1279,13 @@ mod revert_tests {
         h.run_steps(2);
         h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::S);
         h.run_steps(4);
-        assert_eq!(h.state().views[0].forms.focus.as_ref().unwrap().text, "99");
+        assert_eq!(h.state().win.views[0].forms.focus.as_ref().unwrap().text, "99");
         assert_eq!(std::fs::read(&path).unwrap(), saved, "rejection leaves the saved file untouched");
         assert!(h.state_mut().execute("file.revert"));
         h.run_steps(2);
         h.get_all_by_label("Revert").last().expect("confirmation button").click();
         h.run_steps(4);
-        assert!(h.state().views[0].forms.focus.is_none() && h.state().views[0].pending_edit.is_none());
+        assert!(h.state().win.views[0].forms.focus.is_none() && h.state().win.views[0].pending_edit.is_none());
         assert_eq!(h.state().first_dirty(), None, "Revert discards rejected typing too");
         assert_eq!(value(&h, "name"), ["Saved original"]);
         assert!(h.state_mut().save_active(pdfcraft_ui_egui::SaveTarget::InPlace));
@@ -1339,7 +1339,7 @@ fn overlay_clears_after_fresh_tiles_zoom_then_edit_and_rejected_edit() {
     h.run_steps(2);
     assert_eq!(value(&h, "name"), ["GoodVal"]);
     crate::support::settle(&mut h);
-    assert!(!h.state().views[0].forms.unbaked.contains(&("name".to_string(), 0)));
+    assert!(!h.state().win.views[0].forms.unbaked.contains(&("name".to_string(), 0)));
 
     // 2. Rejected edit: typing rejected by validate script leaves unbaked clean.
     assert!(h.state_mut().apply_edit(pdfcraft_engine::Edit::SetFieldScript {
@@ -1352,12 +1352,12 @@ fn overlay_clears_after_fresh_tiles_zoom_then_edit_and_rejected_edit() {
     h.run_steps(2);
     h.key_press(egui::Key::Tab);
     h.run_steps(2);
-    assert!(!h.state().views[0].forms.unbaked.contains(&("city".to_string(), 0)));
+    assert!(!h.state().win.views[0].forms.unbaked.contains(&("city".to_string(), 0)));
     h.key_press(egui::Key::Escape);
     h.run_steps(2);
 
     // 3. Zoom then edit: zoom to another scale, let tiles settle, then edit.
-    h.state_mut().views[0].zoom_step(true);
+    h.state_mut().win.views[0].zoom_step(true);
     crate::support::settle(&mut h);
     click_field(&mut h, "name", 0);
     h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
@@ -1367,7 +1367,7 @@ fn overlay_clears_after_fresh_tiles_zoom_then_edit_and_rejected_edit() {
     h.run_steps(2);
     assert_eq!(value(&h, "name"), ["ZoomedVal"]);
     crate::support::settle(&mut h);
-    assert!(!h.state().views[0].forms.unbaked.contains(&("name".to_string(), 0)));
+    assert!(!h.state().win.views[0].forms.unbaked.contains(&("name".to_string(), 0)));
 }
 
 /// A field whose /P is a page number past the document's end (#1307) is listed under
@@ -1416,9 +1416,9 @@ fn list_box_clicks_select_directly_and_ctrl_click_toggles_multi() {
     // Click row 1 (Green) in ListOne
     let r_one = {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         let f = doc.form.iter().find(|f| f.name == "ListOne").unwrap();
-        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.views[0], &doc.info, f, 0).expect("on screen")
+        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.win.views[0], &doc.info, f, 0).expect("on screen")
     };
     let zoom_one = r_one.height() / 70.0;
     let p_green = egui::pos2(r_one.center().x, r_one.min.y + 19.0 * zoom_one);
@@ -1434,9 +1434,9 @@ fn list_box_clicks_select_directly_and_ctrl_click_toggles_multi() {
     // Click row 1 (Tue) in ListMulti
     let r_multi = {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         let f = doc.form.iter().find(|f| f.name == "ListMulti").unwrap();
-        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.views[0], &doc.info, f, 0).expect("on screen")
+        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.win.views[0], &doc.info, f, 0).expect("on screen")
     };
     let zoom_multi = r_multi.height() / 70.0;
     let p_tue = egui::pos2(r_multi.center().x, r_multi.min.y + 19.0 * zoom_multi);
@@ -1467,7 +1467,7 @@ fn list_box_clicks_select_directly_and_ctrl_click_toggles_multi() {
 /// The selected option positions of `name` (`/I`, or `/V` without a usable one).
 fn selected(h: &Harness<'static, PdfCraftApp>, name: &str) -> Vec<usize> {
     let s = h.state();
-    s.session.get(s.views[0].id).unwrap().form.iter().find(|f| f.name == name).unwrap().selected.clone()
+    s.session.get(s.win.views[0].id).unwrap().form.iter().find(|f| f.name == name).unwrap().selected.clone()
 }
 
 /// ISO 32000-2 Table 234: `/I` tells apart options that share an export value. A list box whose
@@ -1495,9 +1495,9 @@ fn a_list_box_click_picks_one_of_two_options_with_the_same_export_value() {
 
     let r = {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         let f = doc.form.iter().find(|f| f.name == "dup").unwrap();
-        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.views[0], &doc.info, f, 0).expect("on screen")
+        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.win.views[0], &doc.info, f, 0).expect("on screen")
     };
     let zoom = r.height() / 70.0;
     // Row 0 (One-A), then row 1 (One-B): each click changes the selection though /V stays (1).
@@ -1516,7 +1516,7 @@ fn a_list_box_click_picks_one_of_two_options_with_the_same_export_value() {
     wait_for_file(&mut h, &out);
     let mut app = PdfCraftApp::new();
     app.open_bytes("saved.pdf", None, std::fs::read(&out).unwrap()).unwrap();
-    let reopened = app.session.get(app.views[0].id).unwrap().form.iter().find(|f| f.name == "dup").unwrap().clone();
+    let reopened = app.session.get(app.win.views[0].id).unwrap().form.iter().find(|f| f.name == "dup").unwrap().clone();
     assert_eq!(reopened.value, ["1"], "/V is the one export value");
     assert_eq!(reopened.selected, [0], "/I keeps One-A through the save");
     let _ = std::fs::remove_dir_all(&dir);
@@ -1546,13 +1546,13 @@ fn a_click_in_a_twin_list_box_with_options_in_another_order_picks_the_row_clicke
     h.run_steps(4);
     let twins = |h: &Harness<'static, PdfCraftApp>| -> Vec<Vec<usize>> {
         let s = h.state();
-        s.session.get(s.views[0].id).unwrap().form.iter().filter(|f| f.name == "dup").map(|f| f.selected.clone()).collect()
+        s.session.get(s.win.views[0].id).unwrap().form.iter().filter(|f| f.name == "dup").map(|f| f.selected.clone()).collect()
     };
     let r = {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         let f = doc.form.iter().filter(|f| f.name == "dup").nth(1).unwrap();
-        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.views[0], &doc.info, f, 0).expect("on screen")
+        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.win.views[0], &doc.info, f, 0).expect("on screen")
     };
     let zoom = r.height() / 70.0;
     // Row 0 of the second list box: One-B.
@@ -1593,9 +1593,9 @@ fn a_single_select_list_box_given_two_values_shows_and_takes_one() {
 
     let r = {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         let f = doc.form.iter().find(|f| f.name == "pair").unwrap();
-        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.views[0], &doc.info, f, 0).expect("on screen")
+        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.win.views[0], &doc.info, f, 0).expect("on screen")
     };
     let zoom = r.height() / 70.0;
     // Row 1 (Japan), which /V also named: clicking it makes it the one value.
@@ -1633,7 +1633,7 @@ fn auto_size_harness() -> Harness<'static, PdfCraftApp> {
 /// wrapped at the box) that text is in the screen font, against the room inside the box (pt).
 fn on_screen_fit(h: &Harness<'static, PdfCraftApp>, name: &str, text: &str) -> (f32, f32, f32) {
     let s = h.state();
-    let f = s.session.get(s.views[0].id).unwrap().form.iter().find(|f| f.name == name).unwrap().clone();
+    let f = s.session.get(s.win.views[0].id).unwrap().form.iter().find(|f| f.name == name).unwrap().clone();
     let w = f.widgets[0].clone();
     let painter = egui::Painter::new(h.ctx.clone(), egui::LayerId::background(), egui::Rect::EVERYTHING);
     let size = pdfcraft_ui_egui::forms_ui::field_text_size(&painter, &f, &w, text);
@@ -1656,7 +1656,7 @@ fn auto_size_fields_shrink_and_wrap_typed_text_to_fit_their_box() {
     click_field(&mut h, "short", 0);
     h.event(egui::Event::Text(long.into()));
     h.run_steps(2);
-    let typed = h.state().views[0].forms.focus.clone().expect("the editor is open").text;
+    let typed = h.state().win.views[0].forms.focus.clone().expect("the editor is open").text;
     assert_eq!(typed, long);
     let (size, used, room) = on_screen_fit(&h, "short", &typed);
     assert!(size > 4.0 && size < 8.0 / 1.15, "a long value shrinks in the short box: {size} pt");
@@ -1698,7 +1698,7 @@ fn the_field_editor_sizes_auto_size_text_as_the_page_does() {
     });
     h.run_steps(6);
     let s = h.state();
-    let doc = s.session.get(s.views[0].id).unwrap();
+    let doc = s.session.get(s.win.views[0].id).unwrap();
     let field = |name: &str| doc.form.iter().find(|f| f.name == name).unwrap().clone();
     let painter = egui::Painter::new(h.ctx.clone(), egui::LayerId::background(), egui::Rect::EVERYTHING);
     let screen = |name: &str, zoom: f32| {
@@ -1733,13 +1733,13 @@ fn mode_tab_cursors(
     h: &mut Harness<'static, PdfCraftApp>,
     what: impl Fn(&Harness<'static, PdfCraftApp>) -> egui::Rect,
 ) -> [(&'static str, egui::CursorIcon); 3] {
-    let page = |h: &Harness<'static, PdfCraftApp>| h.state().views[0].page_screen_rect(0).expect("on screen");
+    let page = |h: &Harness<'static, PdfCraftApp>| h.state().win.views[0].page_screen_rect(0).expect("on screen");
     let y = what(h).center().y - page(h).top();
     let tabs = mode_tab(h, "Convert").center().y;
-    h.state_mut().views[0].goto = Some((0, 0.0));
+    h.state_mut().win.views[0].goto = Some((0, 0.0));
     h.run_steps(4);
     let top = page(h).top();
-    h.state_mut().views[0].goto = Some((0, (top - (tabs - y)) / page(h).height()));
+    h.state_mut().win.views[0].goto = Some((0, (top - (tabs - y)) / page(h).height()));
     h.run_steps(4);
     let under = what(h);
     ["Edit", "Convert", "E-Sign"].map(|label| {
@@ -1760,20 +1760,20 @@ const HAND_ON_EVERY_TAB: [(&str, egui::CursorIcon); 3] =
 fn mode_tabs_keep_the_hand_over_a_text_field_scrolled_under_them() {
     let mut h = harness();
     // The page across the window, so the name field reaches under the tabs.
-    h.state_mut().views[0].fit = pdfcraft_ui_egui::canvas::Fit::Width;
+    h.state_mut().win.views[0].fit = pdfcraft_ui_egui::canvas::Fit::Width;
     h.run_steps(4);
     let name = |h: &Harness<'static, PdfCraftApp>| {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         let f = doc.form.iter().find(|f| f.name == "name").unwrap();
-        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.views[0], &doc.info, f, 0).expect("on screen")
+        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.win.views[0], &doc.info, f, 0).expect("on screen")
     };
     assert_eq!(mode_tab_cursors(&mut h, name), HAND_ON_EVERY_TAB, "the field under the tabs");
     // Open it, where it shows.
-    h.state_mut().views[0].goto = Some((0, 0.0));
+    h.state_mut().win.views[0].goto = Some((0, 0.0));
     h.run_steps(4);
     click_field(&mut h, "name", 0);
-    assert!(h.state().views[0].forms.focus.is_some(), "the editor opened");
+    assert!(h.state().win.views[0].forms.focus.is_some(), "the editor opened");
     assert_eq!(mode_tab_cursors(&mut h, name), HAND_ON_EVERY_TAB, "the open field under the tabs");
     let convert = mode_tab(&h, "Convert").center();
     click_at(&mut h, convert);
@@ -1826,12 +1826,12 @@ fn a_form_button_opens_only_a_real_pdf_and_returns_to_the_tab_it_opened() {
         app.open_bytes("form.pdf", None, guide_fixture()).unwrap();
         // Another document named like the attachment, its bytes the attachment's and an update.
         app.open_bytes("inner.pdf", None, format!("{GUIDE_INNER}\n% updated later\n").into_bytes()).unwrap();
-        app.active = Some(0);
+        app.win.active = Some(0);
         app
     });
     h.run_steps(4);
-    let tabs = |h: &Harness<'static, PdfCraftApp>| h.state().views.len();
-    let id = h.state().views[0].id;
+    let tabs = |h: &Harness<'static, PdfCraftApp>| h.state().win.views.len();
+    let id = h.state().win.views[0].id;
     // A text file named .pdf is offered to save, not opened.
     let saved = std::env::temp_dir().join(format!("pdfcraft-fake-{}.pdf", std::process::id()));
     let _ = std::fs::remove_file(&saved);
@@ -1842,16 +1842,16 @@ fn a_form_button_opens_only_a_real_pdf_and_returns_to_the_tab_it_opened() {
     assert_eq!(std::fs::read(&saved).ok().as_deref(), Some(&b"not a PDF at"[..]), "offered to save instead");
     let _ = std::fs::remove_file(&saved);
     // The real attached PDF opens in a tab of its own, though another inner.pdf starts with it.
-    h.state_mut().active = Some(0);
+    h.state_mut().win.active = Some(0);
     h.state_mut().run_button_script(id, "go", "this.exportDataObject({cName: 'Guide.pdf', nLaunch: 2});");
-    crate::support::wait_until(&mut h, "the attachment to open", |app| app.active == Some(2));
+    crate::support::wait_until(&mut h, "the attachment to open", |app| app.win.active == Some(2));
     assert_eq!(tabs(&h), 3, "a tab of its own");
-    assert_eq!(h.state().active, Some(2));
+    assert_eq!(h.state().win.active, Some(2));
     // Asked again, it goes back to the tab it opened.
-    h.state_mut().active = Some(0);
+    h.state_mut().win.active = Some(0);
     h.state_mut().run_button_script(id, "go", "this.exportDataObject({cName: 'Guide.pdf', nLaunch: 2});");
-    crate::support::wait_until(&mut h, "the attachment tab to activate", |app| app.active == Some(2));
-    assert_eq!((tabs(&h), h.state().active), (3, Some(2)), "the tab it opened, not the other inner.pdf");
+    crate::support::wait_until(&mut h, "the attachment tab to activate", |app| app.win.active == Some(2));
+    assert_eq!((tabs(&h), h.state().win.active), (3, Some(2)), "the tab it opened, not the other inner.pdf");
 }
 
 /// A button script's `exportDataObject` opens the attached PDF in a new tab, goes back to that
@@ -1867,21 +1867,21 @@ fn a_form_button_opens_its_attached_instructions_in_a_new_tab() {
     h.run_steps(4);
     let tabs = |h: &Harness<'static, PdfCraftApp>| {
         let s = h.state();
-        s.views.iter().filter_map(|v| s.session.get(v.id)).map(|d| d.name.clone()).collect::<Vec<_>>()
+        s.win.views.iter().filter_map(|v| s.session.get(v.id)).map(|d| d.name.clone()).collect::<Vec<_>>()
     };
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     // By its key in the document's attached files, as forms name it.
     h.state_mut().run_button_script(id, "go", "this.exportDataObject({cName: 'Guide.pdf', nLaunch: 2});");
-    crate::support::wait_until(&mut h, "the attachment to open", |app| app.active == Some(1));
+    crate::support::wait_until(&mut h, "the attachment to open", |app| app.win.active == Some(1));
     assert_eq!(tabs(&h), ["form.pdf", "inner.pdf"], "the attached PDF opens in its own tab");
     // Asked again from the form, it goes back to that tab rather than opening another.
-    h.state_mut().active = Some(0);
+    h.state_mut().win.active = Some(0);
     h.state_mut().run_button_script(id, "go", "this.exportDataObject({cName: 'Guide.pdf', nLaunch: 2});");
-    crate::support::wait_until(&mut h, "the attachment tab to activate", |app| app.active == Some(1));
+    crate::support::wait_until(&mut h, "the attachment tab to activate", |app| app.win.active == Some(1));
     assert_eq!(tabs(&h), ["form.pdf", "inner.pdf"], "no second copy");
-    assert_eq!(h.state().active, Some(1), "its tab is shown");
+    assert_eq!(h.state().win.active, Some(1), "its tab is shown");
     // A file the document doesn't have is said so.
-    h.state_mut().active = Some(0);
+    h.state_mut().win.active = Some(0);
     h.state_mut().run_button_script(id, "go", "this.exportDataObject({cName: 'nope.pdf', nLaunch: 2});");
     crate::support::wait_until(&mut h, "the missing attachment notice", |app| app.toast.as_ref().is_some_and(|t| t.0.contains("nope.pdf")));
     assert!(h.state().toast.as_ref().is_some_and(|t| t.0.contains("nope.pdf")), "{:?}", h.state().toast);
@@ -1935,10 +1935,10 @@ fn an_editable_combo_box_takes_a_typed_value() {
     h.key_press(egui::Key::Enter);
     h.run_steps(4);
     assert_eq!(value(&h, "fruit"), ["Cherry"], "Enter commits the typed value");
-    assert!(h.state().views[0].forms.focus.is_none(), "and closes the field");
+    assert!(h.state().win.views[0].forms.focus.is_none(), "and closes the field");
     // Reopened, it shows the typed value, and the list still picks an option.
     click_field(&mut h, "fruit", 0);
-    assert_eq!(h.state().views[0].forms.focus.as_ref().map(|f| f.text.as_str()), Some("Cherry"));
+    assert_eq!(h.state().win.views[0].forms.focus.as_ref().map(|f| f.text.as_str()), Some("Cherry"));
     h.get_by_label("Banana").click();
     h.run_steps(4);
     assert_eq!(value(&h, "fruit"), ["Banana"], "a pick from the list");
@@ -1988,9 +1988,9 @@ fn a_turned_editable_combo_box_places_the_caret_along_its_turned_text() {
     h.run_steps(2);
     let field = {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         let f = doc.form.iter().find(|f| f.name == "fruit").unwrap();
-        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.views[0], &doc.info, f, 0).expect("on screen")
+        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.win.views[0], &doc.info, f, 0).expect("on screen")
     };
     click_at(&mut h, field.left_top() + egui::vec2(3.0, 2.0));
     h.event(egui::Event::Text("X".into()));
@@ -2008,7 +2008,7 @@ fn a_combo_box_without_edit_takes_no_typing() {
     assert_eq!(focused(&h), Some(("veg".into(), 0)));
     h.event(egui::Event::Text("Cherry".into()));
     h.run_steps(2);
-    assert_eq!(h.state().views[0].forms.focus.as_ref().map(|f| f.text.as_str()), Some(""), "no text box took the typing");
+    assert_eq!(h.state().win.views[0].forms.focus.as_ref().map(|f| f.text.as_str()), Some(""), "no text box took the typing");
     h.key_press(egui::Key::Enter);
     h.run_steps(2);
     h.key_press(egui::Key::Tab);
@@ -2030,7 +2030,7 @@ fn a_form_button_shows_and_hides_the_attachments_panel() {
     let mut h = harness();
     h.state_mut().set_option("panel", "none").unwrap();
     h.run_steps(2);
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     h.state_mut().run_button_script(id, "size", "app.execMenuItem('ShowHideFileAttachment');");
     crate::support::wait_until(&mut h, "attachments panel to open", |app| app.right == Some(pdfcraft_ui_egui::RightPanel::Attachments));
     // Show/Hide, as its name says: asked again, it closes.
@@ -2041,7 +2041,7 @@ fn a_form_button_shows_and_hides_the_attachments_panel() {
 /// Which widgets of field `name` are on (their `/AS` is their on state).
 fn on_widgets(h: &Harness<'static, PdfCraftApp>, name: &str) -> Vec<bool> {
     let s = h.state();
-    let f = s.session.get(s.views[0].id).unwrap().form.iter().find(|f| f.name == name).unwrap().clone();
+    let f = s.session.get(s.win.views[0].id).unwrap().form.iter().find(|f| f.name == name).unwrap().clone();
     (0..f.widgets.len()).map(|i| f.widget_on(i)).collect()
 }
 
@@ -2253,9 +2253,9 @@ fn list_box(objects: &[&str], name: &str) -> (Harness<'static, PdfCraftApp>, egu
     h.run_steps(4);
     let r = {
         let s = h.state();
-        let doc = s.session.get(s.views[0].id).unwrap();
+        let doc = s.session.get(s.win.views[0].id).unwrap();
         let f = doc.form.iter().find(|f| f.name == name).unwrap();
-        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.views[0], &doc.info, f, 0).expect("on screen")
+        pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.win.views[0], &doc.info, f, 0).expect("on screen")
     };
     (h, r)
 }
@@ -2300,7 +2300,7 @@ fn clicking_the_shown_row_of_a_single_select_list_holding_an_array_writes_one_va
     );
     let field = |h: &Harness<'static, PdfCraftApp>| {
         let s = h.state();
-        s.session.get(s.views[0].id).unwrap().form.iter().find(|f| f.name == "pair").unwrap().clone()
+        s.session.get(s.win.views[0].id).unwrap().form.iter().find(|f| f.name == "pair").unwrap().clone()
     };
     assert!(field(&h).single_value_is_array, "loaded from an array");
     let zoom = r.height() / 70.0;
@@ -2312,9 +2312,9 @@ fn clicking_the_shown_row_of_a_single_select_list_holding_an_array_writes_one_va
 /// Where the first widget of field `name` is on screen in the first view.
 fn field_rect(h: &Harness<'static, PdfCraftApp>, name: &str) -> egui::Rect {
     let s = h.state();
-    let doc = s.session.get(s.views[0].id).unwrap();
+    let doc = s.session.get(s.win.views[0].id).unwrap();
     let f = doc.form.iter().find(|f| f.name == name).unwrap();
-    pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.views[0], &doc.info, f, 0).expect("on screen")
+    pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.win.views[0], &doc.info, f, 0).expect("on screen")
 }
 
 /// Filled triangles painted inside `within`, at any depth of the frame's shapes.
@@ -2436,7 +2436,7 @@ fn the_arrow_keys_move_through_a_drop_downs_list_and_enter_chooses() {
     h.key_press(egui::Key::Enter);
     h.run_steps(3);
     assert_eq!(value(&h, "country"), ["fr"]);
-    assert!(h.state().views[0].forms.focus.is_none(), "Enter closes the list");
+    assert!(h.state().win.views[0].forms.focus.is_none(), "Enter closes the list");
     // Reopened, the list starts from the field's value.
     click_field(&mut h, "country", 0);
     h.key_press(egui::Key::ArrowUp);
@@ -2482,7 +2482,7 @@ fn the_mouse_wheel_scrolls_a_long_drop_down_list_and_not_the_page() {
     long_country(&mut h);
     click_field(&mut h, "country", 0);
     let first = egui_kittest::kittest::Queryable::get_by_label(&h, "0000").rect();
-    let page = h.state().views[0].page_screen_rect(0);
+    let page = h.state().win.views[0].page_screen_rect(0);
     h.hover_at(first.center() + egui::vec2(0.0, first.height() * 4.0));
     h.run_steps(1);
     for _ in 0..3 {
@@ -2497,7 +2497,7 @@ fn the_mouse_wheel_scrolls_a_long_drop_down_list_and_not_the_page() {
     }
     h.run_steps(6);
     assert!(egui_kittest::kittest::Queryable::query_by_label(&h, "0000").is_none(), "the list scrolled down");
-    assert_eq!(h.state().views[0].page_screen_rect(0), page, "the page stayed where it was");
+    assert_eq!(h.state().win.views[0].page_screen_rect(0), page, "the page stayed where it was");
 }
 
 /// Escape in an open drop-down closes its list and nothing else: the find bar, which Escape
@@ -2506,16 +2506,16 @@ fn the_mouse_wheel_scrolls_a_long_drop_down_list_and_not_the_page() {
 fn escape_closes_an_open_drop_downs_list_and_leaves_the_page_alone() {
     let mut h = harness();
     long_country(&mut h);
-    h.state_mut().views[0].open_find();
+    h.state_mut().win.views[0].open_find();
     h.run_steps(3);
-    assert!(h.state().views[0].find.is_some());
+    assert!(h.state().win.views[0].find.is_some());
     click_field(&mut h, "country", 0);
     assert!(egui_kittest::kittest::Queryable::query_by_label(&h, "0000").is_some(), "the list is open");
     h.key_press(egui::Key::Escape);
     h.run_steps(3);
     assert!(egui_kittest::kittest::Queryable::query_by_label(&h, "0000").is_none(), "Escape closed the list");
-    assert!(h.state().views[0].forms.focus.is_none(), "and the field");
-    assert!(h.state().views[0].find.is_some(), "the find bar stays open");
+    assert!(h.state().win.views[0].forms.focus.is_none(), "and the field");
+    assert!(h.state().win.views[0].find.is_some(), "the find bar stays open");
 }
 
 /// An auto-sized drop-down's list draws its items at the size the field shows its value at, so a
@@ -2552,7 +2552,7 @@ fn in_single_page_view_the_wheel_over_an_open_list_scrolls_the_list_not_the_page
     h.key_press(egui::Key::Home);
     for _ in 0..60 {
         h.run_steps(2);
-        if !h.state().render_pending() && h.state().views[0].page_screen_rect(0).is_some() {
+        if !h.state().render_pending() && h.state().win.views[0].page_screen_rect(0).is_some() {
             break;
         }
     }
@@ -2572,18 +2572,18 @@ fn in_single_page_view_the_wheel_over_an_open_list_scrolls_the_list_not_the_page
         h.run_steps(6);
     };
     // The control: over the page, the wheel turns it.
-    let page = h.state().views[0].page_screen_rect(0).expect("page 1 on screen");
+    let page = h.state().win.views[0].page_screen_rect(0).expect("page 1 on screen");
     wheel(&mut h, page.center());
-    assert_eq!(h.state().views[0].current, 1, "over the page, the wheel turns it");
+    assert_eq!(h.state().win.views[0].current, 1, "over the page, the wheel turns it");
     h.key_press(egui::Key::Home);
     h.run_steps(6);
-    assert_eq!(h.state().views[0].current, 0);
+    assert_eq!(h.state().win.views[0].current, 0);
     // Over the open list, it scrolls the list instead.
     click_field(&mut h, "country", 0);
     let first = egui_kittest::kittest::Queryable::get_by_label(&h, "0000").rect();
     wheel(&mut h, first.center() + egui::vec2(0.0, first.height() * 4.0));
     assert!(egui_kittest::kittest::Queryable::query_by_label(&h, "0000").is_none(), "the list scrolled down");
-    assert_eq!(h.state().views[0].current, 0, "the page didn't turn");
+    assert_eq!(h.state().win.views[0].current, 0, "the page didn't turn");
 }
 
 /// With a page taller than the window and the pointer resting on an open drop-down's list,
@@ -2605,12 +2605,12 @@ fn an_open_drop_down_keeps_the_arrow_keys_and_home_from_moving_the_page() {
     let row = egui_kittest::kittest::Queryable::get_by_label(&h, "0300").rect();
     h.hover_at(row.center());
     h.run_steps(2);
-    let page = h.state().views[0].page_screen_rect(0);
+    let page = h.state().win.views[0].page_screen_rect(0);
     h.key_press(egui::Key::Home);
     h.run_steps(2);
     h.key_press(egui::Key::ArrowDown);
     h.run_steps(4);
-    assert_eq!(h.state().views[0].page_screen_rect(0), page, "the page stayed where it was");
+    assert_eq!(h.state().win.views[0].page_screen_rect(0), page, "the page stayed where it was");
     h.key_press(egui::Key::Enter);
     h.run_steps(3);
     assert_eq!(value(&h, "country"), ["0100"], "one item down from the first");

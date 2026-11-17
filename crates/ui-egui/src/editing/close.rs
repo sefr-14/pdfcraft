@@ -27,7 +27,7 @@ impl PdfCraftApp {
         if self.hold_close_for_ocr_review(index) {
             return;
         }
-        let Some(key) = self.views.get(index).map(|v| v.key) else { return };
+        let Some(key) = self.win.views.get(index).map(|v| v.key) else { return };
         if self.has_twin(index) {
             if self.has_unsaved_typing(index) && !self.commit_typing_at(index) {
                 return;
@@ -54,7 +54,7 @@ impl PdfCraftApp {
         if self.hold_for_any_ocr_review() {
             return;
         }
-        for i in (0..self.views.len()).rev() {
+        for i in (0..self.win.views.len()).rev() {
             if !self.has_unsaved_work(i) {
                 self.close_tab(i);
             }
@@ -69,11 +69,11 @@ impl PdfCraftApp {
     /// to (#6485). The document comes to the front with its review, and a notice says what to
     /// do. Whether the close was held.
     pub(crate) fn hold_close_for_ocr_review(&mut self, index: usize) -> bool {
-        let Some(id) = self.views.get(index).map(|v| v.id) else { return false };
+        let Some(id) = self.win.views.get(index).map(|v| v.id) else { return false };
         if !self.ocr_verify.holds_reading_of(id) {
             return false;
         }
-        self.active = Some(index);
+        self.win.active = Some(index);
         self.ocr_verify.open = true;
         self.notify_tr("Accept or reject the OCR review before closing this document");
         true
@@ -88,7 +88,7 @@ impl PdfCraftApp {
 
     /// The tab of the document whose OCR review is still open, if any.
     fn ocr_review_index(&self) -> Option<usize> {
-        self.views.iter().position(|v| self.ocr_verify.holds_reading_of(v.id))
+        self.win.views.iter().position(|v| self.ocr_verify.holds_reading_of(v.id))
     }
 
     /// File ▸ Revert (after the confirmation).
@@ -100,7 +100,7 @@ impl PdfCraftApp {
                 // Revert discards this source's uncommitted typing as well as model edits, in
                 // every tab of it. Otherwise a later Save could write a rejected draft back into
                 // the file.
-                for view in self.views.iter_mut().filter(|v| v.id == id) {
+                for view in self.win.views.iter_mut().filter(|v| v.id == id) {
                     view.forms.focus = None;
                     // The focus goes with them, running no exit: a script changing the document
                     // just reverted would only make it unsaved again.
@@ -125,7 +125,7 @@ impl PdfCraftApp {
 
     /// The first tab with unsaved changes.
     pub fn first_dirty(&self) -> Option<usize> {
-        (0..self.views.len()).find(|&i| self.has_unsaved_work(i))
+        (0..self.win.views.len()).find(|&i| self.has_unsaved_work(i))
     }
 
     /// Answer the save prompt: `Some(true)` save, `Some(false)` discard, `None` cancel.
@@ -160,10 +160,10 @@ impl PdfCraftApp {
             None => {} // cancelled: nothing closes
             Some(false) => self.close_and_continue(ctx, index, req),
             Some(true) => {
-                let Some(key) = self.views.get(index).map(|v| v.key) else { return };
+                let Some(key) = self.win.views.get(index).map(|v| v.key) else { return };
                 // Bring the document forward: what's typed in its form is committed and saved
                 // with it, and a field that rejects the value is shown where the user can fix it.
-                self.active = Some(index);
+                self.win.active = Some(index);
                 // Close only once the save has actually been written, which may be on a later
                 // frame when the user has to choose where. A failed or cancelled save keeps the
                 // document open.
@@ -190,7 +190,7 @@ impl PdfCraftApp {
             }
             return;
         }
-        match (req, self.views.get(index).map(|v| v.id)) {
+        match (req, self.win.views.get(index).map(|v| v.id)) {
             (CloseRequest::Quit | CloseRequest::All, Some(id)) => self.close_document(id),
             _ => self.close_tab(index),
         }

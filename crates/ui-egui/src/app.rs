@@ -51,7 +51,7 @@ impl PdfCraftApp {
         let title = titled(front.and_then(|i| crate::canvas::tab_label(self, i)));
         // The web page's title is what an embedding host reads to tell which file opened, so it
         // names the file even when the document asks to show its own title.
-        let page_title = titled(front.and_then(|i| self.views.get(i)).and_then(|v| self.session.get(v.id)).map(|d| d.name.clone()));
+        let page_title = titled(front.and_then(|i| self.win.views.get(i)).and_then(|v| self.session.get(v.id)).map(|d| d.name.clone()));
         if title != self.window_title {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
             self.window_title = title;
@@ -69,14 +69,9 @@ impl PdfCraftApp {
     /// Construct default session, panels, theme and control state with no active property-edit session.
     pub fn new() -> Self {
         Self {
-            panes: Default::default(),
+            win: WindowUi::new(),
             session: Session::new(),
             status_captions_lang: None,
-            views: Vec::new(),
-            closed_tabs: Vec::new(),
-            active: None,
-            layout_mode: ViewLayout::Tabs,
-            tile_frame: Vec::new(),
             mode: Mode::AllTools,
             default_mode: Mode::AllTools,
             view_defaults: Default::default(),
@@ -397,30 +392,30 @@ impl PdfCraftApp {
     }
 
     pub fn active_ids(&self) -> Option<(usize, DocId)> {
-        self.active.and_then(|i| self.views.get(i).map(|v| (i, v.id)))
+        self.win.active.and_then(|i| self.win.views.get(i).map(|v| (i, v.id)))
     }
 
     /// The active tab's view key (see [`canvas::ViewKey`]).
     pub fn active_key(&self) -> Option<canvas::ViewKey> {
-        self.active.and_then(|i| self.views.get(i)).map(|v| v.key)
+        self.win.active.and_then(|i| self.win.views.get(i)).map(|v| v.key)
     }
 
     /// The tab index of the view with this key, wherever tabs have moved since.
     pub fn view_index(&self, key: canvas::ViewKey) -> Option<usize> {
-        self.views.iter().position(|v| v.key == key)
+        self.win.views.iter().position(|v| v.key == key)
     }
 
     /// The tab indexes of every view of document `id`, in tab order (Duplicate Tab can show one
     /// document in several tabs).
     pub fn views_of(&self, id: DocId) -> Vec<usize> {
-        self.views.iter().enumerate().filter(|(_, v)| v.id == id).map(|(i, _)| i).collect()
+        self.win.views.iter().enumerate().filter(|(_, v)| v.id == id).map(|(i, _)| i).collect()
     }
 
     /// The open documents in tab order, each once however many tabs show it (Duplicate Tab):
     /// what pickers of open documents list.
     pub fn open_documents(&self) -> Vec<DocId> {
-        let mut ids: Vec<DocId> = Vec::with_capacity(self.views.len());
-        for v in &self.views {
+        let mut ids: Vec<DocId> = Vec::with_capacity(self.win.views.len());
+        for v in &self.win.views {
             if !ids.contains(&v.id) {
                 ids.push(v.id);
             }
@@ -431,7 +426,7 @@ impl PdfCraftApp {
     /// The tab that stands for document `id`: the active tab when it shows the document,
     /// otherwise its first tab. With one tab per document, simply that tab.
     pub fn view_of(&self, id: DocId) -> Option<usize> {
-        self.active_ids().filter(|(_, active)| *active == id).map(|(i, _)| i).or_else(|| self.views.iter().position(|v| v.id == id))
+        self.active_ids().filter(|(_, active)| *active == id).map(|(i, _)| i).or_else(|| self.win.views.iter().position(|v| v.id == id))
     }
 
     /// Whether something over the pages has the keyboard: what covers them
@@ -485,7 +480,7 @@ impl PdfCraftApp {
     pub(crate) fn covers_pages(&self) -> bool {
         // Full screen draws the page alone: not the palette, nor the OCR Verify screen it was
         // entered over. Dialogs and prompts show there too.
-        let shown = !(self.full_screen && self.active.is_some());
+        let shown = !(self.full_screen && self.win.active.is_some());
         self.modal_open() || self.pending_full_screen.is_some() || self.updates.open || (self.palette_open || self.ocr_verify.open) && shown
     }
 
@@ -532,7 +527,7 @@ impl PdfCraftApp {
 
     /// `true` while any open document still waits for page renders (used by headless capture).
     pub fn render_pending(&self) -> bool {
-        self.views.iter().any(|v| v.render_pending())
+        self.win.views.iter().any(|v| v.render_pending())
     }
 
     /// Check whether a tool group is pinned to Home.
@@ -683,7 +678,7 @@ impl PdfCraftApp {
         let native = ctx.native_pixels_per_point().unwrap_or(1.0);
         ui_scale::sync(ctx, ui_scale::zoom(self.ui_scale, self.system_text_scale, native), &mut self.ui_scale_applied);
         // Remember user work even if its tab is subsequently closed or Home is selected.
-        self.startup_superseded |= !self.views.is_empty() || self.combine_showing() || self.dialog.is_some() || self.password_prompt.is_some();
+        self.startup_superseded |= !self.win.views.is_empty() || self.combine_showing() || self.dialog.is_some() || self.password_prompt.is_some();
         // Also done in `raw_input_hook`, before input; here for hosts that don't call the hook.
         self.scroll_speed.set_line_speed(ctx);
         // Motion reads this frame's wheel input, so it begins in `ui`, in a known UI phase:
@@ -692,7 +687,7 @@ impl PdfCraftApp {
         // the files were let go before the gap is read.
         self.finish_grid_drop(ctx);
         // Showing a document hides the Combine files tab.
-        if self.active.is_some() {
+        if self.win.active.is_some() {
             self.combine_tab.focused = false;
         }
         #[cfg(target_arch = "wasm32")]
@@ -819,10 +814,10 @@ impl PdfCraftApp {
         // In Tile View every tile keeps the middle-button gesture started over it (OV7.3): the
         // tile under the pointer is navigated without being made the active one first.
         let tiled = self.tiled();
-        for (index, view) in self.views.iter_mut().enumerate() {
-            let shut = blocked || self.active != Some(index);
+        for (index, view) in self.win.views.iter_mut().enumerate() {
+            let shut = blocked || self.win.active != Some(index);
             view.objects.set_input_blocked(shut);
-            if blocked || (self.active != Some(index) && !tiled) {
+            if blocked || (self.win.active != Some(index) && !tiled) {
                 view.auto_scroll.cancel();
                 // Edit text and Add text's drags end while their input is blocked rather than wait, to
                 // land wherever the pointer is once it opens again.
@@ -892,11 +887,11 @@ impl PdfCraftApp {
             // A frame once `auto_save_interval` has passed, for eframe to write the settings.
             ctx.request_repaint_after(std::time::Duration::from_millis(2100));
         }
-        self.tile_frame.clear();
+        self.win.tile_frame.clear();
         // Another tool lets go of a click whose picture is still being found, whether or not its
         // page is drawn to see the change.
         let picks = self.quick_tool == QuickTool::Select;
-        for view in &mut self.views {
+        for view in &mut self.win.views {
             view.begin_render_frame();
             if !picks {
                 view.pending_pick = None;
@@ -904,17 +899,17 @@ impl PdfCraftApp {
         }
         panes::frame(self);
         // Forms' scripts read Highlight fields as `app.runtimeHighlight`.
-        let highlight = self.active.and_then(|i| self.views.get(i)).map_or(self.view_defaults.highlight_fields, |v| v.highlight_fields);
+        let highlight = self.win.active.and_then(|i| self.win.views.get(i)).map_or(self.view_defaults.highlight_fields, |v| v.highlight_fields);
         self.session.set_field_highlight(highlight);
         self.sync_titles(&ctx);
         // The accessible window takes the same name, so a screen reader (AT-SPI on Linux, UIA on
         // Windows) can tell it apart (#4614). egui builds the root node afresh every pass.
         ctx.accesskit_node_builder(egui::accesskit_root_id(), |root| root.set_label(self.window_title.as_str()));
-        if self.full_screen && self.active.is_some() {
+        if self.full_screen && self.win.active.is_some() {
             // Full screen: the page on black, nothing else, as Acrobat's Full Screen Mode (Esc
             // or ⌘L to leave).
             egui::CentralPanel::default().frame(egui::Frame::NONE.fill(egui::Color32::BLACK)).show(ui, |ui| {
-                if let Some(i) = self.active {
+                if let Some(i) = self.win.active {
                     match compare_ui::side_by_side(self, i) {
                         Some((old, new)) => compare_ui::compare_area(self, old, new, ui),
                         None => canvas::document_area(self, i, ui),
@@ -947,7 +942,7 @@ impl PdfCraftApp {
         }
         // Another mode or the Home tab puts the OCR Verify screen away, as Exit does; Correct
         // recognized text brings it back with its review as it was.
-        if self.ocr_verify.open && (self.active.is_none() || self.ocr_verify.shown_in.is_some_and(|m| m != self.mode)) {
+        if self.ocr_verify.open && (self.win.active.is_none() || self.ocr_verify.shown_in.is_some_and(|m| m != self.mode)) {
             self.ocr_verify.open = false;
         }
         self.ocr_verify.shown_in = self.ocr_verify.open.then_some(self.mode);
@@ -979,7 +974,7 @@ impl PdfCraftApp {
             if self.mode == Mode::AllTools && self.all_tools_full && !hidden.window_ui {
                 all_tools_ui::show(self, ui);
             } else {
-                match self.active {
+                match self.win.active {
                     // This fork (OV7): Tile View draws every tile; otherwise the panes (split view).
                     Some(_) if self.tiled() => tile_view::area(self, ui),
                     _ => panes::page_area(self, ui),

@@ -65,7 +65,7 @@ impl PdfCraftApp {
         {
             let path = |v: &crate::DocView| self.session.get(v.id).and_then(|d| d.path.as_deref()).map(absolute);
             let files = self.first_views().filter_map(|v| Some(SessionFile { path: path(v)?, page: v.current })).take(MAX_FILES).collect();
-            let active = self.active.and_then(|i| self.views.get(i)).and_then(path);
+            let active = self.win.active.and_then(|i| self.win.views.get(i)).and_then(path);
             LastSession { files, active }
         }
         #[cfg(target_arch = "wasm32")]
@@ -110,28 +110,31 @@ impl PdfCraftApp {
             let mut prompt = self.password_prompt.take();
             for f in &last.files {
                 let open = |app: &Self| {
-                    app.views.iter().any(|v| app.session.get(v.id).and_then(|d| d.path.as_deref()).map(absolute).as_deref() == Some(f.path.as_str()))
+                    app.win
+                        .views
+                        .iter()
+                        .any(|v| app.session.get(v.id).and_then(|d| d.path.as_deref()).map(absolute).as_deref() == Some(f.path.as_str()))
                 };
                 if skip.contains(&f.path) || !std::path::Path::new(&f.path).is_file() || open(self) {
                     continue;
                 }
-                let before = self.views.len();
+                let before = self.win.views.len();
                 self.open_path(&f.path);
                 if let Some(p) = self.password_prompt.take() {
                     prompt.get_or_insert(p);
                 }
-                if self.views.len() > before
-                    && let Some(view) = self.views.last_mut()
+                if self.win.views.len() > before
+                    && let Some(view) = self.win.views.last_mut()
                 {
                     view.go_to_page(f.page);
                     if last.active.as_ref() == Some(&f.path) {
-                        active = Some(self.views.len() - 1);
+                        active = Some(self.win.views.len() - 1);
                     }
                 }
             }
             self.password_prompt = prompt;
             if active.is_some() {
-                self.active = active;
+                self.win.active = active;
             }
         }
         #[cfg(target_arch = "wasm32")]

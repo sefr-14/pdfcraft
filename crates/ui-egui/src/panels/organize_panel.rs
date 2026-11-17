@@ -17,7 +17,7 @@ use crate::{LeftPanel, PdfCraftApp, icons, widgets};
 
 /// Whether the left panel is Organize pages: the tool is chosen, or the active view shows the grid.
 pub(crate) fn showing(app: &PdfCraftApp) -> bool {
-    app.left == LeftPanel::Tool("organize") || app.active.and_then(|i| app.views.get(i)).is_some_and(|v| v.organize)
+    app.left == LeftPanel::Tool("organize") || app.win.active.and_then(|i| app.win.views.get(i)).is_some_and(|v| v.organize)
 }
 
 /// The panel of the workspace Organize was opened from, shown again once Organize closes (by
@@ -48,7 +48,7 @@ pub(crate) fn panel(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens) {
     let mut act: Option<Act> = None;
     let mut back = false;
     let mut close = false;
-    let Some(view) = app.views.get_mut(index) else { return };
+    let Some(view) = app.win.views.get_mut(index) else { return };
 
     ui.horizontal(|ui| {
         if icons::button(ui, "chevron-left", 26.0, false, tl!("Back to all tools")).clicked() {

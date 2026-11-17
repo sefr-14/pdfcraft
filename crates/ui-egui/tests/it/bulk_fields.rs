@@ -60,15 +60,15 @@ fn harness() -> Harness<'static, PdfCraftApp> {
 
 fn doc<'a>(h: &'a Harness<'static, PdfCraftApp>) -> &'a pdfcraft_engine::Document {
     let s = h.state();
-    s.session.get(s.views[0].id).unwrap()
+    s.session.get(s.win.views[0].id).unwrap()
 }
 
 fn bytes(h: &Harness<'static, PdfCraftApp>) -> Vec<u8> {
-    h.state().session.save_bytes(h.state().views[0].id).unwrap().as_ref().clone()
+    h.state().session.save_bytes(h.state().win.views[0].id).unwrap().as_ref().clone()
 }
 
 fn select(h: &mut Harness<'static, PdfCraftApp>, names: &[&str]) {
-    let p = &mut h.state_mut().views[0].prepare;
+    let p = &mut h.state_mut().win.views[0].prepare;
     p.selected = names.first().map(|n| (n.to_string(), 0));
     p.also = names.iter().skip(1).map(|n| (n.to_string(), 0)).collect();
     h.state_mut().execute("form.field.properties");
@@ -109,7 +109,7 @@ fn shared_properties_preserve_mixed_values_and_undo_the_whole_change() {
         assert_eq!((new.fill, new.font, new.text, new.border), (look.fill, look.font, look.text, look.border));
     }
     assert_eq!(doc(&h).can_undo(), Some("Change field properties"));
-    assert_eq!(h.state().views[0].prepare.names(), ["alpha", "beta"]);
+    assert_eq!(h.state().win.views[0].prepare.names(), ["alpha", "beta"]);
     h.state_mut().execute("edit.undo");
     h.run_steps(4);
     assert_eq!(bytes(&h), before);
@@ -151,7 +151,7 @@ fn cancelling_shared_properties_discards_only_the_draft() {
     h.run_steps(4);
     assert_eq!(bytes(&h), before);
     assert!(h.state().bulk_field_props.is_none());
-    assert_eq!(h.state().views[0].prepare.names(), ["alpha", "beta", "consent"]);
+    assert_eq!(h.state().win.views[0].prepare.names(), ["alpha", "beta", "consent"]);
 }
 
 #[test]
@@ -199,7 +199,7 @@ fn shared_properties_cannot_apply_to_a_different_active_document() {
     h.get_by_label("OK").click();
     h.run_steps(4);
     assert_eq!(bytes(&h), before);
-    let id = h.state().views[1].id;
+    let id = h.state().win.views[1].id;
     assert!(!h.state().session.get(id).unwrap().dirty);
     assert!(h.state().bulk_field_props.as_ref().unwrap().error.as_ref().unwrap().contains("document changed"));
 }
@@ -224,13 +224,13 @@ fn select_all_in_prepare_a_form_selects_only_the_current_pages_fields() {
     let mut h = harness();
     h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
     h.run_steps(4);
-    assert_eq!(h.state().views[0].prepare.names(), ["alpha", "beta", "consent"]);
+    assert_eq!(h.state().win.views[0].prepare.names(), ["alpha", "beta", "consent"]);
     assert!(!doc(&h).dirty);
-    h.state_mut().views[0].go_to_page(1);
+    h.state_mut().win.views[0].go_to_page(1);
     h.run_steps(4);
     h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
     h.run_steps(4);
-    assert_eq!(h.state().views[0].prepare.names(), ["gamma"]);
+    assert_eq!(h.state().win.views[0].prepare.names(), ["gamma"]);
 }
 
 #[test]
@@ -240,7 +240,7 @@ fn fields_panel_selects_multiple_fields_and_opens_their_shared_properties() {
     h.run_steps(4);
     h.get_by_label("beta").click_modifiers(egui::Modifiers::SHIFT);
     h.run_steps(4);
-    assert_eq!(h.state().views[0].prepare.names(), ["alpha", "beta"]);
+    assert_eq!(h.state().win.views[0].prepare.names(), ["alpha", "beta"]);
     h.get_by_label("Properties…").click();
     h.run_steps(4);
     h.get_by_label("Shared Field Properties");
@@ -248,7 +248,7 @@ fn fields_panel_selects_multiple_fields_and_opens_their_shared_properties() {
     h.run_steps(4);
     h.get_by_label("beta").click_modifiers(egui::Modifiers::COMMAND);
     h.run_steps(4);
-    assert_eq!(h.state().views[0].prepare.names(), ["alpha"]);
+    assert_eq!(h.state().win.views[0].prepare.names(), ["alpha"]);
 }
 
 #[test]
@@ -267,7 +267,7 @@ fn double_clicking_a_field_in_the_panel_opens_its_individual_properties() {
 fn dragging_an_empty_page_area_selects_fields_without_moving_them() {
     let mut h = harness();
     let before = bytes(&h);
-    let r = h.state().views[0].page_screen_rect(0).unwrap();
+    let r = h.state().win.views[0].page_screen_rect(0).unwrap();
     let scale = r.width() / 300.0;
     let a = r.min + egui::vec2(30.0, 75.0) * scale;
     let b = r.min + egui::vec2(240.0, 165.0) * scale;
@@ -281,7 +281,7 @@ fn dragging_an_empty_page_area_selects_fields_without_moving_them() {
     }
     h.drop_at(b);
     h.run_steps(4);
-    assert_eq!(h.state().views[0].prepare.names(), ["alpha", "beta"]);
+    assert_eq!(h.state().win.views[0].prepare.names(), ["alpha", "beta"]);
     assert_eq!(bytes(&h), before);
 }
 
@@ -296,7 +296,7 @@ fn selecting_several_widgets_of_one_radio_group_does_not_duplicate_field_edits()
             name: None,
         });
     }
-    let p = &mut h.state_mut().views[0].prepare;
+    let p = &mut h.state_mut().win.views[0].prepare;
     p.selected = Some(("group".into(), 0));
     p.also = vec![("group".into(), 1), ("alpha".into(), 0)];
     h.state_mut().execute("form.field.properties");
@@ -319,9 +319,9 @@ fn selecting_several_widgets_of_one_radio_group_does_not_duplicate_field_edits()
 #[test]
 fn escape_cancels_a_selection_rectangle_and_restores_the_previous_selection() {
     let mut h = harness();
-    h.state_mut().views[0].prepare.selected = Some(("consent".into(), 0));
+    h.state_mut().win.views[0].prepare.selected = Some(("consent".into(), 0));
     let before = bytes(&h);
-    let r = h.state().views[0].page_screen_rect(0).unwrap();
+    let r = h.state().win.views[0].page_screen_rect(0).unwrap();
     let scale = r.width() / 300.0;
     let a = r.min + egui::vec2(30.0, 75.0) * scale;
     let b = r.min + egui::vec2(240.0, 165.0) * scale;
@@ -335,7 +335,7 @@ fn escape_cancels_a_selection_rectangle_and_restores_the_previous_selection() {
     h.run_steps(4);
     h.drop_at(b);
     h.run_steps(4);
-    assert_eq!(h.state().views[0].prepare.names(), ["consent"]);
+    assert_eq!(h.state().win.views[0].prepare.names(), ["consent"]);
     assert_eq!(bytes(&h), before);
 }
 

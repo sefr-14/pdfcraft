@@ -39,16 +39,16 @@ fn harness(setup: impl FnOnce(&mut PdfCraftApp) + 'static) -> Harness<'static, P
     });
     // Wait for the text layer itself (#1277): under load the first render takes longer than a
     // fixed second, and nothing may be pending yet before the text layer is asked for.
-    crate::support::wait_until(&mut h, "the page's text layer", |app| app.views[0].glyph_screen_pos(0, 0).is_some() && !app.render_pending());
+    crate::support::wait_until(&mut h, "the page's text layer", |app| app.win.views[0].glyph_screen_pos(0, 0).is_some() && !app.render_pending());
     h
 }
 
 fn glyph(h: &Harness<'static, PdfCraftApp>, g: usize) -> Pos2 {
-    h.state().views[0].glyph_screen_pos(0, g).expect("glyph on screen")
+    h.state().win.views[0].glyph_screen_pos(0, g).expect("glyph on screen")
 }
 
 fn text(h: &Harness<'static, PdfCraftApp>) -> Option<String> {
-    h.state().views[0].selected_text()
+    h.state().win.views[0].selected_text()
 }
 
 /// Press at `from`, move to `to` and release there, with `modifiers` held throughout.
@@ -142,7 +142,7 @@ fn alt_drag_with_the_highlighter_marks_only_the_column() {
     drag(&mut h, from, to, Modifiers::ALT);
     h.run_steps(3);
     let app = h.state();
-    let doc = app.session.get(app.views[0].id).unwrap();
+    let doc = app.session.get(app.win.views[0].id).unwrap();
     let marks: Vec<(&str, usize)> = doc.info.annotations.iter().map(|a| (a.subtype.as_str(), a.quads.len())).collect();
     assert_eq!(marks, [("Highlight", 4)], "Name, Qty, Apple and 12, each its own quad");
 }

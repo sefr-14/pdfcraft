@@ -37,12 +37,12 @@ fn a_late_edit_drops_both_views_stale_demand() {
     let mut h = harness();
     h.key_press_modifiers(Modifiers::COMMAND, Key::Backslash);
     h.run_steps(4);
-    assert_eq!(h.state().views.len(), 2);
-    assert_eq!(h.state().views[0].id, h.state().views[1].id, "one document in both panes");
-    let portrait = |s: &PdfCraftApp, i: usize| s.views[i].drawn_page_size(0).is_some_and(|[w, hgt]| hgt > w);
-    let landscape = |s: &PdfCraftApp, i: usize| s.views[i].drawn_page_size(0).is_some_and(|[w, hgt]| w > hgt);
+    assert_eq!(h.state().win.views.len(), 2);
+    assert_eq!(h.state().win.views[0].id, h.state().win.views[1].id, "one document in both panes");
+    let portrait = |s: &PdfCraftApp, i: usize| s.win.views[i].drawn_page_size(0).is_some_and(|[w, hgt]| hgt > w);
+    let landscape = |s: &PdfCraftApp, i: usize| s.win.views[i].drawn_page_size(0).is_some_and(|[w, hgt]| w > hgt);
     wait(&mut h, "both panes drawn", |s| portrait(s, 0) && portrait(s, 1));
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let rotation = |h: &Harness<'static, PdfCraftApp>| h.state().session.get(id).unwrap().info.pages[0].rotation;
     h.state_mut().set_option("palette", "rotate pages clockwise").unwrap();
     h.run_steps(2);
@@ -56,7 +56,7 @@ fn a_late_edit_drops_both_views_stale_demand() {
         }
     }
     assert_eq!(rotation(&h), 90, "the palette turned the page");
-    for (k, v) in h.state().views.iter().enumerate() {
+    for (k, v) in h.state().win.views.iter().enumerate() {
         assert_eq!(v.raster_memory().pending_requests, 0, "view {k} kept demand made for the page before it turned");
     }
     // And both panes draw the turned page.

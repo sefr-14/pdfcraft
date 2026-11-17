@@ -568,7 +568,7 @@ mod tests {
         assert!(!out.exists(), "nothing written");
         let doc = app.session.get(id).unwrap();
         assert!(Arc::ptr_eq(&doc.bytes, &bytes) && doc.name == name && doc.path == path && !doc.dirty, "the document is as it was");
-        assert_eq!(app.views.len(), 1);
+        assert_eq!(app.win.views.len(), 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -601,7 +601,7 @@ mod tests {
         let mut again = pdfcraft_engine::Session::new();
         let reopened = again.open("check.pdf", None, Arc::new(std::fs::read(&good).unwrap()), None).unwrap();
         assert!(again.get(reopened).unwrap().info.annotations.iter().any(|a| a.contents.as_deref() == Some("Unsaved")), "and in the file");
-        assert_eq!(app.views.len(), 1);
+        assert_eq!(app.win.views.len(), 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

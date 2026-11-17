@@ -36,7 +36,7 @@ fn fixture() -> Vec<u8> {
 
 fn texts(h: &Harness<'static, PdfCraftApp>) -> Vec<String> {
     let s = h.state();
-    let doc = s.session.get(s.views[0].id).unwrap();
+    let doc = s.session.get(s.win.views[0].id).unwrap();
     (0..2).flat_map(|p| doc.text_blocks(p).into_iter().map(|b| b.text)).collect()
 }
 
@@ -56,44 +56,44 @@ fn replace_all_from_the_find_bar_is_one_undo_step() {
     // ⌘F with the Select tool: the find bar, without a Replace row.
     h.key_press_modifiers(Modifiers::COMMAND, Key::F);
     h.run_steps(3);
-    assert!(h.state().views[0].find.is_some());
+    assert!(h.state().win.views[0].find.is_some());
     assert!(has_field(&h, "Find text"));
     assert!(!has_field(&h, "Replace with"), "outside Edit text the find bar doesn't replace");
     // ⇧⌘H: Edit text, and the Replace row.
     h.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::H);
     h.run_steps(3);
     assert_eq!(h.state().quick_tool, QuickTool::EditText);
-    assert!(h.state().views[0].find.as_ref().is_some_and(|f| f.replacing));
+    assert!(h.state().win.views[0].find.as_ref().is_some_and(|f| f.replacing));
     assert!(has_field(&h, "Replace with"), "the Replace row shows in Edit text");
     h.query_by(|n| n.placeholder() == Some("Find text")).expect("find field").type_text("cat");
     // Both pages' text loads in the background before every match is listed.
     for _ in 0..400 {
         h.run_steps(1);
-        if h.state().views[0].find.as_ref().is_some_and(|f| f.matches.len() == 3) {
+        if h.state().win.views[0].find.as_ref().is_some_and(|f| f.matches.len() == 3) {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
-    assert_eq!(h.state().views[0].find.as_ref().map(|f| f.matches.len()), Some(3));
+    assert_eq!(h.state().win.views[0].find.as_ref().map(|f| f.matches.len()), Some(3));
     h.query_by(|n| n.placeholder() == Some("Replace with")).expect("replace field").click();
     h.run_steps(2);
     h.query_by(|n| n.placeholder() == Some("Replace with")).expect("replace field").type_text("dog");
     h.run_steps(1);
-    assert_eq!(h.state().views[0].find.as_ref().map(|f| (f.query.as_str(), f.replacement.as_str())), Some(("cat", "dog")));
+    assert_eq!(h.state().win.views[0].find.as_ref().map(|f| (f.query.as_str(), f.replacement.as_str())), Some(("cat", "dog")));
     // The row may settle over a few frames once the status text changes its width.
     h.run_steps(8);
     h.get_by_label("Replace all").click();
     h.run_steps(4);
     assert_eq!(texts(&h), ["dog and dog", "a dog"], "{:?}", h.state().toast);
     let s = h.state();
-    assert_eq!(s.session.get(s.views[0].id).unwrap().can_undo(), Some("Replace all"));
+    assert_eq!(s.session.get(s.win.views[0].id).unwrap().can_undo(), Some("Replace all"));
     assert_eq!(s.toast.as_ref().map(|t| t.0.as_str()), Some("Replaced 3 on 2 pages"));
     // One Undo puts every page back.
     assert!(h.state_mut().execute("edit.undo"));
     h.run_steps(2);
     assert_eq!(texts(&h), ["cat and cat", "a cat"]);
     let s = h.state();
-    assert_eq!(s.session.get(s.views[0].id).unwrap().can_undo(), None);
+    assert_eq!(s.session.get(s.win.views[0].id).unwrap().can_undo(), None);
 }
 
 /// Replace changes the highlighted match only: here the second "cat" on the first page.
@@ -111,17 +111,17 @@ fn replace_changes_the_highlighted_match() {
     h.query_by(|n| n.placeholder() == Some("Find text")).expect("find field").type_text("cat");
     for _ in 0..400 {
         h.run_steps(1);
-        if h.state().views[0].find.as_ref().is_some_and(|f| f.matches.len() == 3) {
+        if h.state().win.views[0].find.as_ref().is_some_and(|f| f.matches.len() == 3) {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
-    h.state_mut().views[0].find.as_mut().unwrap().replacement = "dog".into();
-    h.state_mut().views[0].go_to_match(1);
+    h.state_mut().win.views[0].find.as_mut().unwrap().replacement = "dog".into();
+    h.state_mut().win.views[0].go_to_match(1);
     h.run_steps(8);
     h.get_by_label("Replace").click();
     h.run_steps(4);
     assert_eq!(texts(&h), ["cat and dog", "a cat"]);
     let s = h.state();
-    assert_eq!(s.session.get(s.views[0].id).unwrap().can_undo(), Some("Edit text"));
+    assert_eq!(s.session.get(s.win.views[0].id).unwrap().can_undo(), Some("Edit text"));
 }

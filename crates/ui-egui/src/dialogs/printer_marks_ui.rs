@@ -65,7 +65,7 @@ impl PrinterMarksDraft {
 pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens) -> (bool, bool) {
     let Some((i, id)) = app.active_ids() else { return (false, true) };
     let count = app.session.get(id).map(|d| d.info.pages.len()).unwrap_or(0);
-    let current = app.views[i].current;
+    let current = app.win.views[i].current;
     let d = &mut app.printer_marks_draft;
     ui.label(egui::RichText::new(tl!("Add printer marks")).font(theme::semibold(18.0)));
     ui.add_space(8.0);
@@ -144,7 +144,7 @@ impl PdfCraftApp {
         let (count, label) = (doc.info.pages.len(), doc.name.clone());
         let (y, m, d) = self.session.today();
         let date = format!("{y:04}-{m:02}-{d:02}");
-        let edit = self.printer_marks_draft.edit(self.views[i].current, count, &label, &date);
+        let edit = self.printer_marks_draft.edit(self.win.views[i].current, count, &label, &date);
         if self.apply_edit(edit) {
             self.notify_tr("Printer marks added");
         }

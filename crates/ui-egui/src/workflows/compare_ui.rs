@@ -62,7 +62,7 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens) -> (boo
         app.compare_old = others.first().map(|(id, _)| *id);
     }
     let new_name = app.session.get(new).map(|d| d.name.clone()).unwrap_or_default();
-    let page_count = app.views.get(active_i).map_or(0, |v| v.page_count());
+    let page_count = app.win.views.get(active_i).map_or(0, |v| v.page_count());
     egui::Grid::new("compare-files").num_columns(2).spacing([12.0, 10.0]).show(ui, |ui| {
         ui.label(tl!("Old file:"));
         let shown =
@@ -192,8 +192,8 @@ impl PdfCraftApp {
     /// Set gaps for the active document and both visible comparison panes, leaving other tabs alone.
     pub(crate) fn set_active_page_gaps(&mut self, show: bool) {
         let Some((index, id)) = self.active_ids() else { return };
-        let partner = side_by_side(self, index).and_then(|(old, _)| self.views.get(old).map(|v| v.id));
-        for view in &mut self.views {
+        let partner = side_by_side(self, index).and_then(|(old, _)| self.win.views.get(old).map(|v| v.id));
+        for view in &mut self.win.views {
             if view.id == id || partner == Some(view.id) {
                 view.set_page_gaps(show);
             }
@@ -204,7 +204,7 @@ impl PdfCraftApp {
     pub fn run_compare(&mut self) {
         let Some((i, new)) = self.active_ids() else { return };
         let Some(old) = self.compare_old else { return };
-        let count = self.views.get(i).map_or(0, |v| v.page_count());
+        let count = self.win.views.get(i).map_or(0, |v| v.page_count());
         let pages = match crate::page_selection_ui::parse(&self.compare_pages, count) {
             Ok(pages) => pages,
             Err(e) => return self.notify_error(e.said(&|s| crate::i18n::t(s).to_string())),
@@ -217,7 +217,7 @@ impl PdfCraftApp {
                 }
                 let n = result.changes.len();
                 // Side by side when the old version is open in a tab and the window has the room.
-                let side_by_side = self.views.iter().any(|v| v.id == old) && self.ctx.as_ref().is_none_or(|c| c.content_rect().width() >= 1000.0);
+                let side_by_side = self.win.views.iter().any(|v| v.id == old) && self.ctx.as_ref().is_none_or(|c| c.content_rect().width() >= 1000.0);
                 self.compare = Some(crate::compare_ui::CompareState {
                     old,
                     new,
@@ -255,12 +255,12 @@ impl PdfCraftApp {
                 let rect = ch.new.rects.first().copied().or(ch.new.near).unwrap_or_default();
                 let page = ch.new.page;
                 let old_target = (ch.old.page, ch.old.rects.first().copied().or(ch.old.near).unwrap_or_default());
-                let v = &mut self.views[index];
+                let v = &mut self.win.views[index];
                 v.go_to_page(page);
                 v.flash = Some((page, rect.map(|x| x as f32), 0.0));
                 // The old file's half jumps to its side of the change too.
-                if let Some(oi) = self.views.iter().position(|v| v.id == old) {
-                    let v = &mut self.views[oi];
+                if let Some(oi) = self.win.views.iter().position(|v| v.id == old) {
+                    let v = &mut self.win.views[oi];
                     v.go_to_page(old_target.0);
                     v.flash = Some((old_target.0, old_target.1.map(|x| x as f32), 0.0));
                 }
@@ -277,7 +277,7 @@ impl PdfCraftApp {
             PanelAction::Mark => match self.session.mark_differences_of(old, new, &pages) {
                 Ok(n) => {
                     if let Some(info) = self.session.get(new).map(|d| d.info.clone()) {
-                        self.views[index].document_changed(&info);
+                        self.win.views[index].document_changed(&info);
                     }
                     self.notify(if n == 1 {
                         tl!("Added 1 comment").to_string()
@@ -297,9 +297,9 @@ impl PdfCraftApp {
             },
             PanelAction::Clear => {
                 self.compare = None;
-                self.views[index].compare_marks.clear();
-                if let Some(oi) = self.views.iter().position(|v| v.id == old) {
-                    self.views[oi].compare_marks.clear();
+                self.win.views[index].compare_marks.clear();
+                if let Some(oi) = self.win.views.iter().position(|v| v.id == old) {
+                    self.win.views[oi].compare_marks.clear();
                 }
                 self.right = None;
             }
@@ -314,10 +314,10 @@ impl PdfCraftApp {
         let Some(s) = self.compare.as_ref() else { return };
         let old = s.old;
         let (old_marks, new_marks) = (shading(s, true), shading(s, false));
-        if let Some(v) = self.views.get_mut(index) {
+        if let Some(v) = self.win.views.get_mut(index) {
             v.compare_marks = new_marks;
         }
-        if let Some(v) = self.views.iter_mut().find(|v| v.id == old) {
+        if let Some(v) = self.win.views.iter_mut().find(|v| v.id == old) {
             v.compare_marks = old_marks;
         }
     }
@@ -355,9 +355,9 @@ fn shading(s: &CompareState, old: bool) -> Vec<(usize, [f32; 4], Color32)> {
 /// document is the new file of a comparison shown side by side and the old file is open too.
 pub(crate) fn side_by_side(app: &PdfCraftApp, index: usize) -> Option<(usize, usize)> {
     let c = app.compare.as_ref().filter(|c| c.side_by_side)?;
-    let new = app.views.get(index).filter(|v| v.id == c.new)?;
-    let old = app.views.iter().position(|v| v.id == c.old)?;
-    (old != index).then_some((old, app.views.iter().position(|v| v.id == new.id)?))
+    let new = app.win.views.get(index).filter(|v| v.id == c.new)?;
+    let old = app.win.views.iter().position(|v| v.id == c.old)?;
+    (old != index).then_some((old, app.win.views.iter().position(|v| v.id == new.id)?))
 }
 
 /// Side by side: the old file on the left, the new on the right, each a page view of its own
@@ -385,11 +385,11 @@ pub(crate) fn compare_area(app: &mut PdfCraftApp, old: usize, new: usize, ui: &m
     let (lead, follow) = if leader == 0 { (old, new) } else { (new, old) };
     // The follower takes the leader's zoom and layout before either is drawn.
     let (zoom, fit, layout, continuous, page_gaps, rotation) = {
-        let v = &app.views[lead];
+        let v = &app.win.views[lead];
         (v.zoom, v.fit, v.layout, v.continuous, v.show_page_gaps, v.rotation)
     };
     {
-        let v = &mut app.views[follow];
+        let v = &mut app.win.views[follow];
         if v.zoom != zoom
             || v.fit != fit
             || v.layout != layout
@@ -405,11 +405,11 @@ pub(crate) fn compare_area(app: &mut PdfCraftApp, old: usize, new: usize, ui: &m
             v.rotation = rotation;
         }
     }
-    let names = [old, new].map(|i| app.session.get(app.views[i].id).map(|d| d.name.clone()).unwrap_or_default());
+    let names = [old, new].map(|i| app.session.get(app.win.views[i].id).map(|d| d.name.clone()).unwrap_or_default());
     // Drawing a half can close its own tab (its snapshot bar's Close, #3915), which shifts or
     // removes the indexes below. Each half is found again by id, and the frame stops when one is gone.
-    let ids = [app.views[old].id, app.views[new].id];
-    let find = |app: &PdfCraftApp, id| app.views.iter().position(|v| v.id == id);
+    let ids = [app.win.views[old].id, app.win.views[new].id];
+    let find = |app: &PdfCraftApp, id| app.win.views.iter().position(|v| v.id == id);
     ui.painter().vline(rect.min.x + half_w, rect.y_range(), egui::Stroke::new(gap, t.border));
     for (k, r) in [left, right].into_iter().enumerate() {
         // Both halves must still be open: once either has closed, the pair is over.
@@ -433,11 +433,11 @@ pub(crate) fn compare_area(app: &mut PdfCraftApp, old: usize, new: usize, ui: &m
     // After both drew: the leader's scroll, when it moved, is the follower's next offset.
     let (Some(old), Some(new)) = (find(app, ids[0]), find(app, ids[1])) else { return };
     let follow = if leader == 0 { new } else { old };
-    let offsets = [app.views[old].last_scroll, app.views[new].last_scroll];
+    let offsets = [app.win.views[old].last_scroll, app.win.views[new].last_scroll];
     if let Some(c) = app.compare.as_mut() {
         let lead_k = if leader == 0 { 0 } else { 1 };
         if (offsets[lead_k] - c.prev_scroll[lead_k]).length() > 0.5 && (offsets[1 - lead_k] - offsets[lead_k]).length() > 0.5 {
-            app.views[follow].sync_scroll = Some(offsets[lead_k]);
+            app.win.views[follow].sync_scroll = Some(offsets[lead_k]);
             ui.ctx().request_repaint();
         }
         c.prev_scroll = offsets;

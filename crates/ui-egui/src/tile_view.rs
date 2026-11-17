@@ -32,13 +32,13 @@ impl PdfCraftApp {
     /// Whether the document area shows the views as tiles now: Tile View, a document tab
     /// selected (Home and Combine files show as usual), more than one view, not full screen.
     pub fn tiled(&self) -> bool {
-        self.layout_mode == ViewLayout::Tiles && self.active.is_some() && self.views.len() > 1 && !self.full_screen
+        self.win.layout_mode == ViewLayout::Tiles && self.win.active.is_some() && self.win.views.len() > 1 && !self.full_screen
     }
 
     /// Switch between Tab View and Tile View. Only the arrangement changes: no view is closed,
     /// reloaded or copied into another, and each keeps its own page, zoom and scroll position.
     pub fn set_view_layout(&mut self, layout: ViewLayout) {
-        self.layout_mode = layout;
+        self.win.layout_mode = layout;
         if let Some(ctx) = &self.ctx {
             ctx.request_repaint();
         }
@@ -57,7 +57,7 @@ pub(crate) fn column_width(width: f32, n: usize) -> (f32, f32) {
 /// The document area in Tile View: every view in its own column.
 pub(crate) fn area(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
-    let n = app.views.len();
+    let n = app.win.views.len();
     if n == 0 {
         return;
     }
@@ -97,10 +97,10 @@ pub(crate) fn area(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
 
 /// Draw the tiles of `row`, those in `clip` only.
 fn tiles(app: &mut PdfCraftApp, ui: &mut egui::Ui, row: Rect, tile_w: f32, clip: Rect, reveal: bool, t: &Tokens) {
-    let n = app.views.len();
+    let n = app.win.views.len();
     let rects: Vec<Rect> =
         (0..n).map(|i| Rect::from_min_size(pos2(row.min.x + i as f32 * (tile_w + GAP), row.min.y), vec2(tile_w, row.height()))).collect();
-    if reveal && let Some(r) = app.active.and_then(|i| rects.get(i)) {
+    if reveal && let Some(r) = app.win.active.and_then(|i| rects.get(i)) {
         ui.scroll_to_rect(*r, Some(egui::Align::Center));
     }
     activate(app, ui, &rects, clip);
@@ -108,8 +108,8 @@ fn tiles(app: &mut PdfCraftApp, ui: &mut egui::Ui, row: Rect, tile_w: f32, clip:
         if !r.intersects(clip) {
             continue;
         }
-        let Some(key) = app.views.get(i).map(|v| v.key) else { break };
-        let active = app.active == Some(i);
+        let Some(key) = app.win.views.get(i).map(|v| v.key) else { break };
+        let active = app.win.active == Some(i);
         let caption = Rect::from_min_size(r.min, vec2(r.width(), CAPTION));
         draw_caption(app, ui, i, key, caption, active, t);
         // Never inverted, however short the window.
@@ -117,9 +117,9 @@ fn tiles(app: &mut PdfCraftApp, ui: &mut egui::Ui, row: Rect, tile_w: f32, clip:
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(body).id_salt(("tile", key)));
         child.set_clip_rect(body.intersect(clip));
         let interaction = if active { Interaction::Full } else { Interaction::NavigateOnly };
-        let views = app.views.len();
+        let views = app.win.views.len();
         crate::canvas::document_area_with(app, i, &mut child, interaction);
-        app.tile_frame.push(i);
+        app.win.tile_frame.push(i);
         if active {
             ui.painter().with_clip_rect(clip).rect_stroke(r.shrink(1.0), 0.0, Stroke::new(2.0, t.accent), StrokeKind::Inside);
         }
@@ -127,7 +127,7 @@ fn tiles(app: &mut PdfCraftApp, ui: &mut egui::Ui, row: Rect, tile_w: f32, clip:
             ui.painter().with_clip_rect(clip).vline(r.max.x + GAP / 2.0, r.y_range(), Stroke::new(GAP, t.divider));
         }
         // A tile closed itself (a snapshot's Close): the others have moved, so draw them next frame.
-        if app.views.len() != views {
+        if app.win.views.len() != views {
             ui.ctx().request_repaint();
             break;
         }
@@ -156,9 +156,9 @@ fn activate(app: &mut PdfCraftApp, ui: &egui::Ui, rects: &[Rect], clip: Rect) {
         return;
     }
     if let Some(i) = rects.iter().position(|r| r.contains(pos))
-        && i < app.views.len()
+        && i < app.win.views.len()
     {
-        app.active = Some(i);
+        app.win.active = Some(i);
     }
 }
 
@@ -166,7 +166,7 @@ fn activate(app: &mut PdfCraftApp, ui: &egui::Ui, rects: &[Rect], clip: Rect) {
 /// highlighted.
 fn draw_caption(app: &PdfCraftApp, ui: &mut egui::Ui, i: usize, key: ViewKey, rect: Rect, active: bool, t: &Tokens) {
     let name = crate::canvas::tab_label(app, i).unwrap_or_default();
-    let dirty = app.views.get(i).and_then(|v| app.session.get(v.id)).is_some_and(|d| d.dirty);
+    let dirty = app.win.views.get(i).and_then(|v| app.session.get(v.id)).is_some_and(|d| d.dirty);
     // Named for assistive technology; a press here picks the tile like one on its page.
     let label = if dirty { format!("{name} (edited)") } else { name.clone() };
     let resp = ui.interact(rect, ui.scope_id().with(("tile-caption", key)), egui::Sense::hover());

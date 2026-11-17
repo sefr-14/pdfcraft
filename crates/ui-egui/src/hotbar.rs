@@ -362,7 +362,7 @@ fn controls_divider(ui: &mut egui::Ui, t: &Tokens, vertical: bool) {
 
 fn selected_fill_text(app: &PdfCraftApp) -> Option<(usize, usize)> {
     let (index, id) = app.active_ids()?;
-    let (page, annotation) = app.views.get(index)?.comments.selected?;
+    let (page, annotation) = app.win.views.get(index)?.comments.selected?;
     let doc = app.session.get(id).filter(|doc| doc.allows_annotation())?;
     doc.info
         .annotations
@@ -514,7 +514,7 @@ fn active_tool_controls(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens, ve
         if tool.has_border_color() {
             let style = app.comment_prefs.style(tool);
             let selected = app.active_ids().and_then(|(index, id)| {
-                let (page, annotation) = app.views.get(index)?.comments.selected?;
+                let (page, annotation) = app.win.views.get(index)?.comments.selected?;
                 let doc = app.session.get(id)?;
                 let made = doc.allows_annotation()
                     && doc.info.annotations.iter().any(|a| a.page == page && a.index == annotation && !a.locked && comments::made_by(a, tool));
@@ -616,7 +616,7 @@ pub(crate) fn show(app: &mut PdfCraftApp, area: Rect, page_left: Option<f32>, ui
     let mut bar = std::mem::take(&mut app.hotbar);
     bar.normalize();
     let t = Tokens::get(&ctx);
-    let id = app.panes.area_id("quick-bar");
+    let id = app.win.panes.area_id("quick-bar");
     let full_side = bar.full_side && bar.dock.is_some();
     let bounds = if full_side { area } else { area.shrink(10.0) };
     if let Some(side) = bar.dock.clone() {
@@ -1200,9 +1200,9 @@ mod tests {
         h.state_mut().set_option("rulers", "on").unwrap();
         h.run_steps(6);
         let bar = h.ctx.memory(|m| m.area_rect(egui::Id::unique("quick-bar"))).expect("the hotbar is shown");
-        let inside = h.state().views[0].viewport_rect();
+        let inside = h.state().win.views[0].viewport_rect();
         assert!(inside.contains_rect(bar), "{bar:?} inside the page area the rulers leave, {inside:?}");
-        let page = h.state().views[0].page_screen_rect(0).expect("the page is drawn");
+        let page = h.state().win.views[0].page_screen_rect(0).expect("the page is drawn");
         assert!(bar.right() <= page.left(), "{bar:?} in the margin left of the sheet {page:?}");
     }
 
@@ -1232,20 +1232,20 @@ mod tests {
             let mut app = PdfCraftApp::new();
             app.set_option("language", "en").unwrap();
             app.open_bytes("sheet.pdf", None, bytes.as_ref().clone()).unwrap();
-            app.views[0].open_find();
+            app.win.views[0].open_find();
             app
         });
         h.run_steps(6);
         let area = |name: &str| h.ctx.memory(|m| m.area_rect(egui::Id::unique(name)));
-        let page_area = h.state().views[0].viewport_rect();
+        let page_area = h.state().win.views[0].viewport_rect();
         // The unified bar (#5909) is drawn in the quick bar's area.
         let bar = area("quick-bar").expect("the hotbar is shown");
         assert!(page_area.contains_rect(bar), "{bar:?} in {page_area:?}");
         // Upstream keys the find bar by its view (split view can show two).
-        let key = h.state().views[0].view_key();
+        let key = h.state().win.views[0].view_key();
         let find = h.ctx.memory(|m| m.area_rect(egui::Id::unique(("find-bar", key)))).expect("the find bar is open");
         assert!(!bar.intersects(find), "{bar:?} clear of the find bar {find:?}");
-        let page = h.state().views[0].page_screen_rect(0).expect("the page is drawn");
+        let page = h.state().win.views[0].page_screen_rect(0).expect("the page is drawn");
         assert!(bar.right() <= page.left(), "{bar:?} in the margin left of the sheet {page:?}");
     }
 

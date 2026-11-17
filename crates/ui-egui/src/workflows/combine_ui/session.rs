@@ -11,12 +11,12 @@ impl PdfCraftApp {
     pub fn open_combine_tab(&mut self) {
         self.combine_tab.open = true;
         self.combine_tab.focused = true;
-        self.active = None;
+        self.win.active = None;
     }
 
     /// Whether the Combine files tab is the one showing.
     pub fn combine_showing(&self) -> bool {
-        self.active.is_none() && self.combine_tab.open && self.combine_tab.focused
+        self.win.active.is_none() && self.combine_tab.open && self.combine_tab.focused
     }
 
     /// The selected rows, top to bottom (tests and automation).
@@ -240,7 +240,7 @@ impl PdfCraftApp {
         self.combine_draft.clear();
         self.combine_thumbs.clear();
         if showing {
-            self.active = self.views.len().checked_sub(1);
+            self.win.active = self.win.views.len().checked_sub(1);
         }
     }
 
@@ -449,7 +449,7 @@ impl PdfCraftApp {
     pub(crate) fn add_open_documents(&mut self, tabs: &[usize]) {
         let mut incoming = Vec::new();
         for &i in tabs {
-            let Some(doc) = self.views.get(i).and_then(|v| self.session.get(v.id)) else { continue };
+            let Some(doc) = self.win.views.get(i).and_then(|v| self.session.get(v.id)) else { continue };
             if self.combine_draft.iter().any(|f| f.open_doc == Some(doc.id)) {
                 continue;
             }

@@ -97,7 +97,7 @@ impl Adapter {
             let id = app.active_ids().map(|(_, id)| id).ok_or("fixture did not open")?;
             originals.push((id, bytes));
         }
-        app.active = Some(0);
+        app.win.active = Some(0);
         let mut h = Harness::builder().with_size(egui::vec2(1200.0, 900.0)).with_step_dt(1.0 / 60.0).build_eframe(move |_| app);
         h.run_steps(4);
         if let Some(path) = &artifacts {
@@ -197,10 +197,10 @@ impl Adapter {
             Event::Switch { document } => {
                 // Scenario document numbers are 1-based, like PdfCraft's automation pages.
                 let index = document.checked_sub(1).ok_or("document numbers start at 1")?;
-                if self.h.state().views.get(index).is_none() {
+                if self.h.state().win.views.get(index).is_none() {
                     return Err("document is not open".into());
                 }
-                self.h.state_mut().active = Some(index);
+                self.h.state_mut().win.active = Some(index);
             }
             Event::Reload { title } => {
                 let id = self.active()?;
@@ -210,8 +210,8 @@ impl Adapter {
                 let id = self.active()?;
                 let app = self.h.state_mut();
                 app.session.close(id);
-                app.views.retain(|view| view.id != id);
-                app.active = (!app.views.is_empty()).then_some(0);
+                app.win.views.retain(|view| view.id != id);
+                app.win.active = (!app.win.views.is_empty()).then_some(0);
             }
             Event::Undo | Event::Redo => {
                 let id = self.active()?;

@@ -363,10 +363,10 @@ impl PdfCraftApp {
 
     /// Show document `doc`'s changed form in its view.
     fn refresh_view_of(&mut self, doc: pdfcraft_engine::DocId) {
-        if let Some(i) = self.views.iter().position(|v| v.id == doc)
+        if let Some(i) = self.win.views.iter().position(|v| v.id == doc)
             && let Some(info) = self.session.get(doc).map(|d| d.info.clone())
         {
-            self.views[i].document_changed(&info);
+            self.win.views[i].document_changed(&info);
         }
     }
 
@@ -576,7 +576,7 @@ impl PdfCraftApp {
             #[cfg(target_os = "macos")]
             crate::macos_association::repair(&path);
             app.sign_graphic = choice;
-            if let Some(view) = app.views.iter_mut().find(|v| v.id == doc_id) {
+            if let Some(view) = app.win.views.iter_mut().find(|v| v.id == doc_id) {
                 view.invalidate_content();
             }
             app.right = Some(crate::RightPanel::Signatures);
@@ -661,7 +661,7 @@ impl PdfCraftApp {
     /// Trust alone is not an edit: nothing becomes dirty.
     pub fn apply_trusted_certificates(&mut self, certs: Vec<Certificate>) {
         self.session.set_trusted_certificates(certs);
-        for view in &mut self.views {
+        for view in &mut self.win.views {
             view.invalidate_content();
         }
     }
@@ -676,6 +676,7 @@ impl PdfCraftApp {
         // Only a document that draws a signature state shows the words: the others keep their
         // pages, selection and search results.
         let drawing: Vec<pdfcraft_engine::DocId> = self
+            .win
             .views
             .iter()
             .map(|v| v.id)
@@ -684,7 +685,7 @@ impl PdfCraftApp {
         if !self.session.set_signature_captions(status_captions(lang)) {
             return;
         }
-        for view in self.views.iter_mut().filter(|v| drawing.contains(&v.id)) {
+        for view in self.win.views.iter_mut().filter(|v| drawing.contains(&v.id)) {
             view.invalidate_content();
         }
     }
@@ -706,7 +707,7 @@ impl PdfCraftApp {
         if let Some(&end) = n.checked_sub(1).and_then(|k| ends.get(k)) {
             let end = end.min(doc.bytes.len());
             if let Some(index) = self.find_snapshot(SnapshotKind::Revision, &doc.name, &doc.bytes[..end]) {
-                self.active = Some(index);
+                self.win.active = Some(index);
                 return;
             }
         }
@@ -723,8 +724,8 @@ impl PdfCraftApp {
                     view.enter_presentation();
                 }
                 view.snapshot = Some(Snapshot { kind: SnapshotKind::Revision, revision: n, from });
-                self.views.push(view);
-                self.active = Some(self.views.len() - 1);
+                self.win.views.push(view);
+                self.win.active = Some(self.win.views.len() - 1);
             }
             Err(e) => self.notify_fmt("Couldn't open revision {n}: {e}", &[("n", &n.to_string()), ("e", &e.to_string())]),
         }
@@ -738,7 +739,7 @@ impl PdfCraftApp {
     /// own repeats name the snapshot itself).
     fn find_snapshot(&self, kind: SnapshotKind, from: &str, bytes: &[u8]) -> Option<usize> {
         let mut fallback = None;
-        for (i, v) in self.views.iter().enumerate() {
+        for (i, v) in self.win.views.iter().enumerate() {
             let same_kind = v.snapshot.as_ref().is_some_and(|s| s.kind == kind);
             let same_bytes = same_kind && self.session.get(v.id).is_some_and(|d| d.bytes.as_slice() == bytes);
             if !same_bytes {
@@ -759,7 +760,7 @@ impl PdfCraftApp {
         let Some(doc) = self.session.get(id) else { return };
         let end = len.min(doc.bytes.len());
         if let Some(index) = self.find_snapshot(SnapshotKind::SignedVersion, &doc.name, &doc.bytes[..end]) {
-            self.active = Some(index);
+            self.win.active = Some(index);
             return;
         }
         let from = doc.name.clone();
@@ -777,8 +778,8 @@ impl PdfCraftApp {
                     view.enter_presentation();
                 }
                 view.snapshot = Some(Snapshot { kind: SnapshotKind::SignedVersion, revision, from });
-                self.views.push(view);
-                self.active = Some(self.views.len() - 1);
+                self.win.views.push(view);
+                self.win.active = Some(self.win.views.len() - 1);
             }
             Err(e) => self.notify_fmt("Couldn't open the signed version: {e}", &[("e", &e.to_string())]),
         }
@@ -848,9 +849,9 @@ mod tests {
         let mut app = PdfCraftApp::new();
         let plain = app.session.create_from_text("t", "No signatures here.").unwrap();
         app.open_bytes("plain.pdf", None, plain.as_ref().clone()).unwrap();
-        app.views[0].texts.insert(0, std::sync::Arc::new(pdfcraft_render::PageText::default()));
+        app.win.views[0].texts.insert(0, std::sync::Arc::new(pdfcraft_render::PageText::default()));
         app.apply_status_captions(crate::i18n::Lang::from_code("de").unwrap());
-        assert!(!app.views[0].texts.is_empty(), "its text, selection and search results stay");
+        assert!(!app.win.views[0].texts.is_empty(), "its text, selection and search results stay");
     }
 
     #[test]

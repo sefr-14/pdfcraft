@@ -97,7 +97,7 @@ impl PdfCraftApp {
     /// Rulers and guides of the documents with a tab: remembered ones applied when a document
     /// opens, pages and saves followed, closed ones let go of (this fork, OV11).
     pub(crate) fn sync_doc_prefs(&mut self) {
-        let views = &self.views;
+        let views = &self.win.views;
         let docs = self.session.docs().iter().filter(|d| views.iter().any(|v| v.id == d.id));
         self.doc_prefs.sync(docs, self.units);
     }
@@ -113,20 +113,20 @@ impl PdfCraftApp {
         // view too (this fork, OV7.2).
         let tiled = self.tiled();
         let displayed: Vec<usize> = if tiled {
-            let mut shown = self.tile_frame.clone();
-            shown.extend(self.active);
+            let mut shown = self.win.tile_frame.clone();
+            shown.extend(self.win.active);
             shown.sort_unstable();
             shown.dedup();
             shown
         } else {
             self.views_on_screen()
         };
-        let shown: Vec<DocId> = displayed.iter().filter_map(|&i| self.views.get(i).map(|v| v.id)).collect();
+        let shown: Vec<DocId> = displayed.iter().filter_map(|&i| self.win.views.get(i).map(|v| v.id)).collect();
         // A hidden tab of a document another tab shows (Duplicate Tab, split view) must leave the
         // shared render pool alone: suspending would clear the shown tab's queue and drain its
         // results.
         let mut requeue: Vec<DocId> = Vec::new();
-        for (i, view) in self.views.iter_mut().enumerate() {
+        for (i, view) in self.win.views.iter_mut().enumerate() {
             if !displayed.contains(&i)
                 && let Some(doc) = self.session.get(view.id)
             {
@@ -147,20 +147,20 @@ impl PdfCraftApp {
             }
             done.push(id);
             let Some(doc) = self.session.get(id) else { continue };
-            let group: Vec<usize> = displayed.iter().copied().filter(|&k| self.views.get(k).is_some_and(|v| v.id == id)).collect();
+            let group: Vec<usize> = displayed.iter().copied().filter(|&k| self.win.views.get(k).is_some_and(|v| v.id == id)).collect();
             for &k in &group {
-                if let Some(view) = self.views.get_mut(k) {
+                if let Some(view) = self.win.views.get_mut(k) {
                     view.budget_share = share;
                     view.requeue |= requeue.contains(&id);
                 }
             }
             if group.len() > 1 && !tiled {
                 // Two views of the document in split view's panes: upstream's shared queue.
-                DocView::finish_shared_render_frame(ctx, &doc.info, &doc.renderer, &mut self.views, &group);
+                DocView::finish_shared_render_frame(ctx, &doc.info, &doc.renderer, &mut self.win.views, &group);
                 continue;
             }
             // A document in several tiles hands its render pool one queue for all of them (OV7.2).
-            let mut views: Vec<&mut DocView> = self.views.iter_mut().enumerate().filter(|(j, _)| group.contains(j)).map(|(_, v)| v).collect();
+            let mut views: Vec<&mut DocView> = self.win.views.iter_mut().enumerate().filter(|(j, _)| group.contains(j)).map(|(_, v)| v).collect();
             match views.as_mut_slice() {
                 [view] => view.finish_render_frame(ctx, &doc.info, &doc.renderer),
                 views => canvas::finish_shared_render_frame(views, ctx, &doc.info, &doc.renderer),

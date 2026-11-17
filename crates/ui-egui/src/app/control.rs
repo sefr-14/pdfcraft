@@ -19,7 +19,7 @@ impl PdfCraftApp {
         if matches!(key, "rulers" | "guides" | "ruler_unit") {
             return self.set_ruler_option(key, value);
         }
-        let view = self.active.and_then(|i| self.views.get_mut(i));
+        let view = self.win.active.and_then(|i| self.win.views.get_mut(i));
         match (key, view) {
             ("hotbar-size", _) => {
                 let size: f32 = value.parse().map_err(|_| "hotbar-size must be 24–64 pixels")?;
@@ -101,7 +101,7 @@ impl PdfCraftApp {
             }
             ("left", _) => self.left_open = value != "closed",
             ("home", _) => {
-                self.active = None;
+                self.win.active = None;
                 // With no document open the expanded All tools view covers Home itself, so no
                 // other tab comes forward to put it away.
                 self.all_tools_full = false;
@@ -139,7 +139,7 @@ impl PdfCraftApp {
                     "optimize" => Some(Dialog::Optimize),
                     "sign" | "certify" => {
                         // Sign with a Digital ID for an invisible signature on the current page.
-                        let page = self.active.map_or(0, |i| self.views[i].current);
+                        let page = self.win.active.map_or(0, |i| self.win.views[i].current);
                         self.start_signing(page, None, None, (value == "certify").then_some(2));
                         Some(Dialog::Sign)
                     }
@@ -299,7 +299,7 @@ impl PdfCraftApp {
                     .and_then(|d| d.info.layers.iter().position(|l| l.name == name))
                     .ok_or_else(|| format!("no layer named {name}"))?;
                 if self.session.set_layer_visible(id, idx, state != "off") {
-                    self.views[i].invalidate_content();
+                    self.win.views[i].invalidate_content();
                 }
             }
             ("find", Some(v)) => {

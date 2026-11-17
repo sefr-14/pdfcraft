@@ -129,7 +129,7 @@ fn the_toolbar_button_opens_the_wizard() {
     // B defaults to the other open document, so Next is open.
     let (a, b) = {
         let w = h.state();
-        (w.views[1].id, w.views[0].id)
+        (w.win.views[1].id, w.win.views[0].id)
     };
     assert_eq!(h.state().overlay_documents(), Some((a, Some(b))));
 }
@@ -137,7 +137,7 @@ fn the_toolbar_button_opens_the_wizard() {
 #[test]
 fn back_and_next_keep_settings_and_generate_opens_a_layered_tab() {
     let mut h = harness();
-    let sources: Vec<_> = h.state().views.iter().map(|v| h.state().session.get(v.id).unwrap().bytes.clone()).collect();
+    let sources: Vec<_> = h.state().win.views.iter().map(|v| h.state().session.get(v.id).unwrap().bytes.clone()).collect();
     assert!(h.state_mut().execute("doc.overlay"));
     h.run_steps(3);
     h.get_by_label("1. Documents");
@@ -175,7 +175,7 @@ fn back_and_next_keep_settings_and_generate_opens_a_layered_tab() {
     next(&mut h);
     h.get_by_label("6. Generate");
     h.get_by_label("Generate").click();
-    wait(&mut h, |app| app.views.len() == 3);
+    wait(&mut h, |app| app.win.views.len() == 3);
     let app = h.state();
     let (_, id) = app.active_ids().unwrap();
     let doc = app.session.get(id).unwrap();
@@ -185,7 +185,7 @@ fn back_and_next_keep_settings_and_generate_opens_a_layered_tab() {
     let layers: Vec<&str> = doc.info.layers.iter().map(|l| l.name.as_str()).collect();
     assert_eq!(layers, ["Old", "New"]);
     // The sources are unchanged.
-    for (v, before) in app.views.iter().take(2).zip(&sources) {
+    for (v, before) in app.win.views.iter().take(2).zip(&sources) {
         assert_eq!(app.session.get(v.id).unwrap().bytes, *before);
     }
     h.get_by_label_contains("Created Overlay rev-a vs rev-b.pdf");
@@ -249,7 +249,7 @@ fn wizard_screenshots() {
         }
     }
     h.get_by_label("Generate").click();
-    wait(&mut h, |app| app.views.len() == 3);
+    wait(&mut h, |app| app.win.views.len() == 3);
     settle(&mut h, 20);
     h.render().unwrap().save(dir.join("step-6-done.png")).unwrap();
 }
@@ -584,7 +584,7 @@ fn three_old_points_then_three_new_points() {
 #[test]
 fn expand_page_to_prevent_clipping() {
     let mut h = harness();
-    let sources: Vec<_> = h.state().views.iter().map(|v| h.state().session.get(v.id).unwrap().bytes.clone()).collect();
+    let sources: Vec<_> = h.state().win.views.iter().map(|v| h.state().session.get(v.id).unwrap().bytes.clone()).collect();
     to_sheet_and_alignment(&mut h);
     wait_for_drawings(&mut h, true);
     pick_the_box(&mut h);
@@ -613,7 +613,7 @@ fn expand_page_to_prevent_clipping() {
         (layers, sizes)
     };
     h.get_by_label("Generate").click();
-    wait(&mut h, |app| app.views.len() == 3);
+    wait(&mut h, |app| app.win.views.len() == 3);
     let (layers, sizes) = made(&h);
     assert_eq!(layers, ["Old", "New"]);
     assert_eq!(sizes.len(), 2);
@@ -625,7 +625,7 @@ fn expand_page_to_prevent_clipping() {
     h.get_by_label("Expand page to prevent clipping").click();
     h.run_steps(3);
     h.get_by_label("Generate again").click();
-    wait(&mut h, |app| app.views.len() == 4);
+    wait(&mut h, |app| app.win.views.len() == 4);
     let (layers, sizes) = made(&h);
     assert_eq!(layers, ["Old", "New"]);
     assert_eq!(sizes.len(), 2);
@@ -634,7 +634,7 @@ fn expand_page_to_prevent_clipping() {
     }
     assert!(h.query_by_label_contains("Part of B is clipped").is_none());
     let app = h.state();
-    for (v, before) in app.views.iter().take(2).zip(&sources) {
+    for (v, before) in app.win.views.iter().take(2).zip(&sources) {
         assert_eq!(app.session.get(v.id).unwrap().bytes, *before);
     }
 }
@@ -756,7 +756,7 @@ fn the_override_allows_point_alignment() {
     next(&mut h);
     h.get_by_label("6. Generate");
     h.get_by_label("Generate").click();
-    wait(&mut h, |app| app.views.len() == 3);
+    wait(&mut h, |app| app.win.views.len() == 3);
     let app = h.state();
     let (_, id) = app.active_ids().unwrap();
     let doc = app.session.get(id).unwrap();
@@ -811,7 +811,7 @@ fn equal_sheets_need_no_points() {
     next(&mut h);
     h.get_by_label("6. Generate");
     h.get_by_label("Generate").click();
-    wait(&mut h, |app| app.views.len() == 3);
+    wait(&mut h, |app| app.win.views.len() == 3);
     for page in 0..2 {
         assert_eq!(placed(&h, page, "GA"), [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
         assert_eq!(placed(&h, page, "GB"), [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
@@ -1089,7 +1089,7 @@ fn undeclared_layers_shown_by_the_source_need_no_decision() {
     let mut h = harness_with(sheets_with_undeclared_layer(3, false), sheets(3));
     to_generate(&mut h);
     h.get_by_label("Generate").click();
-    wait(&mut h, |app| app.views.len() == 3);
+    wait(&mut h, |app| app.win.views.len() == 3);
     let app = h.state();
     let (_, id) = app.active_ids().unwrap();
     let doc = app.session.get(id).unwrap();
@@ -1113,7 +1113,7 @@ fn an_undeclared_layer_on_three_pages_is_one_decision() {
     h.get_by_label("Show").click();
     h.run_steps(3);
     h.get_by_label("Generate").click();
-    wait(&mut h, |app| app.views.len() == 3);
+    wait(&mut h, |app| app.win.views.len() == 3);
     let app = h.state();
     let (_, id) = app.active_ids().unwrap();
     let layers: Vec<&str> = app.session.get(id).unwrap().info.layers.iter().map(|l| l.name.as_str()).collect();
@@ -1159,7 +1159,7 @@ fn a_late_preview_leaves_the_generate_list_alone() {
     assert!(toggled(&h, "Show"));
     assert!(h.query_by_label_contains("The overlay couldn't be made").is_none());
     h.get_by_label("Generate").click();
-    wait(&mut h, |app| app.views.len() == 3);
+    wait(&mut h, |app| app.win.views.len() == 3);
     let app = h.state();
     let (_, id) = app.active_ids().unwrap();
     let layers: Vec<&str> = app.session.get(id).unwrap().info.layers.iter().map(|l| l.name.as_str()).collect();

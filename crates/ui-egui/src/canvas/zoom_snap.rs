@@ -88,7 +88,7 @@ impl PdfCraftApp {
         let (page, rect, view_rect) = done;
         match self.quick_tool {
             QuickTool::MarqueeZoom => {
-                let view = &mut self.views[index];
+                let view = &mut self.win.views[index];
                 if rect.width() < 6.0 || rect.height() < 6.0 {
                     // A click zooms in one step around the point.
                     let z = (view.zoom * 1.5).min(64.0);
@@ -102,12 +102,12 @@ impl PdfCraftApp {
                     return;
                 }
                 // The tool outlives the tab it was chosen on.
-                if self.views.get(index).map(|v| v.id).is_some_and(|id| !self.may_copy(id)) {
+                if self.win.views.get(index).map(|v| v.id).is_some_and(|id| !self.may_copy(id)) {
                     return;
                 }
                 match self.snapshot(index, page, view_rect) {
                     Ok((w, h)) => {
-                        self.views[index].area_pick = Some((page, view_rect));
+                        self.win.views[index].area_pick = Some((page, view_rect));
                         self.notify_fmt("The selected area has been copied ({w} × {h} pixels)", &[("w", &w.to_string()), ("h", &h.to_string())])
                     }
                     Err(e) => self.notify_fmt("Couldn't take the snapshot: {e}", &[("e", &e.to_string())]),
@@ -121,7 +121,7 @@ impl PdfCraftApp {
     /// low-resolution render) and zoom so that spans the window's width. A blank page fits the
     /// width.
     pub fn fit_visible(&mut self, index: usize) -> Result<(), String> {
-        let view = &self.views[index];
+        let view = &self.win.views[index];
         let page = view.current;
         let doc = self.session.get(view.id).ok_or("no document")?;
         let config = RenderConfig { password: doc.password.as_deref().map(std::sync::Arc::from), ..RenderConfig::default() };
@@ -134,7 +134,7 @@ impl PdfCraftApp {
             return Err(e);
         }
         let rot = view.rotation;
-        let view = &mut self.views[index];
+        let view = &mut self.win.views[index];
         match ink_bounds(out.width as usize, out.height as usize, &out.rgba) {
             Some([u0, v0, u1, v1]) => {
                 // View space → the rotated view on screen.
@@ -175,7 +175,7 @@ impl PdfCraftApp {
     /// `save_override` in tests). The last snapshot is used when it was taken of that area;
     /// otherwise (another tab snapshotted since) the area is rendered again.
     pub(crate) fn save_snapshot_image(&mut self, index: usize, page: usize, view_rect: [f32; 4]) {
-        let this_area = self.views.get(index).is_some_and(|v| self.last_snapshot_of == Some((v.id, page, view_rect)));
+        let this_area = self.win.views.get(index).is_some_and(|v| self.last_snapshot_of == Some((v.id, page, view_rect)));
         let png = match self.last_snapshot.as_ref() {
             Some((w, h, pixels)) if this_area => pdfcraft_engine::export::encode_png(*w, *h, pixels),
             _ => self.render_area(index, page, view_rect).and_then(|(w, h, pixels)| pdfcraft_engine::export::encode_png(w, h, &pixels)),
@@ -223,14 +223,14 @@ impl PdfCraftApp {
             crate::os_clipboard::with(|c| c.set_image(img)).map_err(|e| e.to_string())?;
         }
         self.last_snapshot = Some((w, h, rgba));
-        self.last_snapshot_of = Some((self.views[index].id, page, view_rect));
+        self.last_snapshot_of = Some((self.win.views[index].id, page, view_rect));
         Ok((w, h))
     }
 
     /// Render `view_rect` (page view points) of `page` in view `index` at its current zoom:
     /// (width, height, premultiplied RGBA).
     fn render_area(&self, index: usize, page: usize, view_rect: [f32; 4]) -> Result<(u32, u32, pdfcraft_render::Pixels), String> {
-        let view = self.views.get(index).ok_or("no document")?;
+        let view = self.win.views.get(index).ok_or("no document")?;
         let doc = self.session.get(view.id).ok_or("no document")?;
         let ppp = self.ctx.as_ref().map_or(2.0, |c| c.pixels_per_point());
         let scale = snapshot_scale(view.render_scale(ppp), view_rect[2] - view_rect[0], view_rect[3] - view_rect[1]);

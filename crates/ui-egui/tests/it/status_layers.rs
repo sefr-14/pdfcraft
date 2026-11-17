@@ -128,7 +128,7 @@ fn settle(h: &mut Harness<'static, PdfCraftApp>) {
 
 /// The screen point of page point (x, y) on the 400×300 page.
 fn at(h: &Harness<'static, PdfCraftApp>, x: f32, y: f32) -> Pos2 {
-    let r = h.state().views[0].page_screen_rect(0).expect("page 1 on screen");
+    let r = h.state().win.views[0].page_screen_rect(0).expect("page 1 on screen");
     pos2(r.left() + x / 400.0 * r.width(), r.top() + (300.0 - y) / 300.0 * r.height())
 }
 
@@ -158,7 +158,7 @@ fn caption_strip(h: &mut Harness<'static, PdfCraftApp>) -> Vec<u8> {
 fn redraw_captions(h: &mut Harness<'static, PdfCraftApp>, captions: pdfcraft_engine::sign::StatusCaptions) -> Vec<u8> {
     let app = h.state_mut();
     app.session.set_signature_captions(captions);
-    for view in &mut app.views {
+    for view in &mut app.win.views {
         view.invalidate_content();
     }
     settle(h);
@@ -199,7 +199,7 @@ fn named_layers_follow_trust_and_language_and_keep_the_badge() {
     let anchor = id.chain.first().cloned().unwrap_or_else(|| id.certificate.clone());
     let mut h = harness(signed(&id), "en");
     let (amber, green) = ([0xE6, 0x86, 0x19], [0x2D, 0x9D, 0x78]);
-    let doc_id = h.state().views[0].id;
+    let doc_id = h.state().win.views[0].id;
     // Untrusted: the appearance draws the unknown state, and the badge stays.
     assert_eq!(h.state().session.get(doc_id).unwrap().signatures[0].status, SignatureStatus::Unknown);
     let unknown = in_n1_square(&mut h, amber);
@@ -210,11 +210,11 @@ fn named_layers_follow_trust_and_language_and_keep_the_badge() {
     );
     // Trusted: the same page, at the same zoom, redraws in the valid state. The badge stays:
     // whether the layers are visible is the document's to decide.
-    let zoom = h.state().views[0].zoom;
+    let zoom = h.state().win.views[0].zoom;
     h.state_mut().apply_trusted_certificates(vec![anchor]);
     settle(&mut h);
     assert_eq!(h.state().session.get(doc_id).unwrap().signatures[0].status, SignatureStatus::Valid);
-    assert_eq!(h.state().views[0].zoom, zoom);
+    assert_eq!(h.state().win.views[0].zoom, zoom);
     let (valid, unknown) = (in_n1_square(&mut h, green), in_n1_square(&mut h, amber));
     assert!(valid > 100 && unknown < 10, "n1 redraws in the valid state: {valid} green, {unknown} amber pixels");
     assert!(hovered(&mut h, "Signature is valid") > h.query_all_by_label("Signature is valid").count(), "a valid signature keeps its badge");
@@ -292,7 +292,7 @@ fn arabic_caption_keeps_logical_word_order_on_page_and_in_extracted_text() {
         invalid: reversed(&logical.invalid),
     };
     assert_ne!(logical.valid, display_order.valid, "the regression needs a multiword caption");
-    let doc_id = h.state().views[0].id;
+    let doc_id = h.state().win.views[0].id;
     let doc = h.state().session.get(doc_id).unwrap();
     // The caption is drawn as outlines; text extraction reads it from its /ActualText.
     let text = pdfcraft_engine::export::Exporter::new(doc).text_of(&[0]).unwrap();
@@ -322,7 +322,7 @@ fn an_edit_on_another_page_that_changes_the_verdict_redraws_the_signature() {
     h.state_mut().apply_trusted_certificates(vec![anchor]);
     settle(&mut h);
     let (green, red) = ([0x2D, 0x9D, 0x78], [0xD7, 0x37, 0x3F]);
-    let doc_id = h.state().views[0].id;
+    let doc_id = h.state().win.views[0].id;
     assert_eq!(h.state().session.get(doc_id).unwrap().signatures[0].status, SignatureStatus::Valid);
     let valid = in_n1_square(&mut h, green);
     assert!(valid > 100, "page 1 draws the valid state: {valid} green pixels");
@@ -377,13 +377,13 @@ fn a_value_typed_against_a_certification_shows_while_every_page_redraws() {
     let mut h = harness(bytes, "en");
     h.state_mut().apply_trusted_certificates(vec![anchor]);
     settle(&mut h);
-    let doc_id = h.state().views[0].id;
+    let doc_id = h.state().win.views[0].id;
     assert_eq!(h.state().session.get(doc_id).unwrap().signatures[0].status, SignatureStatus::Valid);
 
     let value = pdfcraft_engine::FieldValue::Text("Ada".into());
     assert!(h.state_mut().apply_edit(pdfcraft_engine::Edit::SetFieldValue { name: "name".into(), value }));
     assert_eq!(h.state().session.get(doc_id).unwrap().signatures[0].status, SignatureStatus::Invalid);
-    assert!(h.state().views[0].forms.unbaked.contains(&("name".to_string(), 0)), "the value typed is pending until page 1 redraws");
+    assert!(h.state().win.views[0].forms.unbaked.contains(&("name".to_string(), 0)), "the value typed is pending until page 1 redraws");
 }
 
 #[test]
@@ -407,7 +407,7 @@ fn values_still_waiting_on_their_page_stay_pending_when_a_later_edit_redraws_eve
         let mut h = harness(bytes, "en");
         h.state_mut().apply_trusted_certificates(vec![anchor.clone()]);
         settle(&mut h);
-        let doc_id = h.state().views[0].id;
+        let doc_id = h.state().win.views[0].id;
         let states = |h: &Harness<'static, PdfCraftApp>| {
             h.state().session.get(doc_id).unwrap().signatures.iter().map(|s| (s.field.clone(), s.status, s.verdict_shown)).collect::<Vec<_>>()
         };
@@ -415,12 +415,12 @@ fn values_still_waiting_on_their_page_stay_pending_when_a_later_edit_redraws_eve
         let value = pdfcraft_engine::FieldValue::Text("Ada".into());
         assert!(h.state_mut().apply_edit(pdfcraft_engine::Edit::SetFieldValue { name: "name".into(), value }));
         assert_eq!(states(&h), before, "the certification allows filling in a field");
-        assert!(h.state().views[0].forms.unbaked.contains(&("name".to_string(), 0)));
+        assert!(h.state().win.views[0].forms.unbaked.contains(&("name".to_string(), 0)));
 
         let label = second.label();
         assert!(h.state_mut().apply_edit(second), "{label}");
         assert_ne!(states(&h), before, "{label} changes the list");
-        assert!(h.state().views[0].forms.unbaked.contains(&("name".to_string(), 0)), "{label}: the value typed first is still pending");
+        assert!(h.state().win.views[0].forms.unbaked.contains(&("name".to_string(), 0)), "{label}: the value typed first is still pending");
     }
 }
 
@@ -436,7 +436,7 @@ fn a_file_opened_before_the_first_frame_is_drawn_in_the_interface_language() {
     let mut app = PdfCraftApp::new();
     app.set_option("language", "de").unwrap();
     app.open_bytes("named.pdf", None, signed(&id)).expect("opens");
-    let doc = app.session.get(app.views[0].id).unwrap();
+    let doc = app.session.get(app.win.views[0].id).unwrap();
     let text = pdfcraft_engine::export::Exporter::new(doc).text_of(&[0]).unwrap();
     assert!(text.contains("Gültigkeit unbekannt"), "{text:?}");
 }

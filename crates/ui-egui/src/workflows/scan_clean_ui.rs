@@ -152,7 +152,7 @@ impl PdfCraftApp {
         let d = &self.scan_clean_draft;
         let pages: Vec<usize> = match d.pages {
             OcrPages::All => Vec::new(),
-            OcrPages::Current => self.views.get(vi).map(|v| vec![v.current]).unwrap_or_default(),
+            OcrPages::Current => self.win.views.get(vi).map(|v| vec![v.current]).unwrap_or_default(),
             OcrPages::Range => (d.from.saturating_sub(1)..d.to).collect(),
         };
         let job = match self.session.scan_clean_job(id, &pages, d.settings) {
@@ -231,7 +231,7 @@ impl PdfCraftApp {
         match result.and_then(|cleaned| self.session.apply_scan_clean(doc, cleaned)) {
             Ok(report) => {
                 // The page rasters, tiles and thumbnails show the old pixels at the same scale.
-                for v in self.views.iter_mut().filter(|v| v.id == doc) {
+                for v in self.win.views.iter_mut().filter(|v| v.id == doc) {
                     v.invalidate_content();
                 }
                 let msg = summary(&report);

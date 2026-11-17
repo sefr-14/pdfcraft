@@ -194,7 +194,7 @@ fn notes_in(app: &PdfCraftApp, id: pdfcraft_engine::DocId) -> Vec<String> {
 fn notes_on_disk(path: &std::path::Path) -> Vec<String> {
     let mut app = PdfCraftApp::new();
     app.open_bytes("check.pdf", None, std::fs::read(path).unwrap()).unwrap();
-    notes_in(&app, app.views[0].id)
+    notes_in(&app, app.win.views[0].id)
 }
 
 fn toast(app: &PdfCraftApp) -> &str {
@@ -208,7 +208,7 @@ fn reduce_file_size_makes_the_same_tab_the_smaller_file_with_its_unsaved_changes
     let mut app = saved_photo(&dir, "site plan.pdf");
     let source = dir.0.join("site plan.pdf");
     let original = std::fs::read(&source).unwrap();
-    let id = app.views[0].id;
+    let id = app.win.views[0].id;
     // Unsaved: a comment, a bookmark and Fill & Sign text still being typed.
     assert!(app.apply_edit(note("Check this wall")));
     assert!(app.apply_edit(pdfcraft_engine::Edit::AddBookmark {
@@ -219,7 +219,7 @@ fn reduce_file_size_makes_the_same_tab_the_smaller_file_with_its_unsaved_changes
         left: None,
         top: None
     }));
-    app.views[0].fill_text =
+    app.win.views[0].fill_text =
         Some(TypeBox { page: 0, at: [40.0, 200.0], text: "Typed".into(), size: 10.0, color: [0.0; 3], border: Default::default(), focus: false });
     assert!(app.session.get(id).unwrap().dirty);
     let out = dir.0.join("site plan (reduced).pdf");
@@ -227,8 +227,8 @@ fn reduce_file_size_makes_the_same_tab_the_smaller_file_with_its_unsaved_changes
     assert!(app.execute("optimize.reduce"));
 
     assert!(toast(&app).contains("% smaller"), "{}", toast(&app));
-    assert_eq!(app.views.len(), 1, "no new tab");
-    assert_eq!(app.views[0].id, id, "the same tab and document");
+    assert_eq!(app.win.views.len(), 1, "no new tab");
+    assert_eq!(app.win.views[0].id, id, "the same tab and document");
     let doc = app.session.get(id).unwrap();
     assert_eq!((doc.path.as_deref(), doc.name.as_str(), doc.dirty), (out.to_str(), "site plan (reduced).pdf", false));
     assert_eq!(doc.display_name(), "site plan (reduced).pdf", "the tab title");
@@ -246,14 +246,14 @@ fn reduce_file_size_makes_the_same_tab_the_smaller_file_with_its_unsaved_changes
 fn the_pdf_optimizer_also_saves_like_save_as() {
     let dir = ReduceDir::new();
     let mut app = saved_photo(&dir, "plan.pdf");
-    let id = app.views[0].id;
+    let id = app.win.views[0].id;
     assert!(app.apply_edit(note("Revise")));
     let out = dir.0.join("plan (optimized).pdf");
     app.save_override = Some(out.to_string_lossy().into_owned());
     app.optimize_with_draft();
     assert!(toast(&app).starts_with("Saved "), "{}", toast(&app));
     let doc = app.session.get(id).unwrap();
-    assert_eq!((app.views.len(), doc.path.as_deref(), doc.name.as_str(), doc.dirty), (1, out.to_str(), "plan (optimized).pdf", false));
+    assert_eq!((app.win.views.len(), doc.path.as_deref(), doc.name.as_str(), doc.dirty), (1, out.to_str(), "plan (optimized).pdf", false));
     assert_eq!(notes_on_disk(&out), ["Revise"]);
 }
 
@@ -274,7 +274,7 @@ fn optimizing_an_encrypted_document_keeps_it_open_and_protected() {
     app.set_option("language", "en").unwrap();
     app.run_inline = true;
     app.open_bytes("secret.pdf", None, pdfcraft_cos::write_full(&doc, &Default::default()).unwrap()).unwrap();
-    let id = app.views[0].id;
+    let id = app.win.views[0].id;
     assert!(app.apply_edit(note("Kept")));
     let out = dir.0.join("secret (reduced).pdf");
     app.save_override = Some(out.to_string_lossy().into_owned());
@@ -290,7 +290,7 @@ fn optimizing_an_encrypted_document_keeps_it_open_and_protected() {
 fn a_failed_optimized_save_leaves_the_document_as_it_was() {
     let dir = ReduceDir::new();
     let mut app = saved_photo(&dir, "plan.pdf");
-    let id = app.views[0].id;
+    let id = app.win.views[0].id;
     assert!(app.apply_edit(note("Unsaved")));
     let out = dir.0.join("missing folder").join("plan (reduced).pdf");
     app.save_override = Some(out.to_string_lossy().into_owned());
@@ -307,15 +307,15 @@ fn a_failed_optimized_save_leaves_the_document_as_it_was() {
 fn optimizing_never_overwrites_another_open_document() {
     let dir = ReduceDir::new();
     let mut app = saved_photo(&dir, "plan.pdf");
-    let plan = app.views[0].id;
+    let plan = app.win.views[0].id;
     app.open_bytes("other.png", None, png()).unwrap();
     app.save_override = Some(dir.0.join("other.pdf").to_string_lossy().into_owned());
     assert!(app.save_active(pdfcraft_ui_egui::SaveTarget::As));
-    let other = app.views[1].id;
+    let other = app.win.views[1].id;
     assert!(app.apply_edit(note("Other's change")));
     let other_file = std::fs::read(dir.0.join("other.pdf")).unwrap();
     // Back to the plan, and Reduce it onto the other document's file.
-    app.active = Some(0);
+    app.win.active = Some(0);
     assert_eq!(app.active_ids().map(|(_, id)| id), Some(plan));
     app.save_override = Some(dir.0.join("other.pdf").to_string_lossy().into_owned());
     assert!(app.execute("optimize.reduce"));
@@ -330,7 +330,7 @@ fn optimizing_never_overwrites_another_open_document() {
     assert!(app.execute("optimize.reduce"));
     let (p, o) = (app.session.get(plan).unwrap(), app.session.get(other).unwrap());
     assert_eq!((p.name.as_str(), p.dirty, o.name.as_str(), o.dirty), ("plan (reduced).pdf", false, "other.pdf", true));
-    assert_eq!(app.views.len(), 2);
+    assert_eq!(app.win.views.len(), 2);
 }
 
 /// A harness that optimizes on its worker thread, with the photo open as `plan.pdf` in `dir`.
@@ -364,7 +364,7 @@ fn edits_made_while_optimizing_are_never_replaced() {
     let dir = ReduceDir::new();
     let out = dir.0.join("plan (reduced).pdf");
     let mut h = optimizing_harness(&dir, Some(vec![out.to_string_lossy().into_owned()]));
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     assert!(h.state_mut().execute("optimize.reduce"));
     // The place is chosen first (SYNC.17); then the worker takes its snapshot. This edit comes
     // after it.
@@ -390,7 +390,7 @@ fn the_save_dialog_rebinds_the_tab_and_cancelling_it_changes_nothing() {
     let dir = ReduceDir::new();
     // Cancelled: the dialog answers with no file.
     let mut h = optimizing_harness(&dir, Some(vec![]));
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     assert!(h.state_mut().apply_edit(note("Unsaved")));
     assert!(h.state_mut().execute("optimize.reduce"));
     finish_run(&mut h);
@@ -405,7 +405,7 @@ fn the_save_dialog_rebinds_the_tab_and_cancelling_it_changes_nothing() {
     assert!(h.state_mut().execute("optimize.reduce"));
     finish_run(&mut h);
     let doc = h.state().session.get(id).unwrap();
-    assert_eq!((h.state().views.len(), doc.path.as_deref(), doc.dirty), (1, out.to_str(), false));
+    assert_eq!((h.state().win.views.len(), doc.path.as_deref(), doc.dirty), (1, out.to_str(), false));
     assert_eq!(notes_on_disk(&out), ["Unsaved"]);
 }
 
@@ -549,7 +549,7 @@ fn separate_batch_creates_one_pdf_per_source_without_replacing_existing_files() 
     }
     assert!(!dir.join("a (2).pdf").exists(), "an already-PDF input is skipped");
     assert!(!dir.join("report.pdf").exists(), "an invalid Office file is skipped");
-    assert!(app.views.is_empty(), "batch conversion must not open PDF tabs");
+    assert!(app.win.views.is_empty(), "batch conversion must not open PDF tabs");
     std::fs::remove_dir_all(dir).unwrap();
 }
 
@@ -571,7 +571,7 @@ fn separate_batch_command_picks_files_and_writes_to_the_chosen_folder() {
     assert!(h.state_mut().execute("create.multiple_separate"));
     h.run_steps(2);
     assert!(std::fs::read(dir.join("letter.pdf")).unwrap().starts_with(b"%PDF-"));
-    assert!(h.state().views.is_empty());
+    assert!(h.state().win.views.is_empty());
     std::fs::remove_dir_all(dir).unwrap();
 }
 
@@ -589,9 +589,9 @@ fn multiple_files_open_as_one_document_in_the_page_grid() {
     h.run_steps(4);
     {
         let app = h.state();
-        assert_eq!(app.views.len(), 1);
-        assert!(app.views[0].organize, "the pages are shown as a grid");
-        let doc = app.session.get(app.views[0].id).unwrap();
+        assert_eq!(app.win.views.len(), 1);
+        assert!(app.win.views[0].organize, "the pages are shown as a grid");
+        let doc = app.session.get(app.win.views[0].id).unwrap();
         assert_eq!(doc.name, "Combined.pdf");
         assert!(doc.dirty && doc.path.is_none(), "unsaved until the user saves it");
         assert_eq!(doc.info.pages.len(), 3, "the Word file can't be converted and is left out");
@@ -613,7 +613,7 @@ fn multiple_files_open_as_one_document_in_the_page_grid() {
     h.get_by_label("Save pages").click();
     h.run_steps(4);
     let app = h.state();
-    let doc = app.session.get(app.views[0].id).unwrap();
+    let doc = app.session.get(app.win.views[0].id).unwrap();
     assert!(!doc.dirty && doc.info.pages.len() == 2);
     assert!(std::fs::read(&path).unwrap().starts_with(b"%PDF-"));
 }
@@ -623,7 +623,7 @@ fn multiple_files_that_cannot_be_converted_open_nothing() {
     let mut app = PdfCraftApp::new();
     app.set_option("language", "en").unwrap();
     app.use_files(pdfcraft_ui_egui::FilePurpose::CreateMultiple, vec![("report.docx".into(), b"PK\x03\x04".to_vec())]);
-    assert!(app.views.is_empty());
+    assert!(app.win.views.is_empty());
     assert!(app.toast.is_some());
 }
 
@@ -634,8 +634,8 @@ fn multiple_files_past_a_thousand_are_all_used() {
     let pdf = app.session.create_from_text("a", "from a pdf").unwrap();
     let files: Vec<(String, Vec<u8>)> = (0..1001).map(|i| (format!("f{i}.pdf"), pdf.to_vec())).collect();
     app.use_files(pdfcraft_ui_egui::FilePurpose::CreateMultiple, files);
-    assert_eq!(app.views.len(), 1);
-    let doc = app.session.get(app.views[0].id).unwrap();
+    assert_eq!(app.win.views.len(), 1);
+    let doc = app.session.get(app.win.views[0].id).unwrap();
     assert_eq!(doc.info.pages.len(), 1001, "every picked file is used, in order");
 }
 

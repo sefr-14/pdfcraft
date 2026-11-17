@@ -32,17 +32,17 @@ fn compare_two_versions() {
     assert_eq!(h.state().compare.as_ref().unwrap().selected, Some(0));
     let id = h.state().active_ids().unwrap().1;
     let i = h.state().active_ids().unwrap().0;
-    assert_eq!(h.state().views[i].compare_marks.len(), 2);
+    assert_eq!(h.state().win.views[i].compare_marks.len(), 2);
     // Side by side: the old file's half shades its side of the changes and follows the new
     // file's zoom; "New file only" ends it.
     assert!(h.state().compare.as_ref().unwrap().side_by_side, "side by side on a wide window");
-    let old_i = h.state().views.iter().position(|v| v.id == h.state().compare.as_ref().unwrap().old).unwrap();
-    assert_eq!(h.state().views[old_i].compare_marks.len(), 2, "replaced words shaded on the old file too");
-    assert!(h.state().views[old_i].flash.is_some(), "the old half jumped to the change");
-    h.state_mut().views[i].zoom = 1.5;
-    h.state_mut().views[i].fit = pdfcraft_ui_egui::canvas::Fit::None;
+    let old_i = h.state().win.views.iter().position(|v| v.id == h.state().compare.as_ref().unwrap().old).unwrap();
+    assert_eq!(h.state().win.views[old_i].compare_marks.len(), 2, "replaced words shaded on the old file too");
+    assert!(h.state().win.views[old_i].flash.is_some(), "the old half jumped to the change");
+    h.state_mut().win.views[i].zoom = 1.5;
+    h.state_mut().win.views[i].fit = pdfcraft_ui_egui::canvas::Fit::None;
     h.run_steps(3);
-    assert_eq!((h.state().views[old_i].zoom, h.state().views[old_i].fit), (1.5, pdfcraft_ui_egui::canvas::Fit::None), "the old half follows");
+    assert_eq!((h.state().win.views[old_i].zoom, h.state().win.views[old_i].fit), (1.5, pdfcraft_ui_egui::canvas::Fit::None), "the old half follows");
     h.get_by_label("New file only").click();
     h.run_steps(2);
     assert!(!h.state().compare.as_ref().unwrap().side_by_side);
@@ -88,12 +88,12 @@ fn closing_either_half_of_a_side_by_side_comparison_keeps_the_app_running() {
         let mut h = side_by_side();
         let c = h.state().compare.as_ref().unwrap();
         let id = if half == 1 { c.new } else { c.old };
-        let i = h.state().views.iter().position(|v| v.id == id).unwrap();
-        h.state_mut().views[i].close_requested = true;
+        let i = h.state().win.views.iter().position(|v| v.id == id).unwrap();
+        h.state_mut().win.views[i].close_requested = true;
         h.run_steps(3);
         let s = h.state();
-        assert_eq!(s.views.len(), 1, "the {name} tab closed");
-        assert!(s.views.iter().all(|v| v.id != id));
+        assert_eq!(s.win.views.len(), 1, "the {name} tab closed");
+        assert!(s.win.views.iter().all(|v| v.id != id));
     }
 }
 
@@ -125,15 +125,15 @@ fn compare_filters_hide_text_or_visual_changes() {
         app
     });
     h.run_steps(4);
-    h.state_mut().compare_old = h.state().views.first().map(|v| v.id);
+    h.state_mut().compare_old = h.state().win.views.first().map(|v| v.id);
     h.state_mut().run_compare();
     h.run_steps(3);
     let new_i = h.state().active_ids().unwrap().0;
-    let old_i = h.state().views.iter().position(|v| v.id == h.state().compare.as_ref().unwrap().old).unwrap();
+    let old_i = h.state().win.views.iter().position(|v| v.id == h.state().compare.as_ref().unwrap().old).unwrap();
     // Visual differences are shaded orange (compare_ui::VISUAL), text changes in their kind's colour.
     let visual = egui::Color32::from_rgb(0xF0, 0x8C, 0x1A);
     let kinds = |h: &Harness<'_, PdfCraftApp>, i: usize| {
-        let marks = &h.state().views[i].compare_marks;
+        let marks = &h.state().win.views[i].compare_marks;
         (marks.iter().filter(|m| m.2 != visual).count(), marks.iter().filter(|m| m.2 == visual).count())
     };
     let (text_new, visual_new) = kinds(&h, new_i);
@@ -213,7 +213,7 @@ fn compare_panel_screenshot() {
         app
     });
     h.run_steps(4);
-    h.state_mut().compare_old = h.state().views.first().map(|v| v.id);
+    h.state_mut().compare_old = h.state().win.views.first().map(|v| v.id);
     h.state_mut().run_compare();
     for _ in 0..20 {
         h.run_steps(2);

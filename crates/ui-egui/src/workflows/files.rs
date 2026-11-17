@@ -346,11 +346,11 @@ impl PdfCraftApp {
     /// Ask for files to insert at grid gap `at` (0 = before the first page), or after the
     /// selection.
     pub(crate) fn insert_from_file_at(&mut self, at: Option<usize>) {
-        let Some(i) = self.active else {
+        let Some(i) = self.win.active else {
             self.notify_tr("Open a document first");
             return;
         };
-        if let Some(v) = self.views.get_mut(i) {
+        if let Some(v) = self.win.views.get_mut(i) {
             v.insert_at = at;
         }
         self.pick_files(FilePurpose::InsertPages, true);
@@ -567,7 +567,7 @@ impl PdfCraftApp {
                     return;
                 }
                 let Some((index, id)) = self.active_ids() else { return };
-                let Some(mut ed) = self.views[index].line_editor.clone().filter(|ed| ed.page == page) else { return };
+                let Some(mut ed) = self.win.views[index].line_editor.clone().filter(|ed| ed.page == page) else { return };
                 // The font just loaded is the one the user wants: apply it to the paragraph, as
                 // choosing it from the document-font menu does, instead of only registering it (#2591).
                 let resource = self.session.get(id).and_then(|doc| {
@@ -581,7 +581,7 @@ impl PdfCraftApp {
                     && let Some(ctx) = ctx
                 {
                     ed.fonts = crate::edit_text_ui::install_source_fonts(&ctx, doc, page);
-                    self.views[index].line_editor = Some(ed);
+                    self.win.views[index].line_editor = Some(ed);
                 }
             }
             FilePurpose::Combine => self.stage_combine(files),
@@ -610,7 +610,7 @@ impl PdfCraftApp {
     }
 
     pub fn replace_pages_dialog(&mut self) {
-        if self.active.is_none() {
+        if self.win.active.is_none() {
             self.notify_tr("Open a document first");
             return;
         }
@@ -628,7 +628,7 @@ impl PdfCraftApp {
                 return;
             }
         };
-        let pages = self.views[i].target_pages();
+        let pages = self.win.views[i].target_pages();
         let (from, to) = (pages.first().map_or(1, |p| p + 1), pages.last().map_or(1, |p| p + 1));
         let target = self.pick_target(self.active_ids().map(|(_, id)| id));
         self.replace_draft = Some(ReplaceDraft { name, bytes, src_pages, from, to, src_from: 1, pages, range_edited: false, target });
@@ -652,7 +652,7 @@ impl PdfCraftApp {
     where
         I: IntoIterator<Item = Result<(String, Vec<u8>), (String, String)>>,
     {
-        let Some(view) = self.active.and_then(|i| self.views.get_mut(i)) else { return };
+        let Some(view) = self.win.active.and_then(|i| self.win.views.get_mut(i)) else { return };
         let (id, chosen) = (view.id, view.insert_at.take());
         let after = view.target_pages().last().map_or(0, |p| p + 1);
         let count = self.session.get(id).map_or(0, |d| d.info.pages.len());
@@ -682,7 +682,7 @@ impl PdfCraftApp {
             }
         }
         if at > start
-            && let Some(view) = self.active.and_then(|i| self.views.get_mut(i))
+            && let Some(view) = self.win.active.and_then(|i| self.win.views.get_mut(i))
         {
             view.select_pages(&(start..at).collect::<Vec<_>>());
         }
@@ -706,7 +706,7 @@ impl PdfCraftApp {
         }
         let Some((i, id)) = self.active_ids() else { return };
         let opts = self.extract_draft.clone();
-        let pages = match opts.pages_to_extract(self.views[i].target_pages(), self.views[i].page_count()) {
+        let pages = match opts.pages_to_extract(self.win.views[i].target_pages(), self.win.views[i].page_count()) {
             Ok(pages) => pages,
             Err(e) => {
                 self.notify_fmt("Couldn't extract pages: {e}", &[("e", &e)]);
@@ -771,7 +771,7 @@ impl PdfCraftApp {
         }
         if opts.delete {
             // Back on the original document.
-            self.active = Some(i);
+            self.win.active = Some(i);
             self.apply_edit(pdfcraft_engine::Edit::DeletePages { pages: doomed });
         }
     }
@@ -832,7 +832,7 @@ impl PdfCraftApp {
         let n = doc.info.pages.len();
         let d = self.rotate_draft.clone();
         let base: Vec<usize> = match d.which {
-            1 => self.views[i].target_pages(),
+            1 => self.win.views[i].target_pages(),
             2 => (d.from.max(1) - 1..d.to.min(n)).collect(),
             _ => (0..n).collect(),
         };
@@ -917,8 +917,8 @@ impl PdfCraftApp {
                 if self.full_screen {
                     view.enter_presentation();
                 }
-                self.views.push(view);
-                self.active = Some(self.views.len() - 1);
+                self.win.views.push(view);
+                self.win.active = Some(self.win.views.len() - 1);
                 self.notify_tr(message);
             }
             Err(e) => self.notify_fmt("Couldn't open the result: {e}", &[("e", &e.to_string())]),

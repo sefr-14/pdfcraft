@@ -4,7 +4,7 @@ use super::{Host, Reply, Value, json};
 impl Host for crate::PdfCraftApp {
     /// Cancel any in-progress pointer gesture in every open view.
     fn cancel_pointer_gestures(&mut self) {
-        for view in &mut self.views {
+        for view in &mut self.win.views {
             view.cancel_pointer_gestures();
         }
     }
@@ -28,7 +28,7 @@ impl Host for crate::PdfCraftApp {
     fn capture_epoch(&self) -> u64 {
         use std::hash::{Hash as _, Hasher as _};
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        let doc = self.active.and_then(|i| self.views.get(i)).map(|v| v.id.0);
+        let doc = self.win.active.and_then(|i| self.win.views.get(i)).map(|v| v.id.0);
         doc.hash(&mut hasher);
         format!(
             "{:?}/{:?}/{:?}/{:?}/{:?}",
@@ -36,7 +36,7 @@ impl Host for crate::PdfCraftApp {
             self.password_prompt.is_some(),
             self.palette_open,
             self.close_request.is_some(),
-            self.active.and_then(|i| self.views.get(i)).and_then(|v| v.find.as_ref().map(|_| true)),
+            self.win.active.and_then(|i| self.win.views.get(i)).and_then(|v| v.find.as_ref().map(|_| true)),
         )
         .hash(&mut hasher);
         hasher.finish()
@@ -57,14 +57,14 @@ impl Host for crate::PdfCraftApp {
     }
 
     fn state(&self) -> Value {
-        let active = self.active.and_then(|i| self.views.get(i));
+        let active = self.win.active.and_then(|i| self.win.views.get(i));
         let docs: Vec<Value> = self
-            .views
+            .win.views
             .iter()
             .enumerate()
             .filter_map(|(i, v)| {
                 let d = self.session.get(v.id)?;
-                Some(json!({ "tab": i, "doc": v.id.0, "name": d.name, "path": d.path, "pages": d.info.pages.len(), "dirty": d.dirty, "active": self.active == Some(i) }))
+                Some(json!({ "tab": i, "doc": v.id.0, "name": d.name, "path": d.path, "pages": d.info.pages.len(), "dirty": d.dirty, "active": self.win.active == Some(i) }))
             })
             .collect();
         #[cfg(not(target_arch = "wasm32"))]
@@ -142,7 +142,7 @@ impl Host for crate::PdfCraftApp {
                 crate::QuickTool::Field(f) => format!("field-{}", f.command().trim_start_matches("form.add.")),
                 crate::QuickTool::Comment(t) => t.command().trim_start_matches("comment.").to_string(),
             },
-            "home": self.active.is_none(),
+            "home": self.win.active.is_none(),
             "mode": format!("{:?}", self.mode),
             "default_mode": self.default_mode,
             "hotbar": self.hotbar,

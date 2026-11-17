@@ -32,10 +32,10 @@ impl PdfCraftApp {
         }
         let field = self.keyboard_owner.or_else(|| ctx.memory(|m| m.focused()));
         let measuring = matches!(self.quick_tool, QuickTool::Measure(_));
-        let active = self.active.filter(|&i| i < self.views.len());
+        let active = self.win.active.filter(|&i| i < self.win.views.len());
         if let Some(field) = field {
             if let Some(i) = active {
-                let view = &mut self.views[i];
+                let view = &mut self.win.views[i];
                 let step = if measuring && view.measure.calibrating() && view.measure.known_field == Some(field) {
                     view.measure.cancel_calibration()
                 } else {
@@ -60,7 +60,7 @@ impl PdfCraftApp {
             return;
         }
         let Some(i) = active else { return };
-        let view = &mut self.views[i];
+        let view = &mut self.win.views[i];
         // A guide held by the pointer goes back; else the selected guide is let go of.
         let id = view.id;
         if crate::guides::cancel_drag(view, &mut self.doc_prefs, id) || view.guides.selected.take().is_some() {
@@ -113,7 +113,7 @@ impl PdfCraftApp {
 
     /// The command palette is drawn this frame (full screen shows the page only).
     fn palette_shown(&self) -> bool {
-        self.palette_open && !(self.full_screen && self.active.is_some())
+        self.palette_open && !(self.full_screen && self.win.active.is_some())
     }
 }
 

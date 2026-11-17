@@ -10,13 +10,13 @@ fn viewer_shadows_follow_the_preference_without_moving_pages() {
             let mut h = harness(theme);
             h.state_mut().set_option("layout", layout).unwrap();
             h.run_steps(3);
-            let rectangles = h.state().views[0].visible_page_rects().to_vec();
+            let rectangles = h.state().win.views[0].visible_page_rects().to_vec();
             let original = shadows(&h, false);
             assert!(!original.is_empty(), "{theme} {layout}");
             h.state_mut().set_option("show_page_edge_shadows", "false").unwrap();
             h.run_steps(2);
             assert!(shadows(&h, false).is_empty(), "{theme} {layout}");
-            assert_eq!(h.state().views[0].visible_page_rects(), rectangles);
+            assert_eq!(h.state().win.views[0].visible_page_rects(), rectangles);
             h.state_mut().set_option("zoom", "125").unwrap();
             h.state_mut().set_option("page", "2").unwrap();
             h.run_steps(3);
@@ -44,14 +44,14 @@ fn viewport_fades_follow_the_preference_and_keep_other_scroll_areas_styled() {
             assert!(!viewport_fades(&h).is_empty(), "bottom fade at start: {theme}, organize={organize}");
             scroll_down(&mut h, 100.0);
             let original = viewport_fades(&h);
-            let viewport = h.state().views[0].viewport_rect();
+            let viewport = h.state().win.views[0].viewport_rect();
             assert!(original.iter().any(|r| (r.top() - viewport.top()).abs() < 2.0), "top fade: {original:?}");
             assert!(original.iter().any(|r| (r.bottom() - viewport.bottom()).abs() < 2.0), "bottom fade: {original:?}");
-            let pages = h.state().views[0].visible_page_rects().to_vec();
+            let pages = h.state().win.views[0].visible_page_rects().to_vec();
             h.state_mut().set_option("show_page_edge_shadows", "false").unwrap();
             h.run_steps(2);
             assert!(viewport_fades(&h).is_empty(), "viewport fades remain: {theme}, organize={organize}");
-            assert_eq!(h.state().views[0].visible_page_rects(), pages);
+            assert_eq!(h.state().win.views[0].visible_page_rects(), pages);
             assert_eq!(h.ctx.global_style().spacing.scroll.fade, original_style);
             h.state_mut().set_option("show_page_edge_shadows", "true").unwrap();
             h.run_steps(2);
@@ -69,19 +69,19 @@ fn horizontal_viewport_fades_also_follow_the_preference() {
     let mut h = harness("dark");
     h.state_mut().set_option("zoom", "400").unwrap();
     h.run_steps(4);
-    let viewport = h.state().views[0].viewport_rect();
+    let viewport = h.state().win.views[0].viewport_rect();
     let horizontal: Vec<_> = viewport_fades(&h).into_iter().filter(|r| r.width() <= 21.0).collect();
     assert!(horizontal.iter().any(|r| (r.left() - viewport.left()).abs() < 2.0), "left fade: {horizontal:?}");
     assert!(horizontal.iter().any(|r| (r.right() - viewport.right()).abs() < 2.0), "right fade: {horizontal:?}");
-    let pages = h.state().views[0].visible_page_rects().to_vec();
+    let pages = h.state().win.views[0].visible_page_rects().to_vec();
     h.state_mut().set_option("show_page_edge_shadows", "false").unwrap();
     h.run_steps(2);
     assert!(viewport_fades(&h).is_empty());
-    assert_eq!(h.state().views[0].visible_page_rects(), pages);
+    assert_eq!(h.state().win.views[0].visible_page_rects(), pages);
 }
 
 fn scroll_down(h: &mut Harness<'static, PdfCraftApp>, points: f32) {
-    h.hover_at(h.state().views[0].viewport_rect().center());
+    h.hover_at(h.state().win.views[0].viewport_rect().center());
     h.run_steps(1);
     h.event(egui::Event::MouseWheel {
         unit: egui::MouseWheelUnit::Point,
@@ -96,7 +96,7 @@ fn scroll_down(h: &mut Harness<'static, PdfCraftApp>, points: f32) {
 /// Inspect the actual egui painter output: untextured four-vertex gradients
 /// with a transparent edge, spanning one dimension of the document viewport.
 fn viewport_fades(h: &Harness<'static, PdfCraftApp>) -> Vec<egui::Rect> {
-    let viewport = h.state().views[0].viewport_rect();
+    let viewport = h.state().win.views[0].viewport_rect();
     h.output()
         .shapes
         .iter()
@@ -137,13 +137,14 @@ fn organize_shadows_follow_the_preference() {
 fn checkbox_and_multiple_documents_do_not_edit_pdf_state() {
     let mut h = harness("light");
     h.state_mut().open_bytes("second.pdf", None, pdf()).unwrap();
-    let ids: Vec<_> = h.state().views.iter().map(|v| v.id).collect();
+    let ids: Vec<_> = h.state().win.views.iter().map(|v| v.id).collect();
     h.state_mut().session.apply(ids[0], pdfcraft_engine::Edit::SetInfo { key: "Title".into(), value: "Keep existing edits".into() }).unwrap();
     assert!(h.state().session.get(ids[0]).unwrap().dirty);
     assert!(h.state().session.get(ids[0]).unwrap().can_undo().is_some());
     let saved: Vec<_> = ids.iter().map(|id| h.state_mut().session.save_bytes(*id).unwrap()).collect();
     let before: Vec<_> = h
         .state()
+        .win
         .views
         .iter()
         .map(|v| {
@@ -174,10 +175,10 @@ fn checkbox_and_multiple_documents_do_not_edit_pdf_state() {
     assert_eq!(h.ctx.global_style().visuals.window_shadow, dialog_shadow);
     h.state_mut().set_option("dialog", "none").unwrap();
     for tab in [0, 1] {
-        h.state_mut().active = Some(tab);
+        h.state_mut().win.active = Some(tab);
         h.run_steps(2);
         assert!(shadows(&h, false).is_empty());
-        let d = h.state().session.get(h.state().views[tab].id).unwrap();
+        let d = h.state().session.get(h.state().win.views[tab].id).unwrap();
         assert_eq!(
             (&d.bytes, d.dirty, d.can_undo(), d.can_redo()),
             (&before[tab].0, before[tab].1, before[tab].2.as_deref(), before[tab].3.as_deref())
@@ -207,19 +208,19 @@ fn rendered_page_content_is_identical_with_and_without_decoration() {
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
     assert!(!h.state().render_pending(), "the actual PDF raster must be ready");
-    let rect = h.state().views[0].page_screen_rect(0).unwrap();
+    let rect = h.state().win.views[0].page_screen_rect(0).unwrap();
     let fades = viewport_fades(&h);
     assert_eq!(fades.iter().filter(|r| r.height() <= 21.0).count(), 2, "the screenshot comparison must contain both vertical fades");
     let enabled = h.render().unwrap();
     h.state_mut().set_option("show_page_edge_shadows", "false").unwrap();
     h.run_steps(2);
     let disabled = h.render().unwrap();
-    assert_eq!(h.state().views[0].page_screen_rect(0), Some(rect));
-    let viewport = h.state().views[0].viewport_rect();
+    assert_eq!(h.state().win.views[0].page_screen_rect(0), Some(rect));
+    let viewport = h.state().win.views[0].viewport_rect();
     assert!(viewport_fades(&h).is_empty());
     // Only the painter's actual decorative fade strips may change over the page.
     // All remaining artwork, annotation and form pixels must be identical.
-    for (_, page) in h.state().views[0].visible_page_rects() {
+    for (_, page) in h.state().win.views[0].visible_page_rects() {
         let visible = page.intersect(viewport).shrink(2.0);
         if !visible.is_positive() {
             continue;

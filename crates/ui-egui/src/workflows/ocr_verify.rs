@@ -1216,7 +1216,7 @@ impl OcrVerify {
         let d = &app.ocr_draft;
         let pages: Vec<usize> = match d.pages {
             super::ocr_ui::OcrPages::All => Vec::new(),
-            super::ocr_ui::OcrPages::Current => vec![app.active.map_or(0, |i| app.views.get(i).map_or(0, |v| v.current))],
+            super::ocr_ui::OcrPages::Current => vec![app.win.active.map_or(0, |i| app.win.views.get(i).map_or(0, |v| v.current))],
             super::ocr_ui::OcrPages::Range => (d.from.saturating_sub(1)..d.to).collect(),
         };
         let settings = d.settings();
@@ -1426,7 +1426,7 @@ fn follow_active_document(app: &mut PdfCraftApp) {
     }
     let active = app.active_ids();
     app.ocr_verify.doc = active.map(|(_, id)| id);
-    app.ocr_verify.current = active.and_then(|(i, _)| app.views.get(i)).map_or(0, |view| view.current);
+    app.ocr_verify.current = active.and_then(|(i, _)| app.win.views.get(i)).map_or(0, |view| view.current);
 }
 
 /// A pane's caption; the focused pane's name is underlined (Ctrl+Tab moves the focus).
@@ -2275,7 +2275,7 @@ fn write_editable(app: &mut PdfCraftApp, target: &std::path::Path, bytes: Arc<Ve
 /// Pull the document's changed appearance into its view after an apply.
 fn refresh_view(app: &mut PdfCraftApp, doc: DocId) {
     if let Some(info) = app.session.get(doc).map(|d| d.info.clone())
-        && let Some(view) = app.views.iter_mut().find(|view| view.id == doc)
+        && let Some(view) = app.win.views.iter_mut().find(|view| view.id == doc)
     {
         view.document_changed(&info);
     }
@@ -3195,29 +3195,29 @@ mod tests {
         for name in ["a.pdf", "b.pdf", "c.pdf"] {
             app.open_bytes(name, None, bytes.clone()).expect("fixture");
         }
-        let a = app.views.first().expect("a is open").id;
+        let a = app.win.views.first().expect("a is open").id;
         let job = app.session.ocr_job(a, &[0], OcrSettings::default()).expect("fixture");
         let page = OcrPage { already_on_page: 0, page: 0, words: vec![word("w", Some(95.0))], skipped: None, notes: Vec::new() };
         app.ocr_verify.load(a, job.guard.clone(), vec![page]);
         assert!(app.ocr_verify.correct((0, 0), "Edited"));
-        app.active = Some(2);
+        app.win.active = Some(2);
         app.request_close_tab(0);
-        assert_eq!(app.views.len(), 3, "the reviewed document stays open");
-        assert_eq!(app.active, Some(0), "and comes to the front");
+        assert_eq!(app.win.views.len(), 3, "the reviewed document stays open");
+        assert_eq!(app.win.active, Some(0), "and comes to the front");
         assert!(app.ocr_verify.open, "with its review");
         assert_eq!(app.ocr_verify.text_of((0, 0)), Some("Edited"), "as it was");
         assert!(app.toast.is_some(), "a notice says to accept or reject it first");
         app.ocr_verify.open = false;
         app.request_close_tab(2);
-        assert_eq!(app.views.len(), 2, "another document closes as usual");
-        app.active = Some(1);
+        assert_eq!(app.win.views.len(), 2, "another document closes as usual");
+        app.win.active = Some(1);
         app.close_all();
-        assert_eq!(app.views.len(), 2, "Close all closes nothing while the review is open");
-        assert_eq!(app.active, Some(0));
+        assert_eq!(app.win.views.len(), 2, "Close all closes nothing while the review is open");
+        assert_eq!(app.win.active, Some(0));
         assert!(app.ocr_verify.reject());
         app.request_close_tab(0);
-        assert_eq!(app.views.len(), 1, "after Reject the document closes");
-        assert!(app.views.iter().all(|v| v.id != a));
+        assert_eq!(app.win.views.len(), 1, "after Reject the document closes");
+        assert!(app.win.views.iter().all(|v| v.id != a));
     }
 
     /// Three open documents with a review of the first one, a word of it corrected.
@@ -3227,7 +3227,7 @@ mod tests {
         for name in ["a.pdf", "b.pdf", "c.pdf"] {
             app.open_bytes(name, None, bytes.clone()).expect("fixture");
         }
-        let a = app.views.first().expect("a is open").id;
+        let a = app.win.views.first().expect("a is open").id;
         let job = app.session.ocr_job(a, &[0], OcrSettings::default()).expect("fixture");
         let page = OcrPage { already_on_page: 0, page: 0, words: vec![word("w", Some(95.0))], skipped: None, notes: Vec::new() };
         app.ocr_verify.load(a, job.guard.clone(), vec![page]);
@@ -3242,22 +3242,22 @@ mod tests {
     fn a_close_after_a_save_holds_for_a_review_started_meanwhile() {
         let (mut app, a) = reviewing_the_first_of_three();
         // This fork: a close request names the tab (Duplicate Tab), here the document's one tab.
-        let tab = app.views.iter().find(|v| v.id == a).map(|v| v.key).unwrap();
+        let tab = app.win.views.iter().find(|v| v.id == a).map(|v| v.key).unwrap();
         let ctx = egui::Context::default();
-        app.active = Some(2);
+        app.win.active = Some(2);
         app.close_and_continue(&ctx, 0, crate::CloseRequest::Tab(tab));
-        assert_eq!(app.views.len(), 3, "the reviewed document stays open");
-        assert_eq!(app.active, Some(0), "and comes to the front");
+        assert_eq!(app.win.views.len(), 3, "the reviewed document stays open");
+        assert_eq!(app.win.active, Some(0), "and comes to the front");
         assert_eq!(app.ocr_verify.text_of((0, 0)), Some("Edited"), "with its review as it was");
         app.close_and_continue(&ctx, 1, crate::CloseRequest::All);
-        assert_eq!(app.views.len(), 3, "Close all closes nothing while the review is open");
+        assert_eq!(app.win.views.len(), 3, "Close all closes nothing while the review is open");
         app.note_quit_session();
         app.close_and_continue(&ctx, 2, crate::CloseRequest::Quit);
-        assert_eq!(app.views.len(), 3, "Quit closes nothing either");
+        assert_eq!(app.win.views.len(), 3, "Quit closes nothing either");
         assert!(!app.allow_quit && app.quit_session.is_none(), "and the quit is called off");
         assert!(app.ocr_verify.reject());
         app.close_and_continue(&ctx, 0, crate::CloseRequest::Tab(tab));
-        assert_eq!(app.views.len(), 2, "after Reject the document closes");
+        assert_eq!(app.win.views.len(), 2, "after Reject the document closes");
     }
 
     /// Run OCR on another document while a review is held leaves the review alone and says why.
@@ -3265,7 +3265,7 @@ mod tests {
     fn a_run_on_another_document_keeps_the_review() {
         let (mut app, a) = reviewing_the_first_of_three();
         FAIL_LAUNCH.with(|f| f.set(true));
-        app.active = Some(1);
+        app.win.active = Some(1);
         with_state(&mut app, |v, app| v.start_run(app));
         FAIL_LAUNCH.with(|f| f.set(false));
         assert!(app.ocr_verify.message.contains("other document"), "{}", app.ocr_verify.message);
@@ -3309,16 +3309,16 @@ mod tests {
         for name in ["a.pdf", "b.pdf"] {
             app.open_bytes(name, None, bytes.clone()).expect("fixture");
         }
-        let (a, b) = (app.views[0].id, app.views[1].id);
+        let (a, b) = (app.win.views[0].id, app.win.views[1].id);
         FAIL_LAUNCH.with(|f| f.set(true));
-        app.active = Some(1);
+        app.win.active = Some(1);
         with_state(&mut app, |v, app| v.start_run(app));
         assert_eq!(app.ocr_verify.phase, Phase::RecoverableError, "not left running");
         assert!(app.ocr_verify.message.contains("could not start"), "{}", app.ocr_verify.message);
         assert!(app.ocr_verify.can_run(), "Run is enabled again");
         assert!(!app.ocr_verify.holds_reading_of(b));
         app.request_close_tab(1);
-        assert_eq!(app.views.len(), 1, "the document closes");
+        assert_eq!(app.win.views.len(), 1, "the document closes");
         // A review on the screen: a run that cannot start leaves it as it was.
         let job = app.session.ocr_job(a, &[0], OcrSettings::default()).expect("fixture");
         let page = OcrPage { already_on_page: 0, page: 0, words: vec![word("w", Some(95.0))], skipped: None, notes: Vec::new() };
@@ -3363,7 +3363,7 @@ mod tests {
         let mut app = PdfCraftApp::new();
         let bytes = Session::new().create_from_text("t", "Recognize these scanned words").expect("fixture").to_vec();
         app.open_bytes("a.pdf", None, bytes).expect("fixture");
-        let a = app.views[0].id;
+        let a = app.win.views[0].id;
         let ctx = egui::Context::default();
         app.guard_quit(&ctx);
         assert!(!app.unsaved_flag.load(Ordering::Relaxed), "nothing to lose yet");
@@ -3388,21 +3388,21 @@ mod tests {
         for name in ["a.pdf", "b.pdf"] {
             app.open_bytes(name, None, bytes.clone()).expect("fixture");
         }
-        let a = app.views[0].id;
+        let a = app.win.views[0].id;
         let job = app.session.ocr_job(a, &[0], OcrSettings::default()).expect("fixture");
         let page = OcrPage { already_on_page: 0, page: 0, words: vec![word("w", Some(95.0))], skipped: None, notes: Vec::new() };
         app.ocr_verify.load(a, job.guard.clone(), vec![page]);
         assert!(app.first_dirty().is_none(), "nothing is unsaved");
-        app.active = Some(1);
+        app.win.active = Some(1);
         let ctx = egui::Context::default();
         assert!(!app.request_quit(&ctx), "Quit is held");
         assert!(!app.allow_quit);
-        assert_eq!(app.active, Some(0), "the reviewed document comes to the front");
+        assert_eq!(app.win.active, Some(0), "the reviewed document comes to the front");
         assert!(app.ocr_verify.open, "with its review");
         assert!(app.toast.is_some(), "a notice says to accept or reject it first");
         assert!(app.close_request.is_none(), "no save question: nothing is unsaved");
         // Closing the window, as the operating system does.
-        app.active = Some(1);
+        app.win.active = Some(1);
         app.ocr_verify.open = false;
         let mut raw = egui::RawInput::default();
         raw.viewports.entry(egui::ViewportId::ROOT).or_default().events.push(egui::ViewportEvent::Close);
@@ -3412,9 +3412,9 @@ mod tests {
         out.textures_delta.clear();
         let commands: Vec<_> = out.viewport_output.values().flat_map(|v| v.commands.iter()).collect();
         assert!(commands.iter().any(|c| matches!(c, egui::ViewportCommand::CancelClose)), "{commands:?}");
-        assert_eq!(app.active, Some(0));
+        assert_eq!(app.win.active, Some(0));
         assert!(app.ocr_verify.open);
-        assert_eq!(app.views.len(), 2, "nothing closed");
+        assert_eq!(app.win.views.len(), 2, "nothing closed");
         assert!(app.ocr_verify.reject());
         assert!(app.request_quit(&ctx), "after Reject, Quit goes ahead");
         assert!(app.allow_quit);

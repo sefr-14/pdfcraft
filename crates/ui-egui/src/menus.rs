@@ -468,10 +468,13 @@ impl PdfCraftApp {
 
     /// The open documents, in tab order, for the Window menu.
     fn menu_documents(&self) -> Vec<Document> {
-        (0..self.views.len())
+        (0..self.win.views.len())
             .filter_map(|index| {
                 let name = crate::canvas::tab_label(self, index)?;
-                Some(Document::new(CommandRef::with_params(DOCUMENT, serde_json::json!({ "index": index })), name).active(self.active == Some(index)))
+                Some(
+                    Document::new(CommandRef::with_params(DOCUMENT, serde_json::json!({ "index": index })), name)
+                        .active(self.win.active == Some(index)),
+                )
             })
             .collect()
     }
@@ -484,7 +487,7 @@ impl PdfCraftApp {
 
     /// Whether a menu item's command can run now, and its checked or selected state.
     pub fn menu_state(&self, ctx: &egui::Context, command: &CommandRef) -> ItemState {
-        let view = self.active.and_then(|i| self.views.get(i));
+        let view = self.win.active.and_then(|i| self.win.views.get(i));
         let organize = view.is_some_and(|v| v.organize);
         let has_doc = view.is_some();
         let enabled_id = |id: &str| commands::command(id).is_some_and(|s| self.command_enabled(s));
@@ -499,7 +502,7 @@ impl PdfCraftApp {
                 NO_RECENT => false,
                 "file.open_recent" => index.is_none_or(|i| i < self.recent.len()),
                 "file.clear_recent" => !self.recent.is_empty(),
-                DOCUMENT => index.is_some_and(|i| i < self.views.len()),
+                DOCUMENT => index.is_some_and(|i| i < self.win.views.len()),
                 // macOS ⌘W closes the window when no document is open (#869).
                 "file.close" if !has_doc && crate::commands::mac_shortcuts(ctx) && !cfg!(target_arch = "wasm32") => true,
                 "edit.copy" if organize => enabled_id("page.copy"),
@@ -527,7 +530,7 @@ impl PdfCraftApp {
             "view.read_mode" => Some(self.mode == crate::Mode::Read),
             "view.side_panel" => Some(self.right.is_some()),
             "view.tools_pane" => Some(self.left_open),
-            "view.split" => Some(self.panes.split.is_some()),
+            "view.split" => Some(self.win.panes.split.is_some()),
             "view.theme.system" => Some(self.theme_preference == ThemePreference::System),
             "view.theme.light" => Some(self.theme_preference == ThemePreference::Light),
             "view.theme.dark" => Some(self.theme_preference == ThemePreference::Dark),
@@ -536,8 +539,8 @@ impl PdfCraftApp {
             "view.thin_lines" => Some(self.thin_lines),
             "view.rulers" => Some(view.and_then(|v| self.doc_prefs.state(v.id)).is_some_and(|s| s.prefs.rulers)),
             "view.guides" => Some(view.and_then(|v| self.doc_prefs.state(v.id)).is_some_and(|s| s.prefs.guides_shown)),
-            "view.tab_view" => Some(self.layout_mode == crate::ViewLayout::Tabs),
-            "view.tile_view" => Some(self.layout_mode == crate::ViewLayout::Tiles),
+            "view.tab_view" => Some(self.win.layout_mode == crate::ViewLayout::Tabs),
+            "view.tile_view" => Some(self.win.layout_mode == crate::ViewLayout::Tiles),
             _ => None,
         };
         ItemState { enabled, checked }
@@ -567,8 +570,8 @@ impl PdfCraftApp {
                 }
             }
             DOCUMENT => {
-                if let Some(i) = index.filter(|&i| i < self.views.len()) {
-                    self.active = Some(i);
+                if let Some(i) = index.filter(|&i| i < self.win.views.len()) {
+                    self.win.active = Some(i);
                 }
             }
             "edit.copy" => self.menu_input.push(egui::Event::Copy),
@@ -578,7 +581,7 @@ impl PdfCraftApp {
             DELETE => self.menu_input.extend(key(egui::Key::Delete, egui::Modifiers::NONE)),
             PANEL => self.choose_right_panel(panel(command)),
             ACTUAL_SIZE | PAGE_LEVEL | FIT_WIDTH | FIT_HEIGHT | ZOOM_IN | ZOOM_OUT | ROTATE_CW | ROTATE_CCW => {
-                let Some(v) = self.active.and_then(|i| self.views.get_mut(i)) else { return };
+                let Some(v) = self.win.active.and_then(|i| self.win.views.get_mut(i)) else { return };
                 match command.id.as_str() {
                     ACTUAL_SIZE => v.set_zoom(1.0),
                     PAGE_LEVEL => v.fit = Fit::Page,
@@ -810,19 +813,19 @@ mod tests {
         assert_eq!(kind(&app, "view.thin_lines"), ItemKind::Check(false));
         assert_eq!(kind(&app, "view.tab_view"), ItemKind::Radio(true));
         assert_eq!(kind(&app, "view.tile_view"), ItemKind::Radio(false));
-        let rulers = app.doc_prefs.state(app.views[0].id).is_some_and(|s| s.prefs.rulers);
+        let rulers = app.doc_prefs.state(app.win.views[0].id).is_some_and(|s| s.prefs.rulers);
         assert_eq!(kind(&app, "view.rulers"), ItemKind::Check(rulers));
         app.run_menu_command(&ctx, &CommandRef::new("view.thin_lines"));
         app.run_menu_command(&ctx, &CommandRef::new("view.tile_view"));
         app.sync_doc_prefs();
         app.run_menu_command(&ctx, &CommandRef::new("view.rulers"));
-        assert!(app.thin_lines && app.layout_mode == crate::ViewLayout::Tiles);
+        assert!(app.thin_lines && app.win.layout_mode == crate::ViewLayout::Tiles);
         assert_eq!(kind(&app, "view.thin_lines"), ItemKind::Check(true));
         assert_eq!(kind(&app, "view.tab_view"), ItemKind::Radio(false));
         assert_eq!(kind(&app, "view.tile_view"), ItemKind::Radio(true));
         assert_eq!(kind(&app, "view.rulers"), ItemKind::Check(!rulers), "Rulers follows the active PDF's setting");
         app.run_menu_command(&ctx, &CommandRef::new("view.duplicate_tab"));
-        assert_eq!(app.views.len(), 2, "Duplicate tab runs from the Window menu");
+        assert_eq!(app.win.views.len(), 2, "Duplicate tab runs from the Window menu");
     }
 
     #[test]
@@ -831,7 +834,7 @@ mod tests {
         let kind = |app: &PdfCraftApp, id: &str| item(&linux(app, &ctx), &CommandRef::new(id)).kind;
         assert_eq!(kind(&app, "view.layout.single"), ItemKind::Radio(true));
         assert_eq!(kind(&app, "view.layout.two_up"), ItemKind::Radio(false));
-        let continuous = app.views[0].continuous();
+        let continuous = app.win.views[0].continuous();
         assert_eq!(kind(&app, "view.continuous"), ItemKind::Check(continuous));
         app.run_menu_command(&ctx, &CommandRef::new("view.layout.two_up"));
         app.run_menu_command(&ctx, &CommandRef::new("view.continuous"));
@@ -856,7 +859,7 @@ mod tests {
         assert!(app.menu_gate(&ctx).allows_command(&rotate));
         app.dialog = Some(crate::Dialog::About);
         assert!(!app.menu_gate(&ctx).allows_command(&rotate), "the gate greys the menus under a dialog");
-        let doc = app.views[0].id;
+        let doc = app.win.views[0].id;
         let before = app.session.get(doc).unwrap().info.pages[0].rotation;
         app.run_menu_command(&ctx, &rotate);
         assert_eq!(app.session.get(doc).unwrap().info.pages[0].rotation, before, "a click that arrives anyway does nothing");
@@ -883,7 +886,7 @@ mod tests {
             .collect();
         assert_eq!(documents, ["a.pdf", "b.pdf"], "each open document once, in tab order");
         app.run_menu_command(&ctx, &CommandRef::with_params(DOCUMENT, serde_json::json!({ "index": 0 })));
-        assert_eq!(app.active, Some(0));
+        assert_eq!(app.win.active, Some(0));
         // The macOS layout lists them once too.
         let mac = craft_menu::mac_layout(&app.menu_bar(&ctx), &layout_options()).bar;
         let listed = mac.items().iter().filter(|it| it.command.id == DOCUMENT).count();
@@ -922,7 +925,7 @@ mod tests {
         let (mut app, ctx) = app(&["a.pdf"]);
         let fake = FakeMenu::default();
         app.native_menu = Some(NativeMenu::new(Box::new(fake.clone())));
-        let doc = app.views[0].id;
+        let doc = app.win.views[0].id;
         let before = app.session.get(doc).unwrap().info.pages[0].rotation;
         fake.click(&CommandRef::new("page.rotate"));
         let mut raw = egui::RawInput::default();

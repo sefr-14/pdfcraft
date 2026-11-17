@@ -325,12 +325,12 @@ impl crate::PdfCraftApp {
         self.sync_doc_prefs();
         let Some((i, id)) = self.active_ids() else { return };
         if page_only {
-            let page = self.views[i].current;
+            let page = self.win.views[i].current;
             self.doc_prefs.clear_page(id, page);
         } else {
             self.doc_prefs.clear_all(id);
         }
-        self.views[i].guides = Default::default();
+        self.win.views[i].guides = Default::default();
     }
 
     /// `ui.set` / `--rulers`-style options for the active document: `rulers` and `guides` (on or

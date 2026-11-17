@@ -65,7 +65,7 @@ fn submitting_blank_removes_an_existing_whitespace_description() {
     let desc = pdf.windows(b"(Original)".len()).position(|window| window == b"(Original)").unwrap();
     pdf[desc..desc + b"(Original)".len()].copy_from_slice(b"(        )");
     let mut h = harness_with_pdf(pdf);
-    let doc_id = h.state().views[0].id;
+    let doc_id = h.state().win.views[0].id;
     assert!(h.state().session.get(doc_id).unwrap().info.attachments.iter().find(|a| a.name == "notes.txt").unwrap().has_description);
     right_click(&mut h, "notes.txt");
     h.get_by_role(egui::accesskit::Role::Menu).get_by_label("Edit description").click();
@@ -86,7 +86,7 @@ fn submitting_blank_leaves_an_absent_description_untouched() {
     h.run_steps(2);
     h.get_by_label("OK").click();
     h.run_steps(3);
-    let doc = h.state().session.get(h.state().views[0].id).unwrap();
+    let doc = h.state().session.get(h.state().win.views[0].id).unwrap();
     let attachment = doc.info.attachments.iter().find(|a| a.name == "inner.pdf").unwrap();
     assert!(!attachment.has_description);
     assert!(!doc.dirty);
@@ -136,9 +136,9 @@ fn right_click(h: &mut Harness<'static, PdfCraftApp>, label: &str) {
 #[test]
 fn double_clicking_a_pdf_attachment_opens_it_in_a_new_tab() {
     let mut h = harness();
-    assert_eq!(h.state().views.len(), 1);
+    assert_eq!(h.state().win.views.len(), 1);
     double_click(&mut h, "inner.pdf");
-    assert_eq!(h.state().views.len(), 2, "the attached PDF opens in a tab of its own");
+    assert_eq!(h.state().win.views.len(), 2, "the attached PDF opens in a tab of its own");
 }
 
 #[test]
@@ -149,7 +149,7 @@ fn double_clicking_another_attachment_saves_it() {
     h.state_mut().pick_override = Some(vec![target.to_string_lossy().into_owned()]);
     double_click(&mut h, "notes.txt");
     assert_eq!(std::fs::read(&target).unwrap(), b"hello notes", "PdfCraft opens only PDFs, so it saves the rest");
-    assert_eq!(h.state().views.len(), 1, "nothing opens");
+    assert_eq!(h.state().win.views.len(), 1, "nothing opens");
 }
 
 #[test]
@@ -176,15 +176,15 @@ fn the_right_click_menu_opens_saves_and_deletes() {
     right_click(&mut h, "inner.pdf");
     h.get_by_role(egui::accesskit::Role::Menu).get_by_label("Open in a new tab").click();
     h.run_steps(3);
-    assert_eq!(h.state().views.len(), 2, "Open from the menu");
-    h.state_mut().active = Some(0);
+    assert_eq!(h.state().win.views.len(), 2, "Open from the menu");
+    h.state_mut().win.active = Some(0);
     h.run_steps(3);
     // Delete from inner.pdf's menu leaves notes.txt, whose row's button would delete itself.
     right_click(&mut h, "inner.pdf");
     h.get_by_role(egui::accesskit::Role::Menu).get_by_label("Delete attachment").click();
     h.run_steps(3);
     let s = h.state();
-    let doc = s.session.get(s.views[0].id).unwrap();
+    let doc = s.session.get(s.win.views[0].id).unwrap();
     assert_eq!(doc.info.attachments.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["notes.txt"], "Delete from the menu");
     assert!(doc.can_undo().is_some_and(|l| l.starts_with("Delete attachment")), "as one undoable edit");
 }
@@ -202,7 +202,7 @@ fn the_description_can_be_edited_from_the_row_menu() {
     h.get_by_label("OK").click();
     h.run_steps(3);
     let state = h.state();
-    let doc = state.session.get(state.views[0].id).unwrap();
+    let doc = state.session.get(state.win.views[0].id).unwrap();
     let attachment = doc.info.attachments.iter().find(|a| a.name == "notes.txt").unwrap();
     assert_eq!(attachment.description.as_deref(), Some("Edited in the panel"));
     assert!(doc.can_undo().is_some_and(|label| label == "Edit attachment description"));
@@ -217,7 +217,7 @@ fn keeping_the_attachment_description_does_not_create_an_edit() {
     h.get_by_label("OK").click();
     h.run_steps(3);
     let state = h.state();
-    let doc = state.session.get(state.views[0].id).unwrap();
+    let doc = state.session.get(state.win.views[0].id).unwrap();
     assert_eq!(doc.info.attachments.iter().find(|a| a.name == "notes.txt").unwrap().description.as_deref(), Some("Original"));
     assert!(!doc.dirty, "confirming the unchanged description does not dirty the document");
     assert_eq!(doc.can_undo(), None, "confirming the unchanged description does not add undo history");
@@ -236,7 +236,7 @@ fn editing_the_document_while_description_dialog_is_open_discards_its_stale_draf
     h.get_by_label("OK").click();
     h.run_steps(3);
     let state = h.state();
-    let doc = state.session.get(state.views[0].id).unwrap();
+    let doc = state.session.get(state.win.views[0].id).unwrap();
     assert_eq!(doc.info.attachments.iter().find(|a| a.name == "notes.txt").unwrap().description.as_deref(), Some("Changed elsewhere"));
     assert_eq!(doc.can_undo(), Some("Edit attachment description"));
 }
@@ -253,7 +253,7 @@ fn the_row_buttons_still_take_their_own_clicks() {
     assert_eq!(std::fs::read(&target).unwrap(), b"hello notes", "the Save button under the row's click area");
     h.get_by_label("Open in a new tab").click();
     h.run_steps(3);
-    assert_eq!(h.state().views.len(), 2, "the Open button");
+    assert_eq!(h.state().win.views.len(), 2, "the Open button");
 }
 
 /// CodeRabbit on #4513: a right-click on one of a row's buttons opens that row's menu too, as a

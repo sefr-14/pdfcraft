@@ -56,7 +56,7 @@ impl PdfCraftApp {
         // working, and the error is only in the console. Say so once, and bring the notice bar
         // (which keeps saying so) back if it was closed. A message of the form's own, below,
         // takes the toast's place.
-        if let Some(v) = view.and_then(|i| self.views.get_mut(i))
+        if let Some(v) = view.and_then(|i| self.win.views.get_mut(i))
             && !v.scripts_off_noted
             && self.session.get(id).is_some_and(|d| d.xfa_scripts_off())
         {
@@ -77,13 +77,13 @@ impl PdfCraftApp {
                     if let Some(i) = view {
                         // The print dialog reads the active document throughout its lifetime.
                         // Keep the source selected; restoring the comparison tab would retarget it.
-                        self.active = Some(i);
+                        self.win.active = Some(i);
                         self.open_print();
                     }
                 }
                 Request::GoToPage(p) => {
                     if let Some(i) = view {
-                        self.views[i].go_to_page(p);
+                        self.win.views[i].go_to_page(p);
                     }
                 }
                 Request::LaunchUrl(u) => self.request_document_url(&u, crate::LinkOrigin::Script),
@@ -110,8 +110,8 @@ impl PdfCraftApp {
                 }
                 Request::Zoom(z) => {
                     if let Some(i) = view {
-                        self.views[i].zoom = (z / 100.0) as f32;
-                        self.views[i].fit = crate::canvas::Fit::None;
+                        self.win.views[i].zoom = (z / 100.0) as f32;
+                        self.win.views[i].fit = crate::canvas::Fit::None;
                     }
                 }
                 Request::Highlight(on) => self.script_highlight(id, on),
@@ -131,10 +131,10 @@ impl PdfCraftApp {
             && let Some((wi, widget)) = f.widgets.iter().enumerate().find(|(_, w)| !w.hidden && w.page.is_some())
         {
             let page = widget.page.unwrap_or(0);
-            if self.views[i].page_screen_rect(page).is_none() {
-                self.views[i].go_to_page(page);
+            if self.win.views[i].page_screen_rect(page).is_none() {
+                self.win.views[i].go_to_page(page);
             }
-            self.views[i].forms.focus = Some(crate::forms_ui::open_focus(f, wi));
+            self.win.views[i].forms.focus = Some(crate::forms_ui::open_focus(f, wi));
         }
     }
 
@@ -172,7 +172,7 @@ impl PdfCraftApp {
     /// A form's script turned field highlighting on or off (`app.runtimeHighlight`): as the
     /// Highlight fields button does, for document `id` and the next ones.
     pub(crate) fn script_highlight(&mut self, id: DocId, on: bool) {
-        if let Some(v) = self.views.iter_mut().find(|v| v.id == id) {
+        if let Some(v) = self.win.views.iter_mut().find(|v| v.id == id) {
             v.highlight_fields = on;
         }
         self.view_defaults.highlight_fields = on;
@@ -210,10 +210,10 @@ impl PdfCraftApp {
         let before = self.session.get(id).map(|d| d.edit_generation());
         let out = self.session.run_document_actions(id, event);
         if self.session.get(id).map(|d| d.edit_generation()) != before
-            && let Some(i) = self.views.iter().position(|v| v.id == id)
+            && let Some(i) = self.win.views.iter().position(|v| v.id == id)
             && let Some(info) = self.session.get(id).map(|d| d.info.clone())
         {
-            self.views[i].document_changed(&info);
+            self.win.views[i].document_changed(&info);
         }
         if !out.is_empty() {
             self.handle_js(id, out);
@@ -240,7 +240,7 @@ impl PdfCraftApp {
                 if let Some(i) = self.view_of(id)
                     && let Some(info) = self.session.get(id).map(|d| d.info.clone())
                 {
-                    self.views[i].document_changed(&info);
+                    self.win.views[i].document_changed(&info);
                 }
                 let out = JsOutput {
                     alerts: o.alerts,
@@ -262,7 +262,7 @@ impl PdfCraftApp {
             Ok(names) if names.is_empty() => self.notify_tr("No form fields were detected"),
             Ok(names) => {
                 if let Some(info) = self.session.get(id).map(|d| d.info.clone()) {
-                    self.views[i].document_changed(&info);
+                    self.win.views[i].document_changed(&info);
                 }
                 if names.len() == 1 {
                     self.notify_tr("Detected 1 form field");
@@ -285,7 +285,7 @@ impl PdfCraftApp {
         match self.session.run_javascript(id, &script, None) {
             Ok(o) => {
                 if let Some(info) = self.session.get(id).map(|d| d.info.clone()) {
-                    self.views[i].document_changed(&info);
+                    self.win.views[i].document_changed(&info);
                 }
                 let (error, result) = (o.error.clone(), o.result.clone());
                 let out = JsOutput { alerts: o.alerts, console: o.console, requests: o.requests, errors: Vec::new(), doc_errors: Vec::new() };

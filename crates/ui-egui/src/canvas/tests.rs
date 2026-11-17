@@ -1206,7 +1206,7 @@ fn text_pages_pdf(lines: &[&str]) -> Vec<u8> {
 fn select_all_copies_the_whole_document_while_scrolling_continuously() {
     let mut app = PdfCraftApp::new();
     app.open_bytes("three.pdf", None, text_pages_pdf(&["Alpha one", "Bravo two", "Charlie three"])).unwrap();
-    let v = &mut app.views[0];
+    let v = &mut app.win.views[0];
     assert!(v.continuous, "continuous scrolling is the default");
     assert!(v.texts.is_empty(), "no page's text read yet");
     // Nothing shown is selected yet (false, as for a page whose text isn't read), but the whole
@@ -1237,16 +1237,16 @@ fn select_all_copies_the_whole_document_while_scrolling_continuously() {
     assert!(at("Alpha") < at("Bravo") && at("Bravo") < at("Charlie"), "page order: {text:?}");
     assert_eq!(text.lines().count(), 3, "a line per page: {text:?}");
     // A new scope ends it: one page at a time, Select All is the page's again.
-    app.views[0].set_continuous(false);
-    assert!(!app.views[0].all_text, "not after switching to one page at a time");
+    app.win.views[0].set_continuous(false);
+    assert!(!app.win.views[0].all_text, "not after switching to one page at a time");
     // So do a page selection and a change of the document's content (an edit, undo).
-    app.views[0].set_continuous(true);
-    app.views[0].select_all();
-    app.views[0].select_text(0, 0, 0);
-    assert!(!app.views[0].all_text, "a page selection replaces it");
-    app.views[0].select_all();
-    app.views[0].invalidate_content();
-    assert!(!app.views[0].all_text, "not past an edit of the document");
+    app.win.views[0].set_continuous(true);
+    app.win.views[0].select_all();
+    app.win.views[0].select_text(0, 0, 0);
+    assert!(!app.win.views[0].all_text, "a page selection replaces it");
+    app.win.views[0].select_all();
+    app.win.views[0].invalidate_content();
+    assert!(!app.win.views[0].all_text, "not past an edit of the document");
 }
 
 /// A whole-document copy reads the pages without text, keeps those already read and skips
@@ -1255,8 +1255,8 @@ fn select_all_copies_the_whole_document_while_scrolling_continuously() {
 fn a_document_copy_reads_only_the_pages_it_needs() {
     let mut app = PdfCraftApp::new();
     app.open_bytes("three.pdf", None, text_pages_pdf(&["Alpha one", "Bravo two", "Charlie three"])).unwrap();
-    app.views[0].text_failed.insert(2);
-    let job = crate::DocumentCopyJob::of(&app.views[0], app.session.get(app.views[0].id).unwrap());
+    app.win.views[0].text_failed.insert(2);
+    let job = crate::DocumentCopyJob::of(&app.win.views[0], app.session.get(app.win.views[0].id).unwrap());
     let kinds: Vec<_> = job.pages.iter().map(|p| matches!(p, crate::CopyPage::ToRead)).collect();
     assert_eq!(kinds, vec![true, true, false], "pages 1 and 2 to read, page 3 failed before");
     assert!(matches!(job.pages[2], crate::CopyPage::Skip));
@@ -1270,7 +1270,7 @@ fn a_later_copy_cancels_a_document_copy_still_reading() {
     app.open_bytes("three.pdf", None, text_pages_pdf(&["Alpha one", "Bravo two", "Charlie three"])).unwrap();
     let ctx = egui::Context::default();
     // Another copy in the same frame (here a text field's) drops it.
-    app.views[0].select_all();
+    app.win.views[0].select_all();
     assert!(app.copy_selected_text(0, &ctx) && app.document_copy.is_some());
     let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
         ui.ctx().copy_text("a word".to_owned());
@@ -1281,9 +1281,9 @@ fn a_later_copy_cancels_a_document_copy_still_reading() {
     let copies: Vec<_> = out.platform_output.commands.iter().filter(|c| matches!(c, egui::OutputCommand::CopyText(_))).collect();
     assert_eq!(copies, vec![&egui::OutputCommand::CopyText("a word".to_owned())], "the later copy stays");
     // So does copying a page selection.
-    app.views[0].select_all();
+    app.win.views[0].select_all();
     assert!(app.copy_selected_text(0, &ctx) && app.document_copy.is_some());
-    app.views[0].select_text(0, 0, 5);
+    app.win.views[0].select_text(0, 0, 5);
     app.copy_selected_text(0, &ctx);
     assert!(app.document_copy.is_none(), "a page selection's copy cancels it");
 }
@@ -1300,7 +1300,7 @@ fn a_press_on_a_page_ends_select_all_of_the_document() {
     let mut on_screen = None;
     for _ in 0..600 {
         h.run_steps(2);
-        on_screen = h.state().views[0].page_screen_rect(0);
+        on_screen = h.state().win.views[0].page_screen_rect(0);
         if on_screen.is_some() {
             break;
         }
@@ -1308,18 +1308,18 @@ fn a_press_on_a_page_ends_select_all_of_the_document() {
     }
     let r = on_screen.expect("the first page is on screen");
     h.state_mut().quick_tool = crate::QuickTool::Hand;
-    h.state_mut().views[0].select_all();
-    assert!(h.state().views[0].all_text);
+    h.state_mut().win.views[0].select_all();
+    assert!(h.state().win.views[0].all_text);
     let at = r.center();
     h.event(egui::Event::PointerMoved(at));
     h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE });
     h.run_steps(1);
     h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE });
     h.run_steps(2);
-    assert!(!h.state().views[0].all_text, "a press on the page ends it");
+    assert!(!h.state().win.views[0].all_text, "a press on the page ends it");
 
     // A press while a dialog is up lands on the dialog, not the page: the selection stays.
-    h.state_mut().views[0].select_all();
+    h.state_mut().win.views[0].select_all();
     h.state_mut().dialog = Some(crate::Dialog::JsConsole);
     h.run_steps(2);
     h.event(egui::Event::PointerMoved(at));
@@ -1327,7 +1327,7 @@ fn a_press_on_a_page_ends_select_all_of_the_document() {
     h.run_steps(1);
     h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE });
     h.run_steps(2);
-    assert!(h.state().views[0].all_text, "a press beneath a dialog doesn't end it");
+    assert!(h.state().win.views[0].all_text, "a press beneath a dialog doesn't end it");
 }
 
 /// The pages of a whole-document copy come out in order whatever was read before, and a
@@ -1337,11 +1337,11 @@ fn a_document_copy_reads_in_page_order_and_stops_when_cancelled() {
     let mut app = PdfCraftApp::new();
     app.open_bytes("three.pdf", None, text_pages_pdf(&["Alpha one", "Bravo two", "Charlie three"])).unwrap();
     // The middle page's text read for display already; the others read by the copy.
-    let doc = app.session.get(app.views[0].id).unwrap();
+    let doc = app.session.get(app.win.views[0].id).unwrap();
     let mut r = pdfcraft_render::PageRenderer::new(doc.bytes.clone(), Default::default());
     let middle = r.render(RenderRequest { page: 1, kind: RequestKind::Text, ..Default::default() }).text.unwrap();
-    app.views[0].texts.insert(1, middle);
-    let job = || crate::DocumentCopyJob::of(&app.views[0], app.session.get(app.views[0].id).unwrap());
+    app.win.views[0].texts.insert(1, middle);
+    let job = || crate::DocumentCopyJob::of(&app.win.views[0], app.session.get(app.win.views[0].id).unwrap());
     let text = job().text(&std::sync::atomic::AtomicBool::new(false)).unwrap();
     assert!(text.find("Alpha").unwrap() < text.find("Bravo").unwrap() && text.find("Bravo").unwrap() < text.find("Charlie").unwrap(), "{text:?}");
     assert_eq!(job().text(&std::sync::atomic::AtomicBool::new(true)), None, "cancelled");
@@ -1506,27 +1506,27 @@ fn replacing_a_page_after_layout_never_uploads_an_oversized_texture() {
     let replacement = app.session.create_blank(400.0, 500.0, 1).unwrap();
     app.open_bytes("original.pdf", None, original.as_ref().clone()).unwrap();
     let request = RenderRequest { scale: 4.7, tag: scale_tag(4.7), ..Default::default() };
-    app.views[0].frame_queue = vec![request];
-    app.views[0].frame_visible.insert(0);
+    app.win.views[0].frame_queue = vec![request];
+    app.win.views[0].frame_visible.insert(0);
     assert!(app.apply_edit(Edit::ReplacePages { pages: vec![0], name: "replacement.pdf".into(), bytes: replacement, src_pages: vec![0] }));
-    let doc = app.session.get(app.views[0].id).unwrap();
+    let doc = app.session.get(app.win.views[0].id).unwrap();
     assert_eq!((doc.info.pages[0].width, doc.info.pages[0].height), (400.0, 500.0));
     let edited_bytes = doc.bytes.clone();
     let pool = RenderPool::new_inline(doc.display.clone(), Default::default());
-    app.views[0].finish_render_frame(&ctx, &doc.info, &pool);
-    assert!(app.views[0].last_queue.is_empty(), "old geometry must not reach the replacement renderer");
+    app.win.views[0].finish_render_frame(&ctx, &doc.info, &pool);
+    assert!(app.win.views[0].last_queue.is_empty(), "old geometry must not reach the replacement renderer");
 
     // The next layout can render a bounded backdrop and sharp tiles at the same zoom.
     let backdrop = RenderRequest { scale: 2048.0 / 500.0, tag: scale_tag(2048.0 / 500.0), ..request };
     let tile = RenderRequest { tile: Some(Tile { x: 0, y: 0, w: 1024, h: 1024 }), ..request };
     for _ in 0..2 {
-        let view = &mut app.views[0];
+        let view = &mut app.win.views[0];
         view.begin_render_frame();
         view.frame_visible.insert(0);
         view.frame_queue = vec![backdrop, tile];
         view.finish_render_frame(&ctx, &doc.info, &pool);
     }
-    let view = &app.views[0];
+    let view = &app.win.views[0];
     assert_eq!(view.pages.get(&0).unwrap().tex.size(), [1639, 2048]);
     assert_eq!(view.tiles.get(&(0, tile.tag, 0, 0)).unwrap().size(), [1024, 1024]);
     assert!(view.errors.is_empty());
@@ -2112,8 +2112,8 @@ fn many_open_documents_share_one_raster_allowance_and_close_releases_handles() {
     let mut expected = Vec::new();
     for index in 0..6 {
         app.open_bytes(&format!("synthetic-{index}.pdf"), None, bytes.as_ref().clone()).unwrap();
-        let info = app.session.get(app.views.last().unwrap().id).unwrap().info.clone();
-        let view = app.views.last_mut().unwrap();
+        let info = app.session.get(app.win.views.last().unwrap().id).unwrap().info.clone();
+        let view = app.win.views.last_mut().unwrap();
         view.begin_render_frame();
         view.need_thumbnail(0, true);
         let request = view.thumbnail_requests(&info, ctx.pixels_per_point()).into_iter().next().unwrap();
@@ -2134,32 +2134,32 @@ fn many_open_documents_share_one_raster_allowance_and_close_releases_handles() {
         view.last_queue = queue;
         expected.push((request, dimensions));
     }
-    assert_eq!(app.views.len(), 6, "all six documents were opened");
+    assert_eq!(app.win.views.len(), 6, "all six documents were opened");
     assert_eq!(app.active_ids().map(|(index, _)| index), Some(5));
-    assert!(app.views.iter().zip(&expected).all(|(view, (request, dimensions))| {
+    assert!(app.win.views.iter().zip(&expected).all(|(view, (request, dimensions))| {
         view.thumbs.len() == 1
             && view.thumbs.get(&0).is_some_and(|thumb| thumb.tag == request.tag && thumb.tex.size() == [dimensions.0 as usize, dimensions.1 as usize])
     }));
 
     app.finish_render_frame(&ctx);
-    let total: usize = app.views.iter().map(|v| v.thumbs.values().map(|p| texture_bytes(&p.tex)).sum::<usize>()).sum();
+    let total: usize = app.win.views.iter().map(|v| v.thumbs.values().map(|p| texture_bytes(&p.tex)).sum::<usize>()).sum();
     let (active_request, active_dimensions) = expected.last().unwrap();
     let active_bytes = rgba_bytes(active_dimensions.0 as usize, active_dimensions.1 as usize);
     assert_eq!(total, active_bytes, "only the active view retains a thumbnail");
     assert!(total <= THUMB_BYTES, "retained thumbnails stay within the existing allowance");
-    assert!(app.views.iter().take(5).all(|v| v.thumbs.is_empty() && v.last_queue.is_empty()));
-    let active = app.views.last().unwrap();
+    assert!(app.win.views.iter().take(5).all(|v| v.thumbs.is_empty() && v.last_queue.is_empty()));
+    let active = app.win.views.last().unwrap();
     assert_eq!(active.thumbs.len(), 1);
     assert_eq!(active.thumbs.get(&0).unwrap().tag, active_request.tag);
     assert!(active.last_queue.is_empty(), "the current thumbnail is already cached");
-    for view in &app.views {
+    for view in &app.win.views {
         let doc = app.session.get(view.id).unwrap();
         assert_eq!(doc.renderer.stats().render_requests, 0, "the fixture must not launch a native render");
     }
 
     app.close_tab(5);
-    assert_eq!(app.views.len(), 5, "closing the active tab drops its owning view");
-    assert!(app.views.iter().all(|v| v.thumbs.is_empty()));
+    assert_eq!(app.win.views.len(), 5, "closing the active tab drops its owning view");
+    assert!(app.win.views.iter().all(|v| v.thumbs.is_empty()));
 }
 
 #[test]
@@ -2243,8 +2243,8 @@ fn edit_text_boxes_stay_drawn_while_page_input_is_blocked() {
     assert!(h.state_mut().apply_edit(Edit::RotatePages { pages: vec![0], degrees: 90 }));
     h.run_steps(3);
     let app = h.state();
-    let generation = app.session.get(app.views[0].id).unwrap().edit_generation();
-    assert_eq!(app.views[0].edit_lines.get(&0).map(|(g, _)| *g), Some(generation), "the boxes follow the edit while input is blocked");
+    let generation = app.session.get(app.win.views[0].id).unwrap().edit_generation();
+    assert_eq!(app.win.views[0].edit_lines.get(&0).map(|(g, _)| *g), Some(generation), "the boxes follow the edit while input is blocked");
 }
 
 /// A cut page (#623) is named in a bar of its own: a static XFA form's notice, which comes
@@ -2262,7 +2262,7 @@ fn a_cut_page_is_named_beside_an_xfa_form_notice() {
     });
     h.run_steps(4);
     h.get_by_label_contains("XFA data are kept in step");
-    h.state_mut().views[0].cut_pages.insert(0);
+    h.state_mut().win.views[0].cut_pages.insert(0);
     h.run_steps(2);
     h.get_by_label_contains("Page 1 holds more content than PDF Overlay can read");
     h.get_by_label_contains("XFA data are kept in step");
@@ -2283,19 +2283,19 @@ fn a_page_found_cut_after_a_dismissal_is_still_named() {
     });
     h.run_steps(3);
     // The reader dismissed the document's notice before the render found the cut page.
-    h.state_mut().views[0].notice_dismissed = true;
-    h.state_mut().views[0].cut_pages.insert(0);
+    h.state_mut().win.views[0].notice_dismissed = true;
+    h.state_mut().win.views[0].cut_pages.insert(0);
     h.run_steps(2);
     h.get_by_label_contains("Page 1 holds more content than PDF Overlay can read");
     h.get_by_label("Dismiss").click();
     h.run_steps(2);
     assert!(h.query_by_label_contains("holds more content").is_none(), "the cut-page notice can be dismissed");
     // Re-reading the same page (an undo, a layer toggle) doesn't bring it back.
-    h.state_mut().views[0].invalidate_content();
-    h.state_mut().views[0].cut_pages.insert(0);
+    h.state_mut().win.views[0].invalidate_content();
+    h.state_mut().win.views[0].cut_pages.insert(0);
     h.run_steps(2);
     assert!(h.query_by_label_contains("holds more content").is_none(), "the dismissed page stays dismissed");
-    h.state_mut().views[0].cut_pages.insert(1);
+    h.state_mut().win.views[0].cut_pages.insert(1);
     h.run_steps(2);
     h.get_by_label_contains("2 pages hold more content than PDF Overlay can read, page 1 first");
 }
@@ -2311,7 +2311,7 @@ fn ctrl_wheel_zooms_an_unfocused_window() {
         app
     });
     h.run_steps(3);
-    let center = h.state().views[0].viewport_rect().center();
+    let center = h.state().win.views[0].viewport_rect().center();
     h.hover_at(center);
     h.input_mut().focused = false;
     h.run_steps(2);
@@ -2323,15 +2323,15 @@ fn ctrl_wheel_zooms_an_unfocused_window() {
         source: egui::MouseWheelSource::Unknown,
     };
     h.state_mut().palette_open = true;
-    let before = h.state().views[0].zoom;
+    let before = h.state().win.views[0].zoom;
     h.event(ctrl_wheel.clone());
     h.run_steps(10);
-    assert_eq!(h.state().views[0].zoom, before, "the palette still blocks zoom");
+    assert_eq!(h.state().win.views[0].zoom, before, "the palette still blocks zoom");
     h.state_mut().palette_open = false;
     h.run_steps(2);
     h.event(ctrl_wheel);
     h.run_steps(10);
-    assert!(h.state().views[0].zoom > before, "Ctrl+wheel zooms without window focus");
+    assert!(h.state().win.views[0].zoom > before, "Ctrl+wheel zooms without window focus");
 }
 
 #[test]
@@ -2342,13 +2342,13 @@ fn virtualized_organizer_keeps_insert_gaps_at_document_positions() {
         let mut app = PdfCraftApp::new();
         let bytes = app.session.create_blank(300.0, 400.0, 100).unwrap();
         app.open_bytes("organize-gaps.pdf", None, bytes.as_ref().clone()).unwrap();
-        app.views[0].organize = true;
+        app.win.views[0].organize = true;
         app
     });
     h.run_steps(4);
-    assert!(h.state().views[0].thumb_demand.len() < 50);
+    assert!(h.state().win.views[0].thumb_demand.len() < 50);
     assert_eq!(h.query_all_by_label("Insert a file at the end").count(), 0, "the last virtualized cell is not the final page");
-    let center = h.state().views[0].viewport_rect().center();
+    let center = h.state().win.views[0].viewport_rect().center();
     h.hover_at(center);
     h.event(egui::Event::MouseWheel {
         unit: egui::MouseWheelUnit::Point,
@@ -2363,8 +2363,8 @@ fn virtualized_organizer_keeps_insert_gaps_at_document_positions() {
     let before_last = h.get_by_label("Insert a file before page 100").rect().center();
     h.hover_at(before_last);
     h.run_steps(2);
-    assert_eq!(h.state().views[0].grid_gap, Some(99), "external drops use the document index after virtualized scrolling");
-    assert!(h.state().views[0].thumb_demand.len() < 50);
+    assert_eq!(h.state().win.views[0].grid_gap, Some(99), "external drops use the document index after virtualized scrolling");
+    assert!(h.state().win.views[0].thumb_demand.len() < 50);
 }
 
 #[test]
@@ -2377,24 +2377,24 @@ fn real_shell_pages_organizer_and_print_only_collect_current_thumbnail_consumers
         app
     });
     h.run_steps(4);
-    assert!((1..20).contains(&h.state().views[0].thumb_demand.len()));
+    assert!((1..20).contains(&h.state().win.views[0].thumb_demand.len()));
     h.state_mut().right = None;
-    h.state_mut().views[0].organize = true;
+    h.state_mut().win.views[0].organize = true;
     h.run_steps(2);
-    assert!((1..50).contains(&h.state().views[0].thumb_demand.len()));
-    h.state_mut().views[0].organize = false;
+    assert!((1..50).contains(&h.state().win.views[0].thumb_demand.len()));
+    h.state_mut().win.views[0].organize = false;
     h.state_mut().dialog = Some(crate::Dialog::Print);
     h.state_mut().print_draft.sheet = 9999;
     h.run_steps(2);
-    assert_eq!(h.state().views[0].thumb_demand.keys().copied().collect::<Vec<_>>(), vec![9999]);
+    assert_eq!(h.state().win.views[0].thumb_demand.keys().copied().collect::<Vec<_>>(), vec![9999]);
     h.state_mut().print_draft.handling = crate::PrintHandling::Booklet;
     h.state_mut().print_draft.sheet = 0;
     h.run_steps(2);
-    assert_eq!(h.state().views[0].thumb_demand.len(), 2, "booklet only needs its two placed pages");
+    assert_eq!(h.state().win.views[0].thumb_demand.len(), 2, "booklet only needs its two placed pages");
     h.state_mut().dialog = None;
     h.run_steps(2);
-    assert!(h.state().views[0].thumb_demand.is_empty());
-    assert!(h.state().views[0].thumbs.is_empty());
+    assert!(h.state().win.views[0].thumb_demand.is_empty());
+    assert!(h.state().win.views[0].thumbs.is_empty());
 }
 
 /// One mouse-wheel notch (a line) at `at` seconds.
@@ -2746,7 +2746,7 @@ fn a_moved_picture_is_drawn_from_the_fresh_raster_while_a_tile_is_still_stale() 
     };
     h.run_steps(4);
     settle(&mut h);
-    let page = h.state().views[0].page_screen_rect(0).unwrap();
+    let page = h.state().win.views[0].page_screen_rect(0).unwrap();
     let at = |x: f32, y: f32| egui::pos2(page.left() + x / 300.0 * page.width(), page.top() + (400.0 - y) / 400.0 * page.height());
     let red = |pixels: &image::RgbaImage, r: Rect| {
         let (w, hh) = (pixels.width(), pixels.height());
@@ -2778,24 +2778,24 @@ fn a_moved_picture_is_drawn_from_the_fresh_raster_while_a_tile_is_still_stale() 
     h.run_steps(1);
     h.drop_at(grab);
     h.run_steps(3);
-    assert!(h.state().views[0].image_selection.is_some(), "the picture is selected");
-    h.state_mut().views[0].hold_rasters = true;
+    assert!(h.state().win.views[0].image_selection.is_some(), "the picture is selected");
+    h.state_mut().win.views[0].hold_rasters = true;
     drag(&mut h, grab, put, true);
     // One tile stays stale, as a tile result arriving after the whole-page raster would; then
     // the whole-page raster is let through.
     let tile = h.ctx.load_texture("stale-tile", egui::ColorImage::new([1, 1], vec![Color32::TRANSPARENT]), TextureOptions::LINEAR);
-    h.state_mut().views[0].tiles.insert((0, 1, 0, 0), tile);
-    h.state_mut().views[0].stale_tiles.insert((0, 1, 0, 0));
-    h.state_mut().views[0].hold_rasters = false;
+    h.state_mut().win.views[0].tiles.insert((0, 1, 0, 0), tile);
+    h.state_mut().win.views[0].stale_tiles.insert((0, 1, 0, 0));
+    h.state_mut().win.views[0].hold_rasters = false;
     for _ in 0..400 {
         h.step();
-        if !h.state().views[0].page_raster_out_of_date(0) {
+        if !h.state().win.views[0].page_raster_out_of_date(0) {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
-    assert!(!h.state().views[0].page_raster_out_of_date(0), "the whole-page raster is fresh");
-    assert!(h.state().views[0].page_out_of_date(0), "a tile is still stale");
+    assert!(!h.state().win.views[0].page_raster_out_of_date(0), "the whole-page raster is fresh");
+    assert!(h.state().win.views[0].page_out_of_date(0), "a tile is still stale");
     h.run_steps(2);
     let pixels = h.render().unwrap();
     assert!(red(&pixels, new) > 100, "the picture shows where it went");
@@ -2807,8 +2807,8 @@ fn a_moved_picture_is_drawn_from_the_fresh_raster_while_a_tile_is_still_stale() 
     let moving = Rect::from_two_pos(at(182.0, 172.0), at(238.0, 228.0));
     assert!(red(&pixels, moving) > 100, "the dragged picture is drawn from the fresh raster");
     assert_eq!(red(&pixels, old), 0, "nothing shows where it first was");
-    h.state_mut().views[0].stale_tiles.clear();
-    h.state_mut().views[0].tiles.clear();
+    h.state_mut().win.views[0].stale_tiles.clear();
+    h.state_mut().win.views[0].tiles.clear();
 }
 
 /// Review on #4378: `FitWindow` measures the spread the view shows, its pages side by side
@@ -3278,7 +3278,7 @@ fn enhancing_a_scan_re_renders_the_page_shown() {
     let (i, doc) = app.active_ids().unwrap();
     let ctx = egui::Context::default();
     let tex = ctx.load_texture("before", egui::ColorImage::filled([1, 1], Color32::WHITE), TextureOptions::LINEAR);
-    app.views[i].pages.insert(0, PageTex { tag: 1000, tex });
+    app.win.views[i].pages.insert(0, PageTex { tag: 1000, tex });
     let job = app.session.scan_clean_job(doc, &[], pdfcraft_engine::scan_clean::ScanCleanSettings::default()).unwrap();
     let cleaned = job.run(|_, _| true).unwrap();
     assert_eq!(cleaned.report.pages, vec![0], "the page is a scan and gets cleaned");
@@ -3287,7 +3287,7 @@ fn enhancing_a_scan_re_renders_the_page_shown() {
     app.scan_clean_run = Some(crate::scan_clean_ui::ScanCleanRun { doc, progress });
     app.poll_scan_clean();
     assert!(app.scan_clean_run.is_none());
-    assert_eq!(app.views[i].pages.get(&0).unwrap().tag, STALE_TAG, "the old raster is re-rendered");
+    assert_eq!(app.win.views[i].pages.get(&0).unwrap().tag, STALE_TAG, "the old raster is re-rendered");
 }
 
 /// #5708 review: a page that fits is centred with nothing to scroll, so only pixel snapping may

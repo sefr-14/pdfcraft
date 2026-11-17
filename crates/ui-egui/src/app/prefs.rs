@@ -54,10 +54,10 @@ impl PdfCraftApp {
     /// Colors). A document the change actually touches re-renders.
     pub fn set_reading_colors(&mut self, colors: pdfcraft_render::ReadingColors) {
         self.reading_colors = colors;
-        for i in 0..self.views.len() {
+        for i in 0..self.win.views.len() {
             // Idempotent per document: the engine says whether anything changed.
-            if self.session.set_reading_colors(self.views[i].id, colors) {
-                self.views[i].invalidate_content();
+            if self.session.set_reading_colors(self.win.views[i].id, colors) {
+                self.win.views[i].invalidate_content();
             }
         }
     }
@@ -70,12 +70,12 @@ impl PdfCraftApp {
         // Once per document (the engine says whether it changed), then every view of each
         // changed document drops its rasters, not just the first view of it.
         let mut changed = Vec::new();
-        for id in self.views.iter().map(|v| v.id).collect::<Vec<_>>() {
+        for id in self.win.views.iter().map(|v| v.id).collect::<Vec<_>>() {
             if !changed.contains(&id) && self.session.set_thin_lines(id, on) {
                 changed.push(id);
             }
         }
-        for view in &mut self.views {
+        for view in &mut self.win.views {
             if changed.contains(&view.id) {
                 view.invalidate_content();
             }

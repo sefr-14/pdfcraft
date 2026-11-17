@@ -11,7 +11,7 @@ use crate::{PdfCraftApp, ViewLayout};
 fn open(app: &mut PdfCraftApp, name: &str) -> DocId {
     let bytes = app.session.create_blank(612.0, 792.0, 2).unwrap();
     app.open_bytes(name, None, bytes.as_ref().clone()).unwrap();
-    app.views.last().unwrap().id
+    app.win.views.last().unwrap().id
 }
 
 fn harness(setup: impl FnOnce(&mut PdfCraftApp) + 'static) -> Harness<'static, PdfCraftApp> {
@@ -29,7 +29,7 @@ fn harness(setup: impl FnOnce(&mut PdfCraftApp) + 'static) -> Harness<'static, P
 fn all_sharp(h: &mut Harness<'static, PdfCraftApp>) -> bool {
     for _ in 0..600 {
         h.run_steps(1);
-        if h.state().views.iter().all(|v| v.current_page_sharp()) {
+        if h.state().win.views.iter().all(|v| v.current_page_sharp()) {
             return true;
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
@@ -45,14 +45,14 @@ fn thin_lines_reach_every_view_of_every_document_and_change_no_file() {
         open(app, "detail.pdf");
         app.set_view_layout(ViewLayout::Tiles);
     });
-    assert_eq!(h.state().views.len(), 3);
+    assert_eq!(h.state().win.views.len(), 3);
     assert!(!h.state().thin_lines, "off on first start");
     assert!(all_sharp(&mut h), "every tile renders");
 
     assert!(h.state_mut().execute("view.thin_lines"));
     let app = h.state();
     assert!(app.thin_lines);
-    for v in &app.views {
+    for v in &app.win.views {
         assert_eq!(app.session.thin_lines(v.id), Some(true));
         // Both tabs of plan.pdf drop their rasters, not just the first one.
         assert!(!v.current_page_sharp(), "a view kept its old page image");
@@ -61,7 +61,7 @@ fn thin_lines_reach_every_view_of_every_document_and_change_no_file() {
     assert!(all_sharp(&mut h), "every tile renders again, thin");
     assert!(h.state_mut().execute("view.thin_lines"));
     assert!(!h.state().thin_lines);
-    assert!(h.state().views.iter().all(|v| h.state().session.thin_lines(v.id) == Some(false)));
+    assert!(h.state().win.views.iter().all(|v| h.state().session.thin_lines(v.id) == Some(false)));
 }
 
 #[test]
@@ -80,7 +80,7 @@ fn thin_lines_are_remembered_and_apply_to_documents_opened_later() {
         open(app, "plan.pdf");
     });
     assert!(h.state().thin_lines);
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     assert_eq!(h.state().session.thin_lines(id), Some(true));
     // Settings are untrusted: anything but a boolean keeps Off.
     let mut fresh = PdfCraftApp::new();
@@ -94,7 +94,7 @@ fn the_page_display_checkbox_toggles_thin_lines() {
     let mut h = harness(|app| {
         open(app, "plan.pdf");
     });
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     // The rail's Page display menu: View ▸ Page display draws the same section
     // (`chrome::page_display_menu`), so this covers both.
     for on in [true, false] {

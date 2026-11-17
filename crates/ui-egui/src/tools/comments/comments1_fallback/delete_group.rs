@@ -30,7 +30,7 @@ impl PdfCraftApp {
     pub fn ask_delete_comments(&mut self) {
         let Some((i, id)) = self.active_ids() else { return };
         let Some(doc) = self.session.get(id) else { return };
-        let Some(view) = self.views.get(i) else { return };
+        let Some(view) = self.win.views.get(i) else { return };
         let targets = view.comments.group.targets(&doc.info.annotations);
         if targets.is_empty() {
             return;
@@ -55,7 +55,7 @@ impl PdfCraftApp {
             return;
         }
         if self.apply_edit(Edit::DeleteAnnotations { targets: draft.targets })
-            && let Some(view) = self.views.get_mut(i)
+            && let Some(view) = self.win.views.get_mut(i)
         {
             view.comments.group.clear();
         }

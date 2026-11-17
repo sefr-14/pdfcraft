@@ -51,7 +51,7 @@ fn width_field(ui: &mut egui::Ui, pts: &mut f64, unit: Unit, label: egui::Id) {
 pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens) -> (bool, bool) {
     let Some((i, id)) = app.active_ids() else { return (false, true) };
     let count = app.session.get(id).map(|d| d.info.pages.len()).unwrap_or(0);
-    let current = app.views[i].current;
+    let current = app.win.views[i].current;
     let unit = app.units;
     let d = &mut app.hairlines_draft;
     ui.label(egui::RichText::new(tl!("Fix hairlines")).font(theme::semibold(18.0)));
@@ -109,7 +109,7 @@ impl PdfCraftApp {
     pub(crate) fn fix_hairlines(&mut self) {
         let Some((i, id)) = self.active_ids() else { return };
         let count = self.session.get(id).map(|d| d.info.pages.len()).unwrap_or(0);
-        let pages = self.hairlines_draft.pages(self.views[i].current, count);
+        let pages = self.hairlines_draft.pages(self.win.views[i].current, count);
         let settings = self.hairlines_draft.settings.clone();
         let found = self.session.count_hairlines(id, &pages, &settings);
         if found.lines == 0 {

@@ -83,13 +83,13 @@ fn opened(pdf: Vec<u8>, panel_closed: bool) -> Harness<'static, PdfCraftApp> {
 /// The open tabs' names, and the active one's.
 fn tabs(h: &Harness<'static, PdfCraftApp>) -> (Vec<String>, Option<String>) {
     let s = h.state();
-    let name = |i: usize| s.views.get(i).and_then(|v| s.session.get(v.id)).map(|d| d.name.clone());
-    ((0..s.views.len()).filter_map(name).collect(), s.active.and_then(name))
+    let name = |i: usize| s.win.views.get(i).and_then(|v| s.session.get(v.id)).map(|d| d.name.clone());
+    ((0..s.win.views.len()).filter_map(name).collect(), s.win.active.and_then(name))
 }
 
 /// Make tab `index` the active one.
 fn select(h: &mut Harness<'static, PdfCraftApp>, index: usize) {
-    h.state_mut().active = Some(index);
+    h.state_mut().win.active = Some(index);
     h.run_steps(2);
 }
 
@@ -177,7 +177,7 @@ fn a_password_asked_for_a_file_opened_with_the_portfolio_stays_asked() {
         let opened = if answer.is_some() { "locked.pdf" } else { "form.pdf" };
         // The answered file opens in the background worker.
         h.state_mut().submit_password(answer);
-        crate::support::wait_until(&mut h, "a second tab", |app| app.views.len() == 2);
+        crate::support::wait_until(&mut h, "a second tab", |app| app.win.views.len() == 2);
         h.run_steps(4);
         assert_eq!(tabs(&h), (vec!["portfolio.pdf".into(), opened.into()], Some(opened.into())));
     }

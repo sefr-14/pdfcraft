@@ -14,14 +14,14 @@ pub fn left_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     // Organize closed another way (the grid's Close, or a page opened from it) closes the tool too,
     // as its panel's Close does, back to the workspace's own panel.
-    if app.left == LeftPanel::Tool("organize") && app.active.and_then(|i| app.views.get(i)).is_some_and(|v| !v.organize) {
+    if app.left == LeftPanel::Tool("organize") && app.win.active.and_then(|i| app.win.views.get(i)).is_some_and(|v| !v.organize) {
         app.left = crate::organize_panel::workspace_panel(app.mode);
     }
     egui::Frame::NONE.fill(t.panel).inner_margin(egui::Margin { left: 14, right: 14, top: 12, bottom: 10 }).stroke(Stroke::new(1.0, t.divider)).show(
         ui,
         |ui| match app.left {
             // Organize pages has its own panel whenever the grid shows (with a document open).
-            _ if app.active.is_some() && crate::organize_panel::showing(app) => crate::organize_panel::panel(app, ui, &t),
+            _ if app.win.active.is_some() && crate::organize_panel::showing(app) => crate::organize_panel::panel(app, ui, &t),
             LeftPanel::AllTools => all_tools(app, ui, &t),
             LeftPanel::Tool(id) => match catalog::group(id) {
                 Some(g) => tool_detail(app, ui, &t, g),
@@ -229,7 +229,7 @@ fn tool_detail(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens, g: &'static
     }
     // Prepare a form: Preview fills the form as a reader would; Edit goes back.
     if g.id == "form" {
-        if let Some(view) = app.active.and_then(|i| app.views.get_mut(i)) {
+        if let Some(view) = app.win.active.and_then(|i| app.win.views.get_mut(i)) {
             ui.add(widgets::checkbox(&mut view.prepare.show_tab_numbers, tl!("Show tab numbers")));
             ui.add_space(4.0);
         }

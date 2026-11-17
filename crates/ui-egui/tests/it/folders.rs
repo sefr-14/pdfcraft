@@ -101,7 +101,7 @@ fn clicking_a_pinned_pdf_opens_it_and_adds_it_to_recent() {
     h.get_by_label("scan.pdf").click();
     h.run_steps(3);
     let app = h.state();
-    assert_eq!(app.views.len(), 1, "the PDF opens in a tab");
+    assert_eq!(app.win.views.len(), 1, "the PDF opens in a tab");
     assert_eq!(app.recent.first().map(|r| r.path.clone()), Some(path.to_string_lossy().into_owned()));
 }
 

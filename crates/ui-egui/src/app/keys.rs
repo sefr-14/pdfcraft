@@ -34,8 +34,8 @@ impl PdfCraftApp {
             return;
         }
         // Escape ends a middle-button gesture: the active view's, or in Tile View any tile's.
-        let (tiled, active) = (self.tiled(), self.active);
-        if self.views.iter_mut().enumerate().any(|(i, v)| (tiled || active == Some(i)) && v.auto_scroll.escape(ctx)) {
+        let (tiled, active) = (self.tiled(), self.win.active);
+        if self.win.views.iter_mut().enumerate().any(|(i, v)| (tiled || active == Some(i)) && v.auto_scroll.escape(ctx)) {
             return;
         }
         // The in-window menu bar holds the keys while one of its menus is open or it has the
@@ -54,28 +54,28 @@ impl PdfCraftApp {
             // Escape closes the open menu (or leaves the bar): nothing underneath reacts.
             self.escape_reserved = true;
         }
-        if let Some(i) = self.active {
+        if let Some(i) = self.win.active {
             if page_chords && chords {
                 self.select_all_keys(i, ctx);
             }
             self.tool_keys(i, ctx);
             let keys = self.page_keys;
             if self.quick_tool == QuickTool::EditText
-                && let Some(doc) = self.session.get(self.views[i].id).filter(|d| d.allows_modification())
+                && let Some(doc) = self.session.get(self.win.views[i].id).filter(|d| d.allows_modification())
             {
-                object_ui::nudge_keys(ctx, keys, &mut self.views[i], doc);
-                object_ui::delete_keys(ctx, keys, &mut self.views[i]);
-            } else if let Some(doc) = self.session.get(self.views[i].id).filter(|d| d.allows_annotation()) {
-                comments::nudge_keys(ctx, keys, &mut self.views[i], &doc.info);
+                object_ui::nudge_keys(ctx, keys, &mut self.win.views[i], doc);
+                object_ui::delete_keys(ctx, keys, &mut self.win.views[i]);
+            } else if let Some(doc) = self.session.get(self.win.views[i].id).filter(|d| d.allows_annotation()) {
+                comments::nudge_keys(ctx, keys, &mut self.win.views[i], &doc.info);
             }
             // A selected field moves with the arrows too (Prepare a form, #2608), before the view
             // turns the page with them.
             if self.is_preparing()
-                && let Some(doc) = self.session.get(self.views[i].id).filter(|d| d.allows_modification())
+                && let Some(doc) = self.session.get(self.win.views[i].id).filter(|d| d.allows_modification())
             {
-                prepare::nudge_keys(ctx, keys, &mut self.views[i], doc);
+                prepare::nudge_keys(ctx, keys, &mut self.win.views[i], doc);
             }
-            canvas::shortcuts(&mut self.views[i], ctx, keys, chords && page_chords, self.scroll_speed);
+            canvas::shortcuts(&mut self.win.views[i], ctx, keys, chords && page_chords, self.scroll_speed);
             self.clipboard_keys(i, ctx);
             self.image_pick_keys(i, ctx);
         }
@@ -88,25 +88,25 @@ impl PdfCraftApp {
     fn select_all_keys(&mut self, i: usize, ctx: &egui::Context) {
         use egui::Key;
         let pages_owns_keyboard =
-            self.right == Some(RightPanel::Pages) && self.views[i].pages_focus_id.is_some_and(|id| ctx.memory(|m| m.has_focus(id)));
+            self.right == Some(RightPanel::Pages) && self.win.views[i].pages_focus_id.is_some_and(|id| ctx.memory(|m| m.has_focus(id)));
         if self.dialog.is_none()
             && !self.palette_open
             && (pages_owns_keyboard || !ctx.egui_wants_keyboard_input())
             && ctx.input_mut(|input| input.consume_shortcut(&egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, Key::A)))
         {
-            let view = &self.views[i];
+            let view = &self.win.views[i];
             // A paragraph or text box open for typing keeps ⌘A for its own text.
             let edit_objects = self.quick_tool == QuickTool::EditText && view.line_editor.is_none() && view.content.draft.is_none();
             if pages_owns_keyboard {
-                self.views[i].select_all_pages();
+                self.win.views[i].select_all_pages();
             } else if let Some(doc) = self.session.get(view.id).filter(|d| edit_objects && d.allows_modification()) {
-                object_ui::select_all(&mut self.views[i], doc);
+                object_ui::select_all(&mut self.win.views[i], doc);
             } else if self.is_preparing() {
-                if let Some(doc) = self.session.get(self.views[i].id) {
-                    prepare::select_all(&mut self.views[i], &doc.form);
+                if let Some(doc) = self.session.get(self.win.views[i].id) {
+                    prepare::select_all(&mut self.win.views[i], &doc.form);
                 }
             } else {
-                self.views[i].select_all();
+                self.win.views[i].select_all();
             }
         }
     }

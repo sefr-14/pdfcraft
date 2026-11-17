@@ -441,7 +441,7 @@ impl PdfCraftApp {
 
     /// Turn to a finding's page and, when the checker located it, flash its box there.
     fn a11y_show_on_page(&mut self, index: usize, page: usize, bbox: Option<[f64; 4]>) {
-        let Some(view) = self.views.get_mut(index) else { return };
+        let Some(view) = self.win.views.get_mut(index) else { return };
         view.go_to_page(page);
         if let Some(bbox) = bbox {
             view.flash = Some((page, bbox.map(|v| v as f32), 0.0));

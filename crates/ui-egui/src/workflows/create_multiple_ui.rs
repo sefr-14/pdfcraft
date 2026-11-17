@@ -143,10 +143,10 @@ impl PdfCraftApp {
         } else {
             crate::i18n::fmt(tl!("Created a PDF from {n} files"), &[("n", &n)])
         };
-        let before = self.views.len();
+        let before = self.win.views.len();
         self.open_created("Combined.pdf", bytes, &message);
-        if self.views.len() > before
-            && let Some(view) = self.active.and_then(|i| self.views.get_mut(i))
+        if self.win.views.len() > before
+            && let Some(view) = self.win.active.and_then(|i| self.win.views.get_mut(i))
         {
             view.open_organize();
         }

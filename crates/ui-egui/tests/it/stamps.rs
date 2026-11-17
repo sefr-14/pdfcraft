@@ -21,7 +21,7 @@ fn choosing_and_placing_stamps() {
     h.run_steps(2);
     assert_eq!(h.state().quick_tool, QuickTool::Stamp(pdfcraft_engine::StampKind::DynApproved));
     let p = {
-        let r = h.state().views[0].page_screen_rect(0).unwrap();
+        let r = h.state().win.views[0].page_screen_rect(0).unwrap();
         r.min + egui::vec2(r.width() * 0.5, r.height() * 0.85)
     };
     h.hover_at(p);
@@ -31,7 +31,7 @@ fn choosing_and_placing_stamps() {
     h.drop_at(p);
     h.run_steps(4);
     let s = h.state();
-    let doc = s.session.get(s.views[0].id).unwrap();
+    let doc = s.session.get(s.win.views[0].id).unwrap();
     let stamps: Vec<_> = doc.info.annotations.iter().filter(|a| a.subtype == "Stamp").collect();
     assert_eq!(stamps.len(), 1);
     assert_eq!(s.quick_tool, QuickTool::Select, "back to selecting after one stamp");
@@ -52,7 +52,7 @@ fn natural_image_stamps_keep_displayed_bounds_on_rotated_pages() {
             let mut app = PdfCraftApp::new();
             app.set_option("language", "en").unwrap();
             app.open_bytes("form.pdf", None, include_bytes!("../data/form.pdf").to_vec()).unwrap();
-            let id = app.views[0].id;
+            let id = app.win.views[0].id;
             app.session.apply(id, pdfcraft_engine::Edit::RotatePages { pages: vec![0], degrees }).unwrap();
             app.set_option("zoom", "100").unwrap();
             app
@@ -67,7 +67,7 @@ fn natural_image_stamps_keep_displayed_bounds_on_rotated_pages() {
         h.run_steps(2);
         h.get_by_label("OK").click();
         h.run_steps(2);
-        let page = h.state().views[0].page_screen_rect(0).unwrap();
+        let page = h.state().win.views[0].page_screen_rect(0).unwrap();
         let at = page.min + egui::vec2(page.width() * 0.5, page.height() * 0.6);
         h.hover_at(at);
         h.run_steps(1);
@@ -76,7 +76,7 @@ fn natural_image_stamps_keep_displayed_bounds_on_rotated_pages() {
         h.drop_at(at);
         h.run_steps(4);
         let app = h.state();
-        let doc = app.session.get(app.views[0].id).unwrap();
+        let doc = app.session.get(app.win.views[0].id).unwrap();
         assert_eq!(app.quick_tool, QuickTool::Select);
         let stamp = doc.info.annotations.iter().find(|a| a.subtype == "Stamp").unwrap();
         let info = &doc.info.pages[0];
@@ -115,7 +115,7 @@ fn creating_placing_and_keeping_custom_stamps() {
     h.get_by_label("logo");
     // Place it.
     let p = {
-        let r = h.state().views[0].page_screen_rect(0).unwrap();
+        let r = h.state().win.views[0].page_screen_rect(0).unwrap();
         r.min + egui::vec2(r.width() * 0.5, r.height() * 0.85)
     };
     h.hover_at(p);
@@ -125,7 +125,7 @@ fn creating_placing_and_keeping_custom_stamps() {
     h.drop_at(p);
     h.run_steps(4);
     let s = h.state();
-    let doc = s.session.get(s.views[0].id).unwrap();
+    let doc = s.session.get(s.win.views[0].id).unwrap();
     let stamps: Vec<_> = doc.info.annotations.iter().filter(|a| a.subtype == "Stamp").collect();
     assert_eq!(stamps.len(), 1);
     let r = stamps[0].rect;
@@ -167,7 +167,7 @@ fn a_dynamic_custom_stamp_keeps_its_line_and_fills_it_in_when_placed() {
     h.run_steps(2);
     assert_eq!(h.state().custom_stamps[0].line.as_deref(), Some("By {name} at {time}, {date}"));
     let p = {
-        let r = h.state().views[0].page_screen_rect(0).unwrap();
+        let r = h.state().win.views[0].page_screen_rect(0).unwrap();
         r.min + egui::vec2(r.width() * 0.5, r.height() * 0.85)
     };
     h.hover_at(p);
@@ -177,7 +177,7 @@ fn a_dynamic_custom_stamp_keeps_its_line_and_fills_it_in_when_placed() {
     h.drop_at(p);
     h.run_steps(4);
     let s = h.state();
-    let saved = s.session.save_bytes(s.views[0].id).unwrap();
+    let saved = s.session.save_bytes(s.win.views[0].id).unwrap();
     let pdf = pdfcraft_cos::Document::open(saved).unwrap();
     let line = pdf
         .scan_objects()
@@ -192,7 +192,7 @@ fn a_dynamic_custom_stamp_keeps_its_line_and_fills_it_in_when_placed() {
         "the saved stamp line must not contain unexpanded placeholders: {line:?}"
     );
 
-    let doc = s.session.get(s.views[0].id).unwrap();
+    let doc = s.session.get(s.win.views[0].id).unwrap();
     let r = doc.info.annotations.iter().find(|a| a.subtype == "Stamp").expect("placed").rect;
     let aspect = (r[2] - r[0]) / (r[3] - r[1]);
     // A band under the 3:1 picture (so less wide than 3:1), at least as wide as the picture.

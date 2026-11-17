@@ -51,12 +51,12 @@ fn outline(h: &Harness<'static, PdfCraftApp>) -> String {
             .collect::<Vec<_>>()
             .join(",")
     }
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     level(&h.state().session.get(id).unwrap().info.outline)
 }
 
 fn selected(h: &Harness<'static, PdfCraftApp>) -> Vec<Vec<usize>> {
-    h.state().views[0].bookmarks.paths()
+    h.state().win.views[0].bookmarks.paths()
 }
 
 fn click(h: &mut Harness<'static, PdfCraftApp>, title: &str, modifiers: Modifiers) {
@@ -80,17 +80,17 @@ fn click_ctrl_click_and_shift_click_select_across_levels() {
     // A plain click selects one and goes there.
     click(&mut h, "a2", Modifiers::NONE);
     assert_eq!(selected(&h), [vec![0, 1]]);
-    assert_eq!(h.state().views[0].current, 2, "a plain click goes to the bookmark's page");
+    assert_eq!(h.state().win.views[0].current, 2, "a plain click goes to the bookmark's page");
     h.state_mut().set_option("page", "1").unwrap();
     h.run_steps(3);
     // Ctrl+Click adds one without going there; the selection crosses levels.
     click(&mut h, "B", Modifiers::COMMAND);
     assert_eq!(selected(&h), [vec![0, 1], vec![1]]);
-    assert_eq!(h.state().views[0].current, 0, "Ctrl+Click doesn't navigate");
+    assert_eq!(h.state().win.views[0].current, 0, "Ctrl+Click doesn't navigate");
     // Shift+Click: the rows shown from the anchor (B) to A, in place of the selection.
     click(&mut h, "A", Modifiers::SHIFT);
     assert_eq!(selected(&h), [vec![0], vec![0, 0], vec![0, 1], vec![1]]);
-    assert_eq!(h.state().views[0].current, 0, "Shift+Click doesn't navigate");
+    assert_eq!(h.state().win.views[0].current, 0, "Shift+Click doesn't navigate");
     // Ctrl+Click again takes one out.
     click(&mut h, "a1", Modifiers::COMMAND);
     assert_eq!(selected(&h), [vec![0], vec![0, 1], vec![1]]);
@@ -124,7 +124,7 @@ fn a_group_indents_and_outdents_as_one_undo_step() {
     click(&mut h, "C", Modifiers::COMMAND);
     menu(&mut h, "B", "Indent");
     assert_eq!(outline(&h), "A[B,C],D");
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     assert_eq!(h.state().session.get(id).unwrap().can_undo(), Some("Indent bookmarks"));
     // The moved bookmarks stay selected where they went, and their new parent shows them.
     assert_eq!(selected(&h), [vec![0, 0], vec![0, 1]]);
@@ -150,11 +150,11 @@ fn a_group_that_cannot_move_is_not_offered_and_a_right_click_elsewhere_replaces_
     h.key_press(Key::Escape);
     h.run_steps(2);
     // A right-click on a row outside the selection selects that row alone: its own menu.
-    let page = h.state().views[0].current;
+    let page = h.state().win.views[0].current;
     h.get_by_label("B").click_secondary();
     h.run_steps(2);
     assert_eq!(selected(&h), [vec![1]]);
-    assert_eq!(h.state().views[0].current, page, "a right-click doesn't navigate");
+    assert_eq!(h.state().win.views[0].current, page, "a right-click doesn't navigate");
     h.get_by_label("Rename").click();
     h.run_steps(3);
     assert!(h.state().bookmark_rename.is_some(), "the single-bookmark menu, as before");
@@ -170,7 +170,7 @@ fn a_selection_made_before_a_change_is_dropped_and_moves_nothing() {
     assert_eq!(selected(&h), [vec![2]]);
     // The outline changes underneath (as another tab or a script would change it): the first
     // Section moves to where the selected one was.
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     h.state_mut().session.apply(id, Edit::MoveBookmark { from: vec![1], to_parent: vec![], index: 2 }).unwrap();
     // Asked before the panel sees the change, the group action does nothing.
     let before = outline(&h);

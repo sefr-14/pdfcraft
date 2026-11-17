@@ -28,7 +28,7 @@ fn harness() -> Harness<'static, PdfCraftApp> {
 }
 
 fn outline(h: &Harness<'static, PdfCraftApp>) -> Vec<(String, Option<usize>, usize)> {
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     fn flat(items: &[pdfcraft_render::OutlineItem], depth: usize, out: &mut Vec<(String, Option<usize>, usize)>) {
         for i in items {
             out.push((i.title.clone(), i.page, depth));
@@ -96,7 +96,7 @@ fn new_rename_reorder_indent_delete_and_undo() {
     h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     h.run_steps(3);
     assert_eq!(outline(&h).len(), 2, "delete is undoable");
-    assert!(h.state().session.get(h.state().views[0].id).unwrap().dirty);
+    assert!(h.state().session.get(h.state().win.views[0].id).unwrap().dirty);
 }
 
 /// The side panel's width as egui keeps it from one frame to the next.
@@ -167,7 +167,7 @@ fn escape_cancels_a_rename() {
 #[test]
 fn number_pages_dialog_labels_the_selected_pages() {
     let mut h = harness();
-    h.state_mut().views[0].select_pages(&[0, 1]);
+    h.state_mut().win.views[0].select_pages(&[0, 1]);
     assert!(h.state_mut().execute("page.number"));
     h.run_steps(3);
     h.get_by_label("Number pages");
@@ -178,7 +178,7 @@ fn number_pages_dialog_labels_the_selected_pages() {
     h.get_by_label_contains("Labels: i, ii");
     h.get_by_label("OK").click();
     h.run_steps(3);
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let labels: Vec<String> = h.state().session.get(id).unwrap().info.pages.iter().map(|p| p.label.clone()).collect();
     assert_eq!(labels, ["i", "ii", "3"]);
     assert_eq!(h.state().session.get(id).unwrap().can_undo(), Some("Number pages"));
@@ -199,7 +199,7 @@ fn search_finds_collapsed_bookmarks_and_keeps_original_paths() {
     h.get_by_label("Collapse all bookmarks").click();
     h.run_steps(3);
     assert!(h.query_by_label("Résumé results").is_none());
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     // A full save stamps /ModDate from the clock: pin it, or two saves a second apart differ.
     let session = std::mem::take(&mut h.state_mut().session);
     h.state_mut().session = session.with_clock(|| 1_700_000_000);
@@ -211,7 +211,7 @@ fn search_finds_collapsed_bookmarks_and_keeps_original_paths() {
     h.get_by_label("Reports");
     h.get_by_label("Résumé results").click();
     h.run_steps(3);
-    assert_eq!(h.state().views[0].current, 2);
+    assert_eq!(h.state().win.views[0].current, 2);
     assert!(h.query_by_label("Unrelated").is_none());
     assert!(h.query_by_label("Other chapter").is_none());
     assert_eq!(h.state().session.save_full_bytes(id).unwrap(), before, "search doesn't edit the PDF");
@@ -245,7 +245,7 @@ fn bookmark_search_is_per_document() {
     h.run_steps(3);
     add(&mut h, "Second document");
     h.get_by_label("Second document");
-    h.state_mut().active = Some(0);
+    h.state_mut().win.active = Some(0);
     h.run_steps(3);
     h.get_by_label("No matches.");
     h.get_by_label("Clear").click();
@@ -272,7 +272,7 @@ trailer << /Root 1 0 R >>
     h.run_steps(2);
     h.get_by_label("New bookmarks from structure").click();
     h.run_steps(3);
-    let id = h.state().active.and_then(|i| h.state().views.get(i)).unwrap().id;
+    let id = h.state().win.active.and_then(|i| h.state().win.views.get(i)).unwrap().id;
     let titles: Vec<String> = h.state().session.get(id).unwrap().info.outline.iter().map(|o| o.title.clone()).collect();
     assert_eq!(titles, ["Untitled"]);
     h.get_by_label("Overview");
@@ -322,7 +322,7 @@ fn new_bookmarks_from_text_styles_from_the_bookmark_options() {
     let mut h = harness();
     h.state_mut().open_bytes("styled.pdf", None, styled_pdf()).unwrap();
     h.run_steps(3);
-    let id = h.state().active.and_then(|i| h.state().views.get(i)).unwrap().id;
+    let id = h.state().win.active.and_then(|i| h.state().win.views.get(i)).unwrap().id;
     let open = |h: &mut Harness<'static, PdfCraftApp>| {
         h.get_by_label("Bookmark options").click();
         h.run_steps(2);
@@ -408,7 +408,7 @@ fn style_and_colour_from_the_bookmark_menu() {
     let mut h = harness();
     add(&mut h, "Intro");
     let look = |h: &Harness<'static, PdfCraftApp>| {
-        let id = h.state().views[0].id;
+        let id = h.state().win.views[0].id;
         let b = &h.state().session.get(id).unwrap().info.outline[0];
         (b.bold, b.italic, b.color)
     };
@@ -496,8 +496,8 @@ trailer << /Root 1 0 R >>
 
 /// The active document's outline, flattened like [`outline`].
 fn active_outline(h: &Harness<'static, PdfCraftApp>) -> Vec<(String, Option<usize>, usize)> {
-    let i = h.state().active.unwrap();
-    let id = h.state().views[i].id;
+    let i = h.state().win.active.unwrap();
+    let id = h.state().win.views[i].id;
     fn flat(items: &[pdfcraft_render::OutlineItem], depth: usize, out: &mut Vec<(String, Option<usize>, usize)>) {
         for i in items {
             out.push((i.title.clone(), i.page, depth));

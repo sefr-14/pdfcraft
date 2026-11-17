@@ -41,7 +41,7 @@ fn harness_stepping(step_dt: f32, options: &'static [(&'static str, &'static str
 }
 
 fn rect(h: &Harness<'static, PdfCraftApp>, page: usize) -> Option<egui::Rect> {
-    h.state().views[0].page_screen_rect(page)
+    h.state().win.views[0].page_screen_rect(page)
 }
 
 fn sidebar_key(h: &mut Harness<'static, PdfCraftApp>, key: Key, modifiers: Modifiers) {
@@ -61,17 +61,17 @@ fn pages_sidebar_select_all_keeps_current_page_and_keyboard_scope() {
     let _ = h.get_by_role_and_label(egui::accesskit::Role::Group, "Pages");
     h.get_by_label("Page 2").click();
     h.run_steps(3);
-    assert_eq!(h.state().views[0].current, 1);
+    assert_eq!(h.state().win.views[0].current, 1);
     // Moving the pointer is not a keyboard-focus change.
     h.hover_at(rect(&h, 1).unwrap().center());
     h.run_steps(1);
     for _ in 0..2 {
         sidebar_key(&mut h, Key::A, Modifiers::COMMAND);
-        assert_eq!(h.state().views[0].target_pages(), vec![0, 1, 2]);
-        assert_eq!(h.state().views[0].current, 1, "selecting does not navigate");
+        assert_eq!(h.state().win.views[0].target_pages(), vec![0, 1, 2]);
+        assert_eq!(h.state().win.views[0].current, 1, "selecting does not navigate");
     }
     sidebar_key(&mut h, Key::Escape, Modifiers::NONE);
-    assert!(h.state().views[0].selected.is_empty());
+    assert!(h.state().win.views[0].selected.is_empty());
 
     // A click on the viewer returns Ctrl+A to text selection, even with Pages open.
     let pos = rect(&h, 1).unwrap().center();
@@ -80,7 +80,7 @@ fn pages_sidebar_select_all_keeps_current_page_and_keyboard_scope() {
     }
     h.run_steps(3);
     sidebar_key(&mut h, Key::A, Modifiers::COMMAND);
-    assert!(h.state().views[0].selected.is_empty(), "viewer shortcut must not select thumbnails");
+    assert!(h.state().win.views[0].selected.is_empty(), "viewer shortcut must not select thumbnails");
 
     // A different document does not inherit the previous sidebar's keyboard ownership.
     h.get_by_label("Page 2").click();
@@ -88,13 +88,13 @@ fn pages_sidebar_select_all_keeps_current_page_and_keyboard_scope() {
     h.state_mut().open_bytes("other.pdf", None, PAGES.to_vec()).unwrap();
     h.run_steps(5);
     sidebar_key(&mut h, Key::A, Modifiers::COMMAND);
-    let active = h.state().active.unwrap();
-    assert!(h.state().views[active].selected.is_empty());
+    let active = h.state().win.active.unwrap();
+    assert!(h.state().win.views[active].selected.is_empty());
     h.get_by_label("Page 1").click();
     h.run_steps(2);
     sidebar_key(&mut h, Key::A, Modifiers::COMMAND);
-    assert_eq!(h.state().views[active].target_pages(), vec![0, 1, 2]);
-    assert!(h.state().views[0].selected.is_empty(), "selection remains document-local");
+    assert_eq!(h.state().win.views[active].target_pages(), vec![0, 1, 2]);
+    assert!(h.state().win.views[0].selected.is_empty(), "selection remains document-local");
 }
 
 /// Two pages of different sizes: 300×400 then 600×300.
@@ -142,7 +142,7 @@ fn middle_button_scrolling_keeps_page_colours_in_both_themes() {
                 assert!(
                     std::time::Instant::now() < deadline,
                     "render readiness timed out: theme={theme}, organize={organize}, errors={:?}",
-                    h.state().views[0].page_errors()
+                    h.state().win.views[0].page_errors()
                 );
                 h.run_steps(2);
                 if !h.state().render_pending() {
@@ -152,9 +152,9 @@ fn middle_button_scrolling_keeps_page_colours_in_both_themes() {
                         continue;
                     }
                     assert!(
-                        h.state().views[0].page_errors().is_empty(),
+                        h.state().win.views[0].page_errors().is_empty(),
                         "page render errors: theme={theme}, organize={organize}, errors={:?}",
-                        h.state().views[0].page_errors()
+                        h.state().win.views[0].page_errors()
                     );
                     break;
                 }
@@ -169,13 +169,13 @@ fn middle_button_scrolling_keeps_page_colours_in_both_themes() {
                 image::Rgba([255, 255, 255, 255]),
                 "the synthetic page is white: theme={theme}, organize={organize}, page={page:?}, ppp={ppp}"
             );
-            let anchor = h.state().views[0].viewport_rect().center();
+            let anchor = h.state().win.views[0].viewport_rect().center();
             h.event(egui::Event::PointerMoved(anchor));
             h.event(egui::Event::PointerButton { pos: anchor, button: egui::PointerButton::Middle, pressed: true, modifiers: Modifiers::NONE });
             h.run_steps(1);
             h.event(egui::Event::PointerButton { pos: anchor, button: egui::PointerButton::Middle, pressed: false, modifiers: Modifiers::NONE });
             h.run_steps(1);
-            assert!(h.state().views[0].auto_scrolling());
+            assert!(h.state().win.views[0].auto_scrolling());
             let during = *h.render().unwrap().get_pixel((at.x * ppp) as u32, (at.y * ppp) as u32);
             assert_eq!(during, before, "scrolling preserves page colours: theme={theme}, organize={organize}");
         }
@@ -195,7 +195,7 @@ fn continuous_layout_stacks_pages_vertically() {
 #[test]
 fn page_gaps_toggle_joins_edges_without_changing_the_document() {
     let mut h = harness(&[("layout", "continuous"), ("zoom", "50")]);
-    let zoom = h.state().views[0].zoom;
+    let zoom = h.state().win.views[0].zoom;
     let original = rect(&h, 1).unwrap().top() - rect(&h, 0).unwrap().bottom();
     assert!(original > 1.0);
     h.state_mut().set_option("page-gaps", "off").unwrap();
@@ -204,8 +204,8 @@ fn page_gaps_toggle_joins_edges_without_changing_the_document() {
         let (a, b) = (rect(&h, page).unwrap(), rect(&h, page + 1).unwrap());
         assert!((b.top() - a.bottom()).abs() < 0.01, "pages must touch: {a:?} {b:?}");
     }
-    assert_eq!(h.state().views[0].zoom, zoom);
-    let id = h.state().views[0].id;
+    assert_eq!(h.state().win.views[0].zoom, zoom);
+    let id = h.state().win.views[0].id;
     assert!(!h.state().session.get(id).unwrap().dirty, "a view option must not edit the PDF");
     assert!(h.state_mut().execute("view.page_gaps"));
     h.run_steps(4);
@@ -221,16 +221,16 @@ fn page_gaps_in_organizer_do_not_move_the_document_scroll_position() {
     assert!(gap > 1.0);
     assert!(h.state_mut().execute("page.organize"));
     h.run_steps(4);
-    assert!(h.state().views[0].organize);
+    assert!(h.state().win.views[0].organize);
     assert!(h.state_mut().execute("view.page_gaps"));
     h.run_steps(2);
-    assert!(!h.state().views[0].show_page_gaps);
+    assert!(!h.state().win.views[0].show_page_gaps);
     assert!(h.state_mut().execute("page.organize"));
     h.run_steps(4);
     let after = rect(&h, 1).unwrap();
     // Keeping the scroll offset moves page 2 up by exactly the removed gap before it.
     assert!((after.top() - before.top() + gap).abs() < 1.0, "stale grid anchoring moved the page: {before:?} -> {after:?}, gap={gap}");
-    assert_eq!(h.state().views[0].current, 1);
+    assert_eq!(h.state().win.views[0].current, 1);
 }
 
 /// A three-page comparison, with the old pane leading while the new document stays active.
@@ -242,16 +242,16 @@ fn page_gaps_comparison_harness() -> Harness<'static, PdfCraftApp> {
         app.open_bytes("old.pdf", None, PAGES.to_vec()).unwrap();
         app.open_bytes("new.pdf", None, PAGES.to_vec()).unwrap();
         app.set_option("zoom", "50").unwrap();
-        app.compare_old = Some(app.views[0].id);
+        app.compare_old = Some(app.win.views[0].id);
         app.run_compare();
         app
     });
     h.run_steps(4);
-    let at = h.state().views[0].viewport_rect().center();
+    let at = h.state().win.views[0].viewport_rect().center();
     h.event(egui::Event::PointerMoved(at));
     h.run_steps(2);
     assert_eq!(h.state().compare.as_ref().unwrap().leader, 0);
-    assert_eq!(h.state().active, Some(1));
+    assert_eq!(h.state().win.active, Some(1));
     h
 }
 
@@ -264,7 +264,7 @@ fn page_gaps_comparison_menu_preserves_the_active_panes_choice() {
     h.run_steps(2);
     h.get_by_label("Show gaps between pages").click();
     h.run_steps(4);
-    assert!(h.state().views.iter().all(|v| !v.show_page_gaps), "the old leader must not restore gaps after the active pane's menu action");
+    assert!(h.state().win.views.iter().all(|v| !v.show_page_gaps), "the old leader must not restore gaps after the active pane's menu action");
 }
 
 /// The control setting has the same synchronized behavior and leaves unrelated views alone.
@@ -274,12 +274,12 @@ fn page_gaps_comparison_control_preserves_both_states() {
     for (value, show) in [("off", false), ("on", true)] {
         h.state_mut().set_option("page-gaps", value).unwrap();
         h.run_steps(4);
-        assert!(h.state().views.iter().all(|v| v.show_page_gaps == show), "comparison rejected page-gaps={value}");
+        assert!(h.state().win.views.iter().all(|v| v.show_page_gaps == show), "comparison rejected page-gaps={value}");
     }
     h.state_mut().open_bytes("unrelated.pdf", None, PAGES.to_vec()).unwrap();
     h.state_mut().set_option("page-gaps", "off").unwrap();
-    assert!(h.state().views[0].show_page_gaps && h.state().views[1].show_page_gaps);
-    assert!(!h.state().views[2].show_page_gaps);
+    assert!(h.state().win.views[0].show_page_gaps && h.state().win.views[1].show_page_gaps);
+    assert!(!h.state().win.views[2].show_page_gaps);
 }
 
 /// The saved default survives restart and applies to newly opened documents.
@@ -329,9 +329,9 @@ fn page_gaps_work_for_mixed_sizes_and_two_page_rows() {
     let (a, b, c) = (rect(&h, 0).unwrap(), rect(&h, 1).unwrap(), rect(&h, 2).unwrap());
     assert!((b.left() - a.right()).abs() < 0.01);
     assert!((c.top() - a.bottom()).abs() < 0.01);
-    let info = h.state().session.get(h.state().views[0].id).unwrap().info.clone();
-    h.state_mut().views[0].document_replaced(&info);
-    assert!(!h.state().views[0].show_page_gaps, "a file reload preserves the view setting");
+    let info = h.state().session.get(h.state().win.views[0].id).unwrap().info.clone();
+    h.state_mut().win.views[0].document_replaced(&info);
+    assert!(!h.state().win.views[0].show_page_gaps, "a file reload preserves the view setting");
 }
 
 /// Page edges stay adjacent at integer and fractional physical-pixel scales.
@@ -372,15 +372,15 @@ fn two_page_view_shows_one_spread_at_a_time_until_continuous() {
     // checkbox reveals the rest (#752).
     let mut h = harness(&[("layout", "two-page"), ("zoom", "50")]);
     h.run_steps(4);
-    assert_eq!(h.state().views[0].layout, PageLayout::TwoUp);
-    assert!(!h.state().views[0].continuous(), "`two-page` is the non-scrolling two-page display");
+    assert_eq!(h.state().win.views[0].layout, PageLayout::TwoUp);
+    assert!(!h.state().win.views[0].continuous(), "`two-page` is the non-scrolling two-page display");
     assert!(rect(&h, 0).is_some() && rect(&h, 1).is_some(), "the first spread is on screen");
     assert!(rect(&h, 2).is_none(), "the next spread is not shown until paged or scrolled");
     // Turning on continuous scrolling lays every spread out in one column.
     h.state_mut().set_option("continuous", "on").unwrap();
     h.run_steps(4);
     assert!(rect(&h, 2).is_some(), "continuous scrolling reveals the later spreads");
-    assert_eq!(h.state().views[0].layout, PageLayout::TwoUp, "the base layout is unchanged");
+    assert_eq!(h.state().win.views[0].layout, PageLayout::TwoUp, "the base layout is unchanged");
 }
 
 #[test]
@@ -405,7 +405,7 @@ fn single_page_view_prefetches_the_next_page() {
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
     assert!(rect(&h, 1).is_none(), "page 2 is not shown");
-    assert!(h.state().views[0].raster_memory().page_count >= 2, "page 2 is rendered ahead of the turn");
+    assert!(h.state().win.views[0].raster_memory().page_count >= 2, "page 2 is rendered ahead of the turn");
 }
 
 #[test]
@@ -415,12 +415,12 @@ fn single_page_wheel_turn_draws_the_new_page_at_once() {
     let mut h = harness_stepping(1.0 / 60.0, &[("layout", "single")]);
     h.key_press_modifiers(Modifiers::COMMAND, Key::Num0); // fit page
     h.run_steps(4);
-    let vp = h.state().views[0].viewport_rect();
+    let vp = h.state().win.views[0].viewport_rect();
     h.hover_at(vp.center());
     h.run_steps(2);
     h.event(wheel(MouseWheelUnit::Line, -1.0, TouchPhase::Move));
     h.step();
-    assert_eq!(h.state().views[0].current, 1, "one notch turns one page");
+    assert_eq!(h.state().win.views[0].current, 1, "one notch turns one page");
     let r = rect(&h, 1).expect("page 2 drawn in the frame that turns to it");
     assert!(r.min.y >= vp.min.y && r.max.y <= vp.max.y, "page 2 fits on screen: {r:?} in {vp:?}");
 }
@@ -445,12 +445,12 @@ fn single_page_wheel_pans_instead_when_zoomed_in() {
     // The zoomed-in guard: with room to pan, the wheel pans and must not turn pages.
     let mut h = harness(&[("layout", "single"), ("zoom", "200")]);
     h.run_steps(4);
-    let at = h.state().views[0].viewport_rect().center();
+    let at = h.state().win.views[0].viewport_rect().center();
     h.hover_at(at);
     h.run_steps(1);
     h.event(wheel(MouseWheelUnit::Point, -60.0, TouchPhase::Move));
     h.run_steps(4);
-    assert_eq!(h.state().views[0].current, 0, "zoomed-in wheel pans, it does not turn the page");
+    assert_eq!(h.state().win.views[0].current, 0, "zoomed-in wheel pans, it does not turn the page");
 }
 
 #[test]
@@ -459,13 +459,13 @@ fn single_page_wheel_at_the_bottom_edge_turns_to_the_next_page_top_and_back() {
     // edge one more notch shows the next page at its top, and at the top edge one notch up
     // shows the previous page at its bottom.
     let mut h = harness_stepping(1.0 / 60.0, &[("layout", "single"), ("zoom", "200")]);
-    let at = h.state().views[0].viewport_rect().center();
+    let at = h.state().win.views[0].viewport_rect().center();
     h.hover_at(at);
     h.run_steps(4);
     // Notches pan page 1 down; the page turns only after the view stopped at the bottom.
     let (mut notches, mut stalled) = (0, 0);
     let mut last = rect(&h, 0).expect("page 1 on screen").min.y;
-    while h.state().views[0].current == 0 && notches < 80 {
+    while h.state().win.views[0].current == 0 && notches < 80 {
         h.event(wheel(MouseWheelUnit::Line, -1.0, TouchPhase::Move));
         h.run_steps(12);
         notches += 1;
@@ -475,22 +475,22 @@ fn single_page_wheel_at_the_bottom_edge_turns_to_the_next_page_top_and_back() {
         }
     }
     assert!(notches > 2, "the page panned before it turned: {notches} notches");
-    assert_eq!(h.state().views[0].current, 1, "a notch at the bottom edge shows the next page");
+    assert_eq!(h.state().win.views[0].current, 1, "a notch at the bottom edge shows the next page");
     assert!(stalled <= 1, "no notch was wasted at the edge");
     let top = rect(&h, 1).expect("page 2 on screen").min.y;
-    assert!(top > h.state().views[0].viewport_rect().min.y, "page 2 shows its top edge: {top}");
+    assert!(top > h.state().win.views[0].viewport_rect().min.y, "page 2 shows its top edge: {top}");
     h.event(wheel(MouseWheelUnit::Line, 1.0, TouchPhase::Move));
     h.run_steps(30);
-    assert_eq!(h.state().views[0].current, 0, "a notch at the top edge shows the previous page");
+    assert_eq!(h.state().win.views[0].current, 0, "a notch at the top edge shows the previous page");
     let r = rect(&h, 0).expect("page 1 on screen");
-    assert!(r.max.y < h.state().views[0].viewport_rect().max.y + 40.0, "page 1 shows its bottom edge: {r:?}");
+    assert!(r.max.y < h.state().win.views[0].viewport_rect().max.y + 40.0, "page 1 shows its bottom edge: {r:?}");
 }
 
 #[test]
 fn single_page_swipe_that_reaches_the_edge_does_not_turn_but_a_fresh_one_does() {
     // Momentum that carries a swipe to the bottom edge must not go on to turn the page.
     let mut h = harness_stepping(1.0 / 60.0, &[("layout", "single"), ("zoom", "200")]);
-    let at = h.state().views[0].viewport_rect().center();
+    let at = h.state().win.views[0].viewport_rect().center();
     h.hover_at(at);
     h.run_steps(4);
     let send = |h: &mut Harness<'static, PdfCraftApp>, phase, dy| {
@@ -504,7 +504,7 @@ fn single_page_swipe_that_reaches_the_edge_does_not_turn_but_a_fresh_one_does() 
     }
     send(&mut h, TouchPhase::End, 0.0);
     h.run_steps(30);
-    assert_eq!(h.state().views[0].current, 0, "the swipe that panned to the edge does not turn");
+    assert_eq!(h.state().win.views[0].current, 0, "the swipe that panned to the edge does not turn");
     // A new swipe at the edge turns exactly one page.
     send(&mut h, TouchPhase::Start, 0.0);
     for _ in 0..6 {
@@ -512,21 +512,21 @@ fn single_page_swipe_that_reaches_the_edge_does_not_turn_but_a_fresh_one_does() 
     }
     send(&mut h, TouchPhase::End, 0.0);
     h.run_steps(30);
-    assert_eq!(h.state().views[0].current, 1, "a fresh swipe at the edge turns one page");
+    assert_eq!(h.state().win.views[0].current, 1, "a fresh swipe at the edge turns one page");
     let top = rect(&h, 1).expect("page 2 on screen").min.y;
     assert!(
-        top >= h.state().views[0].viewport_rect().min.y,
+        top >= h.state().win.views[0].viewport_rect().min.y,
         "page 2 starts at its top after the swipe: {top} in {:?}",
-        h.state().views[0].viewport_rect()
+        h.state().win.views[0].viewport_rect()
     );
 }
 
 #[test]
 fn single_page_wheel_at_last_page_bottom_edge_can_scroll_back_up() {
     let mut h = harness_stepping(1.0 / 60.0, &[("layout", "single"), ("zoom", "200")]);
-    h.state_mut().views[0].go_to_page(2); // Go to last page of PAGES (3 pages)
+    h.state_mut().win.views[0].go_to_page(2); // Go to last page of PAGES (3 pages)
     h.run_steps(20);
-    let at = h.state().views[0].viewport_rect().center();
+    let at = h.state().win.views[0].viewport_rect().center();
     h.hover_at(at);
     h.run_steps(4);
 
@@ -547,7 +547,7 @@ fn single_page_wheel_at_last_page_bottom_edge_can_scroll_back_up() {
         }
     }
     assert!(at_bottom, "reached bottom edge of last page");
-    assert_eq!(h.state().views[0].current, 2, "remains on page 3");
+    assert_eq!(h.state().win.views[0].current, 2, "remains on page 3");
 
     // Push the wheel further against the bottom edge (cannot turn because it's the last page)
     for _ in 0..5 {
@@ -569,17 +569,17 @@ const POINT_NOTCH: f32 = 14.0;
 #[test]
 fn single_page_point_notches_pan_the_page_a_notch_turned_to() {
     let mut h = harness_stepping(1.0 / 60.0, &[("layout", "single"), ("zoom", "200")]);
-    let at = h.state().views[0].viewport_rect().center();
+    let at = h.state().win.views[0].viewport_rect().center();
     h.hover_at(at);
     h.run_steps(20);
     for _ in 0..120 {
         h.event(wheel(MouseWheelUnit::Point, -POINT_NOTCH, TouchPhase::Move));
         h.run_steps(12);
-        if h.state().views[0].current == 1 {
+        if h.state().win.views[0].current == 1 {
             break;
         }
     }
-    assert_eq!(h.state().views[0].current, 1, "notches pan page 1, then turn to page 2");
+    assert_eq!(h.state().win.views[0].current, 1, "notches pan page 1, then turn to page 2");
     h.run_steps(20);
     let top = rect(&h, 1).expect("page 2 on screen").min.y;
     for _ in 0..3 {
@@ -593,9 +593,9 @@ fn single_page_point_notches_pan_the_page_a_notch_turned_to() {
 #[test]
 fn single_page_point_notches_scroll_back_up_from_the_last_page_bottom() {
     let mut h = harness_stepping(1.0 / 60.0, &[("layout", "single"), ("zoom", "200")]);
-    h.state_mut().views[0].go_to_page(2);
+    h.state_mut().win.views[0].go_to_page(2);
     h.run_steps(20);
-    let at = h.state().views[0].viewport_rect().center();
+    let at = h.state().win.views[0].viewport_rect().center();
     h.hover_at(at);
     h.run_steps(4);
     // Past the bottom: the extra notches push against the last page's edge.
@@ -603,7 +603,7 @@ fn single_page_point_notches_scroll_back_up_from_the_last_page_bottom() {
         h.event(wheel(MouseWheelUnit::Point, -POINT_NOTCH, TouchPhase::Move));
         h.run_steps(12);
     }
-    assert_eq!(h.state().views[0].current, 2, "stays on the last page");
+    assert_eq!(h.state().win.views[0].current, 2, "stays on the last page");
     let bottom = rect(&h, 2).expect("page 3 on screen").min.y;
     for _ in 0..3 {
         h.event(wheel(MouseWheelUnit::Point, POINT_NOTCH, TouchPhase::Move));
@@ -618,18 +618,18 @@ fn stepping_past_either_end_leaves_the_view_alone() {
     // Paging on past the first or last page must not jump the page back to its top.
     for (page, forward) in [(2, true), (0, false)] {
         let mut h = harness_stepping(1.0 / 60.0, &[("layout", "single"), ("zoom", "200")]);
-        h.state_mut().views[0].go_to_page(page);
+        h.state_mut().win.views[0].go_to_page(page);
         h.run_steps(20);
-        let at = h.state().views[0].viewport_rect().center();
+        let at = h.state().win.views[0].viewport_rect().center();
         h.hover_at(at);
         h.run_steps(4);
         // Pan the page off its edge so a jump would show.
         h.event(wheel(MouseWheelUnit::Line, -1.0, TouchPhase::Move));
         h.run_steps(30);
         let before = rect(&h, page).expect("page on screen");
-        h.state_mut().views[0].step_page(forward);
+        h.state_mut().win.views[0].step_page(forward);
         h.run_steps(30);
-        assert_eq!(h.state().views[0].current, page);
+        assert_eq!(h.state().win.views[0].current, page);
         assert_eq!(rect(&h, page), Some(before), "stepping past the end (forward={forward}) moved the page");
     }
 }
@@ -639,7 +639,7 @@ fn wheel_turns_one_page_per_notch_and_per_trackpad_swipe() {
     // At a real frame rate: brisk notches each turn a page, and one trackpad swipe turns one
     // page, its momentum included (macOS sends the momentum as a second Start…End).
     let mut h = harness_stepping(1.0 / 60.0, &[("layout", "single"), ("zoom", "50")]);
-    let at = h.state().views[0].viewport_rect().center();
+    let at = h.state().win.views[0].viewport_rect().center();
     h.hover_at(at);
     h.run_steps(2);
     for _ in 0..2 {
@@ -647,7 +647,7 @@ fn wheel_turns_one_page_per_notch_and_per_trackpad_swipe() {
         h.run_steps(5);
     }
     h.run_steps(30);
-    assert_eq!(h.state().views[0].current, 2, "two notches 80 ms apart turn two pages");
+    assert_eq!(h.state().win.views[0].current, 2, "two notches 80 ms apart turn two pages");
     let mut send = |phase, dy| {
         h.event(wheel(MouseWheelUnit::Point, dy, phase));
         h.step();
@@ -665,7 +665,7 @@ fn wheel_turns_one_page_per_notch_and_per_trackpad_swipe() {
     }
     send(TouchPhase::End, 0.0);
     h.run_steps(30);
-    assert_eq!(h.state().views[0].current, 1, "one swipe back turns one page back");
+    assert_eq!(h.state().win.views[0].current, 1, "one swipe back turns one page back");
 }
 
 #[test]
@@ -675,7 +675,7 @@ fn precise_touchpad_wheel_scrolls_one_to_one() {
     // 200 px precise event is well over egui's 8 px smoothing threshold, so without the fix only
     // a fraction would land on the first frame.
     let mut h = harness_stepping(1.0 / 60.0, &[("layout", "continuous"), ("zoom", "100")]);
-    let at = h.state().views[0].viewport_rect().center();
+    let at = h.state().win.views[0].viewport_rect().center();
     h.hover_at(at);
     h.run_steps(2);
     let before = rect(&h, 0).expect("page 1 on screen").min.y;
@@ -698,7 +698,7 @@ fn rapid_wheel_notches_accelerate_and_follow_touchpad_input() {
 
     let mut h = harness_stepping(1.0 / 60.0, &[("layout", "continuous"), ("zoom", "300")]);
     h.state_mut().set_option("animation_effects", "off").unwrap();
-    let at = h.state().views[0].viewport_rect().center();
+    let at = h.state().win.views[0].viewport_rect().center();
     h.hover_at(at);
     h.run_steps(2);
 
@@ -745,7 +745,7 @@ fn changing_continuous_layout_resets_wheel_acceleration() {
 
     let mut h = harness_stepping(1.0 / 60.0, &[("layout", "continuous"), ("zoom", "300")]);
     h.state_mut().set_option("animation_effects", "off").unwrap();
-    let at = h.state().views[0].viewport_rect().center();
+    let at = h.state().win.views[0].viewport_rect().center();
     h.hover_at(at);
     h.run_steps(2);
     for _ in 0..5 {
@@ -753,7 +753,7 @@ fn changing_continuous_layout_resets_wheel_acceleration() {
         scroll_over(&mut h, 2);
     }
 
-    h.state_mut().views[0].set_continuous(false);
+    h.state_mut().win.views[0].set_continuous(false);
     h.run_steps(3);
     h.event(wheel(MouseWheelUnit::Line, -1.0, TouchPhase::Move));
     let moved = scroll_over(&mut h, 2);
@@ -765,7 +765,7 @@ fn changing_continuous_layout_resets_wheel_acceleration() {
 #[test]
 fn scroll_regression_regular_notches_have_regular_frame_motion() {
     let mut h = harness_stepping(1.0 / 60.0, &[("layout", "continuous"), ("zoom", "3000"), ("animation_effects", "on")]);
-    let at = h.state().views[0].viewport_rect().center();
+    let at = h.state().win.views[0].viewport_rect().center();
     h.hover_at(at);
     h.run_steps(2);
     let mut settled = Vec::new();
@@ -787,7 +787,7 @@ fn scroll_regression_regular_notches_have_regular_frame_motion() {
 #[test]
 fn scroll_regression_fractional_lines_preserve_distance_without_an_idle_tail() {
     let mut h = harness_stepping(1.0 / 60.0, &[("layout", "continuous"), ("zoom", "3000"), ("animation_effects", "on")]);
-    let at = h.state().views[0].viewport_rect().center();
+    let at = h.state().win.views[0].viewport_rect().center();
     h.hover_at(at);
     h.run_steps(2);
     let line = pdfcraft_ui_egui::scroll_speed::ScrollSpeed::default().line_points();
@@ -807,7 +807,7 @@ fn scroll_regression_fractional_lines_preserve_distance_without_an_idle_tail() {
 #[test]
 fn scroll_regression_returning_to_a_tab_does_not_resume_old_motion() {
     let mut h = harness_stepping(1.0 / 60.0, &[("layout", "continuous"), ("zoom", "3000"), ("animation_effects", "on")]);
-    let at = h.state().views[0].viewport_rect().center();
+    let at = h.state().win.views[0].viewport_rect().center();
     h.hover_at(at);
     h.run_steps(2);
     for _ in 0..5 {
@@ -816,7 +816,7 @@ fn scroll_regression_returning_to_a_tab_does_not_resume_old_motion() {
     }
     h.state_mut().open_bytes("second.pdf", None, PAGES.to_vec()).unwrap();
     h.run_steps(2);
-    h.state_mut().active = Some(0);
+    h.state_mut().win.active = Some(0);
     h.run_steps(2);
     assert!(scroll_over(&mut h, 12).abs() < 0.5, "returning to a tab must not continue its old wheel burst");
 }
@@ -825,7 +825,7 @@ fn scroll_regression_returning_to_a_tab_does_not_resume_old_motion() {
 #[test]
 fn scroll_regression_precise_input_resets_coarse_acceleration() {
     let mut h = harness_stepping(1.0 / 60.0, &[("layout", "continuous"), ("zoom", "3000"), ("animation_effects", "off")]);
-    let at = h.state().views[0].viewport_rect().center();
+    let at = h.state().win.views[0].viewport_rect().center();
     h.hover_at(at);
     h.run_steps(2);
     for _ in 0..5 {
@@ -844,7 +844,7 @@ fn scroll_regression_precise_input_resets_coarse_acceleration() {
 #[test]
 fn scroll_regression_key_interrupt_retains_current_wheel_input() {
     let mut h = harness_stepping(1.0 / 60.0, &[("layout", "continuous"), ("zoom", "3000"), ("animation_effects", "off")]);
-    let at = h.state().views[0].viewport_rect().center();
+    let at = h.state().win.views[0].viewport_rect().center();
     h.hover_at(at);
     h.run_steps(2);
     h.event(egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE });
@@ -876,7 +876,7 @@ fn scroll_over(h: &mut Harness<'static, PdfCraftApp>, frames: usize) -> f32 {
 /// Same gate as its callers below.
 #[cfg(not(target_os = "macos"))]
 fn swipe_and_lift(h: &mut Harness<'static, PdfCraftApp>) -> f32 {
-    let at = h.state().views[0].viewport_rect().center();
+    let at = h.state().win.views[0].viewport_rect().center();
     h.hover_at(at);
     h.run_steps(2);
     h.event(wheel(MouseWheelUnit::Point, -25.0, TouchPhase::Start));
@@ -922,7 +922,7 @@ fn touching_the_touchpad_again_or_turning_animations_off_stops_the_glide() {
     let mut h = harness_stepping(1.0 / 60.0, &[("layout", "continuous"), ("zoom", "300")]);
     swipe_and_lift(&mut h);
     assert!(scroll_over(&mut h, 3) > 30.0, "gliding");
-    let at = h.state().views[0].viewport_rect().center();
+    let at = h.state().win.views[0].viewport_rect().center();
     h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
     scroll_over(&mut h, 2);
     let drift = scroll_over(&mut h, 20);
@@ -944,7 +944,7 @@ fn frames_after_a_notch(system_reduced: bool, animation_effects: &str, zooming: 
     let mut h = harness_stepping(1.0 / 60.0, &[("layout", "continuous"), ("zoom", "100")]);
     h.state_mut().motion.reduced = system_reduced;
     h.state_mut().set_option("animation_effects", animation_effects).unwrap();
-    let at = h.state().views[0].viewport_rect().center();
+    let at = h.state().win.views[0].viewport_rect().center();
     h.hover_at(at);
     h.run_steps(2);
     let before = rect(&h, 0).expect("page 1 on screen").min.y;
@@ -959,7 +959,7 @@ fn frames_after_a_notch(system_reduced: bool, animation_effects: &str, zooming: 
     (0..40)
         .map(|_| {
             h.step();
-            if zooming { h.state().views[0].zoom } else { before - rect(&h, 0).expect("page 1 still laid out").min.y }
+            if zooming { h.state().win.views[0].zoom } else { before - rect(&h, 0).expect("page 1 still laid out").min.y }
         })
         .collect()
 }
@@ -1026,10 +1026,10 @@ fn a_zoom_gesture_zooms_to_its_end_after_its_keys_are_let_go() {
     fn zoom_gesture(effects: &'static str, let_go: bool) -> (f32, f32, egui::Rect) {
         let mut h = harness_stepping(1.0 / 60.0, &[("layout", "continuous"), ("zoom", "300")]);
         h.state_mut().set_option("animation_effects", effects).unwrap();
-        let at = h.state().views[0].viewport_rect().center();
+        let at = h.state().win.views[0].viewport_rect().center();
         h.hover_at(at);
         h.run_steps(2);
-        let before = h.state().views[0].zoom;
+        let before = h.state().win.views[0].zoom;
         let touch = |phase, dy, modifiers| egui::Event::MouseWheel {
             unit: MouseWheelUnit::Point,
             delta: egui::vec2(0.0, dy),
@@ -1046,7 +1046,7 @@ fn a_zoom_gesture_zooms_to_its_end_after_its_keys_are_let_go() {
         }
         h.event(touch(TouchPhase::End, 0.0, Modifiers::NONE));
         h.run_steps(40);
-        (before, h.state().views[0].zoom, rect(&h, 0).expect("page 1 on screen"))
+        (before, h.state().win.views[0].zoom, rect(&h, 0).expect("page 1 on screen"))
     }
     for effects in ["off", "on"] {
         let (before, held, held_page) = zoom_gesture(effects, false);
@@ -1066,26 +1066,26 @@ fn a_zoom_gesture_zooms_to_its_end_after_its_keys_are_let_go() {
 fn page_display_commands_switch_layouts() {
     let mut h = harness(&[]);
     h.state_mut().execute("view.layout.single");
-    assert_eq!(h.state().views[0].layout, pdfcraft_ui_egui::canvas::PageLayout::Single);
+    assert_eq!(h.state().win.views[0].layout, pdfcraft_ui_egui::canvas::PageLayout::Single);
     // The cover toggle refuses outside two-page view instead of arming a hidden flag.
-    assert!(!h.state().views[0].cover);
+    assert!(!h.state().win.views[0].cover);
     assert!(!h.state_mut().execute("view.layout.cover"));
-    assert!(!h.state().views[0].cover);
+    assert!(!h.state().win.views[0].cover);
     h.state_mut().execute("view.layout.two_up");
-    assert_eq!(h.state().views[0].layout, pdfcraft_ui_egui::canvas::PageLayout::TwoUp);
+    assert_eq!(h.state().win.views[0].layout, pdfcraft_ui_egui::canvas::PageLayout::TwoUp);
     assert!(h.state_mut().execute("view.layout.cover"));
-    assert!(h.state().views[0].cover, "the cover toggle flips");
+    assert!(h.state().win.views[0].cover, "the cover toggle flips");
     assert!(h.state_mut().execute("view.layout.cover"));
-    assert!(!h.state().views[0].cover, "toggling twice restores");
+    assert!(!h.state().win.views[0].cover, "toggling twice restores");
     // Continuous scrolling is an independent toggle over the base layout (#752).
-    assert!(h.state().views[0].continuous(), "the default view scrolls continuously");
+    assert!(h.state().win.views[0].continuous(), "the default view scrolls continuously");
     h.state_mut().execute("view.continuous");
     h.run_steps(3);
-    assert!(!h.state().views[0].continuous(), "the checkbox turns continuous scrolling off");
-    assert_eq!(h.state().views[0].layout, pdfcraft_ui_egui::canvas::PageLayout::TwoUp, "toggling scrolling leaves the base layout");
+    assert!(!h.state().win.views[0].continuous(), "the checkbox turns continuous scrolling off");
+    assert_eq!(h.state().win.views[0].layout, pdfcraft_ui_egui::canvas::PageLayout::TwoUp, "toggling scrolling leaves the base layout");
     h.state_mut().execute("view.layout.single");
-    assert_eq!(h.state().views[0].layout, pdfcraft_ui_egui::canvas::PageLayout::Single);
-    assert!(!h.state().views[0].continuous(), "switching the base layout leaves scrolling off");
+    assert_eq!(h.state().win.views[0].layout, pdfcraft_ui_egui::canvas::PageLayout::Single);
+    assert!(!h.state().win.views[0].continuous(), "switching the base layout leaves scrolling off");
 }
 
 #[test]
@@ -1094,14 +1094,14 @@ fn layout_option_rejects_typos() {
     assert!(h.state_mut().set_option("layout", "singel").is_err());
     assert!(h.state_mut().set_option("default-layout", "bogus").is_err());
     assert!(h.state_mut().set_option("cover", "maybe").is_err());
-    assert_eq!(h.state().views[0].layout, pdfcraft_ui_egui::canvas::PageLayout::Single);
-    assert!(h.state().views[0].continuous(), "a rejected typo leaves the default display unchanged");
+    assert_eq!(h.state().win.views[0].layout, pdfcraft_ui_egui::canvas::PageLayout::Single);
+    assert!(h.state().win.views[0].continuous(), "a rejected typo leaves the default display unchanged");
     assert!(h.state_mut().set_option("cover", "on").is_err(), "cover needs two-page view first");
     h.state_mut().set_option("layout", "two-up").unwrap();
     h.state_mut().set_option("cover", "on").unwrap();
-    assert!(h.state().views[0].cover);
+    assert!(h.state().win.views[0].cover);
     h.state_mut().set_option("cover", "off").unwrap();
-    assert!(!h.state().views[0].cover);
+    assert!(!h.state().win.views[0].cover);
 }
 
 #[test]
@@ -1123,10 +1123,10 @@ fn default_page_display_is_used_for_new_documents() {
     let mut h = harness(&[]);
     h.state_mut().set_option("default-layout", "single").unwrap();
     h.state_mut().open_bytes("other.pdf", None, PAGES.to_vec()).expect("opens");
-    assert_eq!(h.state().views[1].layout, PageLayout::Single);
+    assert_eq!(h.state().win.views[1].layout, PageLayout::Single);
     // So do documents the app creates itself (blank, combined, extracted, from images…).
     assert!(h.state_mut().execute("create.blank"));
-    assert_eq!(h.state().views[2].layout, PageLayout::Single);
+    assert_eq!(h.state().win.views[2].layout, PageLayout::Single);
     // Persisted preferences survive a restart.
     let saved = h.state().persist();
     let mut fresh = PdfCraftApp::new();
@@ -1148,20 +1148,20 @@ fn default_page_display_is_used_for_new_documents() {
 #[test]
 fn default_zoom_is_used_for_new_documents() {
     use pdfcraft_ui_egui::canvas::Fit;
-    let fit_zoom = |app: &PdfCraftApp, i: usize| (app.views[i].fit, app.views[i].zoom);
+    let fit_zoom = |app: &PdfCraftApp, i: usize| (app.win.views[i].fit, app.win.views[i].zoom);
     let mut h = harness(&[]);
     // The factory default fits the width.
-    assert_eq!(h.state().views[0].fit, Fit::Width);
+    assert_eq!(h.state().win.views[0].fit, Fit::Width);
     h.state_mut().set_option("default-zoom", "fit-page").unwrap();
     assert!(h.state_mut().execute("create.blank"));
-    assert_eq!(h.state().views[1].fit, Fit::Page);
+    assert_eq!(h.state().win.views[1].fit, Fit::Page);
     h.state_mut().set_option("default-zoom", "150%").unwrap();
     h.state_mut().open_bytes("other.pdf", None, PAGES.to_vec()).expect("opens");
     assert_eq!(fit_zoom(h.state(), 2), (Fit::None, 1.5));
     // A PDF that asks for a zoom gets it.
     let asks = String::from_utf8_lossy(PAGES).replace("/Pages 2 0 R >>", "/Pages 2 0 R /OpenAction [3 0 R /Fit] >>");
     h.state_mut().open_bytes("asks.pdf", None, asks.into_bytes()).expect("opens");
-    assert_eq!(h.state().views[3].fit, Fit::Page);
+    assert_eq!(h.state().win.views[3].fit, Fit::Page);
     // Typos and zooms the view can't show are refused.
     for bad in ["huge", "fit-height", "5", "9000%"] {
         assert!(h.state_mut().set_option("default-zoom", bad).is_err(), "{bad}");
@@ -1191,16 +1191,16 @@ fn the_rail_zoom_field_sets_a_typed_zoom() {
         h.run_steps(3);
     };
     type_zoom(&mut h, "150", Key::Enter);
-    assert_eq!((h.state().views[0].fit, h.state().views[0].zoom), (Fit::None, 1.5));
+    assert_eq!((h.state().win.views[0].fit, h.state().win.views[0].zoom), (Fit::None, 1.5));
     type_zoom(&mut h, "62.5 %", Key::Enter);
-    assert_eq!(h.state().views[0].zoom, 0.625);
+    assert_eq!(h.state().win.views[0].zoom, 0.625);
     for (typed, key) in [("abc", Key::Enter), ("0", Key::Enter), ("300", Key::Escape)] {
         type_zoom(&mut h, typed, key);
-        assert_eq!(h.state().views[0].zoom, 0.625, "{typed}");
+        assert_eq!(h.state().win.views[0].zoom, 0.625, "{typed}");
     }
     type_zoom(&mut h, "9000", Key::Enter);
-    assert_eq!(h.state().views[0].zoom, 64.0);
-    h.state_mut().views[0].set_zoom(2.0);
+    assert_eq!(h.state().win.views[0].zoom, 64.0);
+    h.state_mut().win.views[0].set_zoom(2.0);
     h.run_steps(2);
     assert_eq!(h.get_by_role_and_label(Role::TextInput, "Zoom").value().as_deref(), Some("200%"));
 }
@@ -1217,7 +1217,7 @@ fn always_use_my_default_zoom_and_page_layout_ignores_what_the_pdf_asks_for() {
             app.set_option("always-default-view", on).unwrap();
         }
         app.open_bytes("asks.pdf", None, asks.clone().into_bytes()).expect("opens");
-        let v = &app.views[0];
+        let v = &app.win.views[0];
         (v.fit, v.layout, v.continuous, v.current)
     };
     // Off by default: the document's view wins.
@@ -1261,13 +1261,13 @@ fn preferences_turn_on_always_use_my_default_zoom_and_page_layout_updates_open_d
     use egui_kittest::kittest::Queryable;
     let mut h = harness(&[("continuous", "off"), ("zoom", "50")]);
     h.state_mut().open_bytes("second.pdf", None, PAGES.to_vec()).expect("opens");
-    h.state_mut().views[1].set_continuous(false);
-    h.state_mut().views[1].set_zoom(0.75);
-    assert_eq!(h.state().views.len(), 2);
-    assert!(!h.state().views[0].continuous());
-    assert_ne!(h.state().views[0].fit, pdfcraft_ui_egui::canvas::Fit::Width);
-    assert!(!h.state().views[1].continuous());
-    assert_ne!(h.state().views[1].fit, pdfcraft_ui_egui::canvas::Fit::Width);
+    h.state_mut().win.views[1].set_continuous(false);
+    h.state_mut().win.views[1].set_zoom(0.75);
+    assert_eq!(h.state().win.views.len(), 2);
+    assert!(!h.state().win.views[0].continuous());
+    assert_ne!(h.state().win.views[0].fit, pdfcraft_ui_egui::canvas::Fit::Width);
+    assert!(!h.state().win.views[1].continuous());
+    assert_ne!(h.state().win.views[1].fit, pdfcraft_ui_egui::canvas::Fit::Width);
     assert!(h.state_mut().execute("app.preferences"));
     h.run_steps(3);
     h.get_by_label("Always use my default zoom and page layout").scroll_to_me();
@@ -1275,7 +1275,7 @@ fn preferences_turn_on_always_use_my_default_zoom_and_page_layout_updates_open_d
     h.get_by_label("Always use my default zoom and page layout").click();
     h.run_steps(2);
     assert!(h.state().always_default_view);
-    for (i, view) in h.state().views.iter().enumerate() {
+    for (i, view) in h.state().win.views.iter().enumerate() {
         assert!(view.continuous(), "continuous scrolling is applied to view {i}");
         assert_eq!(view.fit, pdfcraft_ui_egui::canvas::Fit::Width, "default fit width is applied to view {i}");
     }
@@ -1286,7 +1286,7 @@ fn preferences_toggle_continuous_scrolling_updates_active_document() {
     use egui_kittest::kittest::Queryable;
     let mut h = harness(&[("default-continuous", "off"), ("continuous", "off")]);
     assert!(!h.state().view_defaults.continuous);
-    assert!(!h.state().views[0].continuous());
+    assert!(!h.state().win.views[0].continuous());
     assert!(h.state_mut().execute("app.preferences"));
     h.run_steps(3);
     h.get_by_label("Continuous scrolling").scroll_to_me();
@@ -1294,7 +1294,7 @@ fn preferences_toggle_continuous_scrolling_updates_active_document() {
     h.get_by_label("Continuous scrolling").click();
     h.run_steps(2);
     assert!(h.state().view_defaults.continuous, "defaults are updated");
-    assert!(h.state().views[0].continuous(), "active document view is updated");
+    assert!(h.state().win.views[0].continuous(), "active document view is updated");
 }
 
 #[test]
@@ -1303,15 +1303,15 @@ fn preferences_during_full_screen_updates_saved_normal_display_and_restores_on_e
     use pdfcraft_ui_egui::canvas::Fit;
 
     let mut h = harness(&[("continuous", "off"), ("zoom", "50")]);
-    let v0 = &h.state().views[0];
+    let v0 = &h.state().win.views[0];
     assert!(!v0.continuous());
     assert_eq!(v0.fit, Fit::None);
     assert_eq!(v0.zoom, 0.5);
 
-    h.state_mut().views[0].enter_presentation();
-    assert!(h.state().views[0].presenting());
-    assert!(!h.state().views[0].continuous());
-    assert_eq!(h.state().views[0].fit, Fit::Page);
+    h.state_mut().win.views[0].enter_presentation();
+    assert!(h.state().win.views[0].presenting());
+    assert!(!h.state().win.views[0].continuous());
+    assert_eq!(h.state().win.views[0].fit, Fit::Page);
 
     assert!(h.state_mut().execute("app.preferences"));
     h.run_steps(3);
@@ -1322,7 +1322,7 @@ fn preferences_during_full_screen_updates_saved_normal_display_and_restores_on_e
     assert!(h.state().always_default_view);
 
     {
-        let v = &h.state().views[0];
+        let v = &h.state().win.views[0];
         assert!(v.presenting(), "presentation display is preserved");
         assert!(!v.continuous(), "presentation display is not continuous");
         assert_eq!(v.fit, Fit::Page, "presentation display stays fitted to page");
@@ -1330,9 +1330,9 @@ fn preferences_during_full_screen_updates_saved_normal_display_and_restores_on_e
         assert_eq!(v.normal_display().fit, Fit::Width, "saved normal display updated to default fit width");
     }
 
-    h.state_mut().views[0].leave_presentation();
+    h.state_mut().win.views[0].leave_presentation();
     {
-        let v = &h.state().views[0];
+        let v = &h.state().win.views[0];
         assert!(!v.presenting());
         assert!(v.continuous(), "continuous scrolling restored from updated preferences");
         assert_eq!(v.fit, Fit::Width, "fit width restored from updated preferences");
@@ -1345,12 +1345,12 @@ fn preferences_toggle_continuous_during_full_screen_updates_saved_normal_display
     use pdfcraft_ui_egui::canvas::Fit;
 
     let mut h = harness(&[("default-continuous", "off"), ("continuous", "off")]);
-    assert!(!h.state().views[0].continuous());
+    assert!(!h.state().win.views[0].continuous());
 
-    h.state_mut().views[0].enter_presentation();
-    assert!(h.state().views[0].presenting());
-    assert!(!h.state().views[0].continuous());
-    assert_eq!(h.state().views[0].fit, Fit::Page);
+    h.state_mut().win.views[0].enter_presentation();
+    assert!(h.state().win.views[0].presenting());
+    assert!(!h.state().win.views[0].continuous());
+    assert_eq!(h.state().win.views[0].fit, Fit::Page);
 
     assert!(h.state_mut().execute("app.preferences"));
     h.run_steps(3);
@@ -1361,16 +1361,16 @@ fn preferences_toggle_continuous_during_full_screen_updates_saved_normal_display
 
     assert!(h.state().view_defaults.continuous);
     {
-        let v = &h.state().views[0];
+        let v = &h.state().win.views[0];
         assert!(v.presenting(), "presentation display is preserved");
         assert!(!v.continuous(), "presentation display is not continuous");
         assert_eq!(v.fit, Fit::Page, "presentation display stays fitted to page");
         assert!(v.normal_display().continuous, "saved normal display updated to continuous");
     }
 
-    h.state_mut().views[0].leave_presentation();
+    h.state_mut().win.views[0].leave_presentation();
     {
-        let v = &h.state().views[0];
+        let v = &h.state().win.views[0];
         assert!(!v.presenting());
         assert!(v.continuous(), "continuous scrolling restored on exit");
     }
@@ -1383,8 +1383,8 @@ fn preferences_with_always_default_view_on_toggling_continuous_preserves_custom_
     let mut h = harness(&[("always-default-view", "on"), ("default-continuous", "off"), ("continuous", "off"), ("zoom", "200")]);
     assert!(h.state().always_default_view);
     assert!(!h.state().view_defaults.continuous);
-    assert!(!h.state().views[0].continuous());
-    assert_eq!(h.state().views[0].zoom, 2.0);
+    assert!(!h.state().win.views[0].continuous());
+    assert_eq!(h.state().win.views[0].zoom, 2.0);
 
     assert!(h.state_mut().execute("app.preferences"));
     h.run_steps(3);
@@ -1394,7 +1394,7 @@ fn preferences_with_always_default_view_on_toggling_continuous_preserves_custom_
     h.run_steps(2);
 
     assert!(h.state().view_defaults.continuous);
-    let v = &h.state().views[0];
+    let v = &h.state().win.views[0];
     assert!(v.continuous(), "continuous scrolling is updated");
     assert_eq!(v.zoom, 2.0, "custom zoom is preserved because fit/zoom did not change");
 }
@@ -1410,7 +1410,7 @@ fn preferences_set_the_default_zoom() {
     h.get_by_label("Zoom to page level").click();
     h.run_steps(2);
     assert!(h.state_mut().execute("create.blank"));
-    assert_eq!(h.state().views[1].fit, pdfcraft_ui_egui::canvas::Fit::Page);
+    assert_eq!(h.state().win.views[1].fit, pdfcraft_ui_egui::canvas::Fit::Page);
 }
 
 #[test]
@@ -1425,20 +1425,20 @@ fn rail_page_display_menu_offers_acrobats_view_choices() {
         h.get_by_label(item).click();
         h.run_steps(4);
     };
-    let shown = |h: &Harness<'static, PdfCraftApp>| (h.state().views[0].layout, h.state().views[0].continuous(), h.state().views[0].fit);
+    let shown = |h: &Harness<'static, PdfCraftApp>| (h.state().win.views[0].layout, h.state().win.views[0].continuous(), h.state().win.views[0].fit);
     pick(&mut h, "Fit one full page");
     assert_eq!(shown(&h), (PageLayout::Single, false, Fit::Page), "one full page at a time, not scrolling");
     // The whole page fits at once, so the wheel turns pages without zooming out first.
-    let at = h.state().views[0].viewport_rect().center();
+    let at = h.state().win.views[0].viewport_rect().center();
     h.hover_at(at);
     h.run_steps(1);
     h.event(wheel(MouseWheelUnit::Line, -1.0, TouchPhase::Move));
     h.run_steps(4);
-    assert_eq!(h.state().views[0].current, 1);
+    assert_eq!(h.state().win.views[0].current, 1);
     pick(&mut h, "Actual size");
-    assert_eq!((h.state().views[0].fit, h.state().views[0].zoom), (Fit::None, 1.0));
+    assert_eq!((h.state().win.views[0].fit, h.state().win.views[0].zoom), (Fit::None, 1.0));
     pick(&mut h, "Zoom to page level");
-    assert_eq!(h.state().views[0].fit, Fit::Page);
+    assert_eq!(h.state().win.views[0].fit, Fit::Page);
     pick(&mut h, "Fit to width scrolling");
     assert_eq!(shown(&h), (PageLayout::Single, true, Fit::Width), "single page, scrolling continuously");
 }
@@ -1452,7 +1452,7 @@ fn rail_page_display_button_switches_layouts() {
     h.run_steps(3);
     h.get_by_label("Single page").click();
     h.run_steps(4);
-    assert_eq!(h.state().views[0].layout, pdfcraft_ui_egui::canvas::PageLayout::Single);
+    assert_eq!(h.state().win.views[0].layout, pdfcraft_ui_egui::canvas::PageLayout::Single);
 }
 
 #[test]
@@ -1465,7 +1465,7 @@ fn view_menu_page_display_uses_the_same_commands() {
     h.run_steps(3);
     h.get_by_label("Single page").click();
     h.run_steps(4);
-    assert_eq!(h.state().views[0].layout, pdfcraft_ui_egui::canvas::PageLayout::Single);
+    assert_eq!(h.state().win.views[0].layout, pdfcraft_ui_egui::canvas::PageLayout::Single);
 }
 
 #[test]
@@ -1478,7 +1478,7 @@ fn palette_runs_page_display_commands_from_the_keyboard() {
     h.key_press(Key::Enter);
     h.run_steps(3);
     assert!(!h.state().palette_open, "Enter runs the top hit and closes the palette");
-    assert_eq!(h.state().views[0].layout, pdfcraft_ui_egui::canvas::PageLayout::Single);
+    assert_eq!(h.state().win.views[0].layout, pdfcraft_ui_egui::canvas::PageLayout::Single);
 }
 
 #[test]
@@ -1493,12 +1493,12 @@ fn actual_size_fit_width_and_fit_page() {
 
     h.key_press_modifiers(Modifiers::COMMAND, Key::Num2); // fit width
     h.run_steps(4);
-    let (r, vp) = (rect(&h, 0).expect("page 1"), h.state().views[0].viewport_rect());
+    let (r, vp) = (rect(&h, 0).expect("page 1"), h.state().win.views[0].viewport_rect());
     assert!(r.width() > vp.width() * 0.85 && r.width() <= vp.width(), "fit width: page {} in viewport {}", r.width(), vp.width());
 
     h.key_press_modifiers(Modifiers::COMMAND, Key::Num0); // fit page
     h.run_steps(4);
-    let (r, vp) = (rect(&h, 0).expect("page 1"), h.state().views[0].viewport_rect());
+    let (r, vp) = (rect(&h, 0).expect("page 1"), h.state().win.views[0].viewport_rect());
     assert!(r.height() <= vp.height() && r.height() > vp.height() * 0.85, "fit page: page {} in viewport {}", r.height(), vp.height());
     assert!(r.width() < vp.width(), "a portrait page fits by height");
 }
@@ -1510,11 +1510,11 @@ fn fit_page_holds_zoom_across_mixed_page_sizes() {
     let mut h = mixed_harness(&[("layout", "continuous")]);
     h.key_press_modifiers(Modifiers::COMMAND, Key::Num0); // fit page
     h.run_steps(4);
-    let z1 = h.state().views[0].zoom;
+    let z1 = h.state().win.views[0].zoom;
     h.state_mut().set_option("page", "2").unwrap();
     h.run_steps(4);
-    assert_eq!(h.state().views[0].current, 1);
-    assert_eq!(h.state().views[0].zoom, z1, "another size scrolls past at the same zoom");
+    assert_eq!(h.state().win.views[0].current, 1);
+    assert_eq!(h.state().win.views[0].zoom, z1, "another size scrolls past at the same zoom");
 }
 
 #[test]
@@ -1523,28 +1523,28 @@ fn single_page_fit_page_fits_the_shown_page() {
     let mut h = mixed_harness(&[("layout", "single")]);
     h.key_press_modifiers(Modifiers::COMMAND, Key::Num0); // fit page
     h.run_steps(4);
-    let vp = h.state().views[0].viewport_rect();
+    let vp = h.state().win.views[0].viewport_rect();
     let r1 = rect(&h, 0).expect("page 1");
     assert!(r1.width() <= vp.width() && r1.height() <= vp.height(), "page 1 fits: {r1:?} in {vp:?}");
-    let z1 = h.state().views[0].zoom;
+    let z1 = h.state().win.views[0].zoom;
     h.state_mut().set_option("page", "2").unwrap();
     h.run_steps(4);
     let r2 = rect(&h, 1).expect("page 2");
     assert!(r2.width() <= vp.width() && r2.height() <= vp.height(), "page 2 fits: {r2:?} in {vp:?}");
-    assert_ne!(h.state().views[0].zoom, z1, "the wider page refits instead of keeping page 1's zoom");
+    assert_ne!(h.state().win.views[0].zoom, z1, "the wider page refits instead of keeping page 1's zoom");
 }
 
 #[test]
 fn pages_shorter_than_the_window_sit_in_its_middle() {
     let centred = |h: &Harness<'static, PdfCraftApp>, r: egui::Rect| {
-        let vp = h.state().views[0].viewport_rect();
+        let vp = h.state().win.views[0].viewport_rect();
         assert!(r.height() < vp.height(), "{r:?} is shorter than {vp:?}");
         assert!((r.center().y - vp.center().y).abs() < 1.0, "{r:?} is in the middle of {vp:?}");
     };
     let mut h = harness(&[("layout", "single"), ("continuous", "off"), ("zoom", "50")]);
     h.run_steps(4);
     centred(&h, rect(&h, 0).expect("page 1"));
-    assert_eq!(h.state().views[0].current, 0);
+    assert_eq!(h.state().win.views[0].current, 0);
 
     // The page drawn there is the page a click finds: its link still goes to page 3.
     let r = rect(&h, 0).expect("page 1");
@@ -1554,7 +1554,7 @@ fn pages_shorter_than_the_window_sit_in_its_middle() {
     h.drag_at(at); // press
     h.drop_at(at); // release
     h.run_steps(8);
-    assert_eq!(h.state().views[0].current, 2, "the link is where the page is drawn");
+    assert_eq!(h.state().win.views[0].current, 2, "the link is where the page is drawn");
 
     // Scrolling continuously, the column of pages as a whole.
     let mut h = harness(&[("layout", "single"), ("continuous", "on"), ("zoom", "25")]);
@@ -1565,7 +1565,7 @@ fn pages_shorter_than_the_window_sit_in_its_middle() {
     // A page taller than the view starts at its top, as before.
     let mut h = harness(&[("layout", "single"), ("continuous", "off"), ("zoom", "250")]);
     h.run_steps(4);
-    let (r, vp) = (rect(&h, 0).expect("page 1"), h.state().views[0].viewport_rect());
+    let (r, vp) = (rect(&h, 0).expect("page 1"), h.state().win.views[0].viewport_rect());
     assert!(r.height() > vp.height() && (r.min.y - vp.min.y).abs() < 40.0, "{r:?} in {vp:?}");
 }
 
@@ -1574,7 +1574,7 @@ fn pages_shorter_than_the_window_sit_in_its_middle() {
 fn a_page_that_fits_without_its_margins_shows_whole() {
     let mut h = harness(&[("layout", "single"), ("continuous", "off"), ("zoom", "50")]);
     h.run_steps(4);
-    let (half, vp) = (rect(&h, 0).expect("page 1"), h.state().views[0].viewport_rect());
+    let (half, vp) = (rect(&h, 0).expect("page 1"), h.state().win.views[0].viewport_rect());
     let spare = 20.0;
     let zoom = (50.0 * (vp.height() - spare) / half.height()).floor();
     h.state_mut().set_option("zoom", &zoom.to_string()).unwrap();
@@ -1589,7 +1589,7 @@ fn a_page_that_fits_without_its_margins_shows_whole() {
 #[test]
 fn a_row_too_tall_for_the_window_starts_at_its_top_whichever_page_is_shorter() {
     let h = mixed_harness(&[("layout", "two-page"), ("zoom", "180")]);
-    let vp = h.state().views[0].viewport_rect();
+    let vp = h.state().win.views[0].viewport_rect();
     let (first, second) = (rect(&h, 0).expect("page 1"), rect(&h, 1).expect("page 2"));
     assert!(first.height() > vp.height() && second.height() < vp.height(), "{first:?}, {second:?} in {vp:?}");
     let row = first.union(second);
@@ -1609,8 +1609,8 @@ fn clicking_a_link_goes_to_its_destination() {
     h.drag_at(at); // press
     h.drop_at(at); // release
     h.run_steps(8);
-    assert_eq!(h.state().views[0].current, 2, "the link targets page 3");
-    let (target, vp) = (rect(&h, 2).expect("page 3 on screen"), h.state().views[0].viewport_rect());
+    assert_eq!(h.state().win.views[0].current, 2, "the link targets page 3");
+    let (target, vp) = (rect(&h, 2).expect("page 3 on screen"), h.state().win.views[0].viewport_rect());
     assert!((target.min.y - vp.min.y).abs() < 40.0, "page 3 is scrolled to the top: {target:?} in {vp:?}");
 }
 
@@ -1649,7 +1649,7 @@ fn bookmarks_harness(name: &'static str, pdf: &'static [u8]) -> Harness<'static,
     let mut width = 0.0;
     for _ in 0..400 {
         h.run_steps(1);
-        let w = h.state().views[0].viewport_rect().width();
+        let w = h.state().win.views[0].viewport_rect().width();
         if w == width {
             break;
         }
@@ -1661,7 +1661,7 @@ fn bookmarks_harness(name: &'static str, pdf: &'static [u8]) -> Harness<'static,
 /// Where the point a fraction (`fx`, `fy`) across and down `page` is on screen, relative to the
 /// viewport's top-left corner.
 fn from_viewport_corner(h: &Harness<'static, PdfCraftApp>, page: usize, fx: f32, fy: f32) -> egui::Vec2 {
-    let (r, vp) = (rect(h, page).expect("page on screen"), h.state().views[0].viewport_rect());
+    let (r, vp) = (rect(h, page).expect("page on screen"), h.state().win.views[0].viewport_rect());
     egui::pos2(r.min.x + fx * r.width(), r.min.y + fy * r.height()) - vp.min
 }
 
@@ -1673,7 +1673,7 @@ fn bookmark_destinations_scroll_to_their_position() {
     // Fit width: the pages are taller than the window, so any point of them can reach its top.
     h.get_by_label("Section 1.1 Shapes").click();
     h.run_steps(6);
-    let v = &h.state().views[0];
+    let v = &h.state().win.views[0];
     assert_eq!(v.current, 1, "the bookmark targets page 2");
     assert_eq!(v.fit, Fit::Width, "/XYZ with zoom 0 keeps the zoom");
     let d = from_viewport_corner(&h, 1, 0.0, 0.2);
@@ -1684,7 +1684,7 @@ fn bookmark_destinations_scroll_to_their_position() {
     // gutter that keeps pages clear of the quick-action bar.
     h.get_by_label("Zoomed in").click();
     h.run_steps(6);
-    let v = &h.state().views[0];
+    let v = &h.state().win.views[0];
     assert_eq!((v.current, v.fit, v.zoom), (1, Fit::None, 3.0));
     let d = from_viewport_corner(&h, 1, 0.25, 0.5);
     assert!((d.x - 70.0).abs() < 2.0 && d.y.abs() < 2.0, "the destination point is at the window's top-left: {d:?}");
@@ -1694,7 +1694,7 @@ fn bookmark_destinations_scroll_to_their_position() {
     // 0) y 300 is there too, a quarter down, at the current zoom.
     h.get_by_label("Broken").click();
     h.run_steps(6);
-    let v = &h.state().views[0];
+    let v = &h.state().win.views[0];
     assert_eq!((v.current, v.zoom), (2, 3.0));
     let d = from_viewport_corner(&h, 2, 0.0, 0.25);
     assert!(d.y.abs() < 2.0, "y 300 on page 3 is at the top of the window: {d:?}");
@@ -1714,7 +1714,7 @@ fn link_destinations_scroll_to_their_position() {
     h.drag_at(at); // press
     h.drop_at(at); // release
     h.run_steps(8);
-    let v = &h.state().views[0];
+    let v = &h.state().win.views[0];
     assert_eq!((v.current, v.fit), (1, Fit::Width), "/FitH goes to page 2 and fits its width");
     let d = from_viewport_corner(&h, 1, 0.0, 0.2);
     assert!(d.y.abs() < 2.0, "y 420 on page 2 is at the top of the window: {d:?}");
@@ -1738,7 +1738,7 @@ fn a_link_without_a_position_keeps_the_place_on_the_next_page() {
     let mut h = bookmarks_harness("keep-place.pdf", KEEP_PLACE);
     h.get_by_label("Start").click();
     h.run_steps(6);
-    assert_eq!((h.state().views[0].current, h.state().views[0].zoom), (0, 4.0));
+    assert_eq!((h.state().win.views[0].current, h.state().win.views[0].zoom), (0, 4.0));
     let (fx, fy) = (40.0 / 300.0, 40.0 / 400.0);
     let d = from_viewport_corner(&h, 0, fx, fy);
     assert!((d.x - 70.0).abs() < 2.0 && d.y.abs() < 2.0, "(40, 360) is at the window's top-left: {d:?}");
@@ -1750,7 +1750,7 @@ fn a_link_without_a_position_keeps_the_place_on_the_next_page() {
     h.drag_at(at); // press
     h.drop_at(at); // release
     h.run_steps(8);
-    let v = &h.state().views[0];
+    let v = &h.state().win.views[0];
     assert_eq!((v.current, v.zoom), (1, 4.0), "the link goes to page 2 at the same zoom");
     let d = from_viewport_corner(&h, 1, fx, fy);
     assert!((d.x - 70.0).abs() < 2.0 && d.y.abs() < 2.0, "page 2 shows the same place, not its top: {d:?}");
@@ -1792,7 +1792,7 @@ fn field_list_jumps_to_a_fields_page() {
     h.get_by_label("fullname");
     h.get_by_label("postcode").click();
     h.run_steps(8);
-    assert_eq!(h.state().views[0].current, 1, "postcode is on page 2");
+    assert_eq!(h.state().win.views[0].current, 1, "postcode is on page 2");
 }
 
 #[test]
@@ -1815,7 +1815,7 @@ fn highlight_fields_tints_the_field_area() {
     let before = pixel(&mut h);
     h.get_by_label("Highlight fields").click();
     h.run_steps(4);
-    assert!(h.state().views[0].highlight_fields);
+    assert!(h.state().win.views[0].highlight_fields);
     h.get_by_label("Hide field highlights");
     let after = pixel(&mut h);
     assert_ne!(before, after, "the field area is tinted when highlighting is on");
@@ -1907,7 +1907,7 @@ fn a_groups_read_only_button_is_not_chosen_by_a_click() {
     };
     let value = |h: &Harness<'static, PdfCraftApp>| {
         let s = h.state();
-        s.session.get(s.views[0].id).unwrap().form.iter().find(|f| f.name == "choice").map(|f| f.value.clone()).unwrap_or_default()
+        s.session.get(s.win.views[0].id).unwrap().form.iter().find(|f| f.name == "choice").map(|f| f.value.clone()).unwrap_or_default()
     };
     click(&mut h, at(70.0, 320.0));
     assert_eq!(value(&h), ["one"], "the button that can be chosen is");
@@ -2017,19 +2017,19 @@ fn field_highlighting_is_on_by_default_and_remembered() {
     let mut h = form_harness();
     h.state_mut().set_option("panel", "none").unwrap();
     h.run_steps(4);
-    assert!(h.state().views[0].highlight_fields, "on by default");
+    assert!(h.state().win.views[0].highlight_fields, "on by default");
     h.get_by_label("Hide field highlights").click();
     h.run_steps(4);
-    assert!(!h.state().views[0].highlight_fields);
+    assert!(!h.state().win.views[0].highlight_fields);
     h.state_mut().open_bytes("radios.pdf", None, RADIOS.to_vec()).expect("opens");
     h.run_steps(4);
-    assert!(!h.state().views[1].highlight_fields, "the next document opens plain");
+    assert!(!h.state().win.views[1].highlight_fields, "the next document opens plain");
     let saved = h.state().persist();
     let mut next = PdfCraftApp::new();
     next.set_option("language", "en").unwrap();
     next.restore(&saved);
     next.open_bytes("form.pdf", None, FORM.to_vec()).expect("opens");
-    assert!(!next.views[0].highlight_fields, "and so does the next session");
+    assert!(!next.win.views[0].highlight_fields, "and so does the next session");
 }
 
 /// Settings saved before the default changed keep their stored choice; a missing or malformed
@@ -2047,7 +2047,7 @@ fn stored_field_highlight_choice_wins_over_the_default() {
         app.set_option("language", "en").unwrap();
         app.restore(stored);
         app.open_bytes("form.pdf", None, FORM.to_vec()).expect("opens");
-        assert_eq!(app.views[0].highlight_fields, expected, "{stored}");
+        assert_eq!(app.win.views[0].highlight_fields, expected, "{stored}");
     }
 }
 
@@ -2079,7 +2079,7 @@ fn the_hand_tool_pans_by_dragging() {
     h.run_steps(4);
     let after = rect(&h, 0).expect("still on screen");
     assert!(before.top() - after.top() > 200.0, "dragging up scrolls down: {before:?} → {after:?}");
-    assert!(h.state().views[0].selected_text().is_none(), "no text selection with the hand");
+    assert!(h.state().win.views[0].selected_text().is_none(), "no text selection with the hand");
 }
 
 #[test]
@@ -2090,7 +2090,7 @@ fn the_hand_tool_moves_the_page_with_the_pointer() {
     // frames), so the page trailed behind the pointer; the points moved before egui tells a drag
     // from a click were lost on top.
     let mut h = harness_stepping(1.0 / 60.0, &[("layout", "continuous"), ("zoom", "600"), ("quick", "hand")]);
-    let start = h.state().views[0].viewport_rect().center();
+    let start = h.state().win.views[0].viewport_rect().center();
     h.hover_at(start);
     h.run_steps(2);
     let page = |h: &Harness<'static, PdfCraftApp>| rect(h, 0).expect("page 1 on screen").min;
@@ -2286,7 +2286,7 @@ fn returning_to_a_visited_zoom_reuses_its_cached_tiles() {
     let _gpu = gpu();
     let mut h = grid_harness(fine_grid_pdf(), "300");
     crate::support::settle(&mut h);
-    let before = h.state().views[0].tiles_debug(0);
+    let before = h.state().win.views[0].tiles_debug(0);
     assert!(!before.is_empty(), "the 300 % page should be tiled, but it cached no tiles");
     // Zoom right out, where the 1200 pt page fits in one raster and is not tiled at all, so
     // none of its tiles is demanded...
@@ -2295,7 +2295,7 @@ fn returning_to_a_visited_zoom_reuses_its_cached_tiles() {
     // ...then back to the first zoom, which was already rendered sharp.
     h.state_mut().set_option("zoom", "300").unwrap();
     h.step();
-    let after = h.state().views[0].tiles_debug(0);
+    let after = h.state().win.views[0].tiles_debug(0);
     // Every tile rendered sharp before the round trip is still cached: zooming away must not
     // drop them, so returning shows them at once instead of re-interpreting the page per tile.
     let lost: Vec<_> = before.iter().copied().filter(|k| !after.contains(k)).collect();
@@ -2317,16 +2317,16 @@ fn sidebar_collapse_and_resize_preserves_scroll_position() {
     let mut width = 0.0;
     for _ in 0..400 {
         h.run_steps(1);
-        let w = h.state().views[0].viewport_rect().width();
+        let w = h.state().win.views[0].viewport_rect().width();
         if w == width {
             break;
         }
         width = w;
     }
-    h.state_mut().views[0].go_to_page(2);
+    h.state_mut().win.views[0].go_to_page(2);
     h.run_steps(6);
 
-    let v = &h.state().views[0];
+    let v = &h.state().win.views[0];
     assert_eq!(v.current, 2);
     assert_eq!(v.fit, Fit::Width);
     let zoom_before = v.zoom;
@@ -2338,7 +2338,7 @@ fn sidebar_collapse_and_resize_preserves_scroll_position() {
     h.state_mut().set_option("panel", "none").unwrap();
     h.run_steps(6);
 
-    let v = &h.state().views[0];
+    let v = &h.state().win.views[0];
     let zoom_after = v.zoom;
     assert!(zoom_after > zoom_before, "zoom increased when panel collapsed: {zoom_after} vs {zoom_before}");
     assert_eq!(v.current, 2, "still on page 2 after panel collapsed");
@@ -2352,13 +2352,13 @@ fn sidebar_collapse_and_resize_preserves_scroll_position() {
     h.state_mut().set_option("panel", "bookmarks").unwrap();
     for _ in 0..400 {
         h.run_steps(1);
-        let w = h.state().views[0].viewport_rect().width();
+        let w = h.state().win.views[0].viewport_rect().width();
         if w == width {
             break;
         }
         width = w;
     }
-    let v = &h.state().views[0];
+    let v = &h.state().win.views[0];
     assert_eq!(v.current, 2, "still on page 2 after panel reopened");
     let rect_reopened = v.page_screen_rect(2).expect("page 2 still on screen");
     let vp_reopened = v.viewport_rect();
@@ -2391,7 +2391,7 @@ fn final_spread_at_scroll_end(heights: &[u32], cover: bool) -> (Vec<(usize, egui
         app
     });
     h.run_steps(12);
-    let at = h.state().views[0].viewport_rect().center();
+    let at = h.state().win.views[0].viewport_rect().center();
     h.hover_at(at);
     h.run_steps(2);
     // Reach the end through admitted wheel steps; the assertion concerns spread geometry.
@@ -2399,7 +2399,7 @@ fn final_spread_at_scroll_end(heights: &[u32], cover: bool) -> (Vec<(usize, egui
         h.event(wheel(MouseWheelUnit::Line, -10.0, TouchPhase::Move));
         h.run_steps(45);
     }
-    let view = &h.state().views[0];
+    let view = &h.state().win.views[0];
     let last = heights.len() - 1;
     let first = if cover { last - (last + 1) % 2 } else { last - last % 2 };
     let pages = (first..=last).map(|page| (page, view.page_screen_rect(page).expect("final spread is visible"))).collect();
@@ -2462,36 +2462,36 @@ fn switching_modes_keeps_the_current_page_at_fixed_zoom() {
         app
     });
     h.run_steps(8);
-    h.state_mut().views[0].go_to_page(17);
+    h.state_mut().win.views[0].go_to_page(17);
     h.run_steps(8);
-    assert_eq!(h.state().views[0].current, 17);
-    h.hover_at(h.state().views[0].viewport_rect().center());
+    assert_eq!(h.state().win.views[0].current, 17);
+    h.hover_at(h.state().win.views[0].viewport_rect().center());
     h.event(wheel(MouseWheelUnit::Point, -35.0, TouchPhase::Move));
     h.run_steps(8);
-    let before = rect(&h, 17).unwrap().top() - h.state().views[0].viewport_rect().top();
+    let before = rect(&h, 17).unwrap().top() - h.state().win.views[0].viewport_rect().top();
     h.state_mut().run_command("view.read_mode");
     h.run_steps(8);
-    assert_eq!(h.state().views[0].current, 17, "switching to Read should keep the current page");
-    let after = rect(&h, 17).unwrap().top() - h.state().views[0].viewport_rect().top();
+    assert_eq!(h.state().win.views[0].current, 17, "switching to Read should keep the current page");
+    let after = rect(&h, 17).unwrap().top() - h.state().win.views[0].viewport_rect().top();
     assert!((before - after).abs() < 1.0, "the position within the page moved: {before} to {after}");
-    h.state_mut().views[0].go_to_page(5);
+    h.state_mut().win.views[0].go_to_page(5);
     h.run_steps(8);
-    assert_eq!(h.state().views[0].current, 5);
+    assert_eq!(h.state().win.views[0].current, 5);
     h.get_by_label("All tools").click();
     h.run_steps(8);
-    assert_eq!(h.state().views[0].current, 5, "switching to All tools should keep the current page");
+    assert_eq!(h.state().win.views[0].current, 5, "switching to All tools should keep the current page");
     h.state_mut().open_bytes("other.pdf", None, other).unwrap();
     h.state_mut().set_option("zoom", "100").unwrap();
     h.run_steps(8);
-    h.state_mut().views[1].go_to_page(9);
+    h.state_mut().win.views[1].go_to_page(9);
     h.run_steps(8);
-    assert_eq!(h.state().views[1].current, 9);
+    assert_eq!(h.state().win.views[1].current, 9);
     h.get_by_label("pages.pdf").click();
     h.run_steps(8);
-    assert_eq!(h.state().views[0].current, 5, "the first tab keeps its own position");
+    assert_eq!(h.state().win.views[0].current, 5, "the first tab keeps its own position");
     h.get_by_label("other.pdf").click();
     h.run_steps(8);
-    assert_eq!(h.state().views[1].current, 9, "the second tab keeps its own position");
+    assert_eq!(h.state().win.views[1].current, 9, "the second tab keeps its own position");
 }
 
 #[test]
@@ -2539,36 +2539,36 @@ fn full_screen_shows_one_fitted_page_and_clicks_turn_it() {
     use pdfcraft_ui_egui::canvas::Fit;
     let mut h = harness(&[("layout", "continuous"), ("zoom", "50")]);
     h.run_steps(4);
-    assert!(h.state().views[0].continuous(), "continuous before");
+    assert!(h.state().win.views[0].continuous(), "continuous before");
     h.key_press_modifiers(Modifiers::COMMAND, Key::L);
     h.run_steps(6);
     assert!(h.state().full_screen);
-    let v = &h.state().views[0];
+    let v = &h.state().win.views[0];
     assert!(!v.continuous(), "one page at a time");
     assert_eq!(v.fit, Fit::Page, "fitted to the screen");
     assert!(rect(&h, 0).is_some() && rect(&h, 1).is_none(), "only page 1 is on screen");
     let r = rect(&h, 0).unwrap();
-    let vp = h.state().views[0].viewport_rect();
+    let vp = h.state().win.views[0].viewport_rect();
     assert!(r.height() <= vp.height() + 1.0 && r.width() <= vp.width() + 1.0, "the page fits: {r:?} in {vp:?}");
     assert!(h.query_by_label("Select (V)").is_none(), "no quick tools in full screen");
     click_with(&mut h, r.center(), Modifiers::NONE);
-    assert_eq!(h.state().views[0].current, 1, "a click goes forward a page");
+    assert_eq!(h.state().win.views[0].current, 1, "a click goes forward a page");
     h.key_press(Key::ArrowRight);
     h.run_steps(4);
-    assert_eq!(h.state().views[0].current, 2, "→ goes forward");
+    assert_eq!(h.state().win.views[0].current, 2, "→ goes forward");
     h.key_press(Key::Backspace);
     h.run_steps(4);
-    assert_eq!(h.state().views[0].current, 1, "Backspace goes back");
+    assert_eq!(h.state().win.views[0].current, 1, "Backspace goes back");
     let r = rect(&h, 1).expect("page 2 on screen");
     click_with(&mut h, r.center(), Modifiers::SHIFT);
-    assert_eq!(h.state().views[0].current, 0, "a shift-click goes back");
+    assert_eq!(h.state().win.views[0].current, 0, "a shift-click goes back");
     h.key_press(Key::Space);
     h.run_steps(4);
-    assert_eq!(h.state().views[0].current, 1, "Space goes forward");
+    assert_eq!(h.state().win.views[0].current, 1, "Space goes forward");
     h.key_press(Key::Escape);
     h.run_steps(4);
     assert!(!h.state().full_screen, "Escape leaves full screen");
-    let v = &h.state().views[0];
+    let v = &h.state().win.views[0];
     assert!(v.continuous(), "the display from before comes back");
     assert_eq!(v.fit, Fit::None);
     assert!((v.zoom - 0.5).abs() < 1e-3, "zoom back to 50%: {}", v.zoom);
@@ -2589,14 +2589,14 @@ fn full_screen_survives_a_reload_and_keeps_a_new_documents_own_view() {
     h.run_steps(6);
     {
         let app = h.state_mut();
-        let info = app.session.get(app.views[0].id).unwrap().info.clone();
-        app.views[0].document_replaced(&info);
+        let info = app.session.get(app.win.views[0].id).unwrap().info.clone();
+        app.win.views[0].document_replaced(&info);
     }
     h.run_steps(4);
-    assert!(h.state().views[0].presenting(), "still presenting after the reload");
+    assert!(h.state().win.views[0].presenting(), "still presenting after the reload");
     h.key_press(Key::Escape);
     h.run_steps(4);
-    let v = &h.state().views[0];
+    let v = &h.state().win.views[0];
     assert!(v.continuous() && v.fit == Fit::None && (v.zoom - 0.5).abs() < 1e-3, "the display from before comes back");
 
     h.key_press_modifiers(Modifiers::COMMAND, Key::L);
@@ -2604,11 +2604,11 @@ fn full_screen_survives_a_reload_and_keeps_a_new_documents_own_view() {
     let two_columns = String::from_utf8_lossy(PAGES).replace("/Type /Catalog /Pages 2 0 R", "/Type /Catalog /Pages 2 0 R /PageLayout /TwoColumnLeft");
     h.state_mut().open_bytes("two.pdf", None, two_columns.into_bytes()).expect("opens");
     h.run_steps(6);
-    let v = h.state().views.last().unwrap();
+    let v = h.state().win.views.last().unwrap();
     assert!(v.presenting() && v.layout == PageLayout::TwoUp && !v.continuous(), "one spread at a time");
     h.key_press(Key::Escape);
     h.run_steps(4);
-    let v = h.state().views.last().unwrap();
+    let v = h.state().win.views.last().unwrap();
     assert!(v.layout == PageLayout::TwoUp && v.continuous(), "the document's own two-column view comes back");
 }
 
@@ -2621,17 +2621,17 @@ fn full_screen_keeps_two_page_view_as_spreads() {
     h.run_steps(4);
     h.key_press_modifiers(Modifiers::COMMAND, Key::L);
     h.run_steps(6);
-    let v = &h.state().views[0];
+    let v = &h.state().win.views[0];
     assert_eq!(v.layout, PageLayout::TwoUp);
     assert!(!v.continuous(), "one spread at a time");
     assert!(rect(&h, 0).is_some() && rect(&h, 1).is_some() && rect(&h, 2).is_none(), "the first spread only");
     h.key_press(Key::ArrowRight);
     h.run_steps(4);
-    assert_eq!(h.state().views[0].current, 2, "→ turns the spread");
+    assert_eq!(h.state().win.views[0].current, 2, "→ turns the spread");
     assert!(rect(&h, 2).is_some() && rect(&h, 0).is_none());
     h.key_press(Key::Escape);
     h.run_steps(4);
-    let v = &h.state().views[0];
+    let v = &h.state().win.views[0];
     assert!(v.continuous() && v.layout == PageLayout::TwoUp, "two-page continuous view comes back");
 }
 
@@ -2651,7 +2651,7 @@ fn full_screen_clicks_turn_pages_whatever_tool_was_on() {
     h.state_mut().apply_full_screen(true);
     let r = rect(&h, 0).expect("page 1 on screen");
     click_with(&mut h, r.center(), Modifiers::NONE);
-    assert_eq!(h.state().views[0].current, 1, "a click goes forward");
+    assert_eq!(h.state().win.views[0].current, 1, "a click goes forward");
     h.key_press(Key::Escape);
     h.run_steps(4);
     assert!(!h.state().full_screen);
@@ -2663,7 +2663,7 @@ fn full_screen_clicks_turn_pages_whatever_tool_was_on() {
 #[test]
 fn the_pages_panel_tools_act_on_the_selected_pages() {
     let mut h = harness(&[("panel", "pages")]);
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let rotations = |h: &Harness<'static, PdfCraftApp>| h.state().session.get(id).unwrap().info.pages.iter().map(|p| p.rotation).collect::<Vec<_>>();
     // The panel's Page tools menu, on the right-hand side of the window.
     let tool = |h: &mut Harness<'static, PdfCraftApp>, label: &str| {
@@ -2672,13 +2672,13 @@ fn the_pages_panel_tools_act_on_the_selected_pages() {
         h.get_by_label(label).click();
         h.run_steps(3);
     };
-    h.state_mut().views[0].select_pages(&[1, 2]);
+    h.state_mut().win.views[0].select_pages(&[1, 2]);
     h.run_steps(2);
     tool(&mut h, "Rotate the selected pages clockwise");
     assert_eq!(rotations(&h), [0, 90, 90], "pages 2 and 3, the selection");
     tool(&mut h, "Rotate the selected pages counterclockwise");
     assert_eq!(rotations(&h), [0, 0, 0]);
-    h.state_mut().views[0].select_pages(&[0]);
+    h.state_mut().win.views[0].select_pages(&[0]);
     h.run_steps(2);
     tool(&mut h, "Delete the selected pages");
     assert_eq!(h.state().session.get(id).unwrap().info.pages.len(), 2, "page 1 deleted");
@@ -2700,7 +2700,7 @@ fn the_pages_panel_tools_insert_from_a_file_and_extract() {
     let more = dir.join("more.pdf");
     std::fs::write(&more, PAGES).unwrap();
     let mut h = harness(&[("panel", "pages")]);
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let count = |h: &Harness<'static, PdfCraftApp>| h.state().session.get(id).unwrap().info.pages.len();
     let tool = |h: &mut Harness<'static, PdfCraftApp>, label: &str| {
         h.get_all_by_label("Page tools").find(|n| n.rect().left() > 1000.0).expect("Page tools in the Pages panel").click();
@@ -2709,7 +2709,7 @@ fn the_pages_panel_tools_insert_from_a_file_and_extract() {
         h.run_steps(3);
     };
     assert_eq!(count(&h), 3);
-    h.state_mut().views[0].select_pages(&[0]);
+    h.state_mut().win.views[0].select_pages(&[0]);
     h.state_mut().pick_override = Some(vec![more.to_string_lossy().into_owned()]);
     tool(&mut h, "Insert pages from a file after the selection…");
     h.run_steps(3);
@@ -2718,7 +2718,7 @@ fn the_pages_panel_tools_insert_from_a_file_and_extract() {
     let out = dir.join("out");
     std::fs::create_dir_all(&out).unwrap();
     h.state_mut().export_dir_override = Some(out.to_string_lossy().into_owned());
-    h.state_mut().views[0].select_pages(&[1, 2]);
+    h.state_mut().win.views[0].select_pages(&[1, 2]);
     tool(&mut h, "Extract the selected pages…");
     assert_eq!(h.state().dialog, Some(pdfcraft_ui_egui::Dialog::Extract), "Extract opens for the selection");
     h.state_mut().extract_draft = pdfcraft_ui_egui::ExtractDraft { separate: true, ..Default::default() };
@@ -2741,12 +2741,12 @@ fn the_pages_panel_tools_are_off_without_page_editing_permission() {
             changes: pdfcraft_engine::Changes::None,
             ..Default::default()
         }));
-        let bytes = app.session.save_bytes(app.views[0].id).unwrap();
+        let bytes = app.session.save_bytes(app.win.views[0].id).unwrap();
         app.open_bytes("restricted.pdf", None, bytes.as_ref().clone()).unwrap();
     }
     h.run_steps(6);
-    let i = h.state().active.unwrap();
-    let id = h.state().views[i].id;
+    let i = h.state().win.active.unwrap();
+    let id = h.state().win.views[i].id;
     assert!(!h.state().session.get(id).unwrap().allows_assembly());
     let tools = h.get_all_by_label("Page tools").find(|n| n.rect().left() > 1000.0).expect("Page tools");
     assert!(tools.accesskit_node().is_disabled(), "Page tools is greyed out");
@@ -2772,7 +2772,7 @@ fn a_document_press_releases_pages_keyboard_focus_without_escape() {
     h.run_steps(2);
     assert_ne!(h.ctx.memory(|m| m.focused()), focused, "pressing the document relinquishes Pages focus without Escape");
     sidebar_key(&mut h, Key::A, Modifiers::COMMAND);
-    assert!(h.state().views[0].selected.is_empty(), "Ctrl+A now belongs to the viewer, not page thumbnails");
+    assert!(h.state().win.views[0].selected.is_empty(), "Ctrl+A now belongs to the viewer, not page thumbnails");
 }
 
 /// Delete over the Pages panel with a menu of the menu bar open is the menu's, and the Escape that
@@ -2787,7 +2787,7 @@ fn delete_with_a_menu_open_and_escape_closing_a_thumbnail_menu_leave_the_pages_p
     // The first ⌘-click on another page picks it and the current page.
     h.get_by_label("Page 2").click_modifiers(Modifiers::COMMAND);
     h.run_steps(2);
-    let selected = h.state().views[0].selected.clone();
+    let selected = h.state().win.views[0].selected.clone();
     assert_eq!(selected.iter().copied().collect::<Vec<_>>(), [0, 1], "⌘-click picked pages 1 and 2");
     let thumb = h.get_by_label("Page 2").rect().center();
     crate::support::open_menu(&mut h, "View");
@@ -2796,9 +2796,9 @@ fn delete_with_a_menu_open_and_escape_closing_a_thumbnail_menu_leave_the_pages_p
     assert!(egui::Popup::is_any_open(&h.ctx), "the menu is open");
     h.key_press(Key::Delete);
     h.run_steps(3);
-    let pages = |h: &Harness<'static, PdfCraftApp>| h.state().session.get(h.state().views[0].id).unwrap().info.pages.len();
+    let pages = |h: &Harness<'static, PdfCraftApp>| h.state().session.get(h.state().win.views[0].id).unwrap().info.pages.len();
     assert_eq!(pages(&h), 3, "Delete with a menu open deleted pages");
-    assert_eq!(h.state().views[0].selected, selected, "Delete with a menu open dropped the page selection");
+    assert_eq!(h.state().win.views[0].selected, selected, "Delete with a menu open dropped the page selection");
     h.key_press(Key::Escape);
     h.run_steps(3);
     assert!(!egui::Popup::is_any_open(&h.ctx), "Escape closed the menu");
@@ -2811,11 +2811,11 @@ fn delete_with_a_menu_open_and_escape_closing_a_thumbnail_menu_leave_the_pages_p
     }
     h.run_steps(2);
     assert!(egui::Popup::is_any_open(&h.ctx), "the thumbnail's menu is open");
-    assert_eq!(h.state().views[0].selected, selected, "the right-click kept the page selection");
+    assert_eq!(h.state().win.views[0].selected, selected, "the right-click kept the page selection");
     h.key_press(Key::Escape);
     h.run_steps(3);
     assert!(!egui::Popup::is_any_open(&h.ctx), "Escape closed the thumbnail's menu");
-    assert_eq!(h.state().views[0].selected, selected, "the Escape that closed the thumbnail's menu dropped the page selection");
+    assert_eq!(h.state().win.views[0].selected, selected, "the Escape that closed the thumbnail's menu dropped the page selection");
     assert_eq!(pages(&h), 3);
 }
 
@@ -2903,15 +2903,15 @@ fn frames_until(h: &mut Harness<'static, PdfCraftApp>, done: impl Fn(&PdfCraftAp
 #[test]
 fn full_screen_plays_a_page_transition_and_honours_the_display_time() {
     let mut h = presenting(&[]);
-    assert!(!h.state().views[0].presenting_a_transition(), "page 1 just shows");
+    assert!(!h.state().win.views[0].presenting_a_transition(), "page 1 just shows");
     h.key_press(Key::ArrowRight);
     h.run_steps(1);
-    assert_eq!(h.state().views[0].current, 1);
-    assert!(h.state().views[0].presenting_a_transition(), "page 2 comes in with its Wipe");
+    assert_eq!(h.state().win.views[0].current, 1);
+    assert!(h.state().win.views[0].presenting_a_transition(), "page 2 comes in with its Wipe");
     // The Wipe is painted, not only timed: once page 2 has rendered, a frame shows a strip of it as
     // tall as the page and only part of its width.
     let wipe_strip = |h: &Harness<'static, PdfCraftApp>| {
-        h.state().views[0].page_screen_rect(1).is_some_and(|page| {
+        h.state().win.views[0].page_screen_rect(1).is_some_and(|page| {
             h.output().shapes.iter().any(|clipped| {
                 let egui::Shape::Mesh(mesh) = &clipped.shape else { return false };
                 let b = mesh.calc_bounds();
@@ -2933,19 +2933,19 @@ fn full_screen_plays_a_page_transition_and_honours_the_display_time() {
     assert!(wipe_strip(&h), "the Wipe paints part of page 2 ({steps} frames)");
     // Counted from the first painted strip, when page 2's raster is in and the Wipe is under way:
     // the frames spent waiting for the raster don't count toward its second.
-    let frames = frames_until(&mut h, |a| !a.views[0].presenting_a_transition());
+    let frames = frames_until(&mut h, |a| !a.win.views[0].presenting_a_transition());
     assert!(frames >= 8, "the Wipe takes its second ({frames} frames of 0.1 s after the first strip)");
-    assert_eq!(h.state().views[0].current, 1, "still page 2 when the transition ends");
+    assert_eq!(h.state().win.views[0].current, 1, "still page 2 when the transition ends");
     h.run_steps(5);
-    assert_eq!(h.state().views[0].current, 1, "half of its display time");
+    assert_eq!(h.state().win.views[0].current, 1, "half of its display time");
     h.run_steps(7);
-    assert_eq!(h.state().views[0].current, 2, "its one-second display time is up");
-    assert!(!h.state().views[0].presenting_a_transition(), "page 3 has no transition");
+    assert_eq!(h.state().win.views[0].current, 2, "its one-second display time is up");
+    assert!(!h.state().win.views[0].presenting_a_transition(), "page 3 has no transition");
     h.run_steps(30);
-    assert_eq!(h.state().views[0].current, 2, "the last page stays");
+    assert_eq!(h.state().win.views[0].current, 2, "the last page stays");
     h.key_press(Key::Escape);
     h.run_steps(2);
-    assert!(!h.state().views[0].presenting_a_transition());
+    assert!(!h.state().win.views[0].presenting_a_transition());
 }
 
 /// The page changes at once where a transition can't or shouldn't play: with the Animation
@@ -2956,7 +2956,7 @@ fn full_screen_turns_at_once_without_animations_or_in_spreads() {
         let mut h = presenting(options);
         h.key_press(Key::ArrowRight);
         h.run_steps(1);
-        assert!(!h.state().views[0].presenting_a_transition(), "{options:?}");
+        assert!(!h.state().win.views[0].presenting_a_transition(), "{options:?}");
     }
 }
 
@@ -2964,7 +2964,7 @@ fn full_screen_turns_at_once_without_animations_or_in_spreads() {
 #[test]
 fn full_screen_hides_a_still_pointer() {
     let mut h = presenting(&[]);
-    let centre = h.state().views[0].viewport_rect().center();
+    let centre = h.state().win.views[0].viewport_rect().center();
     h.hover_at(centre);
     h.run_steps(2);
     assert_ne!(h.output().platform_output.cursor_icon, egui::CursorIcon::None, "just moved");
@@ -2987,15 +2987,15 @@ fn full_screen_right_click_goes_back_a_page() {
     assert!(h.state().full_screen);
     h.key_press(Key::ArrowRight);
     h.run_steps(4);
-    assert_eq!(h.state().views[0].current, 1);
-    let centre = h.state().views[0].viewport_rect().center();
+    assert_eq!(h.state().win.views[0].current, 1);
+    let centre = h.state().win.views[0].viewport_rect().center();
     h.hover_at(centre);
     h.run_steps(1);
     for pressed in [true, false] {
         h.event(egui::Event::PointerButton { pos: centre, button: egui::PointerButton::Secondary, pressed, modifiers: Modifiers::NONE });
     }
     h.run_steps(6);
-    assert_eq!(h.state().views[0].current, 0, "a right-click goes back");
+    assert_eq!(h.state().win.views[0].current, 0, "a right-click goes back");
     assert!(!egui::Popup::is_any_open(&h.ctx), "no context menu in full screen");
 }
 
@@ -3010,10 +3010,10 @@ fn full_screen_shift_enter_goes_back_a_page() {
     assert!(h.state().full_screen);
     h.key_press(Key::Enter);
     h.run_steps(4);
-    assert_eq!(h.state().views[0].current, 1, "Enter goes forward");
+    assert_eq!(h.state().win.views[0].current, 1, "Enter goes forward");
     h.key_press_modifiers(Modifiers::SHIFT, Key::Enter);
     h.run_steps(4);
-    assert_eq!(h.state().views[0].current, 0, "Shift+Enter goes back");
+    assert_eq!(h.state().win.views[0].current, 0, "Shift+Enter goes back");
 }
 
 /// A document replaced while full screen plays a transition (a reload) starts afresh: none of the
@@ -3023,13 +3023,13 @@ fn full_screen_starts_afresh_when_the_document_is_replaced() {
     let mut h = presenting(&[]);
     h.key_press(Key::ArrowRight);
     h.run_steps(1);
-    assert!(h.state().views[0].presenting_a_transition(), "page 2 comes in with its Wipe");
+    assert!(h.state().win.views[0].presenting_a_transition(), "page 2 comes in with its Wipe");
     {
         let app = h.state_mut();
-        let info = app.session.get(app.views[0].id).unwrap().info.clone();
-        app.views[0].document_replaced(&info);
+        let info = app.session.get(app.win.views[0].id).unwrap().info.clone();
+        app.win.views[0].document_replaced(&info);
     }
-    assert!(!h.state().views[0].presenting_a_transition(), "the old transition is dropped");
+    assert!(!h.state().win.views[0].presenting_a_transition(), "the old transition is dropped");
 }
 
 /// A still pointer hides over a link too: the page's own cursor (the hand over a link) is chosen
@@ -3071,25 +3071,25 @@ fn full_screen_click_on_a_field_fills_it_and_turns_no_page() {
     h.run_steps(8);
     h.key_press_modifiers(Modifiers::COMMAND, Key::L);
     h.run_steps(6);
-    let n = h.state().views.len() - 1;
+    let n = h.state().win.views.len() - 1;
     // Until page 1's raster is in, full screen veils it and a click turns the page; on a slow
     // machine that takes more frames than the six above.
     for _ in 0..600 {
-        if h.state().views[n].presentation_settled() {
+        if h.state().win.views[n].presentation_settled() {
             break;
         }
         h.run_steps(1);
     }
-    assert!(h.state().views[n].presentation_settled(), "page 1 is shown");
-    let r = h.state().views[n].page_screen_rect(0).expect("page 1 on screen");
+    assert!(h.state().win.views[n].presentation_settled(), "page 1 is shown");
+    let r = h.state().win.views[n].page_screen_rect(0).expect("page 1 on screen");
     let on_field = egui::pos2(r.left() + r.width() * 0.5, r.top() + r.height() * (400.0 - 120.0) / 400.0);
     click_with(&mut h, on_field, Modifiers::NONE);
     h.run_steps(8);
-    assert_eq!(h.state().views[n].current, 0, "no page turned");
+    assert_eq!(h.state().win.views[n].current, 0, "no page turned");
     assert!(h.ctx.egui_wants_keyboard_input(), "the field is open for typing");
     click_with(&mut h, egui::pos2(r.center().x, r.top() + 20.0), Modifiers::NONE);
     h.run_steps(4);
-    assert_eq!(h.state().views[n].current, 1, "a click beside the field turns the page");
+    assert_eq!(h.state().win.views[n].current, 1, "a click beside the field turns the page");
 }
 
 /// Shift+Ctrl+Page Down or Down Arrow goes to the last page, and Shift+Ctrl+Page Up or Up Arrow
@@ -3107,7 +3107,7 @@ fn shift_ctrl_page_keys_and_arrows_go_to_the_first_and_last_page() {
         for (k, want) in [(Key::PageDown, 2), (Key::PageUp, 0), (Key::ArrowDown, 2), (Key::ArrowUp, 0)] {
             h.key_press_modifiers(both, k);
             h.run_steps(6);
-            assert_eq!(h.state().views[0].current, want, "{k:?}, full screen {full_screen}");
+            assert_eq!(h.state().win.views[0].current, want, "{k:?}, full screen {full_screen}");
         }
     }
 }
@@ -3130,15 +3130,15 @@ fn full_screen_takes_no_page_input_until_the_page_is_on_screen() {
     let mut h = presenting_pdf(FIELD_BEHIND_TRANSITION, &[]);
     h.key_press(Key::ArrowRight);
     h.run_steps(1);
-    assert_eq!(h.state().views[0].current, 1);
-    assert!(h.state().views[0].presenting_a_transition(), "page 2 comes in with its Wipe");
-    let r = h.state().views[0].page_screen_rect(1).expect("page 2 on screen");
+    assert_eq!(h.state().win.views[0].current, 1);
+    assert!(h.state().win.views[0].presenting_a_transition(), "page 2 comes in with its Wipe");
+    let r = h.state().win.views[0].page_screen_rect(1).expect("page 2 on screen");
     let on_field = egui::pos2(r.left() + r.width() * 0.5, r.top() + r.height() * (400.0 - 120.0) / 400.0);
     click_with(&mut h, on_field, Modifiers::NONE);
     h.run_steps(2);
-    assert!(h.state().views[0].presenting_a_transition(), "the Wipe is still playing");
+    assert!(h.state().win.views[0].presenting_a_transition(), "the Wipe is still playing");
     assert!(!h.ctx.egui_wants_keyboard_input(), "the field behind the transition isn't opened");
-    frames_until(&mut h, |a| !a.views[0].presenting_a_transition());
+    frames_until(&mut h, |a| !a.win.views[0].presenting_a_transition());
     h.run_steps(1);
     click_with(&mut h, on_field, Modifiers::NONE);
     h.run_steps(4);
@@ -3161,7 +3161,7 @@ trailer << /Root 1 0 R >>
 #[test]
 fn full_screen_press_made_during_a_transition_opens_nothing_when_released() {
     let mut h = presenting_pdf(FIELD_BEHIND_SHORT_TRANSITION, &[]);
-    let r = h.state().views[0].page_screen_rect(0).expect("page 1 on screen");
+    let r = h.state().win.views[0].page_screen_rect(0).expect("page 1 on screen");
     let on_field = egui::pos2(r.left() + r.width() * 0.5, r.top() + r.height() * (400.0 - 120.0) / 400.0);
     h.hover_at(on_field);
     h.run_steps(1);
@@ -3169,11 +3169,11 @@ fn full_screen_press_made_during_a_transition_opens_nothing_when_released() {
     settle(&mut h);
     h.key_press(Key::ArrowRight);
     h.run_steps(1);
-    assert!(h.state().views[0].presenting_a_transition(), "page 2 comes in with its Wipe");
+    assert!(h.state().win.views[0].presenting_a_transition(), "page 2 comes in with its Wipe");
     h.event(egui::Event::PointerButton { pos: on_field, button: egui::PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
     h.run_steps(1);
-    assert!(h.state().views[0].presenting_a_transition(), "pressed while the Wipe plays");
-    let frames = frames_until(&mut h, |a| !a.views[0].presenting_a_transition());
+    assert!(h.state().win.views[0].presenting_a_transition(), "pressed while the Wipe plays");
+    let frames = frames_until(&mut h, |a| !a.win.views[0].presenting_a_transition());
     assert!(frames <= 4, "the Wipe ends within a click's time ({frames} frames of 0.1 s)");
     h.event(egui::Event::PointerButton { pos: on_field, button: egui::PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
     h.run_steps(4);
@@ -3199,8 +3199,8 @@ trailer << /Root 1 0 R >>
     h.run_steps(6);
     // Until the page's raster is in: before it, full screen takes no press on the page.
     settle(&mut h);
-    let n = h.state().views.len() - 1;
-    let r = h.state().views[n].page_screen_rect(0).expect("page 1 on screen");
+    let n = h.state().win.views.len() - 1;
+    let r = h.state().win.views[n].page_screen_rect(0).expect("page 1 on screen");
     let p = egui::pos2(r.left() + r.width() * 112.0 / 300.0, r.top() + r.height() * (400.0 - 112.0) / 400.0);
     h.hover_at(p);
     h.run_steps(2);
@@ -3212,10 +3212,10 @@ trailer << /Root 1 0 R >>
     }
     // Past the double-click time, when a turn would have come.
     h.run_steps(30);
-    assert_eq!(h.state().views[n].current, 0, "no page turned");
+    assert_eq!(h.state().win.views[n].current, 0, "no page turned");
     // A double-click on a note opens its pop-up window, as in Acrobat (comment.popups).
     let note =
-        h.state().session.get(h.state().views[n].id).unwrap().info.annotations.iter().find(|a| a.subtype == "Text").cloned().expect("the note");
+        h.state().session.get(h.state().win.views[n].id).unwrap().info.annotations.iter().find(|a| a.subtype == "Text").cloned().expect("the note");
     assert_eq!(note.popup.map(|w| w.open), Some(true), "the note's pop-up is open");
 }
 
@@ -3230,11 +3230,11 @@ fn full_screen_cuts_transitions_when_the_system_asks_for_no_animations() {
         h.run_steps(1);
         h.key_press(Key::ArrowRight);
         h.run_steps(1);
-        assert_eq!(h.state().views[0].current, 1);
-        assert_eq!(h.state().views[0].presenting_a_transition(), !reduced, "system asks for no animations: {reduced}");
+        assert_eq!(h.state().win.views[0].current, 1);
+        assert_eq!(h.state().win.views[0].presenting_a_transition(), !reduced, "system asks for no animations: {reduced}");
         if reduced {
             settle(&mut h);
-            let frames = frames_until(&mut h, |a| a.views[0].current == 2);
+            let frames = frames_until(&mut h, |a| a.win.views[0].current == 2);
             assert!(frames <= 20, "page 2's one-second display time still turns it ({frames} frames of 0.1 s)");
         }
     }
@@ -3248,18 +3248,18 @@ fn escape_leaves_full_screen_mid_transition_and_stops_the_display_time() {
         let mut h = presenting(&[]);
         h.key_press(Key::ArrowRight);
         h.run_steps(1);
-        assert!(h.state().views[0].presenting_a_transition(), "page 2 comes in with its Wipe");
+        assert!(h.state().win.views[0].presenting_a_transition(), "page 2 comes in with its Wipe");
         if !mid_transition {
-            frames_until(&mut h, |a| !a.views[0].presenting_a_transition());
+            frames_until(&mut h, |a| !a.win.views[0].presenting_a_transition());
             h.run_steps(3);
-            assert_eq!(h.state().views[0].current, 1, "page 2's display time is counting");
+            assert_eq!(h.state().win.views[0].current, 1, "page 2's display time is counting");
         }
         h.key_press(Key::Escape);
         h.run_steps(1);
         assert!(!h.state().full_screen, "Escape leaves full screen (mid-transition: {mid_transition})");
-        assert!(!h.state().views[0].presenting_a_transition());
+        assert!(!h.state().win.views[0].presenting_a_transition());
         h.run_steps(30);
-        assert_eq!(h.state().views[0].current, 1, "no page turns by itself after leaving (mid-transition: {mid_transition})");
+        assert_eq!(h.state().win.views[0].current, 1, "no page turns by itself after leaving (mid-transition: {mid_transition})");
     }
 }
 
@@ -3271,17 +3271,17 @@ fn full_screen_keys_take_over_from_a_display_time() {
     let mut h = presenting(&[("animation_effects", "off")]);
     h.key_press(Key::ArrowRight);
     h.run_steps(1);
-    assert_eq!(h.state().views[0].current, 1, "page 2, with its one-second display time");
+    assert_eq!(h.state().win.views[0].current, 1, "page 2, with its one-second display time");
     h.key_press(Key::ArrowLeft);
     h.run_steps(1);
-    assert_eq!(h.state().views[0].current, 0, "← goes back before the time is up");
+    assert_eq!(h.state().win.views[0].current, 0, "← goes back before the time is up");
     h.run_steps(30);
-    assert_eq!(h.state().views[0].current, 0, "page 1 has no display time: it stays");
+    assert_eq!(h.state().win.views[0].current, 0, "page 1 has no display time: it stays");
     h.key_press(Key::ArrowRight);
     h.run_steps(2);
     h.key_press(Key::ArrowRight);
     h.run_steps(1);
-    assert_eq!(h.state().views[0].current, 2, "→ goes on before page 2's time is up");
+    assert_eq!(h.state().win.views[0].current, 2, "→ goes on before page 2's time is up");
 }
 
 /// Every way full screen moves: forward (→, Space, Enter, Page Down, a click), back (←, Backspace,
@@ -3321,9 +3321,9 @@ fn full_screen_every_key_and_click_goes_where_it_says() {
     h.run_steps(6);
     assert!(h.state().full_screen);
     for (input, from, to) in moves {
-        h.state_mut().views[0].go_to_page(from);
+        h.state_mut().win.views[0].go_to_page(from);
         h.run_steps(4);
-        assert_eq!(h.state().views[0].current, from, "{input:?}: on page {}", from + 1);
+        assert_eq!(h.state().win.views[0].current, from, "{input:?}: on page {}", from + 1);
         match input {
             K(key, modifiers) => {
                 h.key_press_modifiers(modifiers, key);
@@ -3341,7 +3341,7 @@ fn full_screen_every_key_and_click_goes_where_it_says() {
                 h.run_steps(6);
             }
         }
-        assert_eq!(h.state().views[0].current, to, "{input:?} from page {}", from + 1);
+        assert_eq!(h.state().win.views[0].current, to, "{input:?} from page {}", from + 1);
         assert!(h.state().full_screen, "{input:?} stays in full screen");
     }
     for (key, modifiers) in [(Key::Escape, Modifiers::NONE), (Key::L, Modifiers::COMMAND)] {
@@ -3372,10 +3372,10 @@ trailer << /Root 1 0 R >>
     let mut h = presenting_pdf(SPIRAL, &[]);
     h.key_press(Key::ArrowRight);
     h.run_steps(1);
-    assert_eq!(h.state().views[0].current, 1);
-    assert!(!h.state().views[0].presenting_a_transition(), "no effect for an unknown style");
+    assert_eq!(h.state().win.views[0].current, 1);
+    assert!(!h.state().win.views[0].presenting_a_transition(), "no effect for an unknown style");
     settle(&mut h);
-    let frames = frames_until(&mut h, |a| a.views[0].current == 2);
+    let frames = frames_until(&mut h, |a| a.win.views[0].current == 2);
     assert!(frames <= 20, "its one-second display time turns it ({frames} frames of 0.1 s)");
 }
 
@@ -3412,13 +3412,13 @@ fn a_page_whose_content_was_cut_is_named_in_a_notice() {
         app
     });
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-    while h.state().views[0].cut_pages().is_empty() {
-        assert!(std::time::Instant::now() < deadline, "the cut page was never reported; errors={:?}", h.state().views[0].page_errors());
+    while h.state().win.views[0].cut_pages().is_empty() {
+        assert!(std::time::Instant::now() < deadline, "the cut page was never reported; errors={:?}", h.state().win.views[0].page_errors());
         h.run_steps(2);
     }
     h.run_steps(2);
-    assert_eq!(h.state().views[0].cut_pages(), [0]);
-    assert!(h.state().views[0].page_errors().is_empty(), "a cut page still draws");
+    assert_eq!(h.state().win.views[0].cut_pages(), [0]);
+    assert!(h.state().win.views[0].page_errors().is_empty(), "a cut page still draws");
     h.get_by_label_contains("Page 1 holds more content than PDF Overlay can read");
     // Automation counts pages from 1, as the notice does (review on #2113).
     let client = slot.lock().unwrap().take().expect("the control channel");

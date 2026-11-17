@@ -51,12 +51,12 @@ fn outline(h: &Harness<'static, PdfCraftApp>) -> String {
             .collect::<Vec<_>>()
             .join(",")
     }
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     level(&h.state().session.get(id).unwrap().info.outline)
 }
 
 fn selected(h: &Harness<'static, PdfCraftApp>) -> Vec<Vec<usize>> {
-    h.state().views[0].bookmarks.paths()
+    h.state().win.views[0].bookmarks.paths()
 }
 
 fn click(h: &mut Harness<'static, PdfCraftApp>, title: &str, modifiers: Modifiers) {
@@ -112,7 +112,7 @@ fn drag(h: &mut Harness<'static, PdfCraftApp>, from: &str, to: &str, on: On) {
 }
 
 fn undo_label(h: &Harness<'static, PdfCraftApp>) -> Option<String> {
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     h.state().session.get(id).unwrap().can_undo().map(str::to_owned)
 }
 
@@ -161,11 +161,11 @@ fn a_selected_row_takes_the_selection_and_another_row_goes_alone() {
     // the selection.
     click(&mut h, "B", Modifiers::NONE);
     click(&mut h, "D", Modifiers::COMMAND);
-    let page = h.state().views[0].current;
+    let page = h.state().win.views[0].current;
     drag(&mut h, "A", "C", On::After);
     assert_eq!(outline(&h), "B,C,A,D");
     assert_eq!(selected(&h), [vec![2]]);
-    assert_eq!(h.state().views[0].current, page, "a drag doesn't go to the bookmark's page");
+    assert_eq!(h.state().win.views[0].current, page, "a drag doesn't go to the bookmark's page");
 }
 
 /// A group across levels moves whole subtrees, and a bookmark under a selected one moves once.
@@ -215,7 +215,7 @@ fn a_place_the_bookmarks_cannot_go_takes_no_drop() {
     drag(&mut h, "A", "a1", On::Onto);
     assert_eq!(outline(&h), "A[a1,a2],B,C");
     assert_eq!(undo_label(&h), before, "no undo step");
-    assert!(!h.state().views[0].bookmarks.dragging(), "the drag is over");
+    assert!(!h.state().win.views[0].bookmarks.dragging(), "the drag is over");
     // The panel itself takes no drop there: the move is never asked for, so nothing is reported.
     assert!(h.state().toast.is_none(), "{:?}", h.state().toast);
     // A group with a bookmark the target is under.
@@ -227,7 +227,7 @@ fn a_place_the_bookmarks_cannot_go_takes_no_drop() {
     assert_eq!(selected(&h), [vec![0], vec![1]], "the selection stays");
     assert!(h.state().toast.is_none(), "{:?}", h.state().toast);
     // Asked for all the same (as a stale preview could), the move is refused and says why.
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let stamp = {
         let doc = h.state().session.get(id).unwrap();
         (doc.edit_generation(), std::sync::Arc::as_ptr(&doc.bytes).addr())
@@ -242,7 +242,7 @@ fn a_place_the_bookmarks_cannot_go_takes_no_drop() {
 fn a_drop_where_the_bookmark_already_is_adds_no_undo_step() {
     let mut h = harness(FLAT);
     let before = undo_label(&h);
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let generation = h.state().session.get(id).unwrap().edit_generation();
     drag(&mut h, "B", "C", On::Before);
     drag(&mut h, "B", "A", On::After);
@@ -259,10 +259,10 @@ fn escape_and_a_release_outside_the_list_give_the_drag_up() {
     click(&mut h, "A", Modifiers::NONE);
     let at = aim(&h, "C", On::After);
     drag_to(&mut h, "A", at);
-    assert!(h.state().views[0].bookmarks.dragging());
+    assert!(h.state().win.views[0].bookmarks.dragging());
     h.key_press(Key::Escape);
     h.run_steps(2);
-    assert!(!h.state().views[0].bookmarks.dragging(), "Escape ends the drag");
+    assert!(!h.state().win.views[0].bookmarks.dragging(), "Escape ends the drag");
     assert_eq!(selected(&h), [vec![0]], "and keeps the selection");
     release(&mut h, at);
     assert_eq!(outline(&h), "A,B,C,D");
@@ -271,7 +271,7 @@ fn escape_and_a_release_outside_the_list_give_the_drag_up() {
     release(&mut h, egui::pos2(300.0, 500.0));
     assert_eq!(outline(&h), "A,B,C,D");
     assert_eq!(undo_label(&h), before);
-    assert!(!h.state().views[0].bookmarks.dragging());
+    assert!(!h.state().win.views[0].bookmarks.dragging());
 }
 
 /// A search hides the bookmarks between the ones it shows: nothing is dragged while it is on.
@@ -286,7 +286,7 @@ fn nothing_is_dragged_while_a_search_filters_the_list() {
     assert!(h.query_by_label("Beta").is_none(), "the search is filtering");
     let at = aim(&h, "Alpha", On::Before);
     drag_to(&mut h, "Alps", at);
-    assert!(!h.state().views[0].bookmarks.dragging(), "no drag starts");
+    assert!(!h.state().win.views[0].bookmarks.dragging(), "no drag starts");
     h.get_by_label("Clear the search to rearrange bookmarks");
     release(&mut h, at);
     assert_eq!(outline(&h), "Alpha,Beta,Alps");
@@ -302,7 +302,7 @@ fn resting_on_a_closed_bookmark_opens_it_without_touching_the_document() {
     h.get_by_label("Collapse all bookmarks").click();
     h.run_steps(3);
     assert!(h.query_by_label("a1").is_none());
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let (generation, undo) = (h.state().session.get(id).unwrap().edit_generation(), undo_label(&h));
     let at = aim(&h, "A", On::Onto);
     drag_to(&mut h, "C", at);
@@ -312,7 +312,7 @@ fn resting_on_a_closed_bookmark_opens_it_without_touching_the_document() {
         h.step();
     }
     h.get_by_label("a1");
-    assert!(h.state().views[0].bookmarks.dragging(), "still dragging");
+    assert!(h.state().win.views[0].bookmarks.dragging(), "still dragging");
     assert_eq!(h.state().session.get(id).unwrap().edit_generation(), generation, "opening it wrote nothing");
     assert_eq!(undo_label(&h), undo);
     assert_eq!(outline(&h), "A[a1,a2],B,C");
@@ -328,7 +328,7 @@ fn resting_on_a_closed_bookmark_opens_it_without_touching_the_document() {
 #[test]
 fn a_drop_after_the_document_changed_moves_nothing() {
     let mut h = harness(&[(&[], "Intro", 0), (&[], "Section", 1), (&[], "Section", 2), (&[], "End", 0)]);
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     // The document version, as the panel stamps a selection or a drag with it.
     let stale = {
         let doc = h.state().session.get(id).unwrap();
@@ -342,13 +342,13 @@ fn a_drop_after_the_document_changed_moves_nothing() {
     assert_eq!(undo_label(&h).as_deref(), Some("Move bookmark"), "no group step");
     // A drag in flight ends when the panel sees the change.
     let mut h = harness(FLAT);
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let at = aim(&h, "D", On::After);
     drag_to(&mut h, "A", at);
-    assert!(h.state().views[0].bookmarks.dragging());
+    assert!(h.state().win.views[0].bookmarks.dragging());
     h.state_mut().apply_edit(Edit::RenameBookmark { path: vec![1], title: "Renamed".into() });
     h.run_steps(2);
-    assert!(!h.state().views[0].bookmarks.dragging(), "the drag ended with the change");
+    assert!(!h.state().win.views[0].bookmarks.dragging(), "the drag ended with the change");
     release(&mut h, at);
     assert_eq!(outline(&h), "A,Renamed,C,D");
     assert_eq!(h.state().session.get(id).unwrap().can_undo(), Some("Rename bookmark"));
@@ -360,7 +360,7 @@ fn a_click_on_a_draggable_row_still_selects_and_goes_there() {
     let mut h = harness(FLAT);
     click(&mut h, "C", Modifiers::NONE);
     assert_eq!(selected(&h), [vec![2]]);
-    assert_eq!(h.state().views[0].current, 2);
-    assert!(!h.state().views[0].bookmarks.dragging());
+    assert_eq!(h.state().win.views[0].current, 2);
+    assert!(!h.state().win.views[0].bookmarks.dragging());
     assert_eq!(outline(&h), "A,B,C,D");
 }

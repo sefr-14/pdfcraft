@@ -34,7 +34,7 @@ pub enum SaveTarget {
 impl PdfCraftApp {
     /// Save the active document. Returns `true` if it was written.
     pub fn save_active(&mut self, target: SaveTarget) -> bool {
-        match self.active {
+        match self.win.active {
             Some(i) => self.save_view(i, target),
             None => false,
         }
@@ -51,12 +51,12 @@ impl PdfCraftApp {
     /// when the user had to choose where. `after` never runs when the save fails or is cancelled.
     pub(crate) fn save_then(&mut self, index: usize, target: SaveTarget, after: impl FnOnce(&mut Self) + Send + 'static) -> bool {
         // What's typed in a field is part of what's saved (#166).
-        if let Some(id) = self.views.get(index).map(|v| v.id)
+        if let Some(id) = self.win.views.get(index).map(|v| v.id)
             && !self.commit_typing_in(id)
         {
             return false;
         }
-        let Some(id) = self.views.get(index).map(|v| v.id) else { return false };
+        let Some(id) = self.win.views.get(index).map(|v| v.id) else { return false };
         // A signature just placed with Fill & Sign is a removable comment unless it is flattened:
         // ask once whether to lock it into the page (#2149). Only while a Fill & Sign mark is still
         // there (undo may have taken it away), and never on a digitally signed document: locking
@@ -80,14 +80,14 @@ impl PdfCraftApp {
         // After Apply redactions, Save asks where and proposes the name with `_Redacted`.
         // In the web build a delivered step stays counted, so only the steps applied since the
         // last delivery make Save ask where.
-        let redacted = self.views.get(index).is_some_and(|v| v.redactions_applied > 0);
-        let not_delivered = self.views.get(index).is_some_and(|v| v.redactions_applied > v.redactions_downloaded);
+        let redacted = self.win.views.get(index).is_some_and(|v| v.redactions_applied > 0);
+        let not_delivered = self.win.views.get(index).is_some_and(|v| v.redactions_applied > v.redactions_downloaded);
         let name = if redacted { pdfcraft_engine::redacted_file_name(&name) } else { name };
         // Undo past a saved Apply redactions brings back content that the file on disk has
         // redacted: ask where instead of writing it over that file. In the web build a delivered
         // step stays counted in `redactions_applied`, so fewer steps than were delivered means one
         // was undone.
-        let unredacted = self.views.get(index).is_some_and(restores_saved_redactions);
+        let unredacted = self.win.views.get(index).is_some_and(restores_saved_redactions);
         // The restored content is not a redacted copy: propose the name without `_Redacted`, so
         // the dialog's default is not the redacted file.
         let name = if unredacted && !redacted { unredacted_file_name(&name) } else { name };
@@ -112,7 +112,7 @@ impl PdfCraftApp {
                         // name it proposed wrong: ask again with the name for the current content.
                         let asked = (redacted, unredacted);
                         let changed = |v: &crate::DocView| v.id == id && (v.redactions_applied > 0, restores_saved_redactions(v)) != asked;
-                        if let Some(index) = app.views.iter().position(changed) {
+                        if let Some(index) = app.win.views.iter().position(changed) {
                             app.save_then(index, SaveTarget::As, after);
                             return;
                         }
@@ -161,7 +161,7 @@ impl PdfCraftApp {
                     }
                     // `redactions_applied` stays set: the document keeps its name here, so later
                     // downloads are named after the redacted copy too.
-                    if let Some(view) = self.views.get_mut(index) {
+                    if let Some(view) = self.win.views.get_mut(index) {
                         view.redactions_downloaded = view.redactions_applied;
                     }
                     self.refresh_document_views(id);
@@ -245,7 +245,7 @@ impl PdfCraftApp {
                 self.ask_to_lock_signatures = false;
             }
         }
-        if let Some(index) = self.views.iter().position(|v| v.id == p.id) {
+        if let Some(index) = self.win.views.iter().position(|v| v.id == p.id) {
             self.save_then(index, p.target, p.after);
         }
     }
@@ -274,7 +274,7 @@ impl PdfCraftApp {
         }
         if before != self.session.get(id).map(|d| d.edit_generation())
             && let Some(doc) = self.session.get(id)
-            && let Some(view) = self.views.iter_mut().find(|v| v.id == id)
+            && let Some(view) = self.win.views.iter_mut().find(|v| v.id == id)
         {
             view.document_changed(&doc.info);
             // The marks left the comments: a selected one is gone, and its (page, index) could
@@ -384,7 +384,7 @@ impl PdfCraftApp {
                 self.refresh_document_views(id);
                 // Saving over a version that changed on disk keeps this one: nothing to ask, in
                 // any of the document's tabs.
-                for view in self.views.iter_mut().filter(|v| v.id == id) {
+                for view in self.win.views.iter_mut().filter(|v| v.id == id) {
                     view.disk_changed = false;
                     view.redactions_applied = 0;
                     view.redactions_undone_after_save = 0;

@@ -42,7 +42,7 @@ impl PdfCraftApp {
             self.quick_tool = tool;
         }
         self.full_screen = on;
-        for view in &mut self.views {
+        for view in &mut self.win.views {
             if on {
                 view.enter_presentation();
             } else {

@@ -92,19 +92,19 @@ fn field(h: &Harness<'_, PdfCraftApp>, name: &str) -> egui::Rect {
 /// Where widget `w` of field `name` is on screen.
 fn widget(h: &Harness<'_, PdfCraftApp>, name: &str, w: usize) -> egui::Rect {
     let s = h.state();
-    let doc = s.session.get(s.views[0].id).unwrap();
+    let doc = s.session.get(s.win.views[0].id).unwrap();
     let f = doc.form.iter().find(|f| f.name == name).unwrap();
-    pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.views[0], &doc.info, f, w).expect("on screen")
+    pdfcraft_ui_egui::forms_ui::field_screen_rect(&s.win.views[0], &doc.info, f, w).expect("on screen")
 }
 
 fn value(h: &Harness<'_, PdfCraftApp>, name: &str) -> Vec<String> {
     let s = h.state();
-    s.session.get(s.views[0].id).unwrap().form.iter().find(|f| f.name == name).unwrap().value.clone()
+    s.session.get(s.win.views[0].id).unwrap().form.iter().find(|f| f.name == name).unwrap().value.clone()
 }
 
 /// The field whose editor or list is open.
 fn focus(h: &Harness<'_, PdfCraftApp>) -> Option<String> {
-    h.state().views[0].forms.focus.as_ref().map(|f| f.name.clone())
+    h.state().win.views[0].forms.focus.as_ref().map(|f| f.name.clone())
 }
 
 /// The Green row of the list box: the second, rows being 11.5 pt under a 2 pt inset.
@@ -308,18 +308,18 @@ fn touch_tap_on_a_radio_button_keeps_the_group_focused() {
 fn edit_paragraph(h: &mut Harness<'_, PdfCraftApp>) {
     assert!(h.state_mut().execute("edit.edit_text"));
     h.run_steps(2);
-    let r = h.state().views[0].page_screen_rect(0).expect("page on screen");
+    let r = h.state().win.views[0].page_screen_rect(0).expect("page on screen");
     let k = r.width() / 300.0;
     let p = r.min + egui::vec2(60.0 * k, (400.0 - 304.0) * k);
     mouse_click(h, p);
-    assert!(h.state().views[0].line_editor.is_some(), "the paragraph opens for typing");
-    let input = egui::Id::unique(("edit-text-line-input", h.state().views[0].place()));
+    assert!(h.state().win.views[0].line_editor.is_some(), "the paragraph opens for typing");
+    let input = egui::Id::unique(("edit-text-line-input", h.state().win.views[0].place()));
     assert!(h.ctx.memory(|m| m.has_focus(input)), "with the keyboard");
 }
 
 /// The open paragraph's line spacing, if a paragraph is open.
 fn line_spacing(h: &Harness<'_, PdfCraftApp>) -> Option<f64> {
-    h.state().views[0].line_editor.as_ref().map(|e| e.extras.line_spacing)
+    h.state().win.views[0].line_editor.as_ref().map(|e| e.extras.line_spacing)
 }
 
 #[test]

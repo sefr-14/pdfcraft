@@ -554,7 +554,8 @@ fn marquee_step(h: &mut Harness<'static, crate::PdfCraftApp>) {
 
 /// The actual laid-out page rect and a short point gesture inside it.
 fn gesture_target(h: &Harness<'static, crate::PdfCraftApp>) -> (egui::Pos2, egui::Pos2) {
-    let page = h.state().views[0].page_screen_rect(0).expect("the actual PDF page was laid out").intersect(h.state().views[0].viewport_rect());
+    let page =
+        h.state().win.views[0].page_screen_rect(0).expect("the actual PDF page was laid out").intersect(h.state().win.views[0].viewport_rect());
     assert!(page.width() > 100.0 && page.height() > 100.0, "a visible hit target: {page:?}");
     let from = page.center();
     let to = from + egui::vec2(40.0, 50.0);
@@ -571,7 +572,7 @@ fn await_gesture_admission(h: &mut Harness<'static, crate::PdfCraftApp>, gesture
             let shared = h.state().control.as_ref().unwrap().shared.lock().unwrap();
             shared.inject.front().is_some_and(|request| request.started && request.batches.len() == 1)
         } else {
-            h.ctx.input(|i| i.pointer.primary_down()) && (gesture != Gesture::Marquee || h.state().views[0].marquee.is_some())
+            h.ctx.input(|i| i.pointer.primary_down()) && (gesture != Gesture::Marquee || h.state().win.views[0].marquee.is_some())
         };
         if admitted {
             break;
@@ -607,9 +608,9 @@ fn assert_interruptible_admission(h: &Harness<'static, crate::PdfCraftApp>, gest
     assert!(!h.ctx.input(|i| i.pointer.any_released()), "the terminal release has not run");
     assert!(h.ctx.drag_stopped_id().is_none());
     if gesture == Gesture::Marquee {
-        assert!(h.ctx.dragged_id().is_some() && h.state().views[0].marquee.is_some(), "the app has a real drag preview");
+        assert!(h.ctx.dragged_id().is_some() && h.state().win.views[0].marquee.is_some(), "the app has a real drag preview");
     } else {
-        assert!(h.state().views[0].marquee.is_none() && h.state().views[0].marquee_done.is_none());
+        assert!(h.state().win.views[0].marquee.is_none() && h.state().win.views[0].marquee_done.is_none());
     }
 }
 
@@ -634,9 +635,9 @@ fn assert_timed_out_gesture(h: &mut Harness<'static, crate::PdfCraftApp>, reply:
     }
     assert!(!h.ctx.input(|i| i.pointer.any_down() || i.pointer.any_released()));
     assert!(h.ctx.dragged_id().is_none() && h.ctx.drag_stopped_id().is_none());
-    assert!(h.state().views[0].marquee.is_none() && h.state().views[0].marquee_done.is_none());
-    assert_eq!(h.state().views[0].zoom, zoom, "canceling must not turn a drag into a zoom click");
-    assert_eq!(h.state().session.get(h.state().views[0].id).unwrap().bytes.as_slice(), bytes, "no abandoned edit");
+    assert!(h.state().win.views[0].marquee.is_none() && h.state().win.views[0].marquee_done.is_none());
+    assert_eq!(h.state().win.views[0].zoom, zoom, "canceling must not turn a drag into a zoom click");
+    assert_eq!(h.state().session.get(h.state().win.views[0].id).unwrap().bytes.as_slice(), bytes, "no abandoned edit");
     assert!(h.state().control.as_ref().unwrap().shared.lock().unwrap().inject.is_empty());
     assert!(h.state().control.as_ref().unwrap().pending.is_empty());
     assert!(reply.try_recv().is_err(), "the cancellation replies once");
@@ -651,7 +652,7 @@ fn complete_positive_gesture(
     bytes: &[u8],
 ) {
     let (from, to) = gesture_target(h);
-    let zoom = h.state().views[0].zoom;
+    let zoom = h.state().win.views[0].zoom;
     let (method, params) = gesture_request(positive, from, to);
     let reply = client.send(method, params);
     let mut value = None;
@@ -681,15 +682,15 @@ fn complete_positive_gesture(
     assert!(!h.ctx.input(|i| i.pointer.any_down()));
     assert!(h.ctx.dragged_id().is_none());
     if positive == Gesture::Marquee {
-        assert!(h.state().views[0].zoom > zoom, "the normal marquee rectangle zooms");
+        assert!(h.state().win.views[0].zoom > zoom, "the normal marquee rectangle zooms");
     } else {
         let options = h.ctx.options(|o| o.input_options);
         assert!(buttons[1].1 - buttons[0].1 < options.max_click_duration, "real press/release remain a short click");
         assert!(positions.iter().all(|pos| pos.distance(from) < options.max_click_dist), "real input remains stationary");
-        assert!((h.state().views[0].zoom - zoom * 1.5).abs() < 0.001, "a normal click zooms one step");
+        assert!((h.state().win.views[0].zoom - zoom * 1.5).abs() < 0.001, "a normal click zooms one step");
     }
-    assert!(h.state().views[0].marquee.is_none() && h.state().views[0].marquee_done.is_none());
-    assert_eq!(h.state().session.get(h.state().views[0].id).unwrap().bytes.as_slice(), bytes, "completed zooms do not edit the document");
+    assert!(h.state().win.views[0].marquee.is_none() && h.state().win.views[0].marquee_done.is_none());
+    assert_eq!(h.state().session.get(h.state().win.views[0].id).unwrap().bytes.as_slice(), bytes, "completed zooms do not edit the document");
     assert!(reply.try_recv().is_err(), "successful request replies once");
 }
 
@@ -704,15 +705,15 @@ fn a_timed_out_marquee_never_zooms_and_completed_clicks_and_drags_still_work() {
                 marquee_step(&mut h);
             }
             let (from, to) = gesture_target(&h);
-            let zoom = h.state().views[0].zoom;
-            let bytes = h.state().session.get(h.state().views[0].id).unwrap().bytes.clone();
+            let zoom = h.state().win.views[0].zoom;
+            let bytes = h.state().session.get(h.state().win.views[0].id).unwrap().bytes.clone();
             let (method, params) = gesture_request(gesture, from, to);
             let reply = client.send(method, params);
             assert!(await_gesture_admission(&mut h, gesture), "a real interruptible admission: {gesture:?}, hidden={hidden_logic}");
             assert_interruptible_admission(&h, gesture, from);
             assert!(reply.try_recv().is_err(), "the terminal batch has not run");
-            assert_eq!(h.state().views[0].zoom, zoom);
-            assert_eq!(h.state().session.get(h.state().views[0].id).unwrap().bytes, bytes);
+            assert_eq!(h.state().win.views[0].zoom, zoom);
+            assert_eq!(h.state().session.get(h.state().win.views[0].id).unwrap().bytes, bytes);
             assert_timed_out_gesture(&mut h, &reply, hidden_logic, zoom, &bytes);
 
             // Complete the same public gesture, then an atomic click after held input.

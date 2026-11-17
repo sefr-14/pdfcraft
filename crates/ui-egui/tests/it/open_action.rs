@@ -64,7 +64,7 @@ fn settle(h: &mut Harness<'static, PdfCraftApp>) {
 fn window_top(h: &mut Harness<'static, PdfCraftApp>) -> (usize, f32) {
     h.key_press_modifiers(Modifiers::COMMAND, Key::B);
     h.run_steps(3);
-    let id = h.state().views[0].id;
+    let id = h.state().win.views[0].id;
     let outline = &h.state().session.get(id).unwrap().info.outline;
     let made = outline.iter().find(|b| b.title == "Untitled").expect("the new bookmark");
     match made.view {
@@ -75,7 +75,7 @@ fn window_top(h: &mut Harness<'static, PdfCraftApp>) -> (usize, f32) {
 
 /// The left edge of `page` on screen and its scale (screen points per user-space point).
 fn page_left(h: &Harness<'static, PdfCraftApp>, page: usize) -> (f32, f32) {
-    let rects = h.state().views[0].visible_page_rects();
+    let rects = h.state().win.views[0].visible_page_rects();
     let (_, r) = rects.iter().find(|(p, _)| *p == page).expect("the page is shown");
     (r.left(), r.width() / 612.0)
 }
@@ -87,8 +87,8 @@ fn near(got: f32, want: f32, what: &str) {
 #[test]
 fn an_xyz_open_action_puts_its_point_at_the_window_top_left() {
     let mut h = harness("/OpenAction [5 0 R /XYZ 100 500 2]");
-    assert_eq!(h.state().views[0].current, 2);
-    assert_eq!((h.state().views[0].fit, h.state().views[0].zoom), (Fit::None, 2.0));
+    assert_eq!(h.state().win.views[0].current, 2);
+    assert_eq!((h.state().win.views[0].fit, h.state().win.views[0].zoom), (Fit::None, 2.0));
     // `left`: the page sits 100 user points further left than one opened at left 0.
     let (left, scale) = page_left(&h, 2);
     let (left0, _) = page_left(&harness("/OpenAction [5 0 R /XYZ 0 500 2]"), 2);
@@ -101,8 +101,8 @@ fn an_xyz_open_action_puts_its_point_at_the_window_top_left() {
 #[test]
 fn a_fith_open_action_puts_its_top_at_the_window_top() {
     let mut h = harness("/OpenAction [4 0 R /FitH 400]");
-    assert_eq!(h.state().views[0].current, 1);
-    assert_eq!(h.state().views[0].fit, Fit::Width);
+    assert_eq!(h.state().win.views[0].current, 1);
+    assert_eq!(h.state().win.views[0].fit, Fit::Width);
     let (page, top) = window_top(&mut h);
     assert_eq!(page, 1);
     near(top, 400.0, "y 400 is at the window's top edge");
@@ -119,16 +119,16 @@ fn a_named_open_destination_opens_its_page() {
         "/OpenAction /there /Dests << /there [7 0 R /XYZ 0 792 0] >>",
     ] {
         let mut h = harness(catalog);
-        assert_eq!(h.state().views[0].current, 4, "{catalog}");
+        assert_eq!(h.state().win.views[0].current, 4, "{catalog}");
         // A zoom of 0 keeps the default zoom.
-        assert_eq!(h.state().views[0].fit, Fit::Width, "{catalog}");
+        assert_eq!(h.state().win.views[0].fit, Fit::Width, "{catalog}");
         let (page, top) = window_top(&mut h);
         assert_eq!(page, 4, "{catalog}");
         near(top, 792.0, "the page's top is at the window's top edge");
     }
     // A name nothing defines opens on the first page.
     let h = harness("/OpenAction << /S /GoTo /D /missing >> /Dests << /there [7 0 R /Fit] >>");
-    assert_eq!(h.state().views[0].current, 0);
+    assert_eq!(h.state().win.views[0].current, 0);
 }
 
 #[test]
@@ -144,8 +144,8 @@ fn always_my_default_view_keeps_the_zoom_and_goes_to_the_page_top() {
     });
     h.run_steps(4);
     settle(&mut h);
-    assert_eq!(h.state().views[0].current, 2);
-    assert_eq!(h.state().views[0].fit, Fit::Width);
+    assert_eq!(h.state().win.views[0].current, 2);
+    assert_eq!(h.state().win.views[0].fit, Fit::Width);
     let (page, top) = window_top(&mut h);
     assert_eq!(page, 2);
     near(top, 792.0, "the page's top");
@@ -214,22 +214,26 @@ fn a_file_named_with_open_parameters_opens_at_their_destination() {
         let mut app = PdfCraftApp::new();
         app.set_option("language", "en").unwrap();
         assert_eq!(app.open_path(&format!("{path}{parameters}")), OpenOutcome::Opened, "{parameters}");
-        assert_eq!(app.views.len(), 1, "{parameters}");
-        assert_eq!(app.views[0].current, page, "{parameters}");
-        assert_eq!(app.session.get(app.views[0].id).and_then(|d| d.path.clone()).as_deref(), Some(path.as_str()), "{parameters}: the file itself");
+        assert_eq!(app.win.views.len(), 1, "{parameters}");
+        assert_eq!(app.win.views[0].current, page, "{parameters}");
+        assert_eq!(
+            app.session.get(app.win.views[0].id).and_then(|d| d.path.clone()).as_deref(),
+            Some(path.as_str()),
+            "{parameters}: the file itself"
+        );
         assert_eq!(app.toast, None, "{parameters}");
     }
     // A name the file doesn't define: it opens where it would have, and says so.
     let mut app = PdfCraftApp::new();
     app.set_option("language", "en").unwrap();
     assert_eq!(app.open_path(&format!("{path}#nameddest=Nowhere")), OpenOutcome::Opened);
-    assert_eq!(app.views[0].current, 2);
+    assert_eq!(app.win.views[0].current, 2);
     assert!(app.toast.as_ref().is_some_and(|(text, _)| text.contains("named destination was not applied")), "{:?}", app.toast);
     // A path that names no file, before a `#` or as a whole, still fails as before.
     let mut app = PdfCraftApp::new();
     app.set_option("language", "en").unwrap();
     assert_eq!(app.open_path(&format!("{path}.missing#page=2")), OpenOutcome::Failed);
-    assert!(app.views.is_empty());
+    assert!(app.win.views.is_empty());
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -246,14 +250,14 @@ fn open_parameters_handed_to_the_running_app_show_their_destination() {
     // Asked twice before it has opened, it opens at the place asked for last.
     assert_eq!(h.state_mut().open_path(&format!("{path}#page=5")), OpenOutcome::Pending);
     assert_eq!(h.state_mut().open_path(&format!("{path}#nameddest=Load Flow")), OpenOutcome::Pending);
-    crate::support::wait_until(&mut h, "the manual at Load Flow", |app| app.views.len() == 1 && app.views[0].current == 3);
+    crate::support::wait_until(&mut h, "the manual at Load Flow", |app| app.win.views.len() == 1 && app.win.views[0].current == 3);
     // Asked again for a place in the open file, its tab goes there instead of opening it again.
     assert_eq!(h.state_mut().open_path(&format!("{path}#page=2")), OpenOutcome::Focused);
-    assert_eq!((h.state().views.len(), h.state().views[0].current), (1, 1));
+    assert_eq!((h.state().win.views.len(), h.state().win.views[0].current), (1, 1));
     // A name is looked up off the UI thread: the tab moves once the lookup is in.
     assert_eq!(h.state_mut().open_path(&format!("{path}#nameddest=Load Flow")), OpenOutcome::Focused);
-    assert_eq!(h.state().views[0].current, 1, "not yet");
-    crate::support::wait_until(&mut h, "Load Flow", |app| app.views[0].current == 3);
+    assert_eq!(h.state().win.views[0].current, 1, "not yet");
+    crate::support::wait_until(&mut h, "Load Flow", |app| app.win.views[0].current == 3);
     // A page asked for while a name is still being looked up wins: the lookup's answer is dropped.
     assert_eq!(h.state_mut().open_path(&format!("{path}#nameddest=intro")), OpenOutcome::Focused);
     assert_eq!(h.state_mut().open_path(&format!("{path}#page=5")), OpenOutcome::Focused);
@@ -261,7 +265,7 @@ fn open_parameters_handed_to_the_running_app_show_their_destination() {
         h.run_steps(1);
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
-    assert_eq!(h.state().views[0].current, 4);
+    assert_eq!(h.state().win.views[0].current, 4);
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -299,9 +303,9 @@ fn open_parameters_wait_with_their_file_behind_a_password_prompt_and_a_full_queu
     h.run_steps(4);
     assert!(h.state().password_prompt.is_some(), "the protected file is asked for");
     h.state_mut().submit_password(Some("reader".into()));
-    crate::support::wait_until(&mut h, "every file", |app| app.views.len() == others.len() + 2);
+    crate::support::wait_until(&mut h, "every file", |app| app.win.views.len() == others.len() + 2);
     let app = h.state();
-    let page_of = |path: &str| app.views.iter().find(|v| app.session.get(v.id).and_then(|d| d.path.as_deref()) == Some(path)).map(|v| v.current);
+    let page_of = |path: &str| app.win.views.iter().find(|v| app.session.get(v.id).and_then(|d| d.path.as_deref()) == Some(path)).map(|v| v.current);
     // `fixture(NAMED)` opens at page 3 by its /OpenAction.
     assert_eq!(page_of(&manual), Some(4), "the file past the queue's bound, at the last page asked for");
     assert_eq!(page_of(&locked), Some(3), "the protected file, at the page asked for during its prompt");

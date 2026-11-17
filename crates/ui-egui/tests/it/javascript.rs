@@ -106,7 +106,7 @@ fn text_widget_mouse_up_runs_its_menu_and_keeps_the_result() {
         let doc = app.session.get(id).unwrap();
         let field = doc.form.iter().find(|field| field.name == "greeting").unwrap();
         assert!(field.widgets[0].mouse_up_script.is_some());
-        pdfcraft_ui_egui::forms_ui::field_screen_rect(&app.views[index], &doc.info, field, 0).unwrap().center()
+        pdfcraft_ui_egui::forms_ui::field_screen_rect(&app.win.views[index], &doc.info, field, 0).unwrap().center()
     };
     for _ in 0..2 {
         h.hover_at(point);
@@ -551,7 +551,7 @@ fn clicking_duplicate_named_buttons_targets_the_clicked_object() {
             .map(|f| f.widgets.first().and_then(|w| w.caption.clone()))
             .collect::<Vec<_>>()
     };
-    let r = h.state().views[0].page_screen_rect(0).unwrap();
+    let r = h.state().win.views[0].page_screen_rect(0).unwrap();
     let at = r.min + egui::vec2(r.width() * 220.0 / 300.0, r.height() * 85.0 / 300.0);
     h.hover_at(at);
     h.run_steps(1);
@@ -573,7 +573,7 @@ fn clicking_duplicate_named_buttons_targets_the_clicked_object() {
     assert!(h.state_mut().execute("edit.redo"));
     h.run_steps(3);
     assert_eq!(captions(&h), [Some("idle".into()), Some("second".into())]);
-    let r = h.state().views[0].page_screen_rect(0).unwrap();
+    let r = h.state().win.views[0].page_screen_rect(0).unwrap();
     let at = r.min + egui::vec2(r.width() * 70.0 / 300.0, r.height() * 85.0 / 300.0);
     h.hover_at(at);
     h.run_steps(1);
@@ -659,7 +659,7 @@ fn clicking_duplicate_image_buttons_imports_only_into_the_clicked_field() {
         app
     });
     h.run_steps(6);
-    let rect = h.state().views[0].page_screen_rect(0).unwrap();
+    let rect = h.state().win.views[0].page_screen_rect(0).unwrap();
     let at = rect.min + egui::vec2(rect.width() * 210.0 / 300.0, rect.height() * 85.0 / 300.0);
     h.hover_at(at);
     h.run_steps(1);

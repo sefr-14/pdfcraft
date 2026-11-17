@@ -196,12 +196,12 @@ mod picture_tests {
         let mut app = PdfCraftApp::new();
         app.open_bytes("notes.txt", None, b"hello".to_vec()).unwrap();
         let (i, _) = app.active_ids().unwrap();
-        app.views[i].pending_pick = Some((0, [1.0, 1.0], 0));
+        app.win.views[i].pending_pick = Some((0, [1.0, 1.0], 0));
         let escape = egui::Event::Key { key: egui::Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Default::default() };
         egui::Context::default()
             .run_ui(egui::RawInput { events: vec![escape], ..Default::default() }, |ui| app.image_pick_keys(i, ui.ctx()))
             .drop_without_applying_deltas();
-        assert_eq!(app.views[i].pending_pick, None);
+        assert_eq!(app.win.views[i].pending_pick, None);
     }
 
     /// A page (200 × 300) with a square comment over 20..80 × 20..80 and a link over 120..180 ×
@@ -239,7 +239,7 @@ mod picture_tests {
         let mut on_screen = None;
         for _ in 0..600 {
             h.run_steps(2);
-            on_screen = h.state().views[0].page_screen_rect(0);
+            on_screen = h.state().win.views[0].page_screen_rect(0);
             if on_screen.is_some() {
                 break;
             }
@@ -255,10 +255,10 @@ mod picture_tests {
     fn click_still_being_looked_into(
         h: &mut egui_kittest::Harness<'static, PdfCraftApp>,
     ) -> std::sync::mpsc::Sender<Vec<pdfcraft_engine::PagePicture>> {
-        let id = h.state().views[0].id;
+        let id = h.state().win.views[0].id;
         let generation = h.state().session.get(id).expect("the document").edit_generation();
         let (send, answer) = std::sync::mpsc::channel();
-        let view = &mut h.state_mut().views[0];
+        let view = &mut h.state_mut().win.views[0];
         view.pictures = PagePictures { ready: None, job: Some(((0, generation), answer)) };
         view.pending_pick = Some((0, [150.0, 150.0], generation));
         send
@@ -280,12 +280,12 @@ mod picture_tests {
         let _keep = click_still_being_looked_into(&mut h);
         assert!(h.state_mut().execute("page.organize"));
         h.run_steps(2);
-        assert!(h.state().views[0].pending_pick.is_some(), "the click waits while the page isn't drawn");
+        assert!(h.state().win.views[0].pending_pick.is_some(), "the click waits while the page isn't drawn");
         h.state_mut().quick_tool = crate::QuickTool::Hand;
         h.run_steps(1);
         h.state_mut().quick_tool = crate::QuickTool::Select;
         h.run_steps(1);
-        assert_eq!(h.state().views[0].pending_pick, None);
+        assert_eq!(h.state().win.views[0].pending_pick, None);
     }
 
     /// A click a comment takes lets go of the earlier click: its picture isn't picked after the
@@ -295,8 +295,8 @@ mod picture_tests {
         let (mut h, at) = open_page();
         let _keep = click_still_being_looked_into(&mut h);
         click(&mut h, at(50.0, 50.0));
-        assert_eq!(h.state().views[0].comments.selected, Some((0, 0)), "the comment is selected");
-        assert_eq!(h.state().views[0].pending_pick, None);
+        assert_eq!(h.state().win.views[0].comments.selected, Some((0, 0)), "the comment is selected");
+        assert_eq!(h.state().win.views[0].pending_pick, None);
     }
 
     /// A click on a link follows it and lets go of the earlier click too.
@@ -306,7 +306,7 @@ mod picture_tests {
         let _keep = click_still_being_looked_into(&mut h);
         click(&mut h, at(150.0, 250.0));
         assert!(h.state().pending_link.is_some(), "the link is followed");
-        assert_eq!(h.state().views[0].pending_pick, None);
+        assert_eq!(h.state().win.views[0].pending_pick, None);
     }
 }
 
@@ -423,24 +423,26 @@ impl PdfCraftApp {
             return;
         }
         if self.page_keys.pressed(ctx, egui::Key::Escape) {
-            if let Some(view) = self.views.get_mut(i) {
+            if let Some(view) = self.win.views.get_mut(i) {
                 view.picked_image = None;
                 view.pending_pick = None;
             }
             return;
         }
-        let Some(picked) = self.views.get(i).and_then(|v| v.picked_image) else { return };
+        let Some(picked) = self.win.views.get(i).and_then(|v| v.picked_image) else { return };
         let copy = self.page_keys.clipboard(ctx).copy;
-        if !copy || self.views[i].selected_text().is_some() {
+        if !copy || self.win.views[i].selected_text().is_some() {
             return;
         }
         // The document may have changed since the click: the same picture must still be there.
-        let current =
-            self.session.get(self.views[i].id).and_then(|d| d.page_images(picked.page).get(picked.index).map(crate::canvas::image_selectable_bounds));
+        let current = self
+            .session
+            .get(self.win.views[i].id)
+            .and_then(|d| d.page_images(picked.page).get(picked.index).map(crate::canvas::image_selectable_bounds));
         if current == Some(picked.rect) {
             self.copy_page_image_file(picked.page, picked.index);
         } else {
-            self.views[i].picked_image = None;
+            self.win.views[i].picked_image = None;
             self.notify_tr("The page has changed; select the image again");
         }
     }

@@ -42,7 +42,7 @@ impl PdfCraftApp {
     /// How view `index` shows its document now; `None` for a document without a file. In full
     /// screen, the display it will go back to, at the page reached.
     fn view_to_remember(&self, index: usize) -> Option<LastView> {
-        let view = self.views.get(index)?;
+        let view = self.win.views.get(index)?;
         let path = self.session.get(view.id)?.path.as_deref()?;
         let shown = view.normal_display();
         // A fixed zoom keeps its fraction (62.5%, not 63%): `zoom_name` rounds to whole percents.
@@ -71,7 +71,7 @@ impl PdfCraftApp {
     /// The remembered views as settings store them: the open views first, as they are now
     /// (so quitting remembers them without closing their tabs), then the rest.
     pub(crate) fn last_views_to_save(&self) -> Vec<LastView> {
-        let mut out: Vec<LastView> = (0..self.views.len()).filter_map(|i| self.view_to_remember(i)).collect();
+        let mut out: Vec<LastView> = (0..self.win.views.len()).filter_map(|i| self.view_to_remember(i)).collect();
         for l in &self.last_views {
             if !out.iter().any(|o| o.path == l.path) {
                 out.push(l.clone());
@@ -106,12 +106,12 @@ impl PdfCraftApp {
         if !self.restore_last_view {
             return;
         }
-        let Some(view) = self.views.get(index) else { return };
+        let Some(view) = self.win.views.get(index) else { return };
         let Some(doc) = self.session.get(view.id) else { return };
         let Some(path) = doc.path.as_deref().map(absolute) else { return };
         let pages = doc.info.pages.len();
         let Some(last) = self.last_views.iter().find(|l| l.path == path).cloned() else { return };
-        let Some(view) = self.views.get_mut(index) else { return };
+        let Some(view) = self.win.views.get_mut(index) else { return };
         if !self.always_default_view {
             if let Some((layout, continuous)) = canvas::parse_display_token(&last.display) {
                 view.set_display(layout, continuous);
