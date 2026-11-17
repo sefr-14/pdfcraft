@@ -161,6 +161,8 @@ struct WindowUi {
     passes: u64,
     /// W0-7 class (a) case shown by this window, and when it was asked for (script clock).
     case: Option<&'static str>,
+    /// Drag mode: the desktop drop point (physical px) this window was opened at.
+    drop_px: Option<Pos2>,
     created_at: f64,
     close_rx: u32,
     animate: bool,
@@ -179,6 +181,7 @@ impl WindowUi {
             size,
             passes: 0,
             case: None,
+            drop_px: None,
             created_at: if SCRIPT0.get().is_some() { st() } else { 0.0 },
             close_rx: 0,
             animate: false,
@@ -366,6 +369,13 @@ impl Spike {
         }
         if self.mode == Mode::Panic && w.title.ends_with('N') && w.passes == 3 {
             result("panic_new_window", "PASS", "a new secondary window opened after the panic and drew 3 passes");
+        }
+        if let (Some(drop), 3) = (w.drop_px, w.passes) {
+            let info = ctx.input(|i| i.viewport().clone());
+            let ppp = info.native_pixels_per_point.unwrap_or(1.0);
+            let (dx, dy) = info.outer_rect.map_or((f32::NAN, f32::NAN), |r| (r.min.x * ppp - drop.x, r.min.y * ppp - drop.y));
+            let ok = dx.abs() <= 2.0 && dy.abs() <= 2.0;
+            result("drag_new_window", if ok { "PASS" } else { "INFO" }, &format!("{} requested at desktop_px=({:.0},{:.0}); outer top-left px off by ({dx:.0},{dy:.0}); ppp={ppp}; inner={:?}", w.title, drop.x, drop.y, info.inner_rect));
         }
         if self.mode == Mode::Clamp && w.passes == 3 {
             let info = ctx.input(|i| i.viewport().clone());
@@ -684,6 +694,15 @@ impl Spike {
                         Some((_, false)) => ("invalid", "cancel: dropped on a page area"),
                         None => ("desktop", "open the tab in a new window at the drop point"),
                     };
+                    if target.is_none() {
+                        // "New window at the drop point": the position is given in points, which
+                        // winit converts with a scale chosen before the window knows its monitor
+                        // (W0-6). The new window reports where it really landed.
+                        let n = self.windows.len() + 1;
+                        let mut w = WindowUi::new(&format!("drop-{n}-{:.0}-{:.0}", p.x, p.y), &format!("W0 sec D{n}"), &[("dragged.pdf", false)], [p.x / my_ppp, p.y / my_ppp], [360.0, 240.0]);
+                        w.drop_px = Some(p);
+                        self.windows.push(w);
+                    }
                     result("drag_drop", "INFO", &format!("from={from} release delivered to {who} at desktop_px=({:.0},{:.0}) target={:?} verdict={verdict} action={action}", p.x, p.y, target.map(|(id, strip)| (id, if strip { "tab strip" } else { "page" }))));
                 }
                 _ => {}
