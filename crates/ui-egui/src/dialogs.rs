@@ -1469,7 +1469,7 @@ fn dialog_signature(ui: &mut egui::Ui, app: &mut PdfCraftApp, req: &mut Pending)
             crate::fill_sign::FillTool::Signature
         };
         app.fill_tool = tool;
-        app.quick_tool = crate::QuickTool::Fill(tool);
+        app.win.quick_tool = crate::QuickTool::Fill(tool);
         app.toast = None;
     }
     req.close = req.apply || cancel;

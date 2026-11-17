@@ -32,13 +32,13 @@ impl PdfCraftApp {
         // (`/NonFullScreenPageMode`, Table 147), there when the prompt is declined or full
         // screen is left.
         let navigation = if v.full_screen { v.non_full_screen } else { v.navigation };
-        if self.win.active == Some(index) && !self.right_panel_closed {
+        if self.win.active == Some(index) && !self.win.right_panel_closed {
             match navigation {
                 N::PageOnly => {}
-                N::Bookmarks => self.right = Some(RightPanel::Bookmarks),
-                N::Pages => self.right = Some(RightPanel::Pages),
-                N::Attachments => self.right = Some(RightPanel::Attachments),
-                N::Layers => self.right = Some(RightPanel::Layers),
+                N::Bookmarks => self.win.right = Some(RightPanel::Bookmarks),
+                N::Pages => self.win.right = Some(RightPanel::Pages),
+                N::Attachments => self.win.right = Some(RightPanel::Attachments),
+                N::Layers => self.win.right = Some(RightPanel::Layers),
             }
         }
         let view = &mut self.win.views[index];
@@ -371,7 +371,7 @@ impl PdfCraftApp {
         if activate {
             self.leave_portfolio();
         }
-        let right_before = self.right;
+        let right_before = self.win.right;
         // The reading-colours preference is app-wide: a newly opened document starts with it.
         // Idempotent: the engine returns `false` when the document has the setting already.
         self.session.set_reading_colors(id, self.reading_colors);
@@ -391,8 +391,8 @@ impl PdfCraftApp {
                 pdfcraft_render::AttachmentSource::Document { key } => Some(key.clone()),
                 pdfcraft_render::AttachmentSource::Annotation { .. } => None,
             });
-        if activate && self.right.is_none() && !self.right_panel_closed && opening_mode != Mode::Read {
-            self.right = if !doc.info.annotations.is_empty() {
+        if activate && self.win.right.is_none() && !self.win.right_panel_closed && opening_mode != Mode::Read {
+            self.win.right = if !doc.info.annotations.is_empty() {
                 Some(RightPanel::Comments)
             // A full-screen document names its panel for outside full screen, and with
             // `/NonFullScreenPageMode /UseNone` (the default) no outline is visible (Table 147).
@@ -436,15 +436,15 @@ impl PdfCraftApp {
             self.portfolio_initial = portfolio_initial.map(|key| (id, key));
         }
         if activate
-            && self.left_open
-            && self.left == LeftPanel::Tool("organize")
+            && self.win.left_open
+            && self.win.left == LeftPanel::Tool("organize")
             && let Some(view) = self.win.views.last_mut()
         {
             view.open_organize();
         }
         // The document shows, not the expanded All tools view over it (whichever workspace opens).
         if activate {
-            self.all_tools_full = false;
+            self.win.all_tools_full = false;
         }
         if activate && let Some(mode) = self.mode_override {
             // Explicit mode options do not reset independent --tool / --left choices.
@@ -452,9 +452,9 @@ impl PdfCraftApp {
         } else if activate && self.mode != self.default_mode {
             // Switch workspace like the mode bar, but a left panel the user (or `--left closed`)
             // closed stays closed, and an unchanged mode keeps the tool panel the user chose.
-            let left_open = self.left_open;
+            let left_open = self.win.left_open;
             self.select_mode(self.default_mode);
-            self.left_open = left_open;
+            self.win.left_open = left_open;
         }
         if let Some(p) = path {
             #[cfg(target_os = "macos")]
@@ -599,10 +599,10 @@ impl PdfCraftApp {
         self.leave_portfolio();
         if let Some(id) = active
             && self.mode != Mode::Read
-            && self.right != Some(RightPanel::Attachments)
+            && self.win.right != Some(RightPanel::Attachments)
             && self.lists_files(id)
         {
-            self.show_portfolio_files(id, self.right);
+            self.show_portfolio_files(id, self.win.right);
         }
         self.portfolio_seen = active;
     }
@@ -618,7 +618,7 @@ impl PdfCraftApp {
     fn show_portfolio_files(&mut self, id: DocId, before: Option<RightPanel>) {
         self.portfolio_seen = Some(id);
         self.portfolio_panel = Some(before);
-        self.right = Some(RightPanel::Attachments);
+        self.win.right = Some(RightPanel::Attachments);
     }
 
     /// Where in `doc`'s attachments now the file its name tree keys `key` is: an attachment
@@ -654,11 +654,11 @@ impl PdfCraftApp {
         self.portfolio_seen = None;
         let Some(before) = self.portfolio_panel.take() else { return };
         if self.mode == Mode::Read {
-            if self.right_before_read == Some(RightPanel::Attachments) {
-                self.right_before_read = before;
+            if self.win.right_before_read == Some(RightPanel::Attachments) {
+                self.win.right_before_read = before;
             }
-        } else if self.right == Some(RightPanel::Attachments) {
-            self.right = before;
+        } else if self.win.right == Some(RightPanel::Attachments) {
+            self.win.right = before;
         }
     }
 

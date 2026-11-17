@@ -482,7 +482,7 @@ impl PdfCraftApp {
     /// What may run from the menus now: a dialog, a prompt or the command palette holds the
     /// window. Edit's text items stay with a focused text field (craft-menu's gate).
     pub fn menu_gate(&self, ctx: &egui::Context) -> Gate {
-        Gate { modal: self.modal_open() || self.palette_open, recording_shortcut: false, text_editing: ctx.text_edit_focused() }
+        Gate { modal: self.modal_open() || self.win.palette_open, recording_shortcut: false, text_editing: ctx.text_edit_focused() }
     }
 
     /// Whether a menu item's command can run now, and its checked or selected state.
@@ -495,7 +495,7 @@ impl PdfCraftApp {
         let text = ctx.text_edit_focused() && matches!(command.id.as_str(), "edit.undo" | "edit.redo" | "edit.copy" | CUT | PASTE | SELECT_ALL);
         // Objects selected together in Edit a PDF are what Copy and Cut take, and Paste brings
         // back objects copied there.
-        let edit_objects = self.quick_tool == crate::QuickTool::EditText && !organize;
+        let edit_objects = self.win.quick_tool == crate::QuickTool::EditText && !organize;
         let doc = self.active_ids().and_then(|(_, id)| self.session.get(id));
         let enabled = text
             || match command.id.as_str() {
@@ -528,13 +528,13 @@ impl PdfCraftApp {
             "view.layout.cover" => Some(view.is_some_and(|v| v.cover)),
             "view.full_screen" => Some(self.full_screen),
             "view.read_mode" => Some(self.mode == crate::Mode::Read),
-            "view.side_panel" => Some(self.right.is_some()),
-            "view.tools_pane" => Some(self.left_open),
+            "view.side_panel" => Some(self.win.right.is_some()),
+            "view.tools_pane" => Some(self.win.left_open),
             "view.split" => Some(self.win.panes.split.is_some()),
             "view.theme.system" => Some(self.theme_preference == ThemePreference::System),
             "view.theme.light" => Some(self.theme_preference == ThemePreference::Light),
             "view.theme.dark" => Some(self.theme_preference == ThemePreference::Dark),
-            PANEL => Some(panel(command).is_some_and(|p| self.right == Some(p))),
+            PANEL => Some(panel(command).is_some_and(|p| self.win.right == Some(p))),
             // This fork: Thin lines is app-wide (OV9); rulers and guides are the active PDF's (OV11).
             "view.thin_lines" => Some(self.thin_lines),
             "view.rulers" => Some(view.and_then(|v| self.doc_prefs.state(v.id)).is_some_and(|s| s.prefs.rulers)),
@@ -574,11 +574,11 @@ impl PdfCraftApp {
                     self.win.active = Some(i);
                 }
             }
-            "edit.copy" => self.menu_input.push(egui::Event::Copy),
-            CUT => self.menu_input.push(egui::Event::Cut),
-            PASTE => self.menu_pastes = self.menu_pastes.saturating_add(1),
-            SELECT_ALL => self.menu_input.extend(key(egui::Key::A, egui::Modifiers::COMMAND)),
-            DELETE => self.menu_input.extend(key(egui::Key::Delete, egui::Modifiers::NONE)),
+            "edit.copy" => self.win.menu_input.push(egui::Event::Copy),
+            CUT => self.win.menu_input.push(egui::Event::Cut),
+            PASTE => self.win.menu_pastes = self.win.menu_pastes.saturating_add(1),
+            SELECT_ALL => self.win.menu_input.extend(key(egui::Key::A, egui::Modifiers::COMMAND)),
+            DELETE => self.win.menu_input.extend(key(egui::Key::Delete, egui::Modifiers::NONE)),
             PANEL => self.choose_right_panel(panel(command)),
             ACTUAL_SIZE | PAGE_LEVEL | FIT_WIDTH | FIT_HEIGHT | ZOOM_IN | ZOOM_OUT | ROTATE_CW | ROTATE_CCW => {
                 let Some(v) = self.win.active.and_then(|i| self.win.views.get_mut(i)) else { return };
@@ -841,13 +841,13 @@ mod tests {
         assert_eq!(kind(&app, "view.layout.single"), ItemKind::Radio(false));
         assert_eq!(kind(&app, "view.layout.two_up"), ItemKind::Radio(true));
         assert_eq!(kind(&app, "view.continuous"), ItemKind::Check(!continuous));
-        let left = app.left_open;
+        let left = app.win.left_open;
         assert_eq!(kind(&app, "view.tools_pane"), ItemKind::Check(left));
         app.run_menu_command(&ctx, &CommandRef::new("view.tools_pane"));
         assert_eq!(kind(&app, "view.tools_pane"), ItemKind::Check(!left));
         let bookmarks = CommandRef::with_params(PANEL, serde_json::json!({ "panel": "bookmarks" }));
         app.run_menu_command(&ctx, &bookmarks);
-        assert_eq!(app.right, Some(RightPanel::Bookmarks));
+        assert_eq!(app.win.right, Some(RightPanel::Bookmarks));
         assert_eq!(item(&linux(&app, &ctx), &bookmarks).kind, ItemKind::Radio(true));
         assert_eq!(kind(&app, "view.side_panel"), ItemKind::Check(true));
     }

@@ -35,7 +35,7 @@ fn size(h: &Harness<'static, PdfCraftApp>, page: usize) -> (f32, f32) {
 fn the_crop_tool_crops_to_the_dragged_rectangle_then_returns_to_select() {
     let mut h = harness();
     assert!(h.state_mut().execute("page.crop"));
-    assert_eq!(h.state().quick_tool, QuickTool::Crop);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Crop);
     h.run_steps(2);
     crop_middle_half(&mut h);
 }
@@ -45,7 +45,7 @@ fn quick_toolbar_crop_crops_the_page_and_undo_restores_it() {
     let mut h = harness();
     h.get_by_label("Crop pages").click();
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Crop);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Crop);
     assert!(!h.state().win.views[0].organize);
     crop_middle_half(&mut h);
     assert!(h.state_mut().execute("edit.undo"));
@@ -76,7 +76,7 @@ fn quick_toolbar_crop_is_disabled_when_page_assembly_is_forbidden() {
     h.run_steps(6);
     assert!(h.get_by_label("Crop pages").accesskit_node().is_disabled());
     assert!(!h.state_mut().execute("page.crop"));
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
     assert_eq!(size(&h, 0), (300.0, 400.0));
 }
 
@@ -111,7 +111,7 @@ fn crop_middle_half(h: &mut Harness<'static, PdfCraftApp>) {
     let (w, hh) = size(h, 0);
     assert!((w - 150.0).abs() < 2.0 && (hh - 200.0).abs() < 2.0, "{w}×{hh}");
     assert_eq!(size(h, 1), (300.0, 400.0));
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
     assert_eq!(h.state().session.get(h.state().win.views[0].id).unwrap().can_undo(), Some("Crop page"));
 }
 
@@ -157,7 +157,7 @@ fn the_crop_tool_leaves_the_page_grid_so_a_page_can_be_cropped() {
     // a page instead of returning early to organize_grid.
     h.state_mut().win.views[0].organize = true;
     assert!(h.state_mut().execute("page.crop"));
-    assert_eq!(h.state().quick_tool, QuickTool::Crop);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Crop);
     assert!(!h.state().win.views[0].organize, "\"page.crop\" must clear view.organize");
     h.run_steps(2);
     let r = h.state().win.views[0].page_screen_rect(0).unwrap();

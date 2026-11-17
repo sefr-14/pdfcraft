@@ -2068,7 +2068,7 @@ fn replace_pages_from_pages_panel_context_menu() {
     let other = dir.join("other.pdf");
     std::fs::write(&other, fixture(5)).unwrap();
 
-    let mut h = harness(4, |app| app.right = Some(pdfcraft_ui_egui::RightPanel::Pages));
+    let mut h = harness(4, |app| app.win.right = Some(pdfcraft_ui_egui::RightPanel::Pages));
     h.state_mut().pick_override = Some(vec![other.to_string_lossy().into_owned()]);
     let thumb = h.get_all_by_label("Page 2").max_by(|a, b| a.rect().left().total_cmp(&b.rect().left())).unwrap();
     thumb.click_button(egui::PointerButton::Secondary);
@@ -2224,7 +2224,7 @@ fn panel_thumb_rect(h: &Harness<'static, PdfCraftApp>, label: &str) -> egui::Rec
 
 #[test]
 fn files_dropped_on_the_pages_panel_are_inserted_there() {
-    let mut h = harness(3, |app| app.right = Some(pdfcraft_ui_egui::RightPanel::Pages));
+    let mut h = harness(3, |app| app.win.right = Some(pdfcraft_ui_egui::RightPanel::Pages));
     // The top half of page 2's thumbnail: between pages 1 and 2.
     let thumb = panel_thumb_rect(&h, "Page 2");
     h.hover_at(thumb.center() - egui::vec2(0.0, thumb.height() * 0.25));
@@ -2236,7 +2236,7 @@ fn files_dropped_on_the_pages_panel_are_inserted_there() {
     assert_eq!(texts_of(h.state(), 0), ["Page 1", "Page 1", "Page 2", "a note", "Page 2", "Page 3"]);
     assert_eq!(picked(&h), [1, 2, 3], "the inserted pages are selected");
     // The bottom half of the last thumbnail: the end.
-    let mut h = harness(2, |app| app.right = Some(pdfcraft_ui_egui::RightPanel::Pages));
+    let mut h = harness(2, |app| app.win.right = Some(pdfcraft_ui_egui::RightPanel::Pages));
     let last = panel_thumb_rect(&h, "Page 2");
     h.hover_at(last.center() + egui::vec2(0.0, last.height() * 0.25));
     h.run_steps(2);
@@ -2248,7 +2248,7 @@ fn files_dropped_on_the_pages_panel_are_inserted_there() {
 
 #[test]
 fn files_dropped_beside_the_pages_panel_still_open_as_documents() {
-    let mut h = harness(2, |app| app.right = Some(pdfcraft_ui_egui::RightPanel::Pages));
+    let mut h = harness(2, |app| app.win.right = Some(pdfcraft_ui_egui::RightPanel::Pages));
     // Over the page view, not the panel.
     let thumb = panel_thumb_rect(&h, "Page 1");
     h.hover_at(egui::pos2(thumb.left() - 300.0, thumb.center().y));
@@ -2522,7 +2522,7 @@ fn split_from_organize_grid_context_menu() {
 
 #[test]
 fn split_from_pages_panel_context_menu() {
-    let mut h = harness(4, |app| app.right = Some(pdfcraft_ui_egui::RightPanel::Pages));
+    let mut h = harness(4, |app| app.win.right = Some(pdfcraft_ui_egui::RightPanel::Pages));
     let thumb = h.get_all_by_label("Page 3").max_by(|a, b| a.rect().left().total_cmp(&b.rect().left())).unwrap();
     thumb.click_button(egui::PointerButton::Secondary);
     h.run_steps(2);
@@ -2535,7 +2535,7 @@ fn split_from_pages_panel_context_menu() {
 
 #[test]
 fn split_from_pages_panel_context_menu_on_current_page_without_selection() {
-    let mut h = harness(4, |app| app.right = Some(pdfcraft_ui_egui::RightPanel::Pages));
+    let mut h = harness(4, |app| app.win.right = Some(pdfcraft_ui_egui::RightPanel::Pages));
     // Navigate to Page 2 (0-indexed 1) so it is current, but keep selected empty
     h.state_mut().win.views[0].go_to_page(1);
     h.state_mut().win.views[0].selected.clear();
@@ -2554,7 +2554,7 @@ fn split_from_pages_panel_context_menu_on_current_page_without_selection() {
 
 #[test]
 fn split_from_pages_panel_context_menu_on_page_one_falls_back_to_pages() {
-    let mut h = harness(4, |app| app.right = Some(pdfcraft_ui_egui::RightPanel::Pages));
+    let mut h = harness(4, |app| app.win.right = Some(pdfcraft_ui_egui::RightPanel::Pages));
     let thumb = h.get_all_by_label("Page 1").max_by(|a, b| a.rect().left().total_cmp(&b.rect().left())).unwrap();
     thumb.click_button(egui::PointerButton::Secondary);
     h.run_steps(2);
@@ -2566,7 +2566,7 @@ fn split_from_pages_panel_context_menu_on_page_one_falls_back_to_pages() {
 
 #[test]
 fn split_from_pages_panel_context_menu_with_multi_selection() {
-    let mut h = harness(4, |app| app.right = Some(pdfcraft_ui_egui::RightPanel::Pages));
+    let mut h = harness(4, |app| app.win.right = Some(pdfcraft_ui_egui::RightPanel::Pages));
     // Select pages 2 and 4 (indices 1 and 3)
     h.state_mut().win.views[0].select_pages(&[1, 3]);
     h.run_steps(2);
@@ -4231,7 +4231,7 @@ fn edit_tab_with_an_open_paragraph(h: &mut Harness<'static, PdfCraftApp>) {
     use pdfcraft_ui_egui::{Mode, QuickTool};
     support::outside_menus(h, "Edit").click();
     h.run_steps(3);
-    assert_eq!((h.state().mode, h.state().quick_tool), (Mode::Edit, QuickTool::EditText));
+    assert_eq!((h.state().mode, h.state().win.quick_tool), (Mode::Edit, QuickTool::EditText));
     open_the_first_line(h);
 }
 
@@ -4254,7 +4254,7 @@ fn open_the_first_line(h: &mut Harness<'static, PdfCraftApp>) {
 /// Edit was left with the paragraph [`edit_tab_with_an_open_paragraph`] opened: Edit text & images
 /// is put down, and the paragraph's edit is applied instead of its editor staying open over the page.
 fn assert_edit_text_put_down_and_the_paragraph_applied(s: &PdfCraftApp) {
-    assert_eq!(s.quick_tool, pdfcraft_ui_egui::QuickTool::Select, "Edit text & images is put down");
+    assert_eq!(s.win.quick_tool, pdfcraft_ui_egui::QuickTool::Select, "Edit text & images is put down");
     assert!(s.win.views[0].line_editor.is_none(), "no paragraph editor is left open");
     let doc = s.session.get(s.win.views[0].id).unwrap();
     assert_eq!(doc.can_undo(), Some("Edit text"), "the open paragraph's edit is applied");
@@ -4286,11 +4286,11 @@ fn the_edit_panel_back_arrow_applies_an_open_paragraph_and_puts_edit_text_down()
     // All tools ▸ Edit a PDF ▸ Edit text & images: the Edit panel, under All tools.
     assert!(h.state_mut().execute("edit.edit_text"));
     h.run_steps(3);
-    assert_eq!((h.state().mode, h.state().quick_tool), (Mode::AllTools, QuickTool::EditText));
+    assert_eq!((h.state().mode, h.state().win.quick_tool), (Mode::AllTools, QuickTool::EditText));
     open_the_first_line(&mut h);
     h.get_by_label("Back to all tools").click();
     h.run_steps(3);
-    assert_eq!((h.state().mode, h.state().left), (Mode::AllTools, LeftPanel::AllTools));
+    assert_eq!((h.state().mode, h.state().win.left), (Mode::AllTools, LeftPanel::AllTools));
     assert_edit_text_put_down_and_the_paragraph_applied(h.state());
 }
 
@@ -4308,7 +4308,7 @@ fn the_organize_back_arrow_applies_an_open_paragraph_and_puts_edit_text_down() {
     h.get_by_label("Back to all tools").click();
     h.run_steps(3);
     let s = h.state();
-    assert_eq!((s.mode, s.left), (Mode::AllTools, LeftPanel::AllTools));
+    assert_eq!((s.mode, s.win.left), (Mode::AllTools, LeftPanel::AllTools));
     assert!(!s.win.views[0].organize, "the grid closes");
     assert_edit_text_put_down_and_the_paragraph_applied(s);
 }
@@ -4476,7 +4476,7 @@ fn add_text_places_a_box_on_a_picture_and_beside_a_paragraph() {
         app
     });
     h.run_steps(4);
-    h.state_mut().quick_tool = pdfcraft_ui_egui::QuickTool::AddText;
+    h.state_mut().win.quick_tool = pdfcraft_ui_egui::QuickTool::AddText;
     h.run_steps(2);
     let c = h.state().win.views[0].page_screen_rect(0).expect("on screen").center();
     h.hover_at(c);
@@ -4486,7 +4486,7 @@ fn add_text_places_a_box_on_a_picture_and_beside_a_paragraph() {
     assert!(h.state().win.views[0].content.draft.is_some(), "a click on the picture starts a text box");
 
     let mut h = harness(2, |_| {});
-    h.state_mut().quick_tool = pdfcraft_ui_egui::QuickTool::AddText;
+    h.state_mut().win.quick_tool = pdfcraft_ui_egui::QuickTool::AddText;
     h.run_steps(2);
     let id = h.state().win.views[0].id;
     let block = h.state().session.get(id).unwrap().text_blocks(0)[0].clone();
@@ -4505,7 +4505,7 @@ fn add_text_places_a_box_on_a_picture_and_beside_a_paragraph() {
 #[test]
 fn add_text_opens_a_paragraph_from_just_inside_its_edge() {
     let mut h = harness(2, |_| {});
-    h.state_mut().quick_tool = pdfcraft_ui_egui::QuickTool::AddText;
+    h.state_mut().win.quick_tool = pdfcraft_ui_egui::QuickTool::AddText;
     h.run_steps(2);
     let id = h.state().win.views[0].id;
     let block = h.state().session.get(id).unwrap().text_blocks(0)[0].clone();
@@ -4528,7 +4528,7 @@ fn add_text_opens_a_paragraph_from_just_inside_its_edge() {
 #[test]
 fn add_text_finishes_a_paragraph_drag_that_leaves_its_box() {
     let mut h = harness(2, |_| {});
-    h.state_mut().quick_tool = pdfcraft_ui_egui::QuickTool::AddText;
+    h.state_mut().win.quick_tool = pdfcraft_ui_egui::QuickTool::AddText;
     h.run_steps(2);
     let id = h.state().win.views[0].id;
     let before = h.state().session.get(id).unwrap().text_blocks(0)[0].rect;
@@ -4826,7 +4826,7 @@ fn image_right_click_context_menu_items_and_actions() {
 fn default_page_context_menu_when_not_in_edit_mode() {
     let mut h = harness(1, |_| {});
     h.run_steps(4);
-    assert_eq!(h.state().quick_tool, pdfcraft_ui_egui::QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, pdfcraft_ui_egui::QuickTool::Select);
 
     let r = h.state().win.views[0].page_screen_rect(0).expect("on screen");
     let c = r.center();
@@ -4858,7 +4858,7 @@ fn default_page_context_menu_when_not_in_edit_mode() {
     // Clicking "Edit this PDF" enters edit mode
     h.get_by_label("Edit this PDF").click();
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, pdfcraft_ui_egui::QuickTool::EditText);
+    assert_eq!(h.state().win.quick_tool, pdfcraft_ui_egui::QuickTool::EditText);
 }
 
 #[test]
@@ -4871,7 +4871,7 @@ fn page_context_menu_items_disabled_on_protected_pdf() {
         app
     });
     h.run_steps(4);
-    assert_eq!(h.state().quick_tool, pdfcraft_ui_egui::QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, pdfcraft_ui_egui::QuickTool::Select);
 
     let doc_id = h.state().win.views[0].id;
     let doc = h.state().session.get(doc_id).unwrap();
@@ -5112,7 +5112,7 @@ fn the_format_panel_toggles_superscript_and_subscript_on_selection() {
 
     // Subscript toggle in added text:
     h.state_mut().win.views[0].line_editor = None;
-    h.state_mut().quick_tool = pdfcraft_ui_egui::QuickTool::AddText;
+    h.state_mut().win.quick_tool = pdfcraft_ui_egui::QuickTool::AddText;
     let draft = pdfcraft_ui_egui::TextDraft {
         page: 0,
         index: None,
@@ -5499,7 +5499,7 @@ fn another_tool_from_edit_a_pdf_applies_the_open_paragraph() {
     h.state_mut().set_option("tool", "edit").unwrap();
     h.run_steps(2);
     assert_ne!(h.state().mode, Mode::Edit, "Edit a PDF from All tools, not the Edit tab");
-    assert_eq!(h.state().quick_tool, QuickTool::EditText);
+    assert_eq!(h.state().win.quick_tool, QuickTool::EditText);
     let id = h.state().win.views[0].id;
     let b = h.state().session.get(id).unwrap().text_blocks(0)[0].clone();
     let r = h.state().win.views[0].page_screen_rect(0).expect("on screen");
@@ -5510,7 +5510,7 @@ fn another_tool_from_edit_a_pdf_applies_the_open_paragraph() {
     h.state_mut().set_option("tool", "organize").unwrap();
     h.run_steps(3);
     assert!(h.state().win.views[0].line_editor.is_none());
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
     assert_eq!(h.state().session.get(id).unwrap().text_blocks(0)[0].text, "Page one", "the typed text was applied");
 }
 
@@ -5903,7 +5903,7 @@ fn check_added_text_drag(panel_open: bool) {
         .unwrap();
     let original = h.state().session.save_bytes(id).unwrap();
     h = paragraph_drag_harness(original.as_ref().clone(), 0);
-    h.state_mut().left_open = panel_open;
+    h.state_mut().win.left_open = panel_open;
     h.run_steps(4);
     let added = |h: &Harness<'static, PdfCraftApp>| {
         let app = h.state();
@@ -6235,7 +6235,7 @@ fn print_shortcut_offers_the_pages_picked_in_the_pages_panel() {
 
 #[test]
 fn dragging_pages_panel_thumbnails_reorders_pages() {
-    let mut h = harness(4, |app| app.right = Some(pdfcraft_ui_egui::RightPanel::Pages));
+    let mut h = harness(4, |app| app.win.right = Some(pdfcraft_ui_egui::RightPanel::Pages));
     let before = page_texts(h.state());
     // The Pages panel is on the right; the document view may label its pages too.
     let thumb = |h: &Harness<'static, PdfCraftApp>, label: &str| {
@@ -6256,7 +6256,7 @@ fn dragging_pages_panel_thumbnails_reorders_pages() {
 #[test]
 fn resized_pages_panel_thumbnails_reorder_multiple_pages_and_undo() {
     let mut h = harness(4, |app| {
-        app.right = Some(pdfcraft_ui_egui::RightPanel::Pages);
+        app.win.right = Some(pdfcraft_ui_egui::RightPanel::Pages);
         app.set_option("thumbnail-zoom", "50").unwrap();
     });
     let before = page_texts(h.state());
@@ -6277,7 +6277,7 @@ fn resized_pages_panel_thumbnails_reorder_multiple_pages_and_undo() {
 
 #[test]
 fn a_thumbnail_drag_that_ends_off_the_panel_or_outlives_the_pages_is_dropped() {
-    let mut h = harness(4, |app| app.right = Some(pdfcraft_ui_egui::RightPanel::Pages));
+    let mut h = harness(4, |app| app.win.right = Some(pdfcraft_ui_egui::RightPanel::Pages));
     let before = page_texts(h.state());
     // A drag left over (the panel closed mid-drag, the button released elsewhere) moves nothing.
     h.state_mut().win.views[0].panel_drag = Some(vec![2]);
@@ -8034,7 +8034,7 @@ fn delete_waits_for_the_button_to_come_up() {
     }));
     assert!(h.state_mut().execute("edit.text"));
     h.run_steps(3);
-    h.state_mut().quick_tool = pdfcraft_ui_egui::QuickTool::Select;
+    h.state_mut().win.quick_tool = pdfcraft_ui_egui::QuickTool::Select;
     h.run_steps(3);
     let on_added = point_on(&h, 90.0, 258.0);
     slipping_click(&mut h, on_added, on_added);
@@ -8049,7 +8049,7 @@ fn delete_waits_for_the_button_to_come_up() {
 fn a_drag_first_seen_on_the_next_page_lets_the_picked_picture_go() {
     let mut h = picture_pages(false);
     h.state_mut().win.views[0].image_selection = None;
-    h.state_mut().quick_tool = pdfcraft_ui_egui::QuickTool::Select;
+    h.state_mut().win.quick_tool = pdfcraft_ui_egui::QuickTool::Select;
     h.run_steps(3);
     let on_picture = page_at(&h, 0, 100.0, 180.0);
     slipping_click(&mut h, on_picture, on_picture);
@@ -8283,7 +8283,7 @@ fn slipping_click(h: &mut Harness<'static, PdfCraftApp>, press: egui::Pos2, rele
 /// [`harness`]'s page 1 in Edit text (`tool`), and the screen point at PDF (x, y) on it.
 fn edit_page(tool: pdfcraft_ui_egui::QuickTool) -> Harness<'static, PdfCraftApp> {
     let mut h = harness(2, |_| {});
-    h.state_mut().quick_tool = tool;
+    h.state_mut().win.quick_tool = tool;
     h.run_steps(3);
     h
 }
@@ -8318,7 +8318,7 @@ fn a_click_on_added_text_released_just_beside_it_selects_it() {
     }));
     assert!(h.state_mut().execute("edit.text"));
     h.run_steps(3);
-    h.state_mut().quick_tool = pdfcraft_ui_egui::QuickTool::Select;
+    h.state_mut().win.quick_tool = pdfcraft_ui_egui::QuickTool::Select;
     h.run_steps(3);
     // The item takes presses 2 px past its box: pressed 1 px inside that, released 3 px past it.
     let edge = point_on(&h, 140.0, 258.0) + egui::vec2(2.0, 0.0);
@@ -8424,7 +8424,7 @@ fn organize_panel_comes_with_the_grid_and_closes_it() {
     h.get_by_label("Close panel").click();
     h.run_steps(3);
     assert!(!h.state().win.views[0].organize, "Close ends Organize");
-    assert_eq!(h.state().left, pdfcraft_ui_egui::LeftPanel::AllTools);
+    assert_eq!(h.state().win.left, pdfcraft_ui_egui::LeftPanel::AllTools);
     assert!(h.query_by_label("Page properties").is_none(), "the panel is gone");
 }
 
@@ -8554,24 +8554,24 @@ fn leaving_organize_goes_back_to_the_workspace_panel() {
     use pdfcraft_ui_egui::{LeftPanel, Mode};
     let mut h = harness(3, |_| {});
     h.state_mut().mode = Mode::Edit;
-    h.state_mut().left = LeftPanel::Tool("edit");
+    h.state_mut().win.left = LeftPanel::Tool("edit");
     h.run_steps(2);
-    h.state_mut().left = LeftPanel::Tool("organize");
+    h.state_mut().win.left = LeftPanel::Tool("organize");
     h.state_mut().win.views[0].organize = true;
     h.run_steps(3);
     h.get_by_label("Pages selected".to_uppercase().as_str());
     // What opening a page from the grid does.
     h.state_mut().win.views[0].organize = false;
     h.run_steps(3);
-    assert_eq!(h.state().left, LeftPanel::Tool("edit"), "back to the Edit panel");
+    assert_eq!(h.state().win.left, LeftPanel::Tool("edit"), "back to the Edit panel");
     // The same from All tools goes back to All tools.
     h.state_mut().mode = Mode::AllTools;
-    h.state_mut().left = LeftPanel::Tool("organize");
+    h.state_mut().win.left = LeftPanel::Tool("organize");
     h.state_mut().win.views[0].organize = true;
     h.run_steps(3);
     h.state_mut().win.views[0].organize = false;
     h.run_steps(3);
-    assert_eq!(h.state().left, LeftPanel::AllTools);
+    assert_eq!(h.state().win.left, LeftPanel::AllTools);
 }
 
 #[test]
@@ -8651,7 +8651,7 @@ fn added_and_pasted_image_uses_refactored_image_edits() {
     h.run_steps(3);
 
     // Verify refactored mode is active
-    assert_eq!(h.state().quick_tool, pdfcraft_ui_egui::QuickTool::EditText);
+    assert_eq!(h.state().win.quick_tool, pdfcraft_ui_egui::QuickTool::EditText);
     let id = h.state().win.views[0].id;
     let images = h.state().session.get(id).unwrap().page_images(0);
     assert_eq!(images.len(), 1, "image is added");
@@ -9597,7 +9597,7 @@ fn test_cropped_image_selection_and_bounding_box() {
     assert_eq!(pdfcraft_ui_egui::canvas::image_selectable_bounds(img), vis);
 
     // Select tool (mouse tool)
-    h.state_mut().quick_tool = pdfcraft_ui_egui::QuickTool::Select;
+    h.state_mut().win.quick_tool = pdfcraft_ui_egui::QuickTool::Select;
     h.run_steps(2);
 
     let page_rect = h.state().win.views[0].page_screen_rect(0).expect("on screen");
@@ -9779,7 +9779,7 @@ fn read_mode_shortcut_applies_the_open_paragraph() {
     h.run_steps(3);
     let s = h.state();
     assert_eq!(s.mode, Mode::Read);
-    assert_eq!(s.quick_tool, QuickTool::Select);
+    assert_eq!(s.win.quick_tool, QuickTool::Select);
     assert!(s.win.views[0].line_editor.is_none(), "no editor stays open in Read mode");
     assert_eq!(s.session.get(s.win.views[0].id).unwrap().text_lines(0)[0].text, "Chapter One", "the edit is applied");
 }

@@ -40,7 +40,7 @@ fn a_deferred_shortcut_runs_once_whatever_the_logic_passes() {
     assert!(!h.state().thin_lines);
     let key = h.state().active_key();
     // Thin lines toggles: run twice, it would be off again.
-    h.state_mut().deferred_commands.push(("view.thin_lines", key));
+    h.state_mut().win.deferred_commands.push(("view.thin_lines", key));
     hidden_logic(&mut h, 3);
     assert!(h.state().thin_lines, "run once");
     h.run_steps(3);

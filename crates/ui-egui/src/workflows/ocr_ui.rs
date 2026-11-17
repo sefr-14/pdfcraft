@@ -499,8 +499,8 @@ impl PdfCraftApp {
     fn scan_to_read(&mut self) -> Option<ScanToRead> {
         // Edit is on when its panel is open (the Edit tab) or Edit text & images or Add text is picked,
         // the same test the page view uses for editing content.
-        let editing = (self.left_open && self.left == crate::LeftPanel::Tool("edit"))
-            || matches!(self.quick_tool, crate::QuickTool::EditText | crate::QuickTool::AddText);
+        let editing = (self.win.left_open && self.win.left == crate::LeftPanel::Tool("edit"))
+            || matches!(self.win.quick_tool, crate::QuickTool::EditText | crate::QuickTool::AddText);
         // Not in Read mode (which leaves the Edit tool picked but is not editing) and not beneath a
         // dialog or prompt: nothing may change the document under those. It is tried again once
         // they are gone.
@@ -1091,7 +1091,7 @@ mod tests {
     fn app_with(pdf: Vec<u8>) -> PdfCraftApp {
         let mut app = PdfCraftApp::new();
         app.open_bytes("doc.pdf", None, pdf).unwrap();
-        app.quick_tool = QuickTool::EditText;
+        app.win.quick_tool = QuickTool::EditText;
         app
     }
 
@@ -1113,13 +1113,13 @@ mod tests {
     #[test]
     fn only_edit_being_on_starts_it() {
         let mut app = app_with(scan());
-        app.quick_tool = QuickTool::Select;
+        app.win.quick_tool = QuickTool::Select;
         assert_eq!(found(&mut app), None, "another tool");
         // The Edit tab's panel counts, as for the page view, with no tool picked.
-        app.left = LeftPanel::Tool("edit");
-        app.left_open = true;
+        app.win.left = LeftPanel::Tool("edit");
+        app.win.left_open = true;
         assert_eq!(found(&mut app), Some(0), "the Edit panel");
-        app.left_open = false;
+        app.win.left_open = false;
         assert_eq!(found(&mut app), None, "the Edit panel closed");
     }
 

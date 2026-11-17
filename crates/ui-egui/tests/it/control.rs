@@ -731,7 +731,7 @@ fn moving_before_middle_button_release_keeps_scrolling_without_starting_page_too
     h.state_mut().win.views[0].go_to_page(0);
     h.run_steps(2);
     // A middle drag must not also draw with a selected tool (egui accepts any drag button).
-    h.state_mut().quick_tool = pdfcraft_ui_egui::QuickTool::Crop;
+    h.state_mut().win.quick_tool = pdfcraft_ui_egui::QuickTool::Crop;
     let p = h.state().win.views[0].viewport_rect().center();
     let top = h.state().win.views[0].page_screen_rect(0).unwrap().top();
     ok(&mut h, &c, "ui.drag", json!({ "from": [p.x, p.y], "to": [p.x, p.y + 60.0], "steps": 12, "button": "middle" }));
@@ -993,7 +993,7 @@ fn middle_button_pans_while_held_outside_linux() {
     h.run_steps(3);
     h.state_mut().win.views[0].go_to_page(1);
     h.run_steps(2);
-    h.state_mut().quick_tool = pdfcraft_ui_egui::QuickTool::Crop;
+    h.state_mut().win.quick_tool = pdfcraft_ui_egui::QuickTool::Crop;
     let p = h.state().win.views[0].viewport_rect().center();
     let top = h.state().win.views[0].page_screen_rect(1).unwrap().top();
     ok(&mut h, &c, "ui.drag", json!({ "from": [p.x, p.y], "to": [p.x, p.y - 60.0], "steps": 12, "button": "middle" }));
@@ -1073,7 +1073,7 @@ fn japanese_controls_and_search_keep_command_ids() {
         let hits = ok(&mut h, &c, "ui.inspect", json!({ "query": translated }));
         assert!(hits["count"].as_u64().unwrap() > 0, "{query}: {hits}");
         ok(&mut h, &c, "ui.key", json!({ "key": "Escape" }));
-        h.state_mut().palette_query.clear();
+        h.state_mut().win.palette_query.clear();
     }
     assert_eq!(ok(&mut h, &c, "ui.state", json!({}))["documents"][0]["name"], "doc.pdf");
     ok(&mut h, &c, "ui.set", json!({ "key": "language", "value": "en" }));
@@ -1114,7 +1114,7 @@ fn german_preferences_and_search_keep_command_ids() {
         let hits = ok(&mut h, &c, "ui.inspect", json!({ "query": "Dokument teilen…" }));
         assert!(hits["count"].as_u64().unwrap() > 0, "{query}: {hits}");
         ok(&mut h, &c, "ui.key", json!({ "key": "Escape" }));
-        h.state_mut().palette_query.clear();
+        h.state_mut().win.palette_query.clear();
     }
     assert_eq!(ok(&mut h, &c, "ui.state", json!({}))["documents"][0]["name"], "doc.pdf");
 }
@@ -1142,7 +1142,7 @@ fn ukrainian_preferences_and_search_keep_command_ids() {
         let hits = ok(&mut h, &c, "ui.inspect", json!({ "query": "Розділити документ…" }));
         assert!(hits["count"].as_u64().unwrap() > 0, "{query}: {hits}");
         ok(&mut h, &c, "ui.key", json!({ "key": "Escape" }));
-        h.state_mut().palette_query.clear();
+        h.state_mut().win.palette_query.clear();
     }
     for (dialog, label) in [("properties", "Властивості документа"), ("protect", "Захистити паролем"), ("about", "Учасники")]
     {
@@ -1796,10 +1796,10 @@ fn ui_panel_opens_closes_and_sizes_panes_and_survives_restore() {
     assert_eq!(state["side_panels"]["tools_width"], 520.0);
     ok(&mut h, &c, "ui.panel", json!({"panel":"tools", "width": 300, "open": false}));
     h.run_steps(3);
-    assert!(!h.state().left_open);
+    assert!(!h.state().win.left_open);
     ok(&mut h, &c, "ui.panel", json!({"panel":"side", "open": false}));
     h.run_steps(3);
-    assert_eq!(h.state().right, None);
+    assert_eq!(h.state().win.right, None);
     assert!(h.query_by_label("This document has no bookmarks.").is_none());
     // Reopening the side panel brings back the one open last.
     ok(&mut h, &c, "ui.panel", json!({"panel":"side", "open": true}));
@@ -1817,7 +1817,7 @@ fn ui_panel_opens_closes_and_sizes_panes_and_survives_restore() {
     );
     // The ui.command form and the reset command.
     ok(&mut reloaded, &client, "ui.command", json!({"id":"ui.panel", "params":{"panel":"tools", "open":true}}));
-    assert!(reloaded.state().left_open);
+    assert!(reloaded.state().win.left_open);
     ok(&mut reloaded, &client, "ui.panel", json!({"panel":"tools", "width": 300}));
     ok(&mut reloaded, &client, "ui.set", json!({"key":"tools-side", "value":"right"}));
     ok(&mut reloaded, &client, "ui.command", json!({"id":"ui.dock.reset"}));
@@ -1872,7 +1872,7 @@ fn home_and_combine_hide_the_side_panel_without_forgetting_it() {
         }
         h.run_steps(4);
         assert!(h.query_by_label("This document has no bookmarks.").is_none());
-        assert_eq!(h.state().right, Some(pdfcraft_ui_egui::RightPanel::Bookmarks));
+        assert_eq!(h.state().win.right, Some(pdfcraft_ui_egui::RightPanel::Bookmarks));
         assert_eq!(ok(&mut h, &c, "ui.state", json!({}))["side_panels"], before);
         h.state_mut().win.active = Some(0);
         h.state_mut().combine_tab.focused = false;
@@ -1887,7 +1887,7 @@ fn malformed_panel_settings_preserve_other_preferences() {
     let mut app = PdfCraftApp::new();
     app.restore(r#"{"docking":{"layout":{"root":null,"floating":[]},"hidden":[]},"default_mode":"edit","flatten_fill_sign":true}"#);
     assert_eq!(app.default_mode, pdfcraft_ui_egui::Mode::Edit);
-    assert_eq!(app.side_panels, pdfcraft_ui_egui::side_panels::SidePanels::default());
+    assert_eq!(app.win.side_panels, pdfcraft_ui_egui::side_panels::SidePanels::default());
     let saved: Value = serde_json::from_str(&app.persist()).unwrap();
     assert_eq!(saved["default_mode"], "edit");
     assert_eq!(saved["flatten_fill_sign"], true);
@@ -1905,7 +1905,7 @@ fn rail_opens_a_panel_then_closes_the_open_one() {
     h.get_by_label("This document has no bookmarks.");
     h.get_by_role_and_label(egui::accesskit::Role::Button, "Bookmarks").click();
     h.run_steps(4);
-    assert_eq!(h.state().right, None);
+    assert_eq!(h.state().win.right, None);
     assert!(h.query_by_label("This document has no bookmarks.").is_none());
     assert_eq!(ok(&mut h, &c, "ui.state", json!({}))["documents"], document);
 }
@@ -1962,10 +1962,10 @@ fn read_mode_retains_existing_rail_click_to_close_policy() {
     ok(&mut h, &c, "ui.set", json!({"key":"panel", "value":"bookmarks"}));
     ok(&mut h, &c, "ui.set", json!({"key":"mode", "value":"read"}));
     h.run_steps(3);
-    assert_eq!(h.state().right, Some(pdfcraft_ui_egui::RightPanel::Bookmarks));
+    assert_eq!(h.state().win.right, Some(pdfcraft_ui_egui::RightPanel::Bookmarks));
     h.get_by_role_and_label(egui::accesskit::Role::Button, "Bookmarks").click();
     h.run_steps(3);
-    assert_eq!(h.state().right, None);
+    assert_eq!(h.state().win.right, None);
     assert_eq!(h.state().mode, pdfcraft_ui_egui::Mode::Read);
 }
 

@@ -156,22 +156,22 @@ fn a_full_screen_document_shows_its_non_full_screen_panel_outside_full_screen() 
     for (mode, want) in [("UseThumbs", Some(RightPanel::Pages)), ("UseOC", Some(RightPanel::Layers)), ("UseNone", None)] {
         let mut h = harness(&format!("/PageMode /FullScreen /ViewerPreferences << /NonFullScreenPageMode /{mode} >>"));
         assert!(h.state().pending_full_screen.is_some(), "{mode}: full screen is asked for");
-        assert_eq!(h.state().right, want, "{mode}: the panel behind the prompt");
+        assert_eq!(h.state().win.right, want, "{mode}: the panel behind the prompt");
         // Declining it leaves that panel.
         let ctx = h.ctx.clone();
         h.state_mut().resolve_full_screen_prompt(&ctx, false);
         h.run_steps(2);
-        assert_eq!((h.state().full_screen, h.state().right), (false, want), "{mode}: declined");
+        assert_eq!((h.state().full_screen, h.state().win.right), (false, want), "{mode}: declined");
         // Entering and leaving full screen comes back to it.
         h.state_mut().apply_full_screen(true);
         h.run_steps(2);
         h.state_mut().apply_full_screen(false);
         h.run_steps(2);
-        assert_eq!(h.state().right, want, "{mode}: after full screen");
+        assert_eq!(h.state().win.right, want, "{mode}: after full screen");
     }
     // Without /PageMode /FullScreen the entry means nothing.
     let h = harness("/ViewerPreferences << /NonFullScreenPageMode /UseThumbs >>");
-    assert_eq!(h.state().right, None);
+    assert_eq!(h.state().win.right, None);
 }
 
 #[test]
@@ -183,11 +183,11 @@ fn a_full_screen_document_with_an_outline_shows_it_only_when_it_asks_to() {
         ("/ViewerPreferences << /NonFullScreenPageMode /UseOutlines >>", Some(RightPanel::Bookmarks)),
     ] {
         let h = harness(&format!("/Outlines 9 0 R /PageMode /FullScreen {prefs}"));
-        assert_eq!(h.state().right, want, "{prefs}");
+        assert_eq!(h.state().win.right, want, "{prefs}");
     }
     // Not in full screen, a document with an outline still opens on it.
     let h = harness("/Outlines 9 0 R");
-    assert_eq!(h.state().right, Some(RightPanel::Bookmarks));
+    assert_eq!(h.state().win.right, Some(RightPanel::Bookmarks));
 }
 
 /// Named destinations for open parameters: `intro` (page 2) in the catalog's /Dests and

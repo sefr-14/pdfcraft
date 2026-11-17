@@ -84,7 +84,7 @@ fn pin_from_quick_bar_survives_restart_and_unpinning() {
     shot(&mut h, "pin-restored.png");
     callout(&mut h, 140.0);
     crate::support::wait_until(&mut h, "the pinned callout", |app| app.session.get(app.win.views[0].id).unwrap().info.annotations.len() == 1);
-    assert!(matches!(h.state().quick_tool, QuickTool::Comment(CommentTool::Callout)), "the restored pin keeps the tool selected after use");
+    assert!(matches!(h.state().win.quick_tool, QuickTool::Comment(CommentTool::Callout)), "the restored pin keeps the tool selected after use");
 
     h.get_by_label("Keep tool selected: on").click();
     h.run_steps(3);
@@ -93,9 +93,9 @@ fn pin_from_quick_bar_survives_restart_and_unpinning() {
     let saved = h.state().persist();
     callout(&mut h, 60.0);
     crate::support::wait_until(&mut h, "the unpinned callout returning to Select", |app| {
-        app.session.get(app.win.views[0].id).unwrap().info.annotations.len() == 2 && matches!(app.quick_tool, QuickTool::Select)
+        app.session.get(app.win.views[0].id).unwrap().info.annotations.len() == 2 && matches!(app.win.quick_tool, QuickTool::Select)
     });
-    assert!(!matches!(h.state().quick_tool, QuickTool::Comment(_)), "unpinning restores one-shot use");
+    assert!(!matches!(h.state().win.quick_tool, QuickTool::Comment(_)), "unpinning restores one-shot use");
 
     let mut restored = PdfCraftApp::new();
     restored.comment_prefs.pinned = true;
@@ -115,7 +115,7 @@ fn saved_pin_round_trips_both_boolean_values() {
         restored.comment_prefs.pinned = !pinned;
         restored.restore(&saved);
         assert_eq!(restored.comment_prefs.pinned, pinned);
-        assert!(matches!(restored.quick_tool, QuickTool::Select), "remembering the pin does not select a drawing tool at startup");
+        assert!(matches!(restored.win.quick_tool, QuickTool::Select), "remembering the pin does not select a drawing tool at startup");
     }
 }
 

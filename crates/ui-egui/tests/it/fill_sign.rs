@@ -120,10 +120,10 @@ fn the_line_mark_runs_across_turned_pages() {
 fn text_marks_and_date() {
     let mut h = harness();
     assert!(h.state_mut().execute("sign.fill.check"));
-    assert!(matches!(h.state().quick_tool, QuickTool::Fill(_)));
+    assert!(matches!(h.state().win.quick_tool, QuickTool::Fill(_)));
     click(&mut h, 50.0, 350.0);
     click(&mut h, 80.0, 350.0);
-    assert_eq!(h.state().quick_tool, QuickTool::Fill(FillTool::Check), "checkmarks stay repeatable");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Fill(FillTool::Check), "checkmarks stay repeatable");
     h.state_mut().execute("sign.fill.date");
     click(&mut h, 50.0, 300.0);
     h.state_mut().execute("sign.fill.text");
@@ -170,20 +170,20 @@ fn escape_leaves_the_fill_and_sign_tools() {
     h.key_press(egui::Key::Escape);
     h.run_steps(2);
     assert!(h.state().win.views[0].fill_text.is_none(), "the first Escape closes the box");
-    assert_eq!(h.state().quick_tool, QuickTool::Fill(FillTool::Text), "the tool stays for the next box");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Fill(FillTool::Text), "the tool stays for the next box");
     h.key_press(egui::Key::Escape);
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Select, "the next Escape leaves the tool");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select, "the next Escape leaves the tool");
     click(&mut h, 50.0, 150.0);
     assert!(h.state().win.views[0].fill_text.is_none(), "no new box");
     assert!(items(&h).is_empty(), "nothing was added: {:?}", items(&h));
     // A mark tool too.
     h.state_mut().execute("sign.fill.check");
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Fill(FillTool::Check));
+    assert_eq!(h.state().win.quick_tool, QuickTool::Fill(FillTool::Check));
     h.key_press(egui::Key::Escape);
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
 }
 
 /// A box opened while a comment is selected deselects it: two presses of Escape still close the
@@ -207,7 +207,7 @@ fn escape_leaves_the_text_tool_in_two_presses_after_a_selection() {
     assert!(h.state().win.views[0].fill_text.is_none(), "the first Escape closes the box");
     h.key_press(egui::Key::Escape);
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Select, "the second Escape leaves the tool");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select, "the second Escape leaves the tool");
 }
 
 #[test]
@@ -744,7 +744,7 @@ fn signing_draws_a_signature_once_and_places_it() {
     assert_eq!(h.state().dialog, None);
     click(&mut h, 60.0, 100.0);
     assert!(items(&h).iter().any(|(t, _)| t == "Ink"));
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
     assert_eq!(h.state().win.views[0].comments.selected, Some((0, 0)));
     // The signature is remembered (persisted with the app's settings).
     let saved = h.state().persist();
@@ -768,7 +768,7 @@ fn typed_signatures_and_initials() {
     assert_eq!(h.state().signature, Some(pdfcraft_ui_egui::fill_sign::SavedSig::Typed("Grace Hopper".into())));
     click(&mut h, 60.0, 100.0);
     assert!(items(&h).iter().any(|(t, _)| t == "Stamp"), "typed signatures are filled outlines");
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
     // Initials: their own pad (GH), then placed.
     assert!(h.state_mut().execute("sign.fill.initials"));
     h.run_steps(2);
@@ -816,7 +816,7 @@ fn changing_saved_signatures_and_initials_preserves_placed_marks() {
     h.run_steps(3);
     assert_eq!(h.state().signature, Some(SavedSig::Typed("Grace Hopper".into())));
     assert_eq!(h.state().initials, Some(SavedSig::Typed("AL".into())));
-    assert_eq!(h.state().quick_tool, QuickTool::Fill(FillTool::Signature));
+    assert_eq!(h.state().win.quick_tool, QuickTool::Fill(FillTool::Signature));
     assert_eq!(format!("{:?}", h.state().session.get(h.state().win.views[0].id).unwrap().info.annotations), original);
     click(&mut h, 40.0, 200.0);
     assert_eq!(items(&h).len(), 2);
@@ -832,7 +832,7 @@ fn changing_saved_signatures_and_initials_preserves_placed_marks() {
     h.state_mut().signature_draft.text = "GH".into();
     h.get_by_label("Apply").click();
     h.run_steps(3);
-    assert_eq!(h.state().quick_tool, QuickTool::Fill(FillTool::Initials));
+    assert_eq!(h.state().win.quick_tool, QuickTool::Fill(FillTool::Initials));
     click(&mut h, 40.0, 100.0);
     assert_eq!(items(&h).len(), 3);
     let mut again = PdfCraftApp::new();
@@ -872,7 +872,7 @@ fn changing_drawn_signatures_can_be_cancelled_or_switched_to_type() {
     let drawn = SavedSig::Drawn(vec![vec![[0.1, 0.1], [0.5, 0.2], [0.9, 0.1]]]);
     h.state_mut().signature = Some(drawn.clone());
     h.state_mut().initials = Some(SavedSig::Typed("AL".into()));
-    h.state_mut().quick_tool = QuickTool::Fill(FillTool::Check);
+    h.state_mut().win.quick_tool = QuickTool::Fill(FillTool::Check);
     assert!(h.state_mut().execute("sign.fill.signature.change"));
     h.run_steps(2);
     assert!(h.state().signature_draft.drawing);
@@ -883,7 +883,7 @@ fn changing_drawn_signatures_can_be_cancelled_or_switched_to_type() {
     h.get_by_label("Cancel").click();
     h.run_steps(3);
     assert_eq!(h.state().signature, Some(drawn.clone()));
-    assert_eq!(h.state().quick_tool, QuickTool::Fill(FillTool::Check));
+    assert_eq!(h.state().win.quick_tool, QuickTool::Fill(FillTool::Check));
 
     assert!(h.state_mut().execute("sign.fill.signature.change"));
     h.run_steps(2);
@@ -905,8 +905,8 @@ fn saved_signature_cards_remove_and_add_without_changing_the_document() {
     h.state_mut().execute("sign.fill.signature");
     click(&mut h, 40.0, 300.0);
     let original = format!("{:?}", h.state().session.get(h.state().win.views[0].id).unwrap().info.annotations);
-    h.state_mut().left = pdfcraft_ui_egui::LeftPanel::Tool("fill_sign");
-    h.state_mut().left_open = true;
+    h.state_mut().win.left = pdfcraft_ui_egui::LeftPanel::Tool("fill_sign");
+    h.state_mut().win.left_open = true;
     h.run_steps(3);
     h.get_by_label("Use signature").click();
     h.run_steps(2);
@@ -1007,7 +1007,7 @@ fn image_signatures_and_initials_can_be_imported_placed_and_remembered() {
         h.get_by_label("Apply").click();
         h.run_steps(3);
         click(&mut h, 40.0, y);
-        assert_eq!(h.state().quick_tool, QuickTool::Select);
+        assert_eq!(h.state().win.quick_tool, QuickTool::Select);
         assert_eq!(h.state().win.views[0].comments.selected, Some((0, usize::from(initials))));
     }
     assert_eq!(items(&h).len(), 2);
@@ -1134,7 +1134,7 @@ fn image_signature_placement_selects_resize_handles_and_requires_reselecting_to_
     h.state_mut().comment_prefs.pinned = true;
     h.state_mut().execute("sign.fill.signature");
     click(&mut h, 40.0, 250.0);
-    assert_eq!(h.state().quick_tool, QuickTool::Select, "signatures place once even when comment tools are pinned");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select, "signatures place once even when comment tools are pinned");
     assert_eq!(h.state().win.views[0].comments.selected, Some((0, 0)));
     let placed = rendered_ink(&mut h, 90.0, 250.0);
     if let Ok(dir) = std::env::var("PDFCRAFT_SHOTS") {
@@ -1174,7 +1174,7 @@ fn image_signature_placement_selects_resize_handles_and_requires_reselecting_to_
     assert_eq!(items(&h).len(), 2, "selecting the saved signature again places another");
     h.state_mut().execute("sign.fill.initials");
     click(&mut h, 40.0, 100.0);
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
     assert_eq!(h.state().win.views[0].comments.selected, Some((0, 2)));
     std::fs::remove_file(path).unwrap();
 }
@@ -1691,7 +1691,7 @@ fn fill_and_sign_tools_pick_up_placed_marks_to_move_and_resize_them() {
         assert_eq!(h.output().platform_output.cursor_icon, egui::CursorIcon::Move, "{tool}: a placed mark can be picked up");
 
         drag(&mut h, mid, (mid.0 + 40.0, mid.1 - 60.0));
-        assert!(matches!(h.state().quick_tool, QuickTool::Fill(_)), "{tool}: the tool stays");
+        assert!(matches!(h.state().win.quick_tool, QuickTool::Fill(_)), "{tool}: the tool stays");
         let moved = [placed[0] + 40.0, placed[1] - 60.0, placed[2] + 40.0, placed[3] - 60.0];
         let [now] = rects(&h)[..] else { panic!("{tool}: still one mark: {:?}", rects(&h)) };
         assert_rect(now, moved);
@@ -1749,7 +1749,7 @@ fn fill_and_sign_tools_pick_up_placed_marks_to_move_and_resize_them() {
     click(&mut h, 60.0, 100.0);
     click(&mut h, 150.0, 110.0);
     assert_eq!(items(&h).len(), 4, "{:?}", items(&h));
-    assert_eq!(h.state().quick_tool, QuickTool::Fill(FillTool::Check));
+    assert_eq!(h.state().win.quick_tool, QuickTool::Fill(FillTool::Check));
 }
 
 /// A drawn signature resizes from its handles like typed and image ones: the corners keep its
@@ -1761,7 +1761,7 @@ fn drawn_signatures_resize_from_their_corners() {
     h.state_mut().execute("sign.fill.signature");
     click(&mut h, 40.0, 250.0);
     let [placed] = rects(&h)[..] else { panic!("one signature: {:?}", rects(&h)) };
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
     assert_eq!(h.state().win.views[0].comments.selected, Some((0, 0)), "the placed signature is selected");
 
     // The top-right corner handle, dragged out and a little up.
@@ -1886,7 +1886,7 @@ fn select_tool_picks_up_a_signature_over_a_form_field() {
     let dy = (190.0 - mid_y) as f64;
     h.state_mut().session.apply(id, pdfcraft_engine::Edit::MoveAnnotation { page: 0, index, dx: 0.0, dy }).unwrap();
     h.state_mut().win.views[0].comments.selected = None;
-    h.state_mut().quick_tool = QuickTool::Select;
+    h.state_mut().win.quick_tool = QuickTool::Select;
     h.run_steps(3);
     let [over] = rects(&h)[..] else { panic!("one signature: {:?}", rects(&h)) };
     let mid = ((over[0] + over[2]) / 2.0, (over[1] + over[3]) / 2.0);
@@ -2196,8 +2196,8 @@ fn the_first_save_after_placing_a_signature_asks_to_lock_it() {
     h.key_press(egui::Key::Escape);
     h.run_steps(2);
     assert!(h.query_by_label("Lock into the page when saving").is_none(), "the panel is closed");
-    h.state_mut().left = pdfcraft_ui_egui::LeftPanel::Tool("fill_sign");
-    h.state_mut().left_open = true;
+    h.state_mut().win.left = pdfcraft_ui_egui::LeftPanel::Tool("fill_sign");
+    h.state_mut().win.left_open = true;
     h.run_steps(3);
     h.get_by_label("Use signature");
     assert_eq!(h.query_all_by_label("Lock into the page when saving").count(), 1, "once, in the panel");
@@ -2545,7 +2545,7 @@ fn mode_tabs_keep_the_hand_over_a_type_box_scrolled_under_them() {
     // The page across the window, so the box reaches under the tabs.
     h.state_mut().win.views[0].fit = pdfcraft_ui_egui::canvas::Fit::Width;
     h.run_steps(4);
-    assert_eq!(h.state().quick_tool, QuickTool::Fill(FillTool::Text));
+    assert_eq!(h.state().win.quick_tool, QuickTool::Fill(FillTool::Text));
     click(&mut h, 10.0, 360.0);
     h.event(egui::Event::Text("Ada Lovelace, Countess of Lovelace".into()));
     h.run_steps(3);
@@ -2717,16 +2717,16 @@ fn the_quick_bar_fill_button_shows_the_tool_it_picks() {
     let mut h = harness();
     h.get_by_label("Fill & Sign: Add signature").click();
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Fill(FillTool::Signature));
+    assert_eq!(h.state().win.quick_tool, QuickTool::Fill(FillTool::Signature));
     assert_eq!(h.state().dialog, Some(Dialog::Signature));
 
     h.state_mut().dialog = None;
     h.state_mut().signature = Some(SavedSig::Typed("Ada Lovelace".into()));
-    h.state_mut().quick_tool = QuickTool::Select;
+    h.state_mut().win.quick_tool = QuickTool::Select;
     h.run_steps(2);
     h.get_by_label("Fill & Sign: Place saved signature").click();
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Fill(FillTool::Signature));
+    assert_eq!(h.state().win.quick_tool, QuickTool::Fill(FillTool::Signature));
     assert_eq!(h.state().dialog, None);
     h.get_by_label("Fill & Sign: Sign").click();
     h.run_steps(2);
@@ -2735,11 +2735,11 @@ fn the_quick_bar_fill_button_shows_the_tool_it_picks() {
     h.run_steps(2);
 
     h.state_mut().execute("sign.fill.check");
-    h.state_mut().quick_tool = QuickTool::Select;
+    h.state_mut().win.quick_tool = QuickTool::Select;
     h.run_steps(2);
     h.get_by_label("Fill & Sign: Checkmark").click();
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Fill(FillTool::Check), "the button keeps the last Fill & Sign tool");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Fill(FillTool::Check), "the button keeps the last Fill & Sign tool");
 }
 
 #[test]
@@ -2753,14 +2753,14 @@ fn a_restored_fill_tool_shows_without_replacing_the_last_selection() {
     h.run_steps(2);
     h.state_mut().apply_full_screen(false);
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Fill(FillTool::Date));
+    assert_eq!(h.state().win.quick_tool, QuickTool::Fill(FillTool::Date));
     h.get_by_label("Fill & Sign: Date");
 
-    h.state_mut().quick_tool = QuickTool::Select;
+    h.state_mut().win.quick_tool = QuickTool::Select;
     h.run_steps(2);
     h.get_by_label("Fill & Sign: Checkmark").click();
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Fill(FillTool::Check));
+    assert_eq!(h.state().win.quick_tool, QuickTool::Fill(FillTool::Check));
 }
 
 #[test]
@@ -2783,8 +2783,8 @@ fn a_fill_tool_selected_while_the_quick_bar_is_hidden_is_remembered() {
     h.run_steps(2);
     h.get_by_label("Apply").click();
     h.run_steps(3);
-    assert_eq!(h.state().quick_tool, QuickTool::Fill(FillTool::Initials));
-    h.state_mut().quick_tool = QuickTool::Select;
+    assert_eq!(h.state().win.quick_tool, QuickTool::Fill(FillTool::Initials));
+    h.state_mut().win.quick_tool = QuickTool::Select;
     h.state_mut().mode = mode;
     h.run_steps(2);
     h.get_by_label("Fill & Sign: Place saved initials");
@@ -2797,17 +2797,17 @@ fn the_quick_bar_fill_button_keeps_date_after_deselecting_and_across_documents()
     h.run_steps(2);
     h.get_by_label("Date").click();
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Fill(FillTool::Date));
+    assert_eq!(h.state().win.quick_tool, QuickTool::Fill(FillTool::Date));
     h.get_by_label("Select (V)").click();
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
 
     h.state_mut().open_bytes("second.pdf", None, FIXTURE.to_vec()).unwrap();
     h.state_mut().win.active = Some(1);
     h.run_steps(2);
     h.get_by_label("Fill & Sign: Date").click();
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Fill(FillTool::Date), "a click picks the shown tool, not the default");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Fill(FillTool::Date), "a click picks the shown tool, not the default");
     assert_eq!(h.state().dialog, None, "the default tool's dialog stays closed");
     h.get_by_label("Select (V)").click();
     h.run_steps(2);
@@ -2820,7 +2820,7 @@ fn the_quick_bar_fill_button_keeps_date_after_deselecting_and_across_documents()
     h.run_steps(2);
     h.get_by_label("Fill & Sign: Date").click();
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Fill(FillTool::Date), "the tool outlives closing every document");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Fill(FillTool::Date), "the tool outlives closing every document");
 }
 
 fn commit_typed_text(h: &mut Harness<'static, PdfCraftApp>) {

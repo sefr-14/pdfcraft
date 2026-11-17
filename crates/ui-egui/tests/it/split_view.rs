@@ -463,15 +463,15 @@ fn the_hotbar_and_tool_keys_work_in_split_view() {
     assert!(!bar.intersects(right), "{bar:?} stays out of the right pane {right:?}");
     h.key_press(Key::P);
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Hand, "P picks Hand");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Hand, "P picks Hand");
     h.key_press(Key::V);
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Select, "V picks Select");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select, "V picks Select");
     // Each pane has its own hotbar (upstream's split view); the left one's button.
     let buttons: Vec<_> = h.get_all_by_label("Hand (P)").collect();
     assert_eq!(buttons.len(), 2, "one hotbar per pane");
     let left = buttons.into_iter().min_by(|a, b| a.rect().left().total_cmp(&b.rect().left())).unwrap();
     left.click();
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Hand, "the bar's button picks Hand");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Hand, "the bar's button picks Hand");
 }

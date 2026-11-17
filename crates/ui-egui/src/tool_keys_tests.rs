@@ -25,14 +25,14 @@ fn harness(documents: usize) -> Harness<'static, PdfCraftApp> {
 fn press(h: &mut Harness<'static, PdfCraftApp>, key: Key) -> QuickTool {
     h.key_press(key);
     h.run_steps(1);
-    h.state().quick_tool
+    h.state().win.quick_tool
 }
 
 fn typed(h: &mut Harness<'static, PdfCraftApp>, keys: &[Key]) -> QuickTool {
     for key in keys {
         press(h, *key);
     }
-    h.state().quick_tool
+    h.state().win.quick_tool
 }
 
 #[test]
@@ -56,9 +56,9 @@ fn each_key_and_pair_picks_its_tool() {
 fn the_first_key_of_a_pair_waits_for_the_second() {
     let mut h = harness(1);
     assert_eq!(press(&mut h, Key::D), QuickTool::Select);
-    assert_eq!(h.state().pending_keys.map(|p| p.first), Some(Key::D));
+    assert_eq!(h.state().win.pending_keys.map(|p| p.first), Some(Key::D));
     assert_eq!(press(&mut h, Key::I), QuickTool::Measure(measure_ui::Tool::Distance));
-    assert_eq!(h.state().pending_keys, None);
+    assert_eq!(h.state().win.pending_keys, None);
 }
 
 /// A pair not finished within the timeout is dropped: the second key alone does nothing.
@@ -68,7 +68,7 @@ fn a_pair_times_out() {
     press(&mut h, Key::D);
     // The harness steps a quarter of a second: two seconds.
     h.run_steps(8);
-    assert_eq!(h.state().pending_keys, None);
+    assert_eq!(h.state().win.pending_keys, None);
     assert_eq!(press(&mut h, Key::I), QuickTool::Select);
 }
 
@@ -78,12 +78,12 @@ fn a_pair_times_out() {
 fn another_key_cancels_a_pair_and_counts_alone() {
     let mut h = harness(1);
     assert_eq!(typed(&mut h, &[Key::D, Key::H]), QuickTool::Comment(CommentTool::Highlight));
-    assert_eq!(h.state().pending_keys, None);
+    assert_eq!(h.state().win.pending_keys, None);
     assert_eq!(typed(&mut h, &[Key::D, Key::R, Key::C]), QuickTool::Comment(CommentTool::Cloud));
     // An arrow key cancels and is still the view's.
     press(&mut h, Key::D);
     press(&mut h, Key::ArrowDown);
-    assert_eq!(h.state().pending_keys, None);
+    assert_eq!(h.state().win.pending_keys, None);
     assert_eq!(press(&mut h, Key::I), QuickTool::Comment(CommentTool::Cloud));
 }
 
@@ -94,7 +94,7 @@ fn escape_drops_a_pair_and_nothing_else() {
     h.state_mut().win.views[0].all_text = true;
     press(&mut h, Key::D);
     press(&mut h, Key::Escape);
-    assert_eq!(h.state().pending_keys, None);
+    assert_eq!(h.state().win.pending_keys, None);
     assert!(h.state().win.views[0].all_text, "the same press doesn't also clear Select All");
     assert_eq!(press(&mut h, Key::I), QuickTool::Select);
     press(&mut h, Key::Escape);
@@ -108,21 +108,21 @@ fn modified_and_repeated_keys_pick_no_tool() {
     for modifiers in [Modifiers::SHIFT, Modifiers::ALT, Modifiers::COMMAND] {
         h.key_press_modifiers(modifiers, Key::H);
         h.run_steps(1);
-        assert_eq!(h.state().quick_tool, QuickTool::Select, "{modifiers:?} H");
+        assert_eq!(h.state().win.quick_tool, QuickTool::Select, "{modifiers:?} H");
         h.key_press_modifiers(modifiers, Key::R);
         h.run_steps(1);
-        assert_eq!(h.state().pending_keys, None, "{modifiers:?} R");
+        assert_eq!(h.state().win.pending_keys, None, "{modifiers:?} R");
     }
     // A pair half typed is dropped by a modified key.
     press(&mut h, Key::D);
     h.key_press_modifiers(Modifiers::SHIFT, Key::I);
     h.run_steps(1);
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
     // Auto-repeat: only the first press of a held H counts.
     let repeat = Event::Key { key: Key::H, physical_key: None, pressed: true, repeat: true, modifiers: Modifiers::NONE };
     h.event(repeat);
     h.run_steps(1);
-    assert_eq!(h.state().quick_tool, QuickTool::Select, "a repeat is not a press");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select, "a repeat is not a press");
 }
 
 /// Typing in the find bar keeps every letter for the text.
@@ -133,7 +133,7 @@ fn letters_typed_in_the_find_bar_are_text() {
     h.run_steps(4);
     for key in [Key::D, Key::I, Key::R, Key::C, Key::H, Key::P, Key::V] {
         assert_eq!(press(&mut h, key), QuickTool::Select, "{key:?} in the find bar");
-        assert_eq!(h.state().pending_keys, None);
+        assert_eq!(h.state().win.pending_keys, None);
     }
 }
 
@@ -146,7 +146,7 @@ fn another_tab_drops_a_pair() {
     press(&mut h, Key::D);
     h.state_mut().win.active = Some(1);
     h.run_steps(1);
-    assert_eq!(h.state().pending_keys, None);
+    assert_eq!(h.state().win.pending_keys, None);
     assert_eq!(press(&mut h, Key::I), QuickTool::Select);
 }
 
@@ -166,13 +166,13 @@ fn a_key_runs_once_whatever_the_logic_passes() {
         eframe::App::ui(app, ui, &mut frame);
     });
     output.textures_delta.clear();
-    assert_eq!(h.state().quick_tool, QuickTool::Comment(CommentTool::Highlight));
-    h.state_mut().quick_tool = QuickTool::Select;
+    assert_eq!(h.state().win.quick_tool, QuickTool::Comment(CommentTool::Highlight));
+    h.state_mut().win.quick_tool = QuickTool::Select;
     for _ in 0..3 {
         let app = h.state_mut();
         let _ = ctx.run_logic(&egui::RawInput::default(), |ctx| eframe::App::logic(app, ctx, &mut eframe::Frame::_new_kittest()));
     }
-    assert_eq!(h.state().quick_tool, QuickTool::Select, "the same press isn't taken again");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select, "the same press isn't taken again");
 }
 
 /// The shortcuts dialog lists every tool key from the one table.

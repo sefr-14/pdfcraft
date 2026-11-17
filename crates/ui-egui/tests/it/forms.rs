@@ -2032,10 +2032,10 @@ fn a_form_button_shows_and_hides_the_attachments_panel() {
     h.run_steps(2);
     let id = h.state().win.views[0].id;
     h.state_mut().run_button_script(id, "size", "app.execMenuItem('ShowHideFileAttachment');");
-    crate::support::wait_until(&mut h, "attachments panel to open", |app| app.right == Some(pdfcraft_ui_egui::RightPanel::Attachments));
+    crate::support::wait_until(&mut h, "attachments panel to open", |app| app.win.right == Some(pdfcraft_ui_egui::RightPanel::Attachments));
     // Show/Hide, as its name says: asked again, it closes.
     h.state_mut().run_button_script(id, "size", "app.execMenuItem('ShowHideFileAttachment');");
-    crate::support::wait_until(&mut h, "attachments panel to close", |app| app.right.is_none());
+    crate::support::wait_until(&mut h, "attachments panel to close", |app| app.win.right.is_none());
 }
 
 /// Which widgets of field `name` are on (their `/AS` is their on state).

@@ -427,10 +427,10 @@ fn a_deferred_shortcut_runs_only_in_its_own_tab() {
     let first: ViewKey = h.state().win.views[0].key;
     let second: ViewKey = h.state().win.views[1].key;
     // Pressed while tab 1 was active, but tab 2 is active now.
-    h.state_mut().deferred_commands.push(("view.previous_view", Some(first)));
+    h.state_mut().win.deferred_commands.push(("view.previous_view", Some(first)));
     h.run_steps(3);
     assert_eq!(h.state().win.views[1].current, 6, "not run in the other tab of the same document");
-    h.state_mut().deferred_commands.push(("view.previous_view", Some(second)));
+    h.state_mut().win.deferred_commands.push(("view.previous_view", Some(second)));
     h.run_steps(3);
     assert_eq!(h.state().win.views[1].current, 0);
 }

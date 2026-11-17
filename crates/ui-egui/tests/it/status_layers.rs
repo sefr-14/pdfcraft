@@ -255,7 +255,7 @@ fn a_badge_tip_stays_off_where_a_comment_tip_would() {
     let mut h = harness(signed(&id), "en");
     let label = "Signature validity is unknown";
     for (tool, tip) in [(QuickTool::Select, true), (QuickTool::Fill(FillTool::Text), false), (QuickTool::Comment(CommentTool::Ink), false)] {
-        h.state_mut().quick_tool = tool;
+        h.state_mut().win.quick_tool = tool;
         h.run_steps(2);
         assert_eq!(hovered(&mut h, label) > h.query_all_by_label(label).count(), tip, "{tool:?}");
     }

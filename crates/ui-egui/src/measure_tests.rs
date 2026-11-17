@@ -59,9 +59,9 @@ fn harness(bytes: Vec<u8>) -> (Harness<'static, PdfCraftApp>, DocId) {
 /// Pick a tool as the Measure panel's buttons do (which work whatever the command's state).
 fn tool(h: &mut Harness<'static, PdfCraftApp>, t: Tool) {
     let app = h.state_mut();
-    app.left = crate::LeftPanel::Tool("measure");
-    app.left_open = true;
-    app.quick_tool = QuickTool::Measure(t);
+    app.win.left = crate::LeftPanel::Tool("measure");
+    app.win.left_open = true;
+    app.win.quick_tool = QuickTool::Measure(t);
     h.run_steps(3);
 }
 
@@ -191,7 +191,7 @@ fn the_second_click_keeps_a_distance_that_undo_delete_and_save_handle() {
     h.run_steps(6);
     h.get_by_label(&format!("Page 1: {} ", m.reading.label)).click();
     h.run_steps(3);
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
     let away = at(&h, 0, 380.0, 280.0);
     h.hover_at(away);
     h.key_press(egui::Key::Delete);
@@ -600,11 +600,11 @@ fn escape_cancels_the_points_in_progress_then_leaves_the_tool() {
         escape(&mut h);
         let app = h.state();
         assert!(app.win.views[0].measure.points.is_empty() && app.win.views[0].measure.reading.is_none(), "{t:?}: the first press cancels");
-        assert_eq!(app.quick_tool, QuickTool::Measure(t), "{t:?}: the first press keeps the tool");
+        assert_eq!(app.win.quick_tool, QuickTool::Measure(t), "{t:?}: the first press keeps the tool");
         assert_eq!(kept(&h, id), 0, "{t:?}: nothing is kept");
         untouched(&h, id);
         escape(&mut h);
-        assert_eq!(h.state().quick_tool, QuickTool::Select, "{t:?}: the second press leaves the idle tool");
+        assert_eq!(h.state().win.quick_tool, QuickTool::Select, "{t:?}: the second press leaves the idle tool");
         untouched(&h, id);
     }
 }
@@ -617,7 +617,7 @@ fn escape_after_a_measurement_leaves_the_tool_and_keeps_the_measurement() {
     click_at(&mut h, 0, 300.0, 200.0);
     assert_eq!(kept(&h, id), 1);
     escape(&mut h);
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
     assert_eq!(kept(&h, id), 1, "the measurement stays");
 }
 
@@ -640,10 +640,10 @@ fn escape_cancels_a_pending_calibration_and_puts_the_scale_fields_back() {
     let m = &h.state().win.views[0].measure;
     assert!(!m.calibrating(), "the first press cancels the calibration");
     assert_eq!((m.drawing_points, m.real_distance, m.unit.clone(), m.known_text.clone(), m.page_unit), before, "the fields are back");
-    assert_eq!(h.state().quick_tool, QuickTool::Measure(Tool::Calibrate), "the tool stays for the next press");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Measure(Tool::Calibrate), "the tool stays for the next press");
     untouched(&h, id);
     escape(&mut h);
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
 
     // Without the field focused (clicked away to the page's margin), the same single step.
     tool(&mut h, Tool::Calibrate);
@@ -653,7 +653,7 @@ fn escape_cancels_a_pending_calibration_and_puts_the_scale_fields_back() {
     h.run_steps(2);
     escape(&mut h);
     assert!(!h.state().win.views[0].measure.calibrating());
-    assert_eq!(h.state().quick_tool, QuickTool::Measure(Tool::Calibrate));
+    assert_eq!(h.state().win.quick_tool, QuickTool::Measure(Tool::Calibrate));
     untouched(&h, id);
 }
 
@@ -674,9 +674,9 @@ fn a_pending_calibration_is_not_taken_for_points_in_progress() {
     assert!(m.calibrating() && m.points.is_empty(), "the points first");
     escape(&mut h);
     assert!(!h.state().win.views[0].measure.calibrating(), "then the calibration");
-    assert_eq!(h.state().quick_tool, QuickTool::Measure(Tool::Calibrate));
+    assert_eq!(h.state().win.quick_tool, QuickTool::Measure(Tool::Calibrate));
     escape(&mut h);
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
 }
 
 #[test]
@@ -691,7 +691,7 @@ fn escape_in_a_measure_panel_field_only_leaves_the_field() {
     assert_eq!(h.ctx.memory(|mem| mem.focused()), Some(label));
     escape(&mut h);
     assert_eq!(h.state().win.views[0].measure.points.len(), 2, "the perimeter in progress stays");
-    assert_eq!(h.state().quick_tool, QuickTool::Measure(Tool::Perimeter));
+    assert_eq!(h.state().win.quick_tool, QuickTool::Measure(Tool::Perimeter));
     assert_eq!(h.ctx.memory(|mem| mem.focused()), None, "the field let go of the keyboard");
     escape(&mut h);
     assert!(h.state().win.views[0].measure.points.is_empty(), "the next press cancels it");
@@ -703,7 +703,7 @@ fn one_escape_never_also_closes_the_find_bar_or_full_screen() {
     let (mut h, id) = harness(plain());
     let steps = |h: &Harness<'static, PdfCraftApp>| {
         let app = h.state();
-        (app.win.views[0].measure.points.len(), app.win.views[0].find.is_some(), app.quick_tool, app.full_screen)
+        (app.win.views[0].measure.points.len(), app.win.views[0].find.is_some(), app.win.quick_tool, app.full_screen)
     };
     // Measuring with the find bar open: the points, then the find bar, then the tool.
     tool(&mut h, Tool::Distance);
@@ -742,7 +742,7 @@ fn escape_for_a_dialog_the_palette_or_the_wizard_keeps_the_points() {
         click_at(&mut h, 0, 100.0, 100.0);
         match over {
             "dialog" => h.state_mut().dialog = Some(crate::Dialog::Preferences),
-            "palette" => h.state_mut().palette_open = true,
+            "palette" => h.state_mut().win.palette_open = true,
             _ => h.state_mut().overlay_open(),
         }
         h.run_steps(4);
@@ -755,10 +755,10 @@ fn escape_for_a_dialog_the_palette_or_the_wizard_keeps_the_points() {
         escape(&mut h);
         let app = h.state();
         assert_eq!(app.win.views[0].measure.points.len(), 1, "{over}: Escape there leaves the measurement alone");
-        assert_eq!(app.quick_tool, QuickTool::Measure(Tool::Distance), "{over}");
+        assert_eq!(app.win.quick_tool, QuickTool::Measure(Tool::Distance), "{over}");
         match over {
             "dialog" => assert!(app.dialog.is_none(), "the dialog closes"),
-            "palette" => assert!(!app.palette_open, "the palette closes"),
+            "palette" => assert!(!app.win.palette_open, "the palette closes"),
             _ => {}
         }
         untouched(&h, id);
@@ -797,7 +797,7 @@ fn escape_in_an_inactive_tile_leaves_its_measurement_alone() {
     h.run_steps(2);
     escape(&mut h);
     assert_eq!(h.state().win.views[0].measure.points.len(), 2, "the inactive tile keeps its perimeter");
-    assert_eq!(h.state().quick_tool, QuickTool::Select, "the active tile had nothing to cancel");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select, "the active tile had nothing to cancel");
 }
 
 #[test]
@@ -836,7 +836,7 @@ fn escape_closes_an_open_menu_before_the_points() {
     assert_eq!(h.state().win.views[0].measure.points.len(), 1, "and the points stay");
     escape(&mut h);
     assert!(h.state().win.views[0].measure.points.is_empty(), "the next press cancels them");
-    assert_eq!(h.state().quick_tool, QuickTool::Measure(Tool::Distance));
+    assert_eq!(h.state().win.quick_tool, QuickTool::Measure(Tool::Distance));
     untouched(&h, id);
 }
 

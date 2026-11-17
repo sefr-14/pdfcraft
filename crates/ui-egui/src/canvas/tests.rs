@@ -1307,7 +1307,7 @@ fn a_press_on_a_page_ends_select_all_of_the_document() {
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
     let r = on_screen.expect("the first page is on screen");
-    h.state_mut().quick_tool = crate::QuickTool::Hand;
+    h.state_mut().win.quick_tool = crate::QuickTool::Hand;
     h.state_mut().win.views[0].select_all();
     assert!(h.state().win.views[0].all_text);
     let at = r.center();
@@ -2233,12 +2233,12 @@ fn edit_text_boxes_stay_drawn_while_page_input_is_blocked() {
         let mut app = PdfCraftApp::new();
         let bytes = app.session.create_blank(300.0, 400.0, 1).unwrap();
         app.open_bytes("blank.pdf", None, bytes.as_ref().clone()).unwrap();
-        app.quick_tool = QuickTool::EditText;
+        app.win.quick_tool = QuickTool::EditText;
         app
     });
     h.run_steps(3);
     // Block page input the way the window losing focus does.
-    h.state_mut().palette_open = true;
+    h.state_mut().win.palette_open = true;
     h.run_steps(2);
     assert!(h.state_mut().apply_edit(Edit::RotatePages { pages: vec![0], degrees: 90 }));
     h.run_steps(3);
@@ -2322,12 +2322,12 @@ fn ctrl_wheel_zooms_an_unfocused_window() {
         modifiers: egui::Modifiers::COMMAND,
         source: egui::MouseWheelSource::Unknown,
     };
-    h.state_mut().palette_open = true;
+    h.state_mut().win.palette_open = true;
     let before = h.state().win.views[0].zoom;
     h.event(ctrl_wheel.clone());
     h.run_steps(10);
     assert_eq!(h.state().win.views[0].zoom, before, "the palette still blocks zoom");
-    h.state_mut().palette_open = false;
+    h.state_mut().win.palette_open = false;
     h.run_steps(2);
     h.event(ctrl_wheel);
     h.run_steps(10);
@@ -2373,12 +2373,12 @@ fn real_shell_pages_organizer_and_print_only_collect_current_thumbnail_consumers
         let mut app = PdfCraftApp::new();
         let bytes = app.session.create_blank(612.0, 792.0, 10_000).unwrap();
         app.open_bytes("synthetic-ten-thousand.pdf", None, bytes.as_ref().clone()).unwrap();
-        app.right = Some(RightPanel::Pages);
+        app.win.right = Some(RightPanel::Pages);
         app
     });
     h.run_steps(4);
     assert!((1..20).contains(&h.state().win.views[0].thumb_demand.len()));
-    h.state_mut().right = None;
+    h.state_mut().win.right = None;
     h.state_mut().win.views[0].organize = true;
     h.run_steps(2);
     assert!((1..50).contains(&h.state().win.views[0].thumb_demand.len()));
@@ -2732,7 +2732,7 @@ fn a_moved_picture_is_drawn_from_the_fresh_raster_while_a_tile_is_still_stale() 
         app.set_option("language", "en").unwrap();
         app.open_bytes("picture.pdf", None, bytes.clone()).unwrap();
         app.set_option("zoom", "100").unwrap();
-        app.quick_tool = QuickTool::EditText;
+        app.win.quick_tool = QuickTool::EditText;
         app
     });
     let settle = |h: &mut egui_kittest::Harness<'static, PdfCraftApp>| {

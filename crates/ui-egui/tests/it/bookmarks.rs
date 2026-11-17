@@ -359,7 +359,7 @@ fn new_bookmarks_from_text_styles_from_the_bookmark_options() {
     assert_eq!(titles, [("Introduction", Some(0)), ("Results", Some(1))]);
     assert_eq!(outline[0].children[0].children[0].title, "Background");
     assert_eq!(h.state().session.get(id).unwrap().can_undo(), Some("New bookmarks from text styles"));
-    assert_eq!(h.state().right, Some(pdfcraft_ui_egui::RightPanel::Bookmarks));
+    assert_eq!(h.state().win.right, Some(pdfcraft_ui_egui::RightPanel::Bookmarks));
     // A document with no text: nothing to choose from.
     h.state_mut().open_bytes("pages.pdf", None, PAGES.to_vec()).unwrap();
     h.run_steps(3);

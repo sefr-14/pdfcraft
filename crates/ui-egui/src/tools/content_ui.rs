@@ -1158,9 +1158,9 @@ impl crate::PdfCraftApp {
             self.win.views[i].content.selected = Some((page, before_added));
             self.win.views[i].content.select_added = Some((page, before_added));
             self.win.views[i].image_selection = Some(crate::edit_text_ui::ImageSelection::at(page, before_img));
-            self.quick_tool = crate::QuickTool::EditText;
-            self.left = crate::LeftPanel::Tool("edit");
-            self.left_open = true;
+            self.win.quick_tool = crate::QuickTool::EditText;
+            self.win.left = crate::LeftPanel::Tool("edit");
+            self.win.left_open = true;
         }
     }
 
@@ -1344,7 +1344,7 @@ impl crate::PdfCraftApp {
                 v.content.select_added = v.content.selected;
                 v.image_selection = selection.map(|(_, image)| crate::edit_text_ui::ImageSelection::at(page, image));
             }
-            self.quick_tool = crate::QuickTool::EditText;
+            self.win.quick_tool = crate::QuickTool::EditText;
             self.notify_tr("Image pasted");
             true
         } else {

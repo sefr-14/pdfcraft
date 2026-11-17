@@ -122,7 +122,7 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens) -> bool
             if let Some(i) = id.and_then(|id| app.win.views.iter().position(|v| v.id == id)) {
                 app.win.active = Some(i);
                 if app.apply_edit(Edit::BookmarksFromTextStyles { levels }) {
-                    app.right = Some(crate::RightPanel::Bookmarks);
+                    app.win.right = Some(crate::RightPanel::Bookmarks);
                 }
             }
         }

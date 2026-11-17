@@ -832,7 +832,7 @@ fn panel_body(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens) {
     let mut tool = None;
     ui.horizontal(|ui| {
         for (label, value) in [("Distance", Tool::Distance), ("Perimeter", Tool::Perimeter), ("Area", Tool::Area)] {
-            if ui.selectable_label(app.quick_tool == QuickTool::Measure(value), tl!(label)).clicked() {
+            if ui.selectable_label(app.win.quick_tool == QuickTool::Measure(value), tl!(label)).clicked() {
                 tool = Some(value);
             }
         }
@@ -1051,11 +1051,11 @@ fn panel_body(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens) {
         app.win.views[index].comments.select_only((page, annotation));
         app.win.views[index].measure.reading = Some(reading);
         app.win.views[index].measure.scale = Some(scale);
-        app.quick_tool = QuickTool::Select;
+        app.win.quick_tool = QuickTool::Select;
     }
     if let Some(tool) = tool {
         pick(&mut app.win.views[index]);
-        app.quick_tool = QuickTool::Measure(tool);
+        app.win.quick_tool = QuickTool::Measure(tool);
     }
     if export {
         export_csv(app);
@@ -1276,13 +1276,13 @@ fn pick(view: &mut DocView) {
 }
 
 pub(crate) fn command(app: &mut PdfCraftApp, id: &str) {
-    app.left = LeftPanel::Tool("measure");
-    app.left_open = true;
+    app.win.left = LeftPanel::Tool("measure");
+    app.win.left_open = true;
     if let Some((index, _)) = app.active_ids()
         && let Some(tool) = id.strip_prefix("measure.").and_then(Tool::from_name)
     {
         pick(&mut app.win.views[index]);
-        app.quick_tool = QuickTool::Measure(tool);
+        app.win.quick_tool = QuickTool::Measure(tool);
     }
     if id == "measure.export" {
         export_csv(app);

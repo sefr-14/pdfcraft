@@ -79,25 +79,12 @@ impl PdfCraftApp {
             blank_paper: crate::paper::Paper::system(),
             date_format_draft: None,
             mode_override: None,
-            left: LeftPanel::AllTools,
-            side_panels: Default::default(),
-            left_open: true,
-            right: None,
-            last_right: RightPanel::Comments,
-            right_before_read: None,
-            comments_panel_closed: false,
-            right_panel_closed: false,
             portfolio_initial: None,
             portfolio_seen: None,
             #[cfg(target_arch = "wasm32")]
             web_reads: Default::default(),
             portfolio_panel: None,
-            quick_tool: QuickTool::Select,
-            space_hand: None,
-            pending_keys: None,
-            full_screen_tool: None,
             comment_prefs: Default::default(),
-            hotbar: Default::default(),
             theme: ThemeKind::Light,
             // A fresh install follows the desktop's appearance (#1248); saved settings override.
             theme_preference: ThemePreference::System,
@@ -141,12 +128,6 @@ impl PdfCraftApp {
             spooler: None,
             two_sided_source: None,
             print_tasks: print_ui::PrintTasks::default(),
-            palette_open: false,
-            palette_query: String::new(),
-            all_tools_expanded: false,
-            all_tools_full: false,
-            all_tools_query: String::new(),
-            all_tools_tab: (None, false),
             recent: Vec::new(),
             recent_limit: crate::RECENT_FILES_DEFAULT,
             reopen_last_session: false,
@@ -312,11 +293,7 @@ impl PdfCraftApp {
             recovered_paths: Default::default(),
             last_autosave: None,
             allow_quit: false,
-            deferred_commands: Vec::new(),
             native_menu: None,
-            menu_input: Vec::new(),
-            menu_pastes: 0,
-            page_keys: Default::default(),
             dialog_seen: None,
             dialog_epoch: 0,
             ctx: None,
@@ -375,8 +352,8 @@ impl PdfCraftApp {
     /// Fields are being edited (Prepare a form or its Calculation order is open, or a field tool
     /// is picked), unless the form is being previewed.
     pub fn is_preparing(&self) -> bool {
-        ((self.left_open && matches!(self.left, LeftPanel::Tool("form") | LeftPanel::CalculationOrder))
-            || matches!(self.quick_tool, QuickTool::Field(_)))
+        ((self.win.left_open && matches!(self.win.left, LeftPanel::Tool("form") | LeftPanel::CalculationOrder))
+            || matches!(self.win.quick_tool, QuickTool::Field(_)))
             && !self.form_preview
     }
 
@@ -434,7 +411,7 @@ impl PdfCraftApp {
     /// bar holding the keyboard (Alt, F10).
     pub(crate) fn over_pages(&self, ctx: &egui::Context) -> bool {
         self.covers_pages()
-            || self.hotbar.picker_over_pages(ctx)
+            || self.win.hotbar.picker_over_pages(ctx)
             || egui::Popup::is_any_open(ctx)
             || craft_menu::bar::is_open(ctx)
             || craft_menu::bar::is_focused(ctx)
@@ -450,7 +427,7 @@ impl PdfCraftApp {
     /// later pass, is an ordinary paste. With a text field focused, a native click on Copy, Cut,
     /// Paste or Select all doesn't come here: craft-menu taps the shortcut for the field instead.
     fn release_menu_input(&mut self, ctx: &egui::Context) {
-        if self.menu_input.is_empty() && self.menu_pastes == 0 {
+        if self.win.menu_input.is_empty() && self.win.menu_pastes == 0 {
             return;
         }
         if craft_menu::bar::is_open(ctx) || craft_menu::bar::is_focused(ctx) {
@@ -459,11 +436,11 @@ impl PdfCraftApp {
         }
         if !ctx.text_edit_focused() {
             egui::Popup::close_all(ctx);
-            self.hotbar.close_picker();
+            self.win.hotbar.close_picker();
         }
-        let events = std::mem::take(&mut self.menu_input);
+        let events = std::mem::take(&mut self.win.menu_input);
         ctx.input_mut(|i| i.events.extend(events));
-        for _ in 0..std::mem::take(&mut self.menu_pastes) {
+        for _ in 0..std::mem::take(&mut self.win.menu_pastes) {
             ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste);
         }
     }
@@ -481,7 +458,7 @@ impl PdfCraftApp {
         // Full screen draws the page alone: not the palette, nor the OCR Verify screen it was
         // entered over. Dialogs and prompts show there too.
         let shown = !(self.full_screen && self.win.active.is_some());
-        self.modal_open() || self.pending_full_screen.is_some() || self.updates.open || (self.palette_open || self.ocr_verify.open) && shown
+        self.modal_open() || self.pending_full_screen.is_some() || self.updates.open || (self.win.palette_open || self.ocr_verify.open) && shown
     }
 
     /// A dialog or prompt is open over the window: the keyboard is its own, and nothing may act
@@ -798,19 +775,19 @@ impl PdfCraftApp {
             confirm();
         }
         // Shortcuts deferred last frame: the text field has taken that frame's typing since.
-        let deferred = std::mem::take(&mut self.deferred_commands);
+        let deferred = std::mem::take(&mut self.win.deferred_commands);
         self.native_menu_clicks(ctx);
         // The input a menu click stands for (⌘C, Delete…), before anything reads this frame's keys.
         self.release_menu_input(ctx);
         // A command's chord pressed with the keyboard on the menu bar (Alt, F10) takes it off the
         // bar, so the chord runs in the same press, the pages' as well as the registry's.
         craft_menu::bar::leave_for_shortcut(ctx);
-        self.hotbar.close_hidden_picker(ctx, self.hotbar_hidden());
-        self.page_keys = page_keys::PageKeys::new(self.over_pages(ctx));
+        self.win.hotbar.close_hidden_picker(ctx, self.hotbar_hidden());
+        self.win.page_keys = page_keys::PageKeys::new(self.over_pages(ctx));
         self.shortcuts(ctx);
         // Scrolling and group-drag previews are transient: never resume after changing tabs,
         // opening a modal/palette, or returning to a window that lost focus.
-        let blocked = self.modal_open() || self.palette_open || !ctx.input(|i| i.focused);
+        let blocked = self.modal_open() || self.win.palette_open || !ctx.input(|i| i.focused);
         // In Tile View every tile keeps the middle-button gesture started over it (OV7.3): the
         // tile under the pointer is navigated without being made the active one first.
         let tiled = self.tiled();
@@ -821,7 +798,7 @@ impl PdfCraftApp {
                 view.auto_scroll.cancel();
                 // Edit text and Add text's drags end while their input is blocked rather than wait, to
                 // land wherever the pointer is once it opens again.
-                if matches!(self.quick_tool, QuickTool::EditText | QuickTool::AddText) {
+                if matches!(self.win.quick_tool, QuickTool::EditText | QuickTool::AddText) {
                     view.cancel_edit_text_gestures();
                 }
             }
@@ -890,7 +867,7 @@ impl PdfCraftApp {
         self.win.tile_frame.clear();
         // Another tool lets go of a click whose picture is still being found, whether or not its
         // page is drawn to see the change.
-        let picks = self.quick_tool == QuickTool::Select;
+        let picks = self.win.quick_tool == QuickTool::Select;
         for view in &mut self.win.views {
             view.begin_render_frame();
             if !picks {
@@ -963,15 +940,15 @@ impl PdfCraftApp {
             return;
         }
         // Whichever way another tab came to the front, it shows instead of the expanded view.
-        if self.all_tools_full && self.all_tools_tab != self.shown_tab() {
-            self.all_tools_full = false;
+        if self.win.all_tools_full && self.win.all_tools_tab != self.shown_tab() {
+            self.win.all_tools_full = false;
         }
         if !hidden.window_ui {
             side_panels::show(self, ui);
         }
         let t = theme::Tokens::get(&ctx);
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.pasteboard)).show(ui, |ui| {
-            if self.mode == Mode::AllTools && self.all_tools_full && !hidden.window_ui {
+            if self.mode == Mode::AllTools && self.win.all_tools_full && !hidden.window_ui {
                 all_tools_ui::show(self, ui);
             } else {
                 match self.win.active {

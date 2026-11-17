@@ -279,7 +279,7 @@ fn shortcuts_run_registered_commands() {
     h.state_mut().dialog = None;
     h.key_press_modifiers(Modifiers::COMMAND, Key::K);
     h.run_steps(2);
-    assert!(h.state().palette_open);
+    assert!(h.state().win.palette_open);
     h.key_press(Key::Escape);
     h.run_steps(2);
     h.key_press_modifiers(Modifiers::COMMAND | Modifiers::CTRL, Key::H);
@@ -296,7 +296,7 @@ fn the_palette_lists_commands_with_shortcuts_and_runs_them() {
     h.key_press(Key::Enter);
     h.run_steps(3);
     let app = h.state();
-    assert!(!app.palette_open, "Enter runs the top hit and closes the palette");
+    assert!(!app.win.palette_open, "Enter runs the top hit and closes the palette");
     let doc = app.session.get(app.win.views[0].id).unwrap();
     assert_eq!(doc.info.pages[0].rotation, 90);
     assert_eq!(doc.can_undo(), Some("Rotate page"));
@@ -314,7 +314,7 @@ fn palette_arrow_keys_select_results_and_enter_runs_the_selection() {
     h.key_press(Key::Enter);
     h.run_steps(2);
     let app = h.state();
-    assert!(!app.palette_open);
+    assert!(!app.win.palette_open);
     assert_eq!(app.session.get(app.win.views[0].id).unwrap().info.pages[0].rotation, 270);
 }
 
@@ -461,14 +461,14 @@ fn localized_shortcuts_update_immediately_and_keep_command_ids_and_key_bindings(
     h.ctx.set_os(OperatingSystem::Windows);
     h.key_press_modifiers(Modifiers::CTRL | Modifiers::COMMAND, Key::K);
     h.run_steps(3);
-    assert!(h.state().palette_open, "the localized Strg+K display still binds Ctrl+K");
+    assert!(h.state().win.palette_open, "the localized Strg+K display still binds Ctrl+K");
     // Searching by the stable command id still works in a translated interface.
     h.state_mut().set_option("palette", "view.read_mode").unwrap();
     h.run_steps(2);
     h.key_press(Key::Enter);
     h.run_steps(3);
     assert_eq!(h.state().mode, pdfcraft_ui_egui::Mode::Read);
-    assert!(!h.state().palette_open);
+    assert!(!h.state().win.palette_open);
     let doc = h.state().session.get(h.state().win.views[0].id).unwrap();
     assert!(!doc.dirty);
 }
@@ -603,9 +603,9 @@ fn command_w_still_closes_the_document_tab_on_macos() {
 }
 
 fn palette_ime_output_requests_interrupt(h: &Harness<'_, PdfCraftApp>, phase: &str) -> bool {
-    assert!(h.state().palette_open, "palette closed during {phase}");
+    assert!(h.state().win.palette_open, "palette closed during {phase}");
     let ime = h.output().platform_output.ime.as_ref().expect("focused palette advertises IME");
-    eprintln!("{phase}: query={:?}; should_interrupt_composition={}", h.state().palette_query, ime.should_interrupt_composition);
+    eprintln!("{phase}: query={:?}; should_interrupt_composition={}", h.state().win.palette_query, ime.should_interrupt_composition);
     ime.should_interrupt_composition
 }
 
@@ -625,7 +625,7 @@ fn palette_ime_idle_frames_and_reopen_do_not_interrupt_composition() {
         }
         h.key_press(Key::Escape);
         h.run_steps(2);
-        assert!(!h.state().palette_open);
+        assert!(!h.state().win.palette_open);
     }
 }
 
@@ -647,17 +647,17 @@ fn palette_ime_chinese_preedit_commit_and_cancel_remain_uninterrupted() {
     }
     h.event(egui::Event::Ime(egui::ImeEvent::Commit("你".into())));
     h.step();
-    assert_eq!(h.state().palette_query, "你");
+    assert_eq!(h.state().win.palette_query, "你");
     interruptions.push(palette_ime_output_requests_interrupt(&h, "Chinese commit"));
     h.run_steps(2);
-    assert_eq!(h.state().palette_query, "你");
+    assert_eq!(h.state().win.palette_query, "你");
     interruptions.push(palette_ime_output_requests_interrupt(&h, "committed idle"));
     h.event(egui::Event::Ime(egui::ImeEvent::Preedit { text: "hao".into(), active_range_chars: Some(0..3) }));
     h.step();
     interruptions.push(palette_ime_output_requests_interrupt(&h, "second preedit"));
     h.event(egui::Event::Ime(egui::ImeEvent::Preedit { text: String::new(), active_range_chars: None }));
     h.step();
-    assert_eq!(h.state().palette_query, "你");
+    assert_eq!(h.state().win.palette_query, "你");
     interruptions.push(palette_ime_output_requests_interrupt(&h, "cancel preedit"));
     assert!(interruptions.iter().all(|interrupt| !interrupt), "composition interrupted: {interruptions:?}");
 }
@@ -674,8 +674,8 @@ fn palette_ime_outside_click_closes_without_running_a_command() {
         modifiers: Modifiers::NONE,
     });
     h.step();
-    assert!(!h.state().palette_open);
-    assert!(h.state().palette_query.is_empty());
+    assert!(!h.state().win.palette_open);
+    assert!(h.state().win.palette_query.is_empty());
     assert_eq!(h.state().session.get(h.state().win.views[0].id).unwrap().info.pages[0].rotation, 0);
 }
 

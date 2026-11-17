@@ -61,7 +61,8 @@ impl PdfCraftApp {
                 })
                 .collect()
         });
-        let free = self.dialog.is_none() && !self.palette_open && !self.page_keys.over() && !ctx.egui_wants_keyboard_input() && !self.is_preparing();
+        let free =
+            self.dialog.is_none() && !self.win.palette_open && !self.win.page_keys.over() && !ctx.egui_wants_keyboard_input() && !self.is_preparing();
         if !free || self.win.views.get(i).is_some_and(|v| v.forms.focus.is_some() || v.organize) {
             self.receive_pastes(i, pastes, false);
             return;
@@ -73,7 +74,7 @@ impl PdfCraftApp {
         let paste = ctx.input_mut(|input| input.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::V)));
 
         // Objects selected together in Edit a PDF take ⌘C and ⌘X.
-        let objects = (copy || cut) && self.quick_tool == QuickTool::EditText && self.win.views.get(i).is_some_and(|v| v.objects.count() > 0);
+        let objects = (copy || cut) && self.win.quick_tool == QuickTool::EditText && self.win.views.get(i).is_some_and(|v| v.objects.count() > 0);
         if objects {
             self.copy_objects(i, ctx, cut);
         }
@@ -96,7 +97,10 @@ impl PdfCraftApp {
         {
             self.cut_page_image(sel.page, sel.index);
         }
-        if (paste || !pastes.is_empty()) && self.quick_tool == QuickTool::EditText && self.object_clipboard.is_some() && self.pastes_objects(&pastes)
+        if (paste || !pastes.is_empty())
+            && self.win.quick_tool == QuickTool::EditText
+            && self.object_clipboard.is_some()
+            && self.pastes_objects(&pastes)
         {
             self.paste_objects(i);
             return;
@@ -519,9 +523,9 @@ mod review_tests {
     fn delivered_image_obeys_focus_modal_and_permission_guards() {
         let ctx = egui::Context::default();
         let mut app = image_app();
-        app.palette_open = true;
+        app.win.palette_open = true;
         assert_eq!(frame(&mut app, &ctx, 1.0, vec![delivered()]), 0);
-        app.palette_open = false;
+        app.win.palette_open = false;
         app.win.views[0].organize = true;
         assert_eq!(frame(&mut app, &ctx, 2.0, vec![delivered()]), 0);
         app.win.views[0].organize = false;
@@ -568,12 +572,12 @@ mod review_tests {
         app.system_clipboard = false;
         app.create_blank();
         app.last_copied_image = Some((1, 1, vec![255, 0, 0, 255]));
-        app.palette_open = true; // A text field owns the first event.
+        app.win.palette_open = true; // A text field owns the first event.
         let ctx = egui::Context::default();
         ctx.run_ui(egui::RawInput { events: vec![egui::Event::Paste("text".into())], ..Default::default() }, |ui| app.clipboard_keys(0, ui.ctx()))
             .drop_without_applying_deltas();
         assert!(app.last_copied_image.is_none());
-        app.palette_open = false;
+        app.win.palette_open = false;
         app.toast = None;
         ctx.run_ui(
             egui::RawInput {

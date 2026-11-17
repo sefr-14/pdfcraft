@@ -192,7 +192,7 @@ fn matches_search(spec: &pdfcraft_engine::commands::CommandSpec, query: &str) ->
 fn tool_buttons(ui: &mut egui::Ui, app: &PdfCraftApp, tools: &[String], cell: f32, run: &mut Option<&'static str>, remove: &mut Option<usize>) {
     for (index, id) in tools.iter().enumerate() {
         let Some(spec) = command(id) else { continue };
-        let active = crate::comments::CommentTool::from_command(id).is_some_and(|tool| app.quick_tool == crate::QuickTool::Comment(tool));
+        let active = crate::comments::CommentTool::from_command(id).is_some_and(|tool| app.win.quick_tool == crate::QuickTool::Comment(tool));
         let button = ui.add_enabled_ui(app.command_enabled(spec), |ui| icons::button(ui, spec.icon, cell, active, tl!(spec.label))).inner;
         if button.clicked() {
             *run = Some(spec.id);
@@ -208,15 +208,15 @@ fn tool_buttons(ui: &mut egui::Ui, app: &PdfCraftApp, tools: &[String], cell: f3
 
 /// Render core quick tools: Select, Hand, Comment groups, Edit text, and Fill & Sign.
 fn core_tool_buttons(ui: &mut egui::Ui, app: &mut PdfCraftApp, cell: f32, popup_align: egui::RectAlign, t: &Tokens) {
-    if icons::button(ui, "mouse-pointer-2", cell, app.quick_tool == QuickTool::Select, tl!("Select (V)")).clicked() {
-        app.quick_tool = QuickTool::Select;
+    if icons::button(ui, "mouse-pointer-2", cell, app.win.quick_tool == QuickTool::Select, tl!("Select (V)")).clicked() {
+        app.win.quick_tool = QuickTool::Select;
     }
-    if icons::button(ui, "hand", cell, app.quick_tool == QuickTool::Hand, tl!("Hand (P)")).clicked() {
-        app.quick_tool = QuickTool::Hand;
+    if icons::button(ui, "hand", cell, app.win.quick_tool == QuickTool::Hand, tl!("Hand (P)")).clicked() {
+        app.win.quick_tool = QuickTool::Hand;
     }
     let may_crop = command("page.crop").is_some_and(|spec| app.command_enabled(spec));
     ui.add_enabled_ui(may_crop, |ui| {
-        if icons::button(ui, "crop", cell, app.quick_tool == QuickTool::Crop, tl!("Crop pages")).clicked() {
+        if icons::button(ui, "crop", cell, app.win.quick_tool == QuickTool::Crop, tl!("Crop pages")).clicked() {
             app.execute("page.crop");
         }
     });
@@ -224,7 +224,7 @@ fn core_tool_buttons(ui: &mut egui::Ui, app: &mut PdfCraftApp, cell: f32, popup_
     // group selects its last-used tool; clicking it again opens the flyout.
     for g in 0..comments::GROUPS.len() {
         let current = app.comment_prefs.group_tool[g];
-        let active = matches!(app.quick_tool, QuickTool::Comment(t) if t.group() == g);
+        let active = matches!(app.win.quick_tool, QuickTool::Comment(t) if t.group() == g);
         let resp = icons::button(ui, current.icon(), cell, active, tl!(current.label()));
         if comments::GROUPS[g].len() == 1 {
             if resp.clicked() {
@@ -242,7 +242,7 @@ fn core_tool_buttons(ui: &mut egui::Ui, app: &mut PdfCraftApp, cell: f32, popup_
         }
         egui::Popup::menu(&resp).open_memory(open.then_some(egui::SetOpenCommand::Toggle)).align(popup_align).gap(6.0).show(|ui| {
             for tool in comments::GROUPS[g] {
-                let on = app.quick_tool == QuickTool::Comment(*tool);
+                let on = app.win.quick_tool == QuickTool::Comment(*tool);
                 let (row, click) = ui.allocate_exact_size(vec2(180.0, 28.0), Sense::click());
                 let press = theme::Press::track(ui, &click);
                 press.wash(ui, row, 4, on);
@@ -272,18 +272,18 @@ fn core_tool_buttons(ui: &mut egui::Ui, app: &mut PdfCraftApp, cell: f32, popup_
     }
     // Edit text & images, while the Edit workspace is open (Acrobat's Edit toolbar)
     // or the tool is in use.
-    if app.mode == crate::Mode::Edit || app.quick_tool == QuickTool::EditText {
-        let on = app.quick_tool == QuickTool::EditText;
+    if app.mode == crate::Mode::Edit || app.win.quick_tool == QuickTool::EditText {
+        let on = app.win.quick_tool == QuickTool::EditText;
         if icons::button(ui, "text-cursor-input", cell, on, tl!("Edit text & images")).clicked() {
             if on {
                 app.put_down_edit_text();
             } else {
-                app.quick_tool = QuickTool::EditText;
+                app.win.quick_tool = QuickTool::EditText;
             }
         }
     }
     // Fill & Sign ▸ (text, marks, date, signature).
-    let current_fill = match app.quick_tool {
+    let current_fill = match app.win.quick_tool {
         QuickTool::Fill(f) => Some(f),
         _ => None,
     };
@@ -463,7 +463,7 @@ fn fill_text_border_controls(ui: &mut egui::Ui, app: &mut PdfCraftApp, picked: O
 
 /// Extra controls rendered below/beside the buttons when a comment or fill tool is active.
 fn active_tool_controls(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens, vertical: bool) {
-    let current_fill = match app.quick_tool {
+    let current_fill = match app.win.quick_tool {
         QuickTool::Fill(f) => Some(f),
         _ => None,
     };
@@ -506,7 +506,7 @@ fn active_tool_controls(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens, ve
         // After the text's own controls, so they keep their place in a bar that scrolls.
         fill_text_border_controls(ui, app, selected_fill_text(app), vertical);
     }
-    if let QuickTool::Comment(tool) = app.quick_tool {
+    if let QuickTool::Comment(tool) = app.win.quick_tool {
         controls_divider(ui, t, vertical);
         // Text boxes and callouts: the border's own colour, for new ones and the selected one
         // this tool made (not a locked one). With one selected the button shows its colours
@@ -613,7 +613,7 @@ fn size_slider_adjusting(slider: &egui::Response, key_pressed: bool, keyboard: &
 /// Draw the unified floating or side-docked toolbar, combining quick actions, core tools, and custom shortcuts.
 pub(crate) fn show(app: &mut PdfCraftApp, area: Rect, page_left: Option<f32>, ui: &mut egui::Ui) {
     let ctx = ui.ctx().clone();
-    let mut bar = std::mem::take(&mut app.hotbar);
+    let mut bar = std::mem::take(&mut app.win.hotbar);
     bar.normalize();
     let t = Tokens::get(&ctx);
     let id = app.win.panes.area_id("quick-bar");
@@ -949,7 +949,7 @@ pub(crate) fn show(app: &mut PdfCraftApp, area: Rect, page_left: Option<f32>, ui
     });
     bar.picker_open = picker_open;
     bar.picker_shown = picker_open.then(|| ctx.cumulative_pass_nr());
-    app.hotbar = bar;
+    app.win.hotbar = bar;
     if let Some(id) = run {
         app.execute(id);
     }
@@ -964,11 +964,11 @@ mod tests {
     macro_rules! hotbar_harness {
         ($side:expr, $vertical:expr, $full_side:expr) => {{
             let mut app = PdfCraftApp::new();
-            app.hotbar.place($side).unwrap();
-            app.hotbar.vertical = $vertical;
-            app.hotbar.full_side = $full_side;
-            app.hotbar.position = [0.5, 0.5];
-            app.hotbar.picker_open = true;
+            app.win.hotbar.place($side).unwrap();
+            app.win.hotbar.vertical = $vertical;
+            app.win.hotbar.full_side = $full_side;
+            app.win.hotbar.position = [0.5, 0.5];
+            app.win.hotbar.picker_open = true;
             let mut fonts = false;
             let mut harness = Harness::builder().with_size(vec2(1000.0, 900.0)).with_accessibility_check(false).build_ui_state(
                 move |ui, app: &mut PdfCraftApp| {
@@ -1026,8 +1026,8 @@ mod tests {
             // Drag the slider up to the largest size.
             let slider = h.get_by_role(egui::accesskit::Role::Slider).rect();
             drag_slider_pinned!(h, slider, slider.left_center() + vec2(slider.width() * 0.2, 0.0), slider.right_center() - vec2(2.0, 0.0), what);
-            assert!(h.state().hotbar.button_size > 60.0, "{what}: slider did not reach the upper end");
-            assert!(h.state().hotbar.picker_drag_pos.is_none(), "{what}: release must unpin the picker");
+            assert!(h.state().win.hotbar.button_size > 60.0, "{what}: slider did not reach the upper end");
+            assert!(h.state().win.hotbar.picker_drag_pos.is_none(), "{what}: release must unpin the picker");
             let resized = h.get_by_role(egui::accesskit::Role::Slider).rect();
             assert_ne!(resized, slider, "{what}: picker should take its new place after release");
             if !vertical && !full_side {
@@ -1036,8 +1036,8 @@ mod tests {
 
             // And back down to the smallest.
             drag_slider_pinned!(h, resized, resized.right_center() - vec2(2.0, 0.0), resized.left_center() + vec2(2.0, 0.0), what);
-            assert!(h.state().hotbar.button_size < 28.0, "{what}: slider did not reach the lower end");
-            assert!(h.state().hotbar.picker_drag_pos.is_none(), "{what}: release must unpin the picker");
+            assert!(h.state().win.hotbar.button_size < 28.0, "{what}: slider did not reach the lower end");
+            assert!(h.state().win.hotbar.picker_drag_pos.is_none(), "{what}: release must unpin the picker");
             let restored = h.get_by_role(egui::accesskit::Role::Slider).rect();
             assert_ne!(restored, resized, "{what}: picker should take its new place after the reverse drag");
             if !vertical && !full_side {
@@ -1056,7 +1056,7 @@ mod tests {
             let slider = h.get_by_role(egui::accesskit::Role::Slider).rect();
             h.get_by_role(egui::accesskit::Role::Slider).focus();
             h.run_steps(2);
-            assert!(h.state().hotbar.picker_drag_pos.is_none(), "{what}: focusing the slider alone must not pin the picker");
+            assert!(h.state().win.hotbar.picker_drag_pos.is_none(), "{what}: focusing the slider alone must not pin the picker");
 
             // The slider moves about a pixel per key press, so this crosses its whole travel.
             for _ in 0..150 {
@@ -1064,13 +1064,13 @@ mod tests {
                 h.run_steps(1);
                 assert_eq!(h.get_by_role(egui::accesskit::Role::Slider).rect(), slider, "{what}: picker moved during keyboard resize");
             }
-            assert!(h.state().hotbar.button_size > 60.0, "{what}: keys did not reach the upper end");
-            assert!(h.state().hotbar.picker_drag_pos.is_some(), "{what}: picker must stay pinned while the slider has focus");
+            assert!(h.state().win.hotbar.button_size > 60.0, "{what}: keys did not reach the upper end");
+            assert!(h.state().win.hotbar.picker_drag_pos.is_some(), "{what}: picker must stay pinned while the slider has focus");
 
             // Moving focus away ends the adjustment.
             h.key_press(egui::Key::Tab);
             h.run_steps(3);
-            assert!(h.state().hotbar.picker_drag_pos.is_none(), "{what}: losing focus must unpin the picker");
+            assert!(h.state().win.hotbar.picker_drag_pos.is_none(), "{what}: losing focus must unpin the picker");
             assert_ne!(h.get_by_role(egui::accesskit::Role::Slider).rect(), slider, "{what}: picker should take its new place after focus leaves");
         }
     }
@@ -1086,11 +1086,11 @@ mod tests {
             h.key_press(egui::Key::ArrowRight);
             h.run_steps(1);
         }
-        assert!(h.state().hotbar.picker_drag_pos.is_some() && h.state().hotbar.keyboard_sizing, "pinned while the keys resize the bar");
+        assert!(h.state().win.hotbar.picker_drag_pos.is_some() && h.state().win.hotbar.keyboard_sizing, "pinned while the keys resize the bar");
         // What `close_hidden_picker` does on a pass that hides the hotbar: `show` doesn't run.
-        h.state_mut().hotbar.close_picker();
-        assert!(h.state().hotbar.picker_drag_pos.is_none(), "closing ends the held position");
-        assert!(!h.state().hotbar.keyboard_sizing, "closing ends the keyboard adjustment");
+        h.state_mut().win.hotbar.close_picker();
+        assert!(h.state().win.hotbar.picker_drag_pos.is_none(), "closing ends the held position");
+        assert!(!h.state().win.hotbar.keyboard_sizing, "closing ends the keyboard adjustment");
     }
 
     #[test]
@@ -1122,38 +1122,38 @@ mod tests {
         assert!(app.set_option("hotbar-size", "NaN").is_err());
         let mut restored = PdfCraftApp::new();
         restored.restore(&app.persist());
-        assert_eq!(restored.hotbar.tools, app.hotbar.tools);
-        assert_eq!(restored.hotbar.position, [0.0, 0.5]);
-        assert!(restored.hotbar.vertical);
-        assert_eq!(restored.hotbar.button_size, 48.0);
-        assert!(restored.hotbar.full_side);
-        assert_eq!(restored.hotbar.dock.as_deref(), Some("left"));
+        assert_eq!(restored.win.hotbar.tools, app.win.hotbar.tools);
+        assert_eq!(restored.win.hotbar.position, [0.0, 0.5]);
+        assert!(restored.win.hotbar.vertical);
+        assert_eq!(restored.win.hotbar.button_size, 48.0);
+        assert!(restored.win.hotbar.full_side);
+        assert_eq!(restored.win.hotbar.dock.as_deref(), Some("left"));
     }
 
     #[test]
     fn hotbar_restore_filters_unknown_tools_and_offscreen_positions() {
         let mut app = PdfCraftApp::new();
         app.restore(r#"{"hotbar":{"tools":["invalid","comment.ink","comment.ink"],"position":[-10,999]}}"#);
-        assert_eq!(app.hotbar.tools, ["comment.ink"]);
-        assert_eq!(app.hotbar.position, [0.0, 1.0]);
+        assert_eq!(app.win.hotbar.tools, ["comment.ink"]);
+        assert_eq!(app.win.hotbar.position, [0.0, 1.0]);
     }
 
     #[test]
     fn hotbar_restore_moves_legacy_default_into_margin_and_keeps_chosen_spots() {
         let mut app = PdfCraftApp::new();
         app.restore(r#"{"hotbar":{"tools":["comment.ink"],"position":[0.5,0.0],"vertical":false,"button_size":40.0,"dock":null}}"#);
-        assert_eq!(app.hotbar.position, [0.0, 0.0]);
-        assert!(app.hotbar.vertical);
-        assert!(!app.hotbar.placed);
-        assert_eq!(app.hotbar.tools, ["comment.ink"]);
-        assert_eq!(app.hotbar.button_size, 40.0);
+        assert_eq!(app.win.hotbar.position, [0.0, 0.0]);
+        assert!(app.win.hotbar.vertical);
+        assert!(!app.win.hotbar.placed);
+        assert_eq!(app.win.hotbar.tools, ["comment.ink"]);
+        assert_eq!(app.win.hotbar.button_size, 40.0);
         app.restore(r#"{"hotbar":{"position":[0.0,0.0],"vertical":false,"dock":null}}"#);
-        assert_eq!(app.hotbar.position, [0.0, 0.0]);
-        assert!(!app.hotbar.vertical);
-        assert!(app.hotbar.placed, "a legacy bar dragged to the corner stays there");
+        assert_eq!(app.win.hotbar.position, [0.0, 0.0]);
+        assert!(!app.win.hotbar.vertical);
+        assert!(app.win.hotbar.placed, "a legacy bar dragged to the corner stays there");
         app.restore(r#"{"hotbar":{"position":[0.5,0.0],"vertical":false,"dock":null,"placed":true}}"#);
-        assert_eq!(app.hotbar.position, [0.5, 0.0], "current preferences are not migrated");
-        assert!(!app.hotbar.vertical);
+        assert_eq!(app.win.hotbar.position, [0.5, 0.0], "current preferences are not migrated");
+        assert!(!app.win.hotbar.vertical);
     }
 
     /// H1 (SYNC.17, the owner's decision): upstream's margin default is for new installations
@@ -1170,7 +1170,7 @@ mod tests {
             let before: serde_json::Value = serde_json::from_str(saved).unwrap();
             let mut app = PdfCraftApp::new();
             app.restore(saved);
-            let bar = &app.hotbar;
+            let bar = &app.win.hotbar;
             assert!(bar.placed, "{saved}: the saved spot counts as the user's");
             assert_eq!(serde_json::json!(bar.position), before["hotbar"]["position"], "{saved}");
             assert_eq!(bar.vertical, before["hotbar"]["vertical"].as_bool().unwrap(), "{saved}");
@@ -1178,11 +1178,15 @@ mod tests {
             assert_eq!(serde_json::json!(bar.tools), before["hotbar"]["tools"], "{saved}");
             let mut again = PdfCraftApp::new();
             again.restore(&app.persist());
-            assert_eq!((again.hotbar.position, again.hotbar.vertical, again.hotbar.placed), (bar.position, bar.vertical, true), "{saved}");
+            assert_eq!(
+                (again.win.hotbar.position, again.win.hotbar.vertical, again.win.hotbar.placed),
+                (bar.position, bar.vertical, true),
+                "{saved}"
+            );
         }
         // No saved hotbar: a new installation gets upstream's default, in the margin.
         let fresh = PdfCraftApp::new();
-        assert_eq!((fresh.hotbar.position, fresh.hotbar.vertical, fresh.hotbar.placed), ([0.0, 0.0], true, false));
+        assert_eq!((fresh.win.hotbar.position, fresh.win.hotbar.vertical, fresh.win.hotbar.placed), ([0.0, 0.0], true, false));
     }
 
     /// H1: the default hotbar keeps clear of this fork's rulers (OV11) in the margin it floats in.

@@ -108,7 +108,7 @@ fn drawing_a_signature_creating_an_id_signing_and_trusting() {
 
 fn create_signing_id(h: &mut Harness<'static, PdfCraftApp>) {
     assert!(h.state_mut().execute("sign.digital"));
-    assert_eq!(h.state().quick_tool, QuickTool::SignArea { certify: false });
+    assert_eq!(h.state().win.quick_tool, QuickTool::SignArea { certify: false });
     let (a, b) = (at(h, 40.0, 90.0), at(h, 220.0, 40.0));
     drag(h, a, b);
     assert_eq!(h.state().dialog, Some(Dialog::Sign));
@@ -164,7 +164,7 @@ fn sign_with_created_id(h: &mut Harness<'static, PdfCraftApp>, dir: &std::path::
             assert_eq!((signature.status, signature.reason.as_deref(), signature.page), (SignatureStatus::Unknown, Some("I approve"), Some(0)));
         }
     }
-    assert_eq!(s.right, Some(RightPanel::Signatures));
+    assert_eq!(s.win.right, Some(RightPanel::Signatures));
     h.get_by_label("At least one signature has problems.");
 }
 
@@ -492,7 +492,7 @@ fn a_signature_badge_says_its_verdict_with_any_tool() {
     };
     let p = field_centre(&h);
     let hover = |h: &mut Harness<'static, PdfCraftApp>, tool: QuickTool, at: Pos2| {
-        h.state_mut().quick_tool = tool;
+        h.state_mut().win.quick_tool = tool;
         h.run_steps(4);
         h.hover_at(at);
         h.run_steps(4);

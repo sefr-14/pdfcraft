@@ -27,7 +27,7 @@ pub(super) fn edit_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens, g
     let from_all_tools = app.mode != crate::Mode::Edit;
     ui.horizontal(|ui| {
         if from_all_tools && icons::button(ui, "chevron-left", 26.0, false, tl!("Back to all tools")).clicked() {
-            app.left = LeftPanel::AllTools;
+            app.win.left = LeftPanel::AllTools;
             app.enter_mode(crate::Mode::AllTools);
         }
         // "Edit" under the Edit tab, as Acrobat titles it; the tool's own name from All tools.
@@ -39,14 +39,14 @@ pub(super) fn edit_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens, g
             run = Some("app.preferences");
         }
         if icons::button(ui, "x", 26.0, false, tl!("Close panel")).clicked() {
-            app.left_open = false;
+            app.win.left_open = false;
         }
     });
     ui.add_space(4.0);
     ui.separator();
     ui.add_space(6.0);
     // Several objects selected: how many, and how to move them. Acrobat's panel has no idle hint.
-    let count = app.active_ids().filter(|_| app.quick_tool == crate::QuickTool::EditText).map_or(0, |(i, _)| app.win.views[i].objects.count());
+    let count = app.active_ids().filter(|_| app.win.quick_tool == crate::QuickTool::EditText).map_or(0, |(i, _)| app.win.views[i].objects.count());
     if count > 0 {
         ui.label(crate::i18n::trn(crate::i18n::current(), count as u64, "{n} object selected", "{n} objects selected"));
         ui.label(tl!("Drag the selection to move it. Esc clears the selection."));
@@ -194,7 +194,7 @@ pub(super) fn stamp_palette(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens
         ] {
             widgets::section_title(ui, title);
             for kind in StampKind::ALL.into_iter().filter(|k| k.group() == group) {
-                let active = app.quick_tool == crate::QuickTool::Stamp(kind);
+                let active = app.win.quick_tool == crate::QuickTool::Stamp(kind);
                 let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 38.0), Sense::click());
                 resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, active, kind.label()));
                 let press = theme::Press::track(ui, &resp);
@@ -243,7 +243,7 @@ pub(super) fn stamp_palette(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens
                     }
                 }
                 if theme::hand(resp).clicked() {
-                    app.quick_tool = crate::QuickTool::Stamp(kind);
+                    app.win.quick_tool = crate::QuickTool::Stamp(kind);
                 }
             }
         }
@@ -318,7 +318,7 @@ fn format_section(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens) {
     if let Some(i) = app.active_ids().map(|(i, _)| i)
         && let Some(draft) = app.win.views[i].content.draft.clone()
     {
-        if draft.index.is_none() && app.quick_tool == crate::QuickTool::AddText {
+        if draft.index.is_none() && app.win.quick_tool == crate::QuickTool::AddText {
             crate::content_ui::hint(ui, t);
         }
         let mut style = draft.style.clone();
@@ -375,7 +375,7 @@ fn format_section(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens) {
                 }
             }
         }
-        None if app.quick_tool == crate::QuickTool::AddText => {
+        None if app.win.quick_tool == crate::QuickTool::AddText => {
             crate::content_ui::hint(ui, t);
             let mut style = app.text_style.clone();
             added_text_format(ui, t, &mut style, None);

@@ -995,7 +995,7 @@ fn initial_view_is_edited_and_honoured_on_open() {
     app.set_option("language", "en").unwrap();
     app.open_bytes("again.pdf", None, bytes.to_vec()).unwrap();
     let view = &app.win.views[0];
-    assert_eq!((view.current, view.cover, app.right), (1, true, Some(pdfcraft_ui_egui::RightPanel::Bookmarks)));
+    assert_eq!((view.current, view.cover, app.win.right), (1, true, Some(pdfcraft_ui_egui::RightPanel::Bookmarks)));
 }
 
 #[test]
@@ -1512,7 +1512,7 @@ fn advanced_search_lists_results_with_context() {
     let v = &h.state().win.views[i];
     assert_eq!((v.find.as_ref().unwrap().current, v.current), (Some(1), 1));
     // Closing the panel moves the search to the find bar.
-    h.state_mut().right = None;
+    h.state_mut().win.right = None;
     h.run_steps(2);
     assert!(!h.state().win.views[i].find.as_ref().unwrap().in_panel);
 }
@@ -1865,27 +1865,27 @@ fn v_p_and_space_pick_the_quick_tools() {
     let press = |h: &mut Harness<'static, PdfCraftApp>, key| {
         h.key_press(key);
         h.run_steps(2);
-        h.state().quick_tool
+        h.state().win.quick_tool
     };
     assert_eq!(press(&mut h, Key::P), QuickTool::Hand);
     assert_eq!(press(&mut h, Key::V), QuickTool::Select);
     // V leaves any other tool too, as the toolbar button does.
-    h.state_mut().quick_tool = QuickTool::Crop;
+    h.state_mut().win.quick_tool = QuickTool::Crop;
     assert_eq!(press(&mut h, Key::V), QuickTool::Select);
     // Holding Space pans with the Hand for as long as it is held, then gives the tool back.
-    h.state_mut().quick_tool = QuickTool::Crop;
+    h.state_mut().win.quick_tool = QuickTool::Crop;
     h.key_down(Key::Space);
     h.run_steps(4);
-    assert_eq!(h.state().quick_tool, QuickTool::Hand, "Space held");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Hand, "Space held");
     h.key_up(Key::Space);
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Crop, "Space released");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Crop, "Space released");
     // With a modifier the letters are someone else's shortcut.
     h.key_press_modifiers(Modifiers::SHIFT, Key::P);
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Crop);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Crop);
     // They are letters to a text field: typing in the find bar keeps the tool.
-    h.state_mut().quick_tool = QuickTool::Select;
+    h.state_mut().win.quick_tool = QuickTool::Select;
     h.state_mut().win.views[0].open_find();
     h.run_steps(4);
     assert_eq!(press(&mut h, Key::H), QuickTool::Select, "typing H in the find bar");
@@ -1893,7 +1893,7 @@ fn v_p_and_space_pick_the_quick_tools() {
     h.run_steps(2);
     h.key_up(Key::Space);
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Select, "typing a space in the find bar");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select, "typing a space in the find bar");
 }
 
 /// Like [`fixture`], with each page's size given.
@@ -1969,7 +1969,7 @@ fn pages_panel_harness(sizes: &[(u32, u32)]) -> Harness<'static, PdfCraftApp> {
         let mut app = PdfCraftApp::new();
         app.set_option("language", "en").unwrap();
         app.open_bytes("cheques.pdf", None, bytes).unwrap();
-        app.right = Some(pdfcraft_ui_egui::RightPanel::Pages);
+        app.win.right = Some(pdfcraft_ui_egui::RightPanel::Pages);
         app
     });
     h.run_steps(6);

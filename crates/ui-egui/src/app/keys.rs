@@ -59,8 +59,8 @@ impl PdfCraftApp {
                 self.select_all_keys(i, ctx);
             }
             self.tool_keys(i, ctx);
-            let keys = self.page_keys;
-            if self.quick_tool == QuickTool::EditText
+            let keys = self.win.page_keys;
+            if self.win.quick_tool == QuickTool::EditText
                 && let Some(doc) = self.session.get(self.win.views[i].id).filter(|d| d.allows_modification())
             {
                 object_ui::nudge_keys(ctx, keys, &mut self.win.views[i], doc);
@@ -88,15 +88,15 @@ impl PdfCraftApp {
     fn select_all_keys(&mut self, i: usize, ctx: &egui::Context) {
         use egui::Key;
         let pages_owns_keyboard =
-            self.right == Some(RightPanel::Pages) && self.win.views[i].pages_focus_id.is_some_and(|id| ctx.memory(|m| m.has_focus(id)));
+            self.win.right == Some(RightPanel::Pages) && self.win.views[i].pages_focus_id.is_some_and(|id| ctx.memory(|m| m.has_focus(id)));
         if self.dialog.is_none()
-            && !self.palette_open
+            && !self.win.palette_open
             && (pages_owns_keyboard || !ctx.egui_wants_keyboard_input())
             && ctx.input_mut(|input| input.consume_shortcut(&egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, Key::A)))
         {
             let view = &self.win.views[i];
             // A paragraph or text box open for typing keeps ⌘A for its own text.
-            let edit_objects = self.quick_tool == QuickTool::EditText && view.line_editor.is_none() && view.content.draft.is_none();
+            let edit_objects = self.win.quick_tool == QuickTool::EditText && view.line_editor.is_none() && view.content.draft.is_none();
             if pages_owns_keyboard {
                 self.win.views[i].select_all_pages();
             } else if let Some(doc) = self.session.get(view.id).filter(|d| edit_objects && d.allows_modification()) {

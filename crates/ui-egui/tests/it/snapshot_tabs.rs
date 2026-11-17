@@ -78,7 +78,7 @@ fn the_area_stays_after_print_area() {
 #[test]
 fn leaving_snapshot_clears_every_tab() {
     let mut h = harness();
-    assert_eq!(h.state().quick_tool, QuickTool::Snapshot);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Snapshot);
     for index in 0..2 {
         h.state_mut().win.active = Some(index);
         h.run_steps(2);
@@ -88,7 +88,7 @@ fn leaving_snapshot_clears_every_tab() {
         assert!(h.state().win.views[index].area_pick.is_some(), "tab {index} keeps its area under Snapshot");
     }
     // Tab B is on screen; choose another tool.
-    h.state_mut().quick_tool = QuickTool::Select;
+    h.state_mut().win.quick_tool = QuickTool::Select;
     h.run_steps(3);
     assert!(h.state().win.views[1].area_pick.is_none(), "the tab on screen");
     assert!(h.state().win.views[0].area_pick.is_none(), "the other tab");

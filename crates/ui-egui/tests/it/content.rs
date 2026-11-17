@@ -205,7 +205,7 @@ fn clicking_elsewhere_keeps_the_text_and_starts_a_new_box() {
     click(&mut h, p);
     assert_eq!(texts(&h), ["First"]);
     assert!(h.state().win.views[0].content.draft.is_some(), "a new box opened");
-    assert_eq!(h.state().quick_tool, QuickTool::AddText, "still adding text");
+    assert_eq!(h.state().win.quick_tool, QuickTool::AddText, "still adding text");
     h.event(egui::Event::Text("Second".into()));
     h.run_steps(2);
     // …and a quick one (both in one frame, as a real mouse click usually arrives).
@@ -239,7 +239,7 @@ fn typing_moving_styling_and_deleting_added_content() {
     assert_eq!(a.len(), 1);
     let pdfcraft_engine::AddedContent::Text(t) = &a[0].content else { panic!() };
     assert_eq!(t.text, "Reviewed");
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
     h.run_steps(2);
     assert_eq!(h.state().win.views[0].content.selected, Some((0, 0)), "the new text is selected");
     // Bold from the Format panel: one undoable change.
@@ -747,7 +747,7 @@ fn format_text_fits_the_tools_pane_at_its_narrowest() {
     let mut h = harness();
     // At the largest interface size too: it scales points to pixels, and the layout is in points.
     h.state_mut().set_option("ui-scale", "300").unwrap();
-    h.state_mut().side_panels.tools_width = 0.0;
+    h.state_mut().win.side_panels.tools_width = 0.0;
     assert!(h.state_mut().execute("edit.text"));
     h.run_steps(3);
     let font = h.query_all_by_role(Role::ComboBox).find(|n| n.value().as_deref() == Some("Helvetica")).map(|n| n.rect()).expect("the font list");
@@ -789,7 +789,7 @@ fn format_text_lists_fit_the_narrowest_tools_pane_in_every_language() {
             continue;
         }
         h.state_mut().set_option("language", lang.code()).unwrap();
-        h.state_mut().side_panels.tools_width = 0.0;
+        h.state_mut().win.side_panels.tools_width = 0.0;
         assert!(h.state_mut().execute("edit.text"));
         h.run_steps(3);
         let lists: Vec<egui::Rect> = h.query_all_by_role(Role::ComboBox).map(|n| n.rect()).collect();
@@ -969,7 +969,7 @@ fn mode_tabs_keep_the_hand_over_added_text_scrolled_under_them() {
     // The page across the window, so text placed at its left edge reaches under the tabs.
     h.state_mut().win.views[0].fit = pdfcraft_ui_egui::canvas::Fit::Width;
     h.run_steps(4);
-    assert_eq!(h.state().quick_tool, QuickTool::AddText);
+    assert_eq!(h.state().win.quick_tool, QuickTool::AddText);
     // The empty page, ready for text.
     assert_eq!(mode_tab_cursors(&mut h, |h| item_on_screen(h, [10.0, 290.0, 210.0, 305.0])), HAND_ON_EVERY_TAB, "the page under the tabs");
     // Text kept by a click lower down, which starts a second box (#74).

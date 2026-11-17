@@ -283,20 +283,20 @@ impl PdfCraftApp {
                     self.notify(error);
                 }
             }
-            "view.select_tool" => self.quick_tool = crate::QuickTool::Select,
-            "view.hand_tool" => self.quick_tool = crate::QuickTool::Hand,
+            "view.select_tool" => self.win.quick_tool = crate::QuickTool::Select,
+            "view.hand_tool" => self.win.quick_tool = crate::QuickTool::Hand,
             // Find and replace changes page text, so it runs in Edit text mode (as Acrobat's
             // does): the command turns the mode on, and the find bar shows its Replace row there.
             "edit.replace" => {
                 if let Some(i) = active {
-                    self.quick_tool = crate::QuickTool::EditText;
-                    self.left = crate::LeftPanel::Tool("edit");
+                    self.win.quick_tool = crate::QuickTool::EditText;
+                    self.win.left = crate::LeftPanel::Tool("edit");
                     self.reveal_tools();
                     self.win.views[i].open_replace();
                 }
             }
             "view.side_panel" => self.toggle_side_panel(),
-            "view.tools_pane" => self.left_open = !self.left_open,
+            "view.tools_pane" => self.win.left_open = !self.win.left_open,
             "view.focus_page_input" => {
                 if let (Some(ctx), Some(view)) = (self.ctx.clone(), active.and_then(|i| self.win.views.get_mut(i))) {
                     // The page box in the toolbar (chrome.rs); select its label so typing replaces it.
@@ -314,7 +314,7 @@ impl PdfCraftApp {
                     state.store(&ctx, id);
                 }
             }
-            "view.palette" => self.palette_open = !self.palette_open,
+            "view.palette" => self.win.palette_open = !self.win.palette_open,
             layout if crate::canvas::PageLayout::from_command(layout).is_some() => {
                 if let (Some(i), Some(layout)) = (active, crate::canvas::PageLayout::from_command(layout)) {
                     self.win.views[i].set_layout(layout);
@@ -391,7 +391,7 @@ impl PdfCraftApp {
                     self.notify_fmt("Couldn't fit the visible content: {e}", &[("e", &e.to_string())]);
                 }
             }
-            "view.marquee_zoom" => self.quick_tool = crate::QuickTool::MarqueeZoom,
+            "view.marquee_zoom" => self.win.quick_tool = crate::QuickTool::MarqueeZoom,
             _ => return None,
         }
         Some(true)
@@ -467,7 +467,7 @@ impl PdfCraftApp {
                 self.apply_edit(Edit::ReversePages { pages });
             }
             "page.crop" => {
-                self.quick_tool = crate::QuickTool::Crop;
+                self.win.quick_tool = crate::QuickTool::Crop;
                 if let Some(v) = active.and_then(|i| self.win.views.get_mut(i)) {
                     v.organize = false;
                 }
@@ -506,9 +506,9 @@ impl PdfCraftApp {
             tool if crate::comments::CommentTool::from_command(tool).is_some() => {
                 let Some(tool) = crate::comments::CommentTool::from_command(tool) else { return Some(false) };
                 self.comment_prefs.group_tool[tool.group()] = tool;
-                self.quick_tool = crate::QuickTool::Comment(tool);
+                self.win.quick_tool = crate::QuickTool::Comment(tool);
                 // Acrobat opens the Comments panel with the commenting tools, unless the user closed it.
-                if self.right.is_none() && !self.comments_panel_closed {
+                if self.win.right.is_none() && !self.win.comments_panel_closed {
                     self.choose_right_panel(Some(RightPanel::Comments));
                 }
                 // A text selection made before picking a markup tool is marked right away.
@@ -576,8 +576,8 @@ impl PdfCraftApp {
             "ocr.recognize_batch" => self.ocr_files_dialog(),
             "ocr.correct" => self.ocr_verify.open = true,
             "edit.edit_text" => {
-                self.quick_tool = crate::QuickTool::EditText;
-                self.left = crate::LeftPanel::Tool("edit");
+                self.win.quick_tool = crate::QuickTool::EditText;
+                self.win.left = crate::LeftPanel::Tool("edit");
                 self.reveal_tools();
                 self.notify_tr("Click text or an image to edit it");
             }
@@ -591,13 +591,13 @@ impl PdfCraftApp {
             }
             "export.all_images" => self.dialog = Some(Dialog::Export(crate::export_ui::ExportKind::AllImages)),
             "edit.text" => {
-                self.quick_tool = crate::QuickTool::AddText;
-                self.left = crate::LeftPanel::Tool("edit");
+                self.win.quick_tool = crate::QuickTool::AddText;
+                self.win.left = crate::LeftPanel::Tool("edit");
                 self.reveal_tools();
             }
             "edit.image" => self.add_image_dialog(),
             "edit.link" => {
-                self.quick_tool = crate::QuickTool::Link;
+                self.win.quick_tool = crate::QuickTool::Link;
                 self.notify_tr("Drag a rectangle to create a link; double-click a link to edit it");
             }
             "edit.links_from_urls" => self.links_from_urls(),
@@ -605,14 +605,14 @@ impl PdfCraftApp {
             "comment.import" => self.import_comments_dialog(),
             "form.import_data" => self.import_data_dialog(),
             "comment.stamp" => {
-                self.left = crate::LeftPanel::Tool("stamp");
+                self.win.left = crate::LeftPanel::Tool("stamp");
                 self.reveal_tools();
             }
             "comment.export" => self.export_data_dialog(true, false),
             "comment.summarize" => self.dialog = Some(Dialog::SummarizeComments),
-            "edit.column_select" => self.quick_tool = crate::QuickTool::ColumnSelect,
+            "edit.column_select" => self.win.quick_tool = crate::QuickTool::ColumnSelect,
             "edit.snapshot" => {
-                self.quick_tool = crate::QuickTool::Snapshot;
+                self.win.quick_tool = crate::QuickTool::Snapshot;
                 self.notify_tr("Drag a rectangle around the area to copy");
             }
             "edit.copy" => {
@@ -645,7 +645,7 @@ impl PdfCraftApp {
             "ocr.enhance_camera" => {
                 // The corners start on the document's edges when they can be found, else
                 // inset on the current page (camera_ui::page_input).
-                self.quick_tool = crate::QuickTool::EnhanceCamera;
+                self.win.quick_tool = crate::QuickTool::EnhanceCamera;
                 if let Some(i) = self.win.active
                     && let Some(view) = self.win.views.get_mut(i)
                     && let Some(page) = self.session.get(view.id).and_then(|d| d.info.pages.get(view.current).cloned())
@@ -668,7 +668,7 @@ impl PdfCraftApp {
         match id {
             "form.fields" => self.choose_right_panel(Some(RightPanel::Fields)),
             "form.calculation_order" => {
-                self.left = crate::LeftPanel::CalculationOrder;
+                self.win.left = crate::LeftPanel::CalculationOrder;
                 // The page edits the fields, so Preview ends; the page grid closes, as for a tool.
                 self.form_preview = false;
                 if let Some(v) = active.and_then(|i| self.win.views.get_mut(i)) {
@@ -699,7 +699,7 @@ impl PdfCraftApp {
             }
             "sign.digital" | "sign.certify" => {
                 let certify = id == "sign.certify";
-                self.quick_tool = crate::QuickTool::SignArea { certify };
+                self.win.quick_tool = crate::QuickTool::SignArea { certify };
                 self.notify_tr("Drag to draw the area where the signature should appear.");
             }
             "sign.certify_invisible" => {
@@ -715,7 +715,7 @@ impl PdfCraftApp {
             "form.export_data" => self.export_data_dialog(false, true),
             "form.merge_data" => self.merge_data_dialog(),
             "form.prepare" => {
-                self.left = crate::LeftPanel::Tool("form");
+                self.win.left = crate::LeftPanel::Tool("form");
                 self.reveal_tools();
                 self.choose_right_panel(Some(RightPanel::Fields));
                 // Like Acrobat, a document without fields gets them detected on the way in.
@@ -733,8 +733,8 @@ impl PdfCraftApp {
             }
             field if crate::prepare::FieldTool::from_command(field).is_some() => {
                 let Some(tool) = crate::prepare::FieldTool::from_command(field) else { return Some(false) };
-                self.quick_tool = crate::QuickTool::Field(tool);
-                self.left = crate::LeftPanel::Tool("form");
+                self.win.quick_tool = crate::QuickTool::Field(tool);
+                self.win.left = crate::LeftPanel::Tool("form");
                 self.reveal_tools();
                 if let Some(i) = active {
                     self.win.views[i].forms.focus = None;
@@ -758,7 +758,7 @@ impl PdfCraftApp {
             fill if crate::fill_sign::FillTool::from_command(fill).is_some() => {
                 let Some(tool) = crate::fill_sign::FillTool::from_command(fill) else { return Some(false) };
                 self.fill_tool = tool;
-                self.quick_tool = crate::QuickTool::Fill(tool);
+                self.win.quick_tool = crate::QuickTool::Fill(tool);
                 let initials = tool == crate::fill_sign::FillTool::Initials;
                 if (tool == crate::fill_sign::FillTool::Signature && self.signature.is_none()) || (initials && self.initials.is_none()) {
                     self.signature_draft = crate::fill_sign::SigDraft::new(initials, &self.comment_prefs.author);
@@ -790,8 +790,8 @@ impl PdfCraftApp {
             "a11y.tags" => self.choose_right_panel(Some(RightPanel::Tags)),
             "a11y.reading_options" => self.dialog = Some(Dialog::Properties(crate::PropsTab::Advanced)),
             "redact.mark" => {
-                self.quick_tool = crate::QuickTool::Redact;
-                self.left = crate::LeftPanel::Tool("redact");
+                self.win.quick_tool = crate::QuickTool::Redact;
+                self.win.left = crate::LeftPanel::Tool("redact");
                 self.reveal_tools();
                 // A text selection made first is marked right away.
                 if let Some(i) = active
@@ -912,7 +912,7 @@ impl PdfCraftApp {
             // A form field has the keyboard: let it take this frame's typing (and Escape) first,
             // so ⌘S saves what's on screen (#166). Runs next frame, in this view only (another
             // tab of the same document has its own page and zoom).
-            self.deferred_commands.push((id, self.active_key()));
+            self.win.deferred_commands.push((id, self.active_key()));
             ctx.request_repaint();
         } else if id == "file.close" && active.is_none() && crate::commands::mac_shortcuts(ctx) && !cfg!(target_arch = "wasm32") {
             // macOS ⌘W closes the last window when no document tabs remain (#869). Route through

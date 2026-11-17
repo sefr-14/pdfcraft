@@ -203,7 +203,7 @@ fn open(pdf: Vec<u8>, zoom: &'static str, left_open: bool) -> Harness<'static, P
 }
 
 fn stamp_tool(h: &mut Harness<'_, PdfCraftApp>) {
-    h.state_mut().quick_tool = QuickTool::Stamp(StampKind::DynApproved);
+    h.state_mut().win.quick_tool = QuickTool::Stamp(StampKind::DynApproved);
     h.run_steps(4);
 }
 
@@ -299,7 +299,7 @@ fn stamp_tool_over_a_link_shows_its_crosshair() {
 #[test]
 fn rectangle_tool_over_a_link_shows_its_crosshair() {
     let mut h = open(link_pdf(), "150", false);
-    h.state_mut().quick_tool = QuickTool::Comment(CommentTool::Rectangle);
+    h.state_mut().win.quick_tool = QuickTool::Comment(CommentTool::Rectangle);
     h.run_steps(4);
     let off_link = at(&h, 150.0, 150.0);
     let off = cursor_at(&mut h, off_link);
@@ -311,7 +311,7 @@ fn rectangle_tool_over_a_link_shows_its_crosshair() {
 #[test]
 fn edit_text_over_a_linked_word_offers_the_move_arrow() {
     let mut h = open(linked_text_pdf(), "150", false);
-    h.state_mut().quick_tool = QuickTool::EditText;
+    h.state_mut().win.quick_tool = QuickTool::EditText;
     for _ in 0..30 {
         h.run_steps(2);
         std::thread::sleep(std::time::Duration::from_millis(5));
@@ -353,7 +353,7 @@ fn a_links_tip_shows_only_with_its_hand() {
     let mut h = open(link_pdf(), "150", false);
     let on_link = at(&h, 150.0, 325.0);
     let hover = |h: &mut Harness<'_, PdfCraftApp>, tool: QuickTool, nudge: f32| {
-        h.state_mut().quick_tool = tool;
+        h.state_mut().win.quick_tool = tool;
         h.run_steps(4);
         // A new position each time, so the hover is fresh.
         let cursor = cursor_at(h, on_link + egui::vec2(nudge, 0.0));
@@ -406,7 +406,7 @@ fn the_i_beam_drops_over_a_link_only_where_the_press_goes_to_it() {
     let (plain, linked) = (at(&h, 200.0, 303.0), at(&h, 100.0, 303.0));
     assert_eq!(wait_for_cursor(&mut h, plain, |c| c == egui::CursorIcon::Text), egui::CursorIcon::Text, "the page's text has arrived");
     assert_eq!(cursor_at(&mut h, linked), egui::CursorIcon::PointingHand, "the Select tool follows the link");
-    h.state_mut().quick_tool = QuickTool::Comment(CommentTool::Highlight);
+    h.state_mut().win.quick_tool = QuickTool::Comment(CommentTool::Highlight);
     h.run_steps(2);
     assert_eq!(cursor_at(&mut h, linked), egui::CursorIcon::Text, "the highlighter selects its text");
 }
@@ -431,7 +431,7 @@ fn a_comments_tip_shows_with_every_tool_beside_its_cursor() {
     // Inside the rectangle comment by "Reviewer": where there is no text, and over a word.
     let (blank, on_text) = (at(&h, 120.0, 315.0), at(&h, 60.0, 303.0));
     let hover = |h: &mut Harness<'static, PdfCraftApp>, tool: QuickTool, p: egui::Pos2, want: egui::CursorIcon| {
-        h.state_mut().quick_tool = tool;
+        h.state_mut().win.quick_tool = tool;
         h.run_steps(4);
         let cursor = wait_for_cursor(h, p, |c| c == want);
         h.run_steps(2);
@@ -500,7 +500,7 @@ fn a_paragraph_edge_resizes_wherever_it_shows_the_resize_cursor() {
 fn stamp_cursor_stays_off_the_command_palette() {
     let mut h = open(link_pdf(), "300", false);
     stamp_tool(&mut h);
-    h.state_mut().palette_open = true;
+    h.state_mut().win.palette_open = true;
     h.run_steps(4);
     let palette = h.ctx.memory(|m| m.area_rect(egui::Id::unique("palette"))).expect("palette shown");
     // On the palette's frame margin, where none of its widgets sets a cursor, over the page.
@@ -518,7 +518,7 @@ fn stamp_cursor_stays_off_the_command_palette() {
 fn link_tip_stays_off_while_the_palette_is_open() {
     use egui_kittest::kittest::Queryable;
     let mut h = open(link_pdf(), "300", false);
-    h.state_mut().palette_open = true;
+    h.state_mut().win.palette_open = true;
     h.run_steps(4);
     let palette = h.ctx.memory(|m| m.area_rect(egui::Id::unique("palette"))).expect("palette shown");
     let beside = [60.0, 100.0, 150.0, 200.0, 240.0]
@@ -529,7 +529,7 @@ fn link_tip_stays_off_while_the_palette_is_open() {
     h.hover_at(beside);
     h.run_steps(3);
     assert!(h.query_by_label("https://example.org/").is_none(), "no tip beside the palette");
-    h.state_mut().palette_open = false;
+    h.state_mut().win.palette_open = false;
     h.hover_at(beside);
     h.run_steps(3);
     h.get_by_label("https://example.org/");
@@ -895,7 +895,7 @@ fn touch_drag_moves_a_comment_and_leaves_no_gesture_behind() {
 #[test]
 fn escape_cancels_a_signature_rectangle() {
     let mut h = open(link_pdf(), "150", false);
-    h.state_mut().quick_tool = QuickTool::SignArea { certify: false };
+    h.state_mut().win.quick_tool = QuickTool::SignArea { certify: false };
     h.run_steps(4);
     let (a, b) = (at(&h, 60.0, 200.0), at(&h, 200.0, 120.0));
     h.hover_at(a);
@@ -908,7 +908,7 @@ fn escape_cancels_a_signature_rectangle() {
     h.key_press(egui::Key::Escape);
     h.run_steps(4);
     let s = h.state();
-    assert_eq!(s.quick_tool, QuickTool::SignArea { certify: false }, "Escape abandons the rectangle; the tool stays");
+    assert_eq!(s.win.quick_tool, QuickTool::SignArea { certify: false }, "Escape abandons the rectangle; the tool stays");
     assert!(s.dialog.is_none(), "and no signing dialog opens: {:?}", s.dialog);
 }
 
@@ -916,7 +916,7 @@ fn escape_cancels_a_signature_rectangle() {
 /// before the release when `escape`; the comments then on the page.
 fn drag_a_highlight(escape: bool) -> usize {
     let mut h = open(text_pdf(), "150", false);
-    h.state_mut().quick_tool = QuickTool::Comment(CommentTool::Highlight);
+    h.state_mut().win.quick_tool = QuickTool::Comment(CommentTool::Highlight);
     h.run_steps(4);
     let (a, b) = (at(&h, 45.0, 303.0), at(&h, 150.0, 303.0));
     assert_eq!(wait_for_cursor(&mut h, a, |c| c == egui::CursorIcon::Text), egui::CursorIcon::Text, "the page's text has arrived");
@@ -967,7 +967,7 @@ fn a_drag_from_beside_the_page_right_after_a_click_leaves_the_comment_alone() {
 #[test]
 fn a_right_drag_draws_no_signature_rectangle() {
     let mut h = open(link_pdf(), "150", false);
-    h.state_mut().quick_tool = QuickTool::SignArea { certify: false };
+    h.state_mut().win.quick_tool = QuickTool::SignArea { certify: false };
     h.run_steps(4);
     let (a, b) = (at(&h, 60.0, 200.0), at(&h, 200.0, 120.0));
     let button = |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Secondary, pressed, modifiers: egui::Modifiers::NONE };
@@ -980,7 +980,7 @@ fn a_right_drag_draws_no_signature_rectangle() {
     h.event(button(b, false));
     h.run_steps(4);
     let s = h.state();
-    assert_eq!(s.quick_tool, QuickTool::SignArea { certify: false }, "the tool stays: no rectangle was drawn");
+    assert_eq!(s.win.quick_tool, QuickTool::SignArea { certify: false }, "the tool stays: no rectangle was drawn");
     assert!(s.dialog.is_none(), "and no signing dialog opens: {:?}", s.dialog);
 }
 
@@ -1008,7 +1008,7 @@ fn escape_mid_press_keeps_its_release_from_placing_a_stamp() {
 #[test]
 fn escape_cancels_a_crop_rectangle() {
     let mut h = open(text_pdf(), "150", false);
-    h.state_mut().quick_tool = QuickTool::Crop;
+    h.state_mut().win.quick_tool = QuickTool::Crop;
     h.run_steps(4);
     let (a, b) = (at(&h, 40.0, 360.0), at(&h, 260.0, 60.0));
     h.hover_at(a);
@@ -1065,7 +1065,7 @@ fn note_over_link_pdf() -> Vec<u8> {
 }
 
 fn link_tool(h: &mut Harness<'_, PdfCraftApp>) {
-    h.state_mut().quick_tool = QuickTool::Link;
+    h.state_mut().win.quick_tool = QuickTool::Link;
     h.run_steps(4);
 }
 
@@ -1190,7 +1190,7 @@ fn a_right_click_on_a_highlight_over_a_link_opens_the_highlights_menu() {
 #[test]
 fn a_right_click_on_a_comment_with_a_drawing_tool_opens_its_menu() {
     let mut h = open(comment_on_text_pdf(), "150", false);
-    h.state_mut().quick_tool = QuickTool::Comment(CommentTool::Rectangle);
+    h.state_mut().win.quick_tool = QuickTool::Comment(CommentTool::Rectangle);
     h.run_steps(4);
     let on_comment = at(&h, 100.0, 305.0);
     right_click(&mut h, on_comment);
@@ -1235,7 +1235,7 @@ fn camera_corners(h: &Harness<'_, PdfCraftApp>) -> Option<[[f32; 2]; 4]> {
 #[test]
 fn escape_mid_corner_drag_leaves_no_corner_following_the_pointer() {
     let mut h = open(text_pdf(), "150", false);
-    h.state_mut().quick_tool = QuickTool::EnhanceCamera;
+    h.state_mut().win.quick_tool = QuickTool::EnhanceCamera;
     h.run_steps(4);
     // The left top corner starts 5% in from the page's edges: view (15, 20) on the 300×400 page.
     let corner = at(&h, 15.0, 380.0);
@@ -1312,7 +1312,7 @@ fn a_right_click_with_the_link_tool_on_a_note_over_a_link_selects_the_link() {
 #[test]
 fn a_right_click_with_add_text_selects_no_comment() {
     let mut h = open(comment_on_text_pdf(), "150", false);
-    h.state_mut().quick_tool = QuickTool::AddText;
+    h.state_mut().win.quick_tool = QuickTool::AddText;
     h.run_steps(4);
     // Above the line of text the comment covers, where no paragraph is.
     let on_comment = at(&h, 100.0, 317.0);
@@ -1358,7 +1358,7 @@ fn a_right_click_on_a_field_over_a_link_opens_no_link_menu() {
 #[test]
 fn a_fields_tooltip_shows_beside_the_open_palette() {
     let mut h = open(commented_text_field_pdf(), "150", false);
-    h.state_mut().palette_open = true;
+    h.state_mut().win.palette_open = true;
     h.run_steps(4);
     let palette = h.ctx.memory(|m| m.area_rect(egui::Id::unique("palette"))).expect("palette shown");
     let on_field = at(&h, 60.0, 210.0);
@@ -1405,7 +1405,7 @@ fn drag_seen_only_past_page_ones_edge(tool: impl FnOnce(&mut PdfCraftApp)) -> Ha
 
 #[test]
 fn a_redaction_box_dragged_off_its_page_is_drawn_on_it() {
-    let h = drag_seen_only_past_page_ones_edge(|app| app.quick_tool = QuickTool::Redact);
+    let h = drag_seen_only_past_page_ones_edge(|app| app.win.quick_tool = QuickTool::Redact);
     let s = h.state();
     let doc = s.session.get(s.win.views[0].id).unwrap();
     assert!(doc.info.annotations.iter().any(|a| a.subtype == "Redact" && a.page == 0), "a redaction mark on page 1");
@@ -1413,7 +1413,7 @@ fn a_redaction_box_dragged_off_its_page_is_drawn_on_it() {
 
 #[test]
 fn a_link_rectangle_dragged_off_its_page_is_drawn_on_it() {
-    let h = drag_seen_only_past_page_ones_edge(|app| app.quick_tool = QuickTool::Link);
+    let h = drag_seen_only_past_page_ones_edge(|app| app.win.quick_tool = QuickTool::Link);
     assert_eq!(h.state().link_draft.as_ref().map(|d| (d.page, d.index)), Some((0, None)), "a new link on page 1");
 }
 
@@ -1456,7 +1456,7 @@ fn comment_at_camera_corner_pdf() -> Vec<u8> {
 #[test]
 fn a_right_click_on_a_comment_under_a_camera_corner_opens_the_comments_menu() {
     let mut h = open(comment_at_camera_corner_pdf(), "150", false);
-    h.state_mut().quick_tool = QuickTool::EnhanceCamera;
+    h.state_mut().win.quick_tool = QuickTool::EnhanceCamera;
     h.run_steps(4);
     let corner = at(&h, 15.0, 380.0);
     right_click(&mut h, corner);
@@ -1485,7 +1485,7 @@ fn right_drag(h: &mut Harness<'_, PdfCraftApp>, a: egui::Pos2, b: egui::Pos2) {
 #[test]
 fn a_right_button_drag_draws_no_rectangle() {
     let mut h = open(text_pdf(), "150", false);
-    h.state_mut().quick_tool = QuickTool::Comment(CommentTool::Rectangle);
+    h.state_mut().win.quick_tool = QuickTool::Comment(CommentTool::Rectangle);
     h.run_steps(4);
     let (a, b) = (at(&h, 60.0, 150.0), at(&h, 200.0, 80.0));
     right_drag(&mut h, a, b);
@@ -1518,7 +1518,7 @@ fn a_right_button_drag_draws_no_link() {
 #[test]
 fn a_right_button_drag_leaves_the_camera_quadrilateral() {
     let mut h = open(two_pages_pdf(), "100", false);
-    h.state_mut().quick_tool = QuickTool::EnhanceCamera;
+    h.state_mut().win.quick_tool = QuickTool::EnhanceCamera;
     h.run_steps(4);
     assert_eq!(h.state().win.views[0].camera.as_ref().map(|q| q.page), Some(0));
     let two = h.state().win.views[0].page_screen_rect(1).expect("page 2 on screen");
@@ -1535,7 +1535,7 @@ fn right_drag_over_a_selection(tool: QuickTool) -> (Harness<'static, PdfCraftApp
     mouse_drag(&mut h, a, b - a);
     let selected = h.state().win.views[0].selected_text();
     assert!(selected.is_some(), "some text is selected");
-    h.state_mut().quick_tool = tool;
+    h.state_mut().win.quick_tool = tool;
     h.run_steps(2);
     let (c, d) = (at(&h, 150.0, 303.0), at(&h, 230.0, 303.0));
     right_drag(&mut h, c, d);
@@ -1601,7 +1601,7 @@ fn the_link_tools_hand_stops_at_the_pages_edge() {
 #[test]
 fn a_right_click_with_edit_text_on_a_paragraph_under_a_comment_selects_the_comment() {
     let mut h = open(comment_on_text_pdf(), "150", false);
-    h.state_mut().quick_tool = QuickTool::EditText;
+    h.state_mut().win.quick_tool = QuickTool::EditText;
     h.run_steps(4);
     let on_text = at(&h, 100.0, 303.0);
     wait_for_cursor(&mut h, on_text, |c| c != egui::CursorIcon::Default);
@@ -1694,7 +1694,7 @@ fn a_click_on_added_text_deselects_the_selected_comment() {
     // The Edit panel open, with the Select tool: added text is picked up.
     assert!(h.state_mut().execute("edit.text"));
     h.run_steps(3);
-    h.state_mut().quick_tool = QuickTool::Select;
+    h.state_mut().win.quick_tool = QuickTool::Select;
     h.run_steps(3);
     let on_comment = at(&h, 150.0, 315.0);
     mouse_click(&mut h, on_comment);
@@ -1821,7 +1821,7 @@ fn a_right_click_with_edit_text_on_added_text_unselects_the_comment() {
         page: 0,
         text: pdfcraft_engine::AddedText { rect: [40.0, 195.0, 140.0, 210.0], text: "Added".into(), ..Default::default() },
     }));
-    h.state_mut().quick_tool = QuickTool::EditText;
+    h.state_mut().win.quick_tool = QuickTool::EditText;
     h.run_steps(4);
     h.state_mut().win.views[0].comments.selected = Some((0, 0));
     let on_added = at(&h, 90.0, 202.0);
@@ -1855,7 +1855,7 @@ fn stamp_pages(h: &Harness<'_, PdfCraftApp>) -> Vec<usize> {
 /// clicked there lands on page 1. The second page used to take the press over.
 #[test]
 fn a_stamp_clicked_where_two_pages_touch_lands_on_the_first() {
-    let (mut h, seam) = touching_pages(|app| app.quick_tool = QuickTool::Stamp(StampKind::DynApproved));
+    let (mut h, seam) = touching_pages(|app| app.win.quick_tool = QuickTool::Stamp(StampKind::DynApproved));
     mouse_click(&mut h, seam);
     assert_eq!(stamp_pages(&h), vec![0]);
 }
@@ -1865,7 +1865,7 @@ fn a_stamp_clicked_where_two_pages_touch_lands_on_the_first() {
 /// the stamp on the second page.
 #[test]
 fn a_stamp_click_pressed_on_one_page_and_released_on_the_next_places_nothing() {
-    let (mut h, seam) = touching_pages(|app| app.quick_tool = QuickTool::Stamp(StampKind::DynApproved));
+    let (mut h, seam) = touching_pages(|app| app.win.quick_tool = QuickTool::Stamp(StampKind::DynApproved));
     slipping_click(&mut h, seam - egui::vec2(0.0, 2.0), seam + egui::vec2(0.0, 2.0));
     assert_eq!(stamp_pages(&h), Vec::<usize>::new());
 }
@@ -1968,8 +1968,8 @@ fn with_prepare_on_a_locked_document_a_right_click_on_a_field_selects_nothing() 
     let locked = crate::editing::encrypted(comment_and_checkbox_pdf(), pdfcraft_cos::Algorithm::Aes256, "", "owner", -1 ^ 8);
     let mut h = open(locked, "150", false);
     // Prepare doesn't open on such a document; it stays open on a tab switched to one.
-    h.state_mut().left = pdfcraft_ui_egui::LeftPanel::Tool("form");
-    h.state_mut().left_open = true;
+    h.state_mut().win.left = pdfcraft_ui_egui::LeftPanel::Tool("form");
+    h.state_mut().win.left_open = true;
     h.run_steps(4);
     assert!(h.state().is_preparing(), "Prepare is open");
     let id = h.state().win.views[0].id;
@@ -2022,7 +2022,7 @@ fn with_a_field_tool_a_right_click_on_a_field_opens_its_menu() {
 #[test]
 fn with_edit_text_a_right_click_on_a_picture_under_a_link_selects_the_picture() {
     let mut h = open(linked_picture_pdf(), "150", false);
-    h.state_mut().quick_tool = QuickTool::EditText;
+    h.state_mut().win.quick_tool = QuickTool::EditText;
     h.run_steps(4);
     let on_link = at(&h, 150.0, 300.0);
     right_click(&mut h, on_link);
@@ -2037,7 +2037,7 @@ fn with_edit_text_a_right_click_on_a_picture_under_a_link_selects_the_picture() 
 fn a_drag_past_a_pages_edge_under_its_open_paragraph_is_the_next_pages() {
     let mut h = open(bottom_line_pages_pdf(), "100", false);
     h.state_mut().win.views[0].show_page_gaps = false;
-    h.state_mut().quick_tool = QuickTool::EditText;
+    h.state_mut().win.quick_tool = QuickTool::EditText;
     h.run_steps(4);
     let (one, two) = {
         let v = &h.state().win.views[0];
@@ -2060,7 +2060,7 @@ fn a_drag_past_a_pages_edge_under_its_open_paragraph_is_the_next_pages() {
 #[test]
 fn a_click_beside_the_picture_unselects_it_where_objects_cant_be_grouped() {
     let mut h = open(ungroupable_picture_pdf(), "150", false);
-    h.state_mut().quick_tool = QuickTool::EditText;
+    h.state_mut().win.quick_tool = QuickTool::EditText;
     h.run_steps(4);
     let s = h.state();
     let doc = s.session.get(s.win.views[0].id).unwrap();
@@ -2097,7 +2097,7 @@ fn a_note_tool_click_on_added_text_starts_no_note() {
     }));
     assert!(h.state_mut().execute("edit.text"));
     h.run_steps(3);
-    h.state_mut().quick_tool = QuickTool::Comment(CommentTool::Note);
+    h.state_mut().win.quick_tool = QuickTool::Comment(CommentTool::Note);
     h.run_steps(3);
     let on_added = at(&h, 90.0, 202.0);
     mouse_click(&mut h, on_added);
@@ -2110,7 +2110,7 @@ fn a_note_tool_click_on_added_text_starts_no_note() {
 #[test]
 fn a_fill_and_sign_click_places_nothing_while_a_mark_is_moved() {
     let mut h = open(comment_on_text_pdf(), "150", false);
-    h.state_mut().quick_tool = QuickTool::Fill(FillTool::Check);
+    h.state_mut().win.quick_tool = QuickTool::Fill(FillTool::Check);
     h.run_steps(4);
     let marks = |h: &Harness<'_, PdfCraftApp>| {
         let s = h.state();
@@ -2184,7 +2184,7 @@ fn a_right_click_between_the_pages_opens_the_page_menu_not_the_selected_comments
 fn paste_from_a_right_click_where_two_pages_touch_keeps_to_the_first_page() {
     let (mut h, seam) = touching_pages(|app| {
         app.system_clipboard = false;
-        app.quick_tool = QuickTool::EditText;
+        app.win.quick_tool = QuickTool::EditText;
     });
     let clip = || pdfcraft_ui_egui::Clip::Image { width: 60, height: 40, rgba: [50u8, 150, 250, 255].repeat(60 * 40) };
     h.state_mut().clipboard_override = Some(clip());
@@ -2214,7 +2214,7 @@ fn paste_from_a_right_click_where_two_pages_touch_keeps_to_the_first_page() {
 #[test]
 fn a_camera_click_on_another_page_moves_the_quadrilateral_there() {
     let mut h = open(two_pages_pdf(), "100", false);
-    h.state_mut().quick_tool = QuickTool::EnhanceCamera;
+    h.state_mut().win.quick_tool = QuickTool::EnhanceCamera;
     h.run_steps(4);
     assert_eq!(h.state().win.views[0].camera.map(|q| q.page), Some(0), "it starts on the current page");
     let two = h.state().win.views[0].page_screen_rect(1).expect("page 2 on screen");
@@ -2228,7 +2228,7 @@ fn a_camera_click_on_another_page_moves_the_quadrilateral_there() {
 /// quadrilateral to page 2.
 #[test]
 fn a_camera_click_released_off_its_page_moves_nothing() {
-    let (mut h, seam) = touching_pages(|app| app.quick_tool = QuickTool::EnhanceCamera);
+    let (mut h, seam) = touching_pages(|app| app.win.quick_tool = QuickTool::EnhanceCamera);
     assert_eq!(h.state().win.views[0].camera.map(|q| q.page), Some(0), "it starts on the current page");
     let (press, release, back) = (seam + egui::vec2(0.0, 2.0), seam - egui::vec2(0.0, 2.0), seam + egui::vec2(0.0, 40.0));
     h.hover_at(press);
@@ -2270,7 +2270,7 @@ fn delete_and_escape_under_a_dialog_leave_the_selected_link() {
 fn escape_under_a_dialog_closes_it_over_selected_edit_text_objects() {
     let mut h = open(bottom_line_pages_pdf(), "100", false);
     h.state_mut().win.views[0].show_page_gaps = false;
-    h.state_mut().quick_tool = QuickTool::EditText;
+    h.state_mut().win.quick_tool = QuickTool::EditText;
     h.run_steps(4);
     let (one, two) = {
         let v = &h.state().win.views[0];
@@ -2302,7 +2302,7 @@ fn the_tool_letters_with_a_menu_open_leave_the_tool() {
         crate::support::open_menu(&mut h, "Edit");
         h.key_press(letter);
         h.run_steps(3);
-        assert_eq!(h.state().quick_tool, QuickTool::Link, "{letter:?} with a menu open");
+        assert_eq!(h.state().win.quick_tool, QuickTool::Link, "{letter:?} with a menu open");
     }
 }
 
@@ -2312,7 +2312,7 @@ fn the_tool_letters_with_a_menu_open_leave_the_tool() {
 fn delete_with_a_menu_open_leaves_selected_edit_text_objects() {
     let mut h = open(bottom_line_pages_pdf(), "100", false);
     h.state_mut().win.views[0].show_page_gaps = false;
-    h.state_mut().quick_tool = QuickTool::EditText;
+    h.state_mut().win.quick_tool = QuickTool::EditText;
     h.run_steps(4);
     let (one, two) = {
         let v = &h.state().win.views[0];
@@ -2354,7 +2354,7 @@ fn end_with_a_menu_open_turns_no_page() {
 #[test]
 fn delete_with_a_menu_open_leaves_the_selected_picture() {
     let mut h = open(linked_picture_pdf(), "150", false);
-    h.state_mut().quick_tool = QuickTool::EditText;
+    h.state_mut().win.quick_tool = QuickTool::EditText;
     h.run_steps(4);
     h.state_mut().win.views[0].image_selection = Some(pdfcraft_ui_egui::ImageSelection::at(0, 0));
     h.run_steps(3);

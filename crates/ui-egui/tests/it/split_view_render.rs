@@ -46,7 +46,7 @@ fn a_late_edit_drops_both_views_stale_demand() {
     let rotation = |h: &Harness<'static, PdfCraftApp>| h.state().session.get(id).unwrap().info.pages[0].rotation;
     h.state_mut().set_option("palette", "rotate pages clockwise").unwrap();
     h.run_steps(2);
-    assert!(h.state().palette_open);
+    assert!(h.state().win.palette_open);
     h.key_press(Key::Enter);
     // Frame by frame, to look at the one that turned the page.
     for _ in 0..10 {

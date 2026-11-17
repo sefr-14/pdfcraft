@@ -99,7 +99,7 @@ fn alt_drag_selects_only_the_text_inside_the_rectangle() {
 #[test]
 fn the_column_select_tool_needs_no_modifier() {
     let mut h = harness(|app| assert!(app.execute("edit.column_select")));
-    assert_eq!(h.state().quick_tool, pdfcraft_ui_egui::QuickTool::ColumnSelect);
+    assert_eq!(h.state().win.quick_tool, pdfcraft_ui_egui::QuickTool::ColumnSelect);
     let (from, to) = top_two_rows(&h);
     drag(&mut h, from, to, Modifiers::NONE);
     assert_eq!(text(&h).as_deref(), Some("Name\tQty\nApple\t12"));

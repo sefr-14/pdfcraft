@@ -367,7 +367,7 @@ fn the_hand_tool_moves_selects_and_deletes_guides_and_escape_puts_one_back() {
         let p = &mut h.state_mut().doc_prefs;
         (p.add_guide(id, 0, Axis::Y, 150.0).unwrap(), p.add_guide(id, 0, Axis::X, 120.0).unwrap())
     };
-    h.state_mut().quick_tool = QuickTool::Hand;
+    h.state_mut().win.quick_tool = QuickTool::Hand;
     h.run_steps(4);
     let page_at = h.state().win.views[0].page_screen_rect(0);
 
@@ -400,7 +400,7 @@ fn the_hand_tool_moves_selects_and_deletes_guides_and_escape_puts_one_back() {
     h.key_press(egui::Key::Escape);
     h.run_steps(2);
     assert_eq!(h.state().win.views[0].guides.selected, None);
-    assert_eq!(h.state().quick_tool, QuickTool::Hand);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Hand);
 
     // Click the vertical guide, then Delete: it goes, and the comment selected meanwhile stays.
     let p = on_page(&h, 0, 0, 120.0, 220.0);
@@ -446,7 +446,7 @@ fn the_hand_tool_shows_which_way_a_guide_under_it_moves() {
         p.add_guide(id, 0, Axis::Y, 150.0).unwrap();
         p.add_guide(id, 0, Axis::X, 120.0).unwrap();
     }
-    h.state_mut().quick_tool = QuickTool::Hand;
+    h.state_mut().win.quick_tool = QuickTool::Hand;
     h.run_steps(4);
     let cursor_at = |h: &mut Harness<'static, PdfCraftApp>, p: Pos2| {
         h.hover_at(p);
@@ -476,7 +476,7 @@ fn a_guide_under_the_find_bar_is_not_taken() {
     let file = plans("under.pdf");
     let mut h = harness(1600.0, move |app| open(app, &file));
     let id = h.state().win.views[0].id;
-    h.state_mut().quick_tool = QuickTool::Hand;
+    h.state_mut().win.quick_tool = QuickTool::Hand;
     h.state_mut().win.views[0].open_find();
     h.run_steps(4);
     let key = h.state().win.views[0].view_key();
@@ -524,7 +524,7 @@ fn clearing_guides_and_two_tabs_of_one_pdf() {
     // Moved in the first tab (Hand tool), it moves in the second; each tab keeps its own zoom.
     h.state_mut().win.views[1].set_zoom(1.7);
     h.state_mut().win.active = Some(0);
-    h.state_mut().quick_tool = QuickTool::Hand;
+    h.state_mut().win.quick_tool = QuickTool::Hand;
     h.run_steps(4);
     let at = guides_of(&h, 0, 0).y[0];
     let p = on_page(&h, 0, 0, 250.0, at);

@@ -45,8 +45,8 @@ fn matches(query: &str, group: &ToolGroup) -> Option<Vec<&'static str>> {
 pub fn show(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     // A dialog, prompt or the command palette over the view owns Escape.
-    if !app.modal_open() && !app.palette_open && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-        app.all_tools_full = false;
+    if !app.modal_open() && !app.win.palette_open && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+        app.win.all_tools_full = false;
         return;
     }
     let mut chosen = None;
@@ -57,13 +57,15 @@ pub fn show(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                 ui.label(egui::RichText::new(tl!("All tools")).font(theme::semibold(22.0)).color(t.text));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if icons::button(ui, "minimize-2", 28.0, false, tl!("Collapse all tools")).clicked() {
-                        app.all_tools_full = false;
+                        app.win.all_tools_full = false;
                     }
                 });
             });
             ui.add_space(10.0);
             let field = ui.add(
-                widgets::line(&mut app.all_tools_query).hint_text(tl!("Search tools and commands…")).desired_width(ui.available_width().min(520.0)),
+                widgets::line(&mut app.win.all_tools_query)
+                    .hint_text(tl!("Search tools and commands…"))
+                    .desired_width(ui.available_width().min(520.0)),
             );
             // Typing goes straight to the search, as in Acrobat's tools view.
             if !ui.memory(|m| m.focused().is_some()) {
@@ -71,7 +73,7 @@ pub fn show(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
             }
         });
         ui.separator();
-        let query = app.all_tools_query.trim().to_lowercase();
+        let query = app.win.all_tools_query.trim().to_lowercase();
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             egui::Frame::NONE.inner_margin(egui::Margin { left: 36, right: 28, top: 8, bottom: 28 }).show(ui, |ui| {
                 ui.set_width(ui.available_width());
@@ -104,7 +106,7 @@ pub fn show(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
         });
     });
     if let Some(id) = chosen {
-        app.left_open = true;
+        app.win.left_open = true;
         app.select_tool(id);
     }
 }

@@ -61,8 +61,8 @@ pub enum ToolsSide {
     Right,
 }
 
-/// The saved side panel layout. Which side panel is open stays in `PdfCraftApp::right` and the
-/// Tools pane's open state in `PdfCraftApp::left_open`.
+/// The saved side panel layout. Which side panel is open stays in `PdfCraftApp::win.right` and the
+/// Tools pane's open state in `PdfCraftApp::win.left_open`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SidePanels {
     /// The one setting that places the Tools pane; [`SidePanels::tools_edge`] is its only reader
@@ -286,13 +286,13 @@ fn migrate(old: &Value) -> Option<Restored> {
 
 /// What `ui.panel` and `ui.state` report.
 pub fn state(app: &PdfCraftApp) -> Value {
-    let panels = &app.side_panels;
+    let panels = &app.win.side_panels;
     json!({
         "tools_side": panels.tools_side,
-        "tools_open": app.left_open,
+        "tools_open": app.win.left_open,
         "tools_width": panels.tools_width,
-        "side_open": app.right.is_some(),
-        "side_panel": app.right.map(|r| format!("{r:?}")),
+        "side_open": app.win.right.is_some(),
+        "side_panel": app.win.right.map(|r| format!("{r:?}")),
         "side_width": panels.side_width,
     })
 }
@@ -300,8 +300,8 @@ pub fn state(app: &PdfCraftApp) -> Value {
 /// `ui.panel {panel, open?, width?}` and `ui.dock.reset` (`reset`).
 pub fn command(app: &mut PdfCraftApp, reset: bool, params: &Value) -> Result<Value, String> {
     if reset {
-        app.side_panels = SidePanels::default();
-        app.left_open = true;
+        app.win.side_panels = SidePanels::default();
+        app.win.left_open = true;
         return Ok(json!({ "side_panels": state(app) }));
     }
     let pane = Pane::parse(params.get("panel").and_then(Value::as_str).ok_or("panel must be \"tools\" or \"side\"")?)
@@ -315,12 +315,12 @@ pub fn command(app: &mut PdfCraftApp, reset: bool, params: &Value) -> Result<Val
         Some(value) => Some(value.as_f64().and_then(|w| clamp_width(pane, w)).ok_or("width must be a finite number")?),
     };
     if let Some(width) = width {
-        app.side_panels.set_width(pane, width);
+        app.win.side_panels.set_width(pane, width);
     }
     match (pane, open) {
-        (Pane::Tools, Some(open)) => app.left_open = open,
-        (Pane::Side, Some(true)) if app.right.is_none() => app.toggle_side_panel(),
-        (Pane::Side, Some(false)) if app.right.is_some() => app.choose_right_panel(None),
+        (Pane::Tools, Some(open)) => app.win.left_open = open,
+        (Pane::Side, Some(true)) if app.win.right.is_none() => app.toggle_side_panel(),
+        (Pane::Side, Some(false)) if app.win.right.is_some() => app.choose_right_panel(None),
         _ => {}
     }
     Ok(json!({ "side_panels": state(app) }))
@@ -350,7 +350,7 @@ impl PaneContent<Pane> for Content<'_> {
     }
 
     fn default_state(&self, pane: &Pane) -> PaneState {
-        state_of(&self.app.side_panels, *pane)
+        state_of(&self.app.win.side_panels, *pane)
     }
 
     fn size_range(&self, pane: &Pane) -> RangeInclusive<f32> {
@@ -380,11 +380,11 @@ fn state_of(panels: &SidePanels, pane: Pane) -> PaneState {
 fn open_panes(app: &PdfCraftApp) -> Vec<Pane> {
     let mut open = Vec::new();
     // Read mode hides the tools, not the navigation panes.
-    if app.left_open && app.mode != Mode::Read {
+    if app.win.left_open && app.mode != Mode::Read {
         open.push(Pane::Tools);
     }
     // Home and Combine files have no side panel; the choice is kept for the next document.
-    if app.win.active.is_some() && app.right.is_some() {
+    if app.win.active.is_some() && app.win.right.is_some() {
         open.push(Pane::Side);
     }
     open
@@ -417,15 +417,15 @@ fn keep_resize_edges_off_scrollbars(ui: &mut egui::Ui, host: egui::Id, open: &[P
 
 /// Draws the rail and the open panes. Call after the top bars and before the central panel.
 pub fn show(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
-    if let Some(panel) = app.right {
-        app.last_right = panel;
+    if let Some(panel) = app.win.right {
+        app.win.last_right = panel;
     }
     // The rail first: it is the outermost panel on the right.
     if app.win.active.is_some() {
         crate::chrome::right_rail(app, ui);
     }
     // The expanded All tools view covers the panes.
-    if app.mode == Mode::AllTools && app.all_tools_full {
+    if app.mode == Mode::AllTools && app.win.all_tools_full {
         return;
     }
     let open = open_panes(app);
@@ -434,7 +434,7 @@ pub fn show(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
     }
     let t = crate::theme::Tokens::get(ui.ctx());
     let labels = PaneLabels { resize: crate::i18n::t("Resize panels").to_owned(), ..PaneLabels::default() };
-    let panels = app.side_panels;
+    let panels = app.win.side_panels;
     // Columns: both panes may share the right edge, Tools outermost, as `open` lists them.
     let host = egui::Id::unique("pdfcraft-side-panels");
     let output = PaneHost::new(host)
@@ -448,8 +448,8 @@ pub fn show(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
     keep_resize_edges_off_scrollbars(ui, host, &open);
     for request in output.requests {
         match request {
-            PaneRequest::Resize(pane, width) => app.side_panels.set_width(pane, width),
-            PaneRequest::Close(Pane::Tools) => app.left_open = false,
+            PaneRequest::Resize(pane, width) => app.win.side_panels.set_width(pane, width),
+            PaneRequest::Close(Pane::Tools) => app.win.left_open = false,
             PaneRequest::Close(Pane::Side) => app.choose_right_panel(None),
             _ => {}
         }

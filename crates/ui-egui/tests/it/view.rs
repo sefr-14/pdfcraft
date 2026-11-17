@@ -1477,7 +1477,7 @@ fn palette_runs_page_display_commands_from_the_keyboard() {
     h.get_by_label("Single page");
     h.key_press(Key::Enter);
     h.run_steps(3);
-    assert!(!h.state().palette_open, "Enter runs the top hit and closes the palette");
+    assert!(!h.state().win.palette_open, "Enter runs the top hit and closes the palette");
     assert_eq!(h.state().win.views[0].layout, pdfcraft_ui_egui::canvas::PageLayout::Single);
 }
 
@@ -2519,7 +2519,7 @@ fn long_view_menu_fits_a_short_window() {
     assert!(row.top() >= 0.0 && row.bottom() <= 400.0, "the Bookmarks submenu row is onscreen: {row:?}");
     bookmarks.click();
     h.run_steps(4);
-    assert_eq!(h.state().right, Some(pdfcraft_ui_egui::RightPanel::Bookmarks));
+    assert_eq!(h.state().win.right, Some(pdfcraft_ui_egui::RightPanel::Bookmarks));
 }
 
 fn click_with(h: &mut Harness<'static, PdfCraftApp>, pos: egui::Pos2, modifiers: Modifiers) {
@@ -2642,11 +2642,11 @@ fn full_screen_clicks_turn_pages_whatever_tool_was_on() {
     use pdfcraft_ui_egui::QuickTool;
     let mut h = harness(&[]);
     h.run_steps(4);
-    h.state_mut().quick_tool = QuickTool::Hand;
+    h.state_mut().win.quick_tool = QuickTool::Hand;
     h.key_press_modifiers(Modifiers::COMMAND, Key::L);
     h.run_steps(6);
     assert!(h.state().full_screen);
-    assert_eq!(h.state().quick_tool, QuickTool::Select, "Select in full screen");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select, "Select in full screen");
     // Entering again (a second document asking for it) keeps the tool to give back.
     h.state_mut().apply_full_screen(true);
     let r = rect(&h, 0).expect("page 1 on screen");
@@ -2655,7 +2655,7 @@ fn full_screen_clicks_turn_pages_whatever_tool_was_on() {
     h.key_press(Key::Escape);
     h.run_steps(4);
     assert!(!h.state().full_screen);
-    assert_eq!(h.state().quick_tool, QuickTool::Hand, "the tool from before is back");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Hand, "the tool from before is back");
 }
 
 /// #4415: the Pages panel's Page tools menu. Each tool acts on the selected pages (the current

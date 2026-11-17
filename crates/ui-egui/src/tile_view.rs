@@ -152,7 +152,7 @@ fn activate(app: &mut PdfCraftApp, ui: &egui::Ui, rects: &[Rect], clip: Rect) {
     });
     let Some(pos) = press else { return };
     // Not through a dialog, the palette, or a window or menu drawn over the tiles.
-    if app.modal_open() || app.palette_open || !clip.contains(pos) || ui.ctx().layer_id_at(pos) != Some(ui.layer_id()) {
+    if app.modal_open() || app.win.palette_open || !clip.contains(pos) || ui.ctx().layer_id_at(pos) != Some(ui.layer_id()) {
         return;
     }
     if let Some(i) = rects.iter().position(|r| r.contains(pos))

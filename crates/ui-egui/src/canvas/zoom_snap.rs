@@ -86,7 +86,7 @@ impl PdfCraftApp {
     /// Finish a marquee gesture for the current tool.
     pub(crate) fn finish_marquee(&mut self, index: usize, done: Marquee) {
         let (page, rect, view_rect) = done;
-        match self.quick_tool {
+        match self.win.quick_tool {
             QuickTool::MarqueeZoom => {
                 let view = &mut self.win.views[index];
                 if rect.width() < 6.0 || rect.height() < 6.0 {

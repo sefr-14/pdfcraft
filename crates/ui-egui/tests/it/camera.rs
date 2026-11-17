@@ -41,7 +41,7 @@ fn undo_label(h: &Harness<'static, PdfCraftApp>) -> Option<String> {
 fn dragging_a_corner_then_enhance_page_straightens_the_page() {
     let mut h = harness();
     assert!(h.state_mut().execute("ocr.enhance_camera"));
-    assert_eq!(h.state().quick_tool, QuickTool::EnhanceCamera);
+    assert_eq!(h.state().win.quick_tool, QuickTool::EnhanceCamera);
     h.run_steps(3);
     let quad = h.state().win.views[0].camera.expect("the corners start on the current page");
     assert_eq!(quad.page, 0);
@@ -72,7 +72,7 @@ fn dragging_a_corner_then_enhance_page_straightens_the_page() {
     assert_eq!(size(&h, 1), (300.0, 400.0), "only the page with the corners changes");
     assert_eq!(undo_label(&h).as_deref(), Some("Enhance camera image"));
     // The tool stays open for the enhanced page: turn it, then Done.
-    assert_eq!(h.state().quick_tool, QuickTool::EnhanceCamera);
+    assert_eq!(h.state().win.quick_tool, QuickTool::EnhanceCamera);
     assert!(h.state().win.views[0].camera.is_none());
     assert_eq!(h.state().win.views[0].camera_done.map(|d| d.page), Some(0));
     h.get_by_label("Rotate clockwise").click();
@@ -82,7 +82,7 @@ fn dragging_a_corner_then_enhance_page_straightens_the_page() {
     assert_eq!(undo_label(&h).as_deref(), Some("Rotate page"));
     h.get_by_label("Done").click();
     h.run_steps(3);
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
     assert_eq!(h.state().win.views[0].camera_done, None);
 }
 
@@ -150,7 +150,7 @@ fn after_enhance_page_crop_and_organize_take_over() {
         // The quick toolbar also has a "Crop pages" button; the camera panel's pill is the first match.
         h.get_all_by_label(button).next().unwrap().click();
         h.run_steps(3);
-        assert_eq!(h.state().quick_tool, then, "{button}");
+        assert_eq!(h.state().win.quick_tool, then, "{button}");
         assert_eq!(h.state().win.views[0].camera_done, None, "{button}");
         assert_eq!(h.state().win.views[0].organize, button == "Organize pages");
     }
@@ -163,7 +163,7 @@ fn cancel_and_escape_leave_the_page_alone() {
     h.run_steps(3);
     h.get_by_label("Cancel").click();
     h.run_steps(3);
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
     assert!(h.state().win.views[0].camera.is_none());
 
     assert!(h.state_mut().execute("ocr.enhance_camera"));
@@ -171,7 +171,7 @@ fn cancel_and_escape_leave_the_page_alone() {
     assert!(h.state().win.views[0].camera.is_some());
     h.key_press(egui::Key::Escape);
     h.run_steps(3);
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
     assert!(h.state().win.views[0].camera.is_none());
     assert_eq!(size(&h, 0), (300.0, 400.0));
     assert_eq!(undo_label(&h), None);

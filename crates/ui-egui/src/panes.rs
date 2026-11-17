@@ -529,7 +529,7 @@ fn split_area(app: &mut PdfCraftApp, split: Split, main: Option<usize>, second: 
     let t = Tokens::get(ui.ctx());
     let area = ui.max_rect();
     let (first, divider, other) = layout(area, split);
-    if !app.modal_open() && !app.palette_open {
+    if !app.modal_open() && !app.win.palette_open {
         // (While Home shows in the main pane, a click there stays on Home.)
         if main.is_some() && pressed_in(ui, first, Place::Main, main.and_then(|i| app.win.views.get(i))) {
             app.activate_place(Place::Main);

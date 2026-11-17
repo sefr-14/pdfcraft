@@ -196,7 +196,7 @@ fn the_link_context_menu_shows_only_for_a_right_click_on_a_link() {
     h.key_press(egui::Key::Escape);
     h.run_steps(3);
     // A right-click on the link gets it, with the Select tool too.
-    h.state_mut().quick_tool = pdfcraft_ui_egui::QuickTool::Select;
+    h.state_mut().win.quick_tool = pdfcraft_ui_egui::QuickTool::Select;
     h.run_steps(2);
     right_click(&mut h, on_link);
     h.get_by_label("Remove all links").click();

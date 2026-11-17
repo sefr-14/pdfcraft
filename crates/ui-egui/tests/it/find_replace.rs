@@ -62,7 +62,7 @@ fn replace_all_from_the_find_bar_is_one_undo_step() {
     // ⇧⌘H: Edit text, and the Replace row.
     h.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::H);
     h.run_steps(3);
-    assert_eq!(h.state().quick_tool, QuickTool::EditText);
+    assert_eq!(h.state().win.quick_tool, QuickTool::EditText);
     assert!(h.state().win.views[0].find.as_ref().is_some_and(|f| f.replacing));
     assert!(has_field(&h, "Replace with"), "the Replace row shows in Edit text");
     h.query_by(|n| n.placeholder() == Some("Find text")).expect("find field").type_text("cat");

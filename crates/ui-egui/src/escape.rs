@@ -31,7 +31,7 @@ impl PdfCraftApp {
             return;
         }
         let field = self.keyboard_owner.or_else(|| ctx.memory(|m| m.focused()));
-        let measuring = matches!(self.quick_tool, QuickTool::Measure(_));
+        let measuring = matches!(self.win.quick_tool, QuickTool::Measure(_));
         let active = self.win.active.filter(|&i| i < self.win.views.len());
         if let Some(field) = field {
             if let Some(i) = active {
@@ -55,7 +55,7 @@ impl PdfCraftApp {
             return;
         }
         // A tool-key pair half typed (D, R) is dropped, and that is all this press does (KEY.1).
-        if self.pending_keys.take().is_some() {
+        if self.win.pending_keys.take().is_some() {
             take(ctx);
             return;
         }
@@ -92,7 +92,7 @@ impl PdfCraftApp {
         }
         if measuring {
             view.measure.cancel();
-            self.quick_tool = QuickTool::Select;
+            self.win.quick_tool = QuickTool::Select;
             take(ctx);
         }
     }
@@ -113,7 +113,7 @@ impl PdfCraftApp {
 
     /// The command palette is drawn this frame (full screen shows the page only).
     fn palette_shown(&self) -> bool {
-        self.palette_open && !(self.full_screen && self.win.active.is_some())
+        self.win.palette_open && !(self.full_screen && self.win.active.is_some())
     }
 }
 

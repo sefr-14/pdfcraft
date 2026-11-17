@@ -621,20 +621,20 @@ fn card_general(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens, ctx: &mut 
 
     ui.horizontal(|ui| {
         ctx.label_primary(ui, tl!("Tools panel side"), t);
-        let right = app.side_panels.tools_on_right();
+        let right = app.win.side_panels.tools_on_right();
         let mut side = if right { ToolsSide::Right } else { ToolsSide::Left };
         if ctx.pill_choice(ui, t, &mut side, &[(ToolsSide::Left, tl!("Left")), (ToolsSide::Right, tl!("Right"))]) {
-            app.side_panels.tools_side = side;
+            app.win.side_panels.tools_side = side;
         }
 
         ui.add_space(16.0);
         ctx.label_primary(ui, tl!("Navigation rail side"), t);
-        let rail_right = app.side_panels.rail_on_right();
+        let rail_right = app.win.side_panels.rail_on_right();
         let mut rside = if rail_right { ToolsSide::Right } else { ToolsSide::Left };
         let left_a11y = format!("{}: {}", tl!("Navigation rail side"), tl!("Left"));
         let right_a11y = format!("{}: {}", tl!("Navigation rail side"), tl!("Right"));
         if ctx.pill_choice_a11y(ui, t, &mut rside, &[(ToolsSide::Left, tl!("Left"), &left_a11y), (ToolsSide::Right, tl!("Right"), &right_a11y)]) {
-            app.side_panels.rail_side = rside;
+            app.win.side_panels.rail_side = rside;
         }
     });
     ui.add_space(6.0);

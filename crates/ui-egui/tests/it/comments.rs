@@ -216,7 +216,7 @@ fn dragging_over_text_with_the_highlighter_highlights_it() {
     assert_eq!(c.len(), 1, "{c:?}");
     assert_eq!((c[0].subtype.as_str(), c[0].author.as_deref(), c[0].quads.len()), ("Highlight", Some("Tester"), 1));
     assert_eq!(h.state().win.views[0].comments.selected, Some((0, 0)), "the new comment is selected");
-    assert_eq!(h.state().quick_tool, QuickTool::Comment(pdfcraft_ui_egui::comments::CommentTool::Highlight), "the highlighter stays on");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Comment(pdfcraft_ui_egui::comments::CommentTool::Highlight), "the highlighter stays on");
     // The Comments panel opened with the tool and lists it.
     h.get_by_label_contains("Comments");
     assert_eq!(h.state().session.get(h.state().win.views[0].id).unwrap().can_undo(), Some("Add highlight"));
@@ -254,7 +254,7 @@ fn the_quick_bar_colour_changes_the_selected_arrow() {
     let mut h = harness(|app| app.set_option("quick", "arrow").unwrap());
     drag_pt(&mut h, (20.0, 20.0), (120.0, 30.0));
     assert_eq!(comments(&h)[0].subtype, "Line");
-    assert_eq!(h.state().quick_tool, QuickTool::Comment(CommentTool::Arrow), "the arrow tool is still active");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Comment(CommentTool::Arrow), "the arrow tool is still active");
     assert_eq!(h.state().win.views[0].comments.selected, Some((0, 0)), "the new arrow is selected");
 
     h.get_by_label("Colour").click();
@@ -381,17 +381,17 @@ fn clicking_the_page_gives_the_keyboard_back_from_a_highlight_note() {
     // A click on an empty part of the page gives the keyboard back to the page.
     click_pt(&mut h, (250.0, 20.0));
     type_key(&mut h, egui::Key::V, "v");
-    assert_eq!(h.state().quick_tool, QuickTool::Select, "V picks the Select tool");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select, "V picks the Select tool");
     assert_eq!(note(&h).as_deref(), Some("Note"), "V is not typed into the note");
     type_key(&mut h, egui::Key::P, "p");
-    assert_eq!(h.state().quick_tool, QuickTool::Hand, "P picks the Hand tool (KEY.1)");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Hand, "P picks the Hand tool (KEY.1)");
     assert_eq!(note(&h).as_deref(), Some("Note"), "nor is P");
     // Clicking back into the note types into it again, and the letters are text there.
     note_editor(&h).click();
     h.run_steps(2);
     type_key(&mut h, egui::Key::V, "v");
     assert_eq!(note(&h).as_deref(), Some("Notev"), "the note takes keys while the user types in it");
-    assert_eq!(h.state().quick_tool, QuickTool::Hand, "typed letters don't pick tools");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Hand, "typed letters don't pick tools");
 }
 
 #[test]
@@ -407,26 +407,26 @@ fn drawing_another_comment_takes_the_keyboard_from_a_highlight_note() {
     assert!(note_editor(&h).is_focused());
     // The tools are picked without a click, as a shortcut would: the drawing alone must take
     // the keyboard back. An empty note closes.
-    h.state_mut().quick_tool = QuickTool::Comment(CommentTool::Rectangle);
+    h.state_mut().win.quick_tool = QuickTool::Comment(CommentTool::Rectangle);
     drag_pt(&mut h, (40.0, 100.0), (140.0, 40.0));
     assert_eq!(comments(&h).len(), 2);
     assert_eq!(h.state().win.views[0].comments.editing, None, "the empty note closed");
     type_key(&mut h, egui::Key::P, "p");
-    assert_eq!(h.state().quick_tool, QuickTool::Hand, "P picks the Hand tool (KEY.1)");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Hand, "P picks the Hand tool (KEY.1)");
     // A note with text in it stays open with its text, but lets the keyboard go.
-    h.state_mut().quick_tool = QuickTool::Comment(CommentTool::Highlight);
+    h.state_mut().win.quick_tool = QuickTool::Comment(CommentTool::Highlight);
     drag_pt(&mut h, (160.0, 100.0), (260.0, 40.0));
     h.run_steps(2);
     assert_eq!(h.state().win.views[0].comments.editing, Some((0, 2, String::new())), "the new area highlight's note opens");
     assert!(note_editor(&h).is_focused());
     h.event(egui::Event::Text("Note".into()));
     h.run_steps(2);
-    h.state_mut().quick_tool = QuickTool::Comment(CommentTool::Rectangle);
+    h.state_mut().win.quick_tool = QuickTool::Comment(CommentTool::Rectangle);
     drag_pt(&mut h, (40.0, 30.0), (260.0, 8.0));
     assert_eq!(comments(&h).len(), 4);
     assert_eq!(h.state().win.views[0].comments.editing, Some((0, 2, "Note".into())), "a note with text stays open");
     type_key(&mut h, egui::Key::P, "p");
-    assert_eq!(h.state().quick_tool, QuickTool::Hand, "P picks the Hand tool (KEY.1)");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Hand, "P picks the Hand tool (KEY.1)");
     assert_eq!(note(&h).as_deref(), Some("Note"), "P is not typed into the note");
 }
 
@@ -560,7 +560,7 @@ fn selected_text_shows_actions_and_underlines_without_changing_tools() {
     assert_eq!(c.len(), 1);
     assert_eq!(c[0].subtype, "Underline");
     assert!(h.state().win.views[0].selected_text().is_none());
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
 }
 
 #[test]
@@ -762,7 +762,7 @@ fn pen_strokes_stay_unselected_so_writing_continues() {
     let kinds: Vec<&str> = c.iter().map(|a| a.subtype.as_str()).collect();
     assert_eq!(kinds, ["Ink", "Ink"], "{c:?}");
     assert_eq!(h.state().win.views[0].comments.selected, None, "nothing is selected after drawing");
-    assert_eq!(h.state().quick_tool, QuickTool::Comment(pdfcraft_ui_egui::comments::CommentTool::Ink), "the pen stays on");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Comment(pdfcraft_ui_egui::comments::CommentTool::Ink), "the pen stays on");
     // Other drawn shapes are still selected when made.
     h.state_mut().set_option("quick", "square").unwrap();
     drag_pt(&mut h, (180.0, 100.0), (260.0, 40.0));
@@ -782,7 +782,7 @@ fn sticky_note_composer_posts_and_returns_to_select() {
     assert_eq!(c.len(), 1);
     assert_eq!((c[0].subtype.as_str(), c[0].contents.as_deref()), ("Text", Some("Please check")));
     assert!(h.state().win.views[0].comments.composer.is_none());
-    assert_eq!(h.state().quick_tool, QuickTool::Select, "one-shot tools return to Select");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select, "one-shot tools return to Select");
     // Cancelling another one creates nothing.
     h.state_mut().set_option("quick", "freetext").unwrap();
     click_pt(&mut h, (50.0, 60.0));
@@ -814,7 +814,7 @@ fn a_sticky_note_on_a_turned_page_is_picked_where_it_is_drawn() {
     let c = comments(&h);
     assert_eq!(c.len(), 1);
     assert_eq!((c[0].subtype.as_str(), c[0].no_rotate), ("Text", true));
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
     // Where the note's /Rect lies as displayed, left of where it was placed: nothing.
     click(&mut h, placed + egui::vec2(-10.0 * k, 10.0 * k));
     assert_eq!(h.state().win.views[0].comments.selected, None);
@@ -1415,7 +1415,7 @@ fn a_shape_just_drawn_resizes_from_its_handles_without_the_select_tool() {
     assert!((r[2] - (before[2] + 40.0)).abs() < 3.0 && (r[1] - (before[1] - 20.0)).abs() < 3.0, "resized: {before:?} → {r:?}");
     assert!((r[0] - before[0]).abs() < 1.0 && (r[3] - before[3]).abs() < 1.0, "the opposite corner stays: {before:?} → {r:?}");
     assert_eq!(h.state().session.get(h.state().win.views[0].id).unwrap().can_undo(), Some("Resize comment"));
-    assert_eq!(h.state().quick_tool, square, "the rectangle tool stays on");
+    assert_eq!(h.state().win.quick_tool, square, "the rectangle tool stays on");
     // Away from the handles the tool still draws, over the shape too.
     drag_pt(&mut h, (60.0, 90.0), (120.0, 60.0));
     assert_eq!(comments(&h).len(), 2, "a drag inside the rectangle draws a second one");
@@ -2483,7 +2483,7 @@ fn polygons_clouds_connected_lines_callouts_and_inserted_text() {
     h.run_steps(3);
     let caret = comments(&h).into_iter().find(|a| a.subtype == "Caret").expect("a caret");
     assert_eq!(caret.contents.as_deref(), Some("very"));
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
 }
 
 fn drawn_points(h: &Harness<'static, PdfCraftApp>) -> usize {
@@ -2967,7 +2967,7 @@ fn replacing_text_strikes_it_and_adds_a_caret() {
     assert_eq!(strike.in_reply_to, caret.name, "the strikeout is grouped with the caret");
     assert!(strike.is_group_member() && !caret.grouped && !caret.is_reply());
     assert_eq!(h.state().session.get(h.state().win.views[0].id).unwrap().can_undo(), Some("Replace text"));
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
     // Both members are the Replace text tool's, not Strikethrough's or Insert text's (#3947), so
     // Make Current Properties Default updates the Replace text tool.
     assert_eq!(pdfcraft_ui_egui::comments::tool_for(strike), Some(pdfcraft_ui_egui::comments::CommentTool::ReplaceText));
@@ -2997,7 +2997,7 @@ fn attaching_a_file_as_a_comment() {
     let s = h.state();
     let doc = s.session.get(s.win.views[0].id).unwrap();
     assert!(doc.info.attachments.iter().any(|a| a.name == "notes.txt"), "listed in the Attachments panel");
-    assert_eq!(s.quick_tool, QuickTool::Select);
+    assert_eq!(s.win.quick_tool, QuickTool::Select);
 }
 
 /// One 300×200 page with a paperclip FileAttachment comment at (100, 100)–(120, 124) carrying
@@ -3510,38 +3510,38 @@ fn the_opacity_set_for_a_tool_goes_into_its_new_comments() {
 fn a_closed_comments_panel_stays_closed_when_picking_comment_tools() {
     use pdfcraft_ui_egui::RightPanel;
     let mut h = harness(|_| {});
-    assert_eq!(h.state().right, None);
+    assert_eq!(h.state().win.right, None);
     assert!(h.state_mut().execute("comment.highlight"));
     h.run_steps(2);
-    assert_eq!(h.state().right, Some(RightPanel::Comments), "Acrobat opens Comments with the tools");
+    assert_eq!(h.state().win.right, Some(RightPanel::Comments), "Acrobat opens Comments with the tools");
     h.get_by_label("Close").click();
     h.run_steps(2);
-    assert_eq!(h.state().right, None);
+    assert_eq!(h.state().win.right, None);
     for tool in ["select", "comment.underline", "comment.note", "comment.highlight"] {
         if tool == "select" {
-            h.state_mut().quick_tool = QuickTool::Select;
+            h.state_mut().win.quick_tool = QuickTool::Select;
         } else {
             assert!(h.state_mut().execute(tool));
         }
         h.run_steps(2);
-        assert_eq!(h.state().right, None, "{tool} reopened the closed Comments panel");
+        assert_eq!(h.state().win.right, None, "{tool} reopened the closed Comments panel");
     }
     let mut again = PdfCraftApp::new();
     again.restore(&h.state().persist());
-    assert!(again.comments_panel_closed, "the choice survives a restart");
+    assert!(again.win.comments_panel_closed, "the choice survives a restart");
     // Opening it again from the rail lets the tools open it once more.
     h.get_by_label("Comments").click();
     h.run_steps(2);
-    assert_eq!(h.state().right, Some(RightPanel::Comments));
-    assert!(!h.state().comments_panel_closed);
+    assert_eq!(h.state().win.right, Some(RightPanel::Comments));
+    assert!(!h.state().win.comments_panel_closed);
     // What the rail and View menu call; "Bookmarks" labels two controls on screen.
     h.state_mut().choose_right_panel(Some(RightPanel::Bookmarks));
     h.state_mut().choose_right_panel(None);
     h.run_steps(2);
-    assert!(!h.state().comments_panel_closed, "switching to and closing another panel isn't closing Comments");
+    assert!(!h.state().win.comments_panel_closed, "switching to and closing another panel isn't closing Comments");
     assert!(h.state_mut().execute("comment.strikeout"));
     h.run_steps(2);
-    assert_eq!(h.state().right, Some(RightPanel::Comments));
+    assert_eq!(h.state().win.right, Some(RightPanel::Comments));
 }
 
 /// #1908: Comment properties of a text box has a Font size control; changing it redraws the box
@@ -3733,7 +3733,7 @@ fn moved_fill_and_sign_text_is_drawn_where_it_goes_before_release() {
     h.run_steps(3);
     let a = comments(&h).into_iter().find(|a| a.contents.as_deref() == Some("WWWWWW")).expect("the typed text");
     assert!(a.fill_sign && a.subtype == "FreeText", "{a:?}");
-    h.state_mut().quick_tool = QuickTool::Select;
+    h.state_mut().win.quick_tool = QuickTool::Select;
     h.state_mut().win.views[0].comments.selected = None;
     crate::support::settle(&mut h);
     let (x, y) = ((a.rect[0] + a.rect[2]) / 2.0, (a.rect[1] + a.rect[3]) / 2.0);
@@ -4732,7 +4732,7 @@ fn freehand_highlighter_draws_translucent_yellow_ink() {
     assert_eq!(props.color, Some([1.0, 0.94, 0.0]));
     assert!((props.opacity - 0.35).abs() < 0.001);
     assert_eq!(props.width, Some(14.0));
-    assert_eq!(h.state().quick_tool, QuickTool::Comment(pdfcraft_ui_egui::comments::CommentTool::FreehandHighlight));
+    assert_eq!(h.state().win.quick_tool, QuickTool::Comment(pdfcraft_ui_egui::comments::CommentTool::FreehandHighlight));
     h.state_mut().comment_prefs.set_width(pdfcraft_ui_egui::comments::CommentTool::FreehandHighlight, 100.0);
     drag_pt(&mut h, (40.0, 160.0), (240.0, 160.0));
     let c = comments(&h);
@@ -4765,7 +4765,7 @@ fn hotbar_picker_adds_and_runs_freehand_highlight() {
     // The new tool is available directly from its custom shortcut.
     h.query_all_by_role_and_label(Role::Button, "Freehand-Highlight").last().unwrap().click();
     h.run_steps(3);
-    assert_eq!(h.state().quick_tool, QuickTool::Comment(pdfcraft_ui_egui::comments::CommentTool::FreehandHighlight));
+    assert_eq!(h.state().win.quick_tool, QuickTool::Comment(pdfcraft_ui_egui::comments::CommentTool::FreehandHighlight));
 }
 
 /// #6548: resting on the hotbar's gear showed two stacked tooltips, "Hotbar settings" and
@@ -5005,7 +5005,7 @@ fn hotbar_settings_menu_closes_on_click_outside() {
     h.get_by_label("Hand (P)").click();
     h.run_steps(3);
     assert!(h.query_by_label("Close menu").is_none());
-    assert_eq!(h.state().quick_tool, QuickTool::Hand);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Hand);
 }
 
 #[test]
@@ -5052,7 +5052,7 @@ fn edit_composer_preserves_only_typewriter_whitespace(kind: u8) {
     let mut h = harness(move |app| {
         app.set_option("layout", "single").unwrap();
         app.set_option("panel", "comments").unwrap();
-        app.quick_tool = QuickTool::Select;
+        app.win.quick_tool = QuickTool::Select;
         // Both pages use index 0, with opposite intents. The lookup must use page AND index.
         for page in 0..2 {
             let typewriter = if page == 0 { kind != 0 } else { kind == 0 };
@@ -5255,7 +5255,7 @@ fn copied_comments_take_the_click_from_the_tool_that_is_on() {
     assert!(h.state_mut().execute("comment.copy"));
     let count = |h: &Harness<'static, PdfCraftApp>| h.state().session.get(id).unwrap().info.annotations.len();
     for (tool, at) in [(QuickTool::Fill(FillTool::Text), (150.0, 100.0)), (QuickTool::Stamp(pdfcraft_engine::StampKind::Approved), (200.0, 160.0))] {
-        h.state_mut().quick_tool = tool;
+        h.state_mut().win.quick_tool = tool;
         h.run_steps(2);
         let before = count(&h);
         assert!(h.state_mut().execute("comment.paste"));
@@ -5265,10 +5265,10 @@ fn copied_comments_take_the_click_from_the_tool_that_is_on() {
         assert!(h.state().win.views[0].comments.gesture.is_none());
         let placed = h.state().session.get(id).unwrap().info.annotations.iter().max_by_key(|a| a.index).map(|a| a.rect).expect("placed");
         assert!(((placed[0] + placed[2]) / 2.0 - at.0).abs() < 1.0, "{tool:?}: centred on the click: {placed:?}");
-        assert_eq!(h.state().quick_tool, tool, "the tool stays on for the next click");
+        assert_eq!(h.state().win.quick_tool, tool, "the tool stays on for the next click");
     }
     // Afterwards the tool takes its clicks again.
-    h.state_mut().quick_tool = QuickTool::Fill(FillTool::Text);
+    h.state_mut().win.quick_tool = QuickTool::Fill(FillTool::Text);
     h.run_steps(2);
     click_pt(&mut h, (100.0, 200.0));
     assert!(h.state().win.views[0].fill_text.is_some(), "Fill & Sign's Text tool opens its box again");
@@ -5567,7 +5567,7 @@ fn escape_with_a_fill_tool_deselects_every_comment_then_drops_the_tool() {
     use pdfcraft_ui_egui::fill_sign::FillTool;
     let mut h = harness(|_| {});
     add_two_boxes_and_a_reply(&mut h);
-    h.state_mut().quick_tool = QuickTool::Fill(FillTool::Text);
+    h.state_mut().win.quick_tool = QuickTool::Fill(FillTool::Text);
     {
         let c = &mut h.state_mut().win.views[0].comments;
         c.selected = Some((0, 0));
@@ -5578,10 +5578,10 @@ fn escape_with_a_fill_tool_deselects_every_comment_then_drops_the_tool() {
     h.run_steps(2);
     let c = &h.state().win.views[0].comments;
     assert!(c.selected.is_none() && c.also.is_empty(), "the whole selection goes");
-    assert_eq!(h.state().quick_tool, QuickTool::Fill(FillTool::Text), "the tool stays for now");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Fill(FillTool::Text), "the tool stays for now");
     h.key_press(egui::Key::Escape);
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select);
 }
 
 /// A square drawn and selected with the Select tool.
@@ -5833,7 +5833,7 @@ fn undo_with_a_card_menu_open_leaves_the_page_keys() {
     drag_pt(&mut h, (170.0, 180.0), (270.0, 120.0));
     assert_eq!(comments(&h).len(), 2);
     h.state_mut().set_option("quick", "select").unwrap();
-    h.state_mut().right = Some(pdfcraft_ui_egui::RightPanel::Comments);
+    h.state_mut().win.right = Some(pdfcraft_ui_egui::RightPanel::Comments);
     h.run_steps(3);
     click_pt(&mut h, (250.0, 20.0));
     click_pt(&mut h, (90.0, 70.0));
@@ -5849,7 +5849,7 @@ fn undo_with_a_card_menu_open_leaves_the_page_keys() {
     // This fork (KEY.1): P picks the Hand tool (H is Highlight).
     h.key_press(egui::Key::P);
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Hand, "P picks the Hand tool");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Hand, "P picks the Hand tool");
 }
 
 /// ⌘C with a menu of the menu bar open is the menu's: the selected comment isn't copied.

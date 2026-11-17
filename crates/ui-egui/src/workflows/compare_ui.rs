@@ -232,7 +232,7 @@ impl PdfCraftApp {
                     show_visual: true,
                 });
                 self.shade_compare(i);
-                self.right = Some(RightPanel::Compare);
+                self.win.right = Some(RightPanel::Compare);
                 self.notify(if n == 0 {
                     tl!("The text is the same").to_string()
                 } else if n == 1 {
@@ -301,7 +301,7 @@ impl PdfCraftApp {
                 if let Some(oi) = self.win.views.iter().position(|v| v.id == old) {
                     self.win.views[oi].compare_marks.clear();
                 }
-                self.right = None;
+                self.win.right = None;
             }
         }
     }

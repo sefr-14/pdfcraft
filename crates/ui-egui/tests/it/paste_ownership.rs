@@ -84,7 +84,7 @@ fn check_placement(rotation: u16, cropped: bool, view_rotation: u16, shared: boo
         image::RgbImage::from_pixel(40, 40, image::Rgb([0, 0, 255])).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
         h.state_mut().add_image("existing.png".into(), png);
         assert_eq!(h.state().session.get(h.state().win.views[0].id).unwrap().added().len(), 1);
-        h.state_mut().quick_tool = pdfcraft_ui_egui::QuickTool::Select;
+        h.state_mut().win.quick_tool = pdfcraft_ui_egui::QuickTool::Select;
         h.state_mut().win.views[0].image_selection = None;
         h.state_mut().win.views[0].content.selected = None;
     }
@@ -264,7 +264,7 @@ fn legacy_text_delete_survives_switching_out_of_the_image_tool() {
     }));
     assert_eq!(h.state().session.get(h.state().win.views[0].id).unwrap().added().len(), 1);
     h.state_mut().win.views[0].content.selected = Some((0, 0));
-    h.state_mut().quick_tool = pdfcraft_ui_egui::QuickTool::Select;
+    h.state_mut().win.quick_tool = pdfcraft_ui_egui::QuickTool::Select;
     h.key_press(Key::Delete);
     h.run_steps(3);
     let saved = reopened(h.state_mut());
@@ -293,7 +293,7 @@ fn leaving_image_controller_cannot_leave_hidden_image_owning_delete() {
     assert!(h.state().win.views[0].image_selection.is_some());
     h.key_press(Key::V);
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, pdfcraft_ui_egui::QuickTool::Select);
+    assert_eq!(h.state().win.quick_tool, pdfcraft_ui_egui::QuickTool::Select);
     assert!(h.state().win.views[0].image_selection.is_none());
     h.key_press(Key::Delete);
     h.run_steps(3);

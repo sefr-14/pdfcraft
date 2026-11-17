@@ -19,7 +19,7 @@ fn choosing_and_placing_stamps() {
     h.get_by_label("Add a stamp");
     h.get_all_by_label("APPROVED").next().expect("dynamic approved").click();
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::Stamp(pdfcraft_engine::StampKind::DynApproved));
+    assert_eq!(h.state().win.quick_tool, QuickTool::Stamp(pdfcraft_engine::StampKind::DynApproved));
     let p = {
         let r = h.state().win.views[0].page_screen_rect(0).unwrap();
         r.min + egui::vec2(r.width() * 0.5, r.height() * 0.85)
@@ -34,7 +34,7 @@ fn choosing_and_placing_stamps() {
     let doc = s.session.get(s.win.views[0].id).unwrap();
     let stamps: Vec<_> = doc.info.annotations.iter().filter(|a| a.subtype == "Stamp").collect();
     assert_eq!(stamps.len(), 1);
-    assert_eq!(s.quick_tool, QuickTool::Select, "back to selecting after one stamp");
+    assert_eq!(s.win.quick_tool, QuickTool::Select, "back to selecting after one stamp");
     for _ in 0..30 {
         h.run_steps(2);
         std::thread::sleep(std::time::Duration::from_millis(10));
@@ -77,7 +77,7 @@ fn natural_image_stamps_keep_displayed_bounds_on_rotated_pages() {
         h.run_steps(4);
         let app = h.state();
         let doc = app.session.get(app.win.views[0].id).unwrap();
-        assert_eq!(app.quick_tool, QuickTool::Select);
+        assert_eq!(app.win.quick_tool, QuickTool::Select);
         let stamp = doc.info.annotations.iter().find(|a| a.subtype == "Stamp").unwrap();
         let info = &doc.info.pages[0];
         let a = info.user_to_view(stamp.rect[0], stamp.rect[1]);
@@ -110,7 +110,7 @@ fn creating_placing_and_keeping_custom_stamps() {
     h.run_steps(1);
     h.get_by_label("OK").click();
     h.run_steps(2);
-    assert_eq!(h.state().quick_tool, QuickTool::CustomStamp(0));
+    assert_eq!(h.state().win.quick_tool, QuickTool::CustomStamp(0));
     h.get_by_label("Company");
     h.get_by_label("logo");
     // Place it.

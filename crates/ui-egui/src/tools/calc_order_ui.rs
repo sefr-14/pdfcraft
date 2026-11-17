@@ -629,10 +629,10 @@ fn explained(issues: &[CalculationIssue]) -> String {
 pub(crate) fn panel(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens) {
     let (back, close) = crate::panels::panel_header(ui, t, "Calculation order", Some(("chevron-left", tl!("Back to Prepare a form"))));
     if back {
-        app.left = LeftPanel::Tool("form");
+        app.win.left = LeftPanel::Tool("form");
     }
     if close {
-        app.left_open = false;
+        app.win.left_open = false;
     }
     let Some((index, id)) = app.active_ids() else {
         ui.label(egui::RichText::new(tl!("Open a document first")).color(t.text_muted));

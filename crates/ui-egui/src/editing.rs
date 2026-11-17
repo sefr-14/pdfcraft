@@ -336,7 +336,7 @@ impl PdfCraftApp {
                     view.comments.popups_after_edit(&popups_before, &info.annotations);
                 }
                 // Keep the pages the user acted on selected, where they now are.
-                select_after_edit(view, &edit, info, &annots_before, self.quick_tool);
+                select_after_edit(view, &edit, info, &annots_before, self.win.quick_tool);
                 // This fork (SYNC.16h, SYNC.17): the selection's places are this version's now,
                 // unless the edit moved comments without remapping the selection.
                 if moves_comment_places(&edit) {
@@ -350,7 +350,7 @@ impl PdfCraftApp {
                 // This view is refreshed; other tabs of the document catch up in `sync_shared_views`.
                 view.content_seen = Some(crate::content_version(doc));
                 if std::mem::take(&mut view.comments.tool_done) && !self.comment_prefs.pinned {
-                    self.quick_tool = crate::QuickTool::Select;
+                    self.win.quick_tool = crate::QuickTool::Select;
                 }
                 // Text saved as typed but drawn with `?` (its font can't draw it), or pages whose
                 // own backdrop stays off, or places applied redactions left holding the removed text
@@ -640,7 +640,7 @@ impl PdfCraftApp {
         self.run_field_triggers(i);
         if !applied {
             // Nor may a shortcut pressed with it (⌘S right after Enter) run behind the refusal.
-            self.deferred_commands.clear();
+            self.win.deferred_commands.clear();
         }
         match self.win.views.get_mut(i).and_then(|v| v.pending_action.take()) {
             Some(crate::canvas::ViewAction::InsertFromFile) => self.insert_from_file_dialog(),
@@ -794,8 +794,8 @@ impl PdfCraftApp {
             view.camera = None;
             view.camera_done = None;
         }
-        if self.quick_tool == crate::QuickTool::EnhanceCamera {
-            self.quick_tool = crate::QuickTool::Select;
+        if self.win.quick_tool == crate::QuickTool::EnhanceCamera {
+            self.win.quick_tool = crate::QuickTool::Select;
         }
     }
 
@@ -1048,7 +1048,7 @@ impl PdfCraftApp {
                     .and_then(|d| d.info.annotations.iter().filter(|a| a.page == page && !a.is_reply()).map(|a| a.index).max());
                 view.comments.select(newest.map(|index| (page, index)));
                 view.comments.reveal = true;
-                self.quick_tool = crate::QuickTool::Select;
+                self.win.quick_tool = crate::QuickTool::Select;
             }
             return true;
         }
@@ -1406,7 +1406,7 @@ impl PdfCraftApp {
                 self.apply_edit(Edit::AddBookmark { parent: vec![], index: n, title: "Untitled".into(), page, left, top });
                 // Like Acrobat: the new bookmark starts in rename mode.
                 self.bookmark_rename = Some((vec![n], "Untitled".into()));
-                self.right = Some(crate::RightPanel::Bookmarks);
+                self.win.right = Some(crate::RightPanel::Bookmarks);
                 return;
             }
             A::StartRename(path) => {
@@ -1458,7 +1458,7 @@ impl PdfCraftApp {
                 return;
             }
             A::FromStructure => {
-                self.right = Some(crate::RightPanel::Bookmarks);
+                self.win.right = Some(crate::RightPanel::Bookmarks);
                 Edit::BookmarksFromStructure
             }
             // A dialog chooses the styles; it makes the edit.

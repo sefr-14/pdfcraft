@@ -196,7 +196,7 @@ fn selected_text_copy_edit_and_context_menus() {
     let (mut h, at) = harness(|app| app.system_clipboard = false);
     click(&mut h, at);
     click(&mut h, at);
-    h.state_mut().quick_tool = pdfcraft_ui_egui::QuickTool::Hand;
+    h.state_mut().win.quick_tool = pdfcraft_ui_egui::QuickTool::Hand;
     h.run_steps(2); // Hide floating Copy so this test can only reach menu entries.
     crate::support::open_menu(&mut h, "Edit");
     crate::support::menu_row(&h, "Copy").click();
@@ -206,7 +206,7 @@ fn selected_text_copy_edit_and_context_menus() {
         did_copy |= copied(&h, "quick");
     }
     assert!(did_copy, "Edit Copy emits the selected text");
-    h.state_mut().quick_tool = pdfcraft_ui_egui::QuickTool::Hand;
+    h.state_mut().win.quick_tool = pdfcraft_ui_egui::QuickTool::Hand;
     h.run_steps(2); // Hide the floating bar: the remaining Copy must be in the context menu.
     h.event(Event::PointerMoved(at));
     for pressed in [true, false] {

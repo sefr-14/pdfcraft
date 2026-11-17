@@ -687,7 +687,7 @@ pub fn mode_bar(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                         icons::button(ui, "search", 32.0, false, tl!("Find tools and commands")).clicked()
                     };
                     if opened {
-                        app.palette_open = true;
+                        app.win.palette_open = true;
                     }
                 });
             });
@@ -757,18 +757,18 @@ pub fn right_rail(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
     let view = &mut app.win.views[index];
     let mut page_display = None;
     let rail = Rail::new(egui::Id::unique("rail"))
-        .edge(app.side_panels.rail_edge())
+        .edge(app.win.side_panels.rail_edge())
         .width(49.0)
         .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin::symmetric(1, 8)).stroke(Stroke::new(1.0, t.divider)))
-        .show(ui, &items, app.right.as_ref(), |ui| {
+        .show(ui, &items, app.win.right.as_ref(), |ui| {
             // Page navigation cluster at the bottom, a panel of its own so that in a short
             // window the buttons above scroll instead of running into it (#3282).
             ui.with_layout(Layout::bottom_up(Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
-                let right = app.side_panels.rail_on_right();
+                let right = app.win.side_panels.rail_on_right();
                 let dock_tip = if right { tl!("Dock navigation rail on Left") } else { tl!("Dock navigation rail on Right") };
                 if icons::button(ui, if right { "panel-left" } else { "panel-right" }, 32.0, false, dock_tip).clicked() {
-                    app.side_panels.rail_side = if right { crate::side_panels::ToolsSide::Left } else { crate::side_panels::ToolsSide::Right };
+                    app.win.side_panels.rail_side = if right { crate::side_panels::ToolsSide::Left } else { crate::side_panels::ToolsSide::Right };
                 }
                 // Between rotate and zoom, as in Acrobat. Its command runs once `view` is free.
                 let tip = crate::i18n::fmt(tl!("Page display: {layout}"), &[("layout", tl!(view.layout.label()))]);

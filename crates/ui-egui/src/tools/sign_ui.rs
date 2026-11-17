@@ -579,7 +579,7 @@ impl PdfCraftApp {
             if let Some(view) = app.win.views.iter_mut().find(|v| v.id == doc_id) {
                 view.invalidate_content();
             }
-            app.right = Some(crate::RightPanel::Signatures);
+            app.win.right = Some(crate::RightPanel::Signatures);
             app.notify_fmt("Signed and saved to {path}", &[("path", &path.display().to_string())]);
             app.handle_js(doc_id, said);
             if let Some(e) = after {

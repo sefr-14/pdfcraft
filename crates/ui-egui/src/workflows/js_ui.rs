@@ -106,7 +106,7 @@ impl PdfCraftApp {
                         Panel::Layers => crate::RightPanel::Layers,
                     };
                     // Show/Hide: a panel already showing closes.
-                    self.right = (self.right != Some(panel)).then_some(panel);
+                    self.win.right = (self.win.right != Some(panel)).then_some(panel);
                 }
                 Request::Zoom(z) => {
                     if let Some(i) = view {

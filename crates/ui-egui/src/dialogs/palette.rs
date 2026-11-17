@@ -47,16 +47,16 @@ fn score_for_direction(hay: &str, needle: &str, rtl: bool) -> Option<usize> {
 /// Draw the command palette and dispatch the chosen command or tool group.
 pub fn show(app: &mut PdfCraftApp, ctx: &egui::Context) {
     let palette_rect_id = egui::Id::unique("palette_rect");
-    if !app.palette_open {
+    if !app.win.palette_open {
         return;
     }
     let t = Tokens::get(ctx);
     // Taken: nothing else reacts to the same press (this fork, OV11).
     if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
-        app.palette_open = false;
+        app.win.palette_open = false;
         return;
     }
-    let q = pdfcraft_render::text::fold_case(app.palette_query.trim());
+    let q = pdfcraft_render::text::fold_case(app.win.palette_query.trim());
     let mut hits: Vec<(usize, Hit)> = Vec::new();
     let active = app.active_ids().map(|(_, id)| id);
     for spec in pdfcraft_engine::commands::COMMANDS {
@@ -145,8 +145,8 @@ pub fn show(app: &mut PdfCraftApp, ctx: &egui::Context) {
     });
 
     if outside_click {
-        app.palette_open = false;
-        app.palette_query.clear();
+        app.win.palette_open = false;
+        app.win.palette_query.clear();
         return;
     }
     let mut chosen: Option<(Option<&'static str>, Option<&'static str>)> = None;
@@ -161,7 +161,7 @@ pub fn show(app: &mut PdfCraftApp, ctx: &egui::Context) {
                     ui.add(icons::image("search", 18.0, t.text_muted));
                     let r = ui
                         .add(
-                            egui::TextEdit::singleline(&mut app.palette_query)
+                            egui::TextEdit::singleline(&mut app.win.palette_query)
                                 .hint_text(tl!("Search tools and commands…"))
                                 .frame(egui::Frame::NONE)
                                 .font(theme::regular(15.0))
@@ -222,8 +222,8 @@ pub fn show(app: &mut PdfCraftApp, ctx: &egui::Context) {
     });
 
     if let Some((command, group)) = chosen {
-        app.palette_open = false;
-        app.palette_query.clear();
+        app.win.palette_open = false;
+        app.win.palette_query.clear();
         if let Some(g) = group {
             app.select_tool(g);
         }

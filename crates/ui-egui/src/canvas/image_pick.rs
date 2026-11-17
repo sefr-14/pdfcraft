@@ -281,9 +281,9 @@ mod picture_tests {
         assert!(h.state_mut().execute("page.organize"));
         h.run_steps(2);
         assert!(h.state().win.views[0].pending_pick.is_some(), "the click waits while the page isn't drawn");
-        h.state_mut().quick_tool = crate::QuickTool::Hand;
+        h.state_mut().win.quick_tool = crate::QuickTool::Hand;
         h.run_steps(1);
-        h.state_mut().quick_tool = crate::QuickTool::Select;
+        h.state_mut().win.quick_tool = crate::QuickTool::Select;
         h.run_steps(1);
         assert_eq!(h.state().win.views[0].pending_pick, None);
     }
@@ -422,7 +422,7 @@ impl PdfCraftApp {
         if ctx.egui_wants_keyboard_input() {
             return;
         }
-        if self.page_keys.pressed(ctx, egui::Key::Escape) {
+        if self.win.page_keys.pressed(ctx, egui::Key::Escape) {
             if let Some(view) = self.win.views.get_mut(i) {
                 view.picked_image = None;
                 view.pending_pick = None;
@@ -430,7 +430,7 @@ impl PdfCraftApp {
             return;
         }
         let Some(picked) = self.win.views.get(i).and_then(|v| v.picked_image) else { return };
-        let copy = self.page_keys.clipboard(ctx).copy;
+        let copy = self.win.page_keys.clipboard(ctx).copy;
         if !copy || self.win.views[i].selected_text().is_some() {
             return;
         }

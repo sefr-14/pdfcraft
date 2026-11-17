@@ -24,7 +24,7 @@ fn compare_two_versions() {
     h.get_by_label("Compare Files");
     h.get_by_label("Compare").click();
     h.run_steps(3);
-    assert_eq!(h.state().right, Some(RightPanel::Compare));
+    assert_eq!(h.state().win.right, Some(RightPanel::Compare));
     assert_eq!(h.state().toast.clone().unwrap().0, "2 differences found");
     h.get_by_label("2 Replaced");
     h.get_by_label("\"five\" → \"three\"").click();
@@ -194,7 +194,7 @@ fn compare_dialog_pages_field_rejects_out_of_range() {
     h.run_steps(3);
     assert!(h.query_by_label("Compare Files").is_some(), "the dialog stays open for an out-of-range page");
     assert!(h.state().compare.is_none(), "the comparison did not run");
-    assert_ne!(h.state().right, Some(RightPanel::Compare));
+    assert_ne!(h.state().win.right, Some(RightPanel::Compare));
 }
 
 /// Writes a screenshot of the Compare panel when PDFCRAFT_SHOT is set (for review).

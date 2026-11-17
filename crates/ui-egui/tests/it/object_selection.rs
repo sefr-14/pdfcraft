@@ -581,7 +581,7 @@ fn objects_copy_cut_and_paste_with_the_keys_on_the_page_and_into_another_documen
     h.run_steps(4);
     let other = h.state().win.active.unwrap();
     assert_eq!(other, 1);
-    h.state_mut().quick_tool = pdfcraft_ui_egui::QuickTool::EditText;
+    h.state_mut().win.quick_tool = pdfcraft_ui_egui::QuickTool::EditText;
     h.run_steps(2);
     keys(&mut h, Modifiers::COMMAND, Key::V);
     assert_eq!(can_undo(&h, other).as_deref(), Some("Paste"));

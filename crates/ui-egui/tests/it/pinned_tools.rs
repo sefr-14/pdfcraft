@@ -118,7 +118,7 @@ fn clicking_pinned_tool_card_selects_it() {
     h.run_steps(3);
 
     // Redact tool panel is now active
-    assert_eq!(h.state().left, LeftPanel::Tool("redact"));
+    assert_eq!(h.state().win.left, LeftPanel::Tool("redact"));
 }
 
 #[test]
@@ -159,5 +159,5 @@ fn sidebar_pin_toggle_unpins_and_pins() {
 
     assert!(!h.state().is_tool_pinned("redact"));
     // Left panel did not navigate away (still AllTools)
-    assert_eq!(h.state().left, LeftPanel::AllTools);
+    assert_eq!(h.state().win.left, LeftPanel::AllTools);
 }

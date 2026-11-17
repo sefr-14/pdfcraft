@@ -9,7 +9,7 @@ use super::{
 pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     let Some((index, id)) = app.active_ids() else { return };
-    let Some(panel) = app.right else { return };
+    let Some(panel) = app.win.right else { return };
     let mut nav: Option<Nav> = None;
     let mut close = false;
     let mut toggle_layer: Option<(usize, bool)> = None;
@@ -29,7 +29,7 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
     // Prepare a form is open: the Fields panel orders tabs.
     let preparing = app.is_preparing();
     // The Pages panel's Escape and Delete act on the pages: not while something is over them.
-    let keys = app.page_keys.also(app.covers_pages());
+    let keys = app.win.page_keys.also(app.covers_pages());
     {
         let Some(doc) = app.session.get(id) else { return };
         let info = &doc.info;
@@ -41,7 +41,7 @@ pub fn right_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
         let compare = &app.compare;
         let comment_allowed = doc.allows_annotation();
         // A dialog or the palette owns the keyboard: the panel leaves Escape to it.
-        let modal = app.dialog.is_some() || app.palette_open;
+        let modal = app.dialog.is_some() || app.win.palette_open;
         egui::Frame::NONE
             .fill(t.panel)
             .inner_margin(egui::Margin { left: 14, right: 12, top: 12, bottom: 8 })

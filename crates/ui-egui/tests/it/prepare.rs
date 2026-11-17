@@ -141,7 +141,7 @@ fn placing_moving_editing_and_deleting_a_field() {
     let all = names(&h);
     assert_eq!(all.len(), before + 1, "{all:?}");
     assert_eq!(all.last().map(String::as_str), Some("Text1"));
-    assert_eq!(h.state().quick_tool, QuickTool::Select, "back to Select after one field");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select, "back to Select after one field");
     h.run_steps(2);
     assert_eq!(h.state().win.views[0].prepare.selected.as_ref().map(|s| s.0.as_str()), Some("Text1"), "the new field is selected");
     let r = rect_of(&h, "Text1");
@@ -1389,7 +1389,7 @@ fn a_text_field_table_is_drawn_set_up_and_added_in_one_step() {
     let mut h = harness();
     let before = names(&h);
     draw_table(&mut h);
-    assert_eq!(h.state().quick_tool, QuickTool::Select, "back to Select once the area is drawn");
+    assert_eq!(h.state().win.quick_tool, QuickTool::Select, "back to Select once the area is drawn");
     {
         let s = h.state_mut();
         let id = s.win.views[0].id;
@@ -1513,7 +1513,7 @@ fn the_table_window_closes_when_its_document_is_left() {
     assert_eq!(names(&h).len(), before, "nothing added to either document");
     // So does leaving Prepare a form.
     draw_table(&mut h);
-    h.state_mut().left_open = false;
+    h.state_mut().win.left_open = false;
     h.run_steps(2);
     assert_eq!((h.state().dialog, h.state().field_table_draft.is_some()), (None, false));
 }
@@ -1527,14 +1527,14 @@ fn a_table_drawn_with_the_panel_closed_opens_it_again() {
     let before = names(&h).len();
     assert!(h.state_mut().execute("form.add.text_table"));
     h.run_steps(2);
-    h.state_mut().left_open = false;
+    h.state_mut().win.left_open = false;
     h.run_steps(2);
     assert!(h.state().is_preparing(), "the picked tool keeps the form prepared");
     let (a, b) = (at(&h, 40.0, 240.0), at(&h, 240.0, 360.0));
     drag(&mut h, a, b);
     h.run_steps(3);
     assert_eq!((h.state().dialog, h.state().field_table_draft.is_some()), (Some(Dialog::FieldTable), true), "the window stays open");
-    assert!(h.state().left_open && h.state().is_preparing(), "Prepare a form is open again");
+    assert!(h.state().win.left_open && h.state().is_preparing(), "Prepare a form is open again");
     h.get_by_label("Add fields").click();
     h.run_steps(3);
     assert!(names(&h).len() > before, "the table is added");
@@ -1606,14 +1606,14 @@ fn the_calculation_order_is_a_page_of_prepare_a_form() {
     assert!(h.query_by_label("Field list").is_some());
     h.get_by_label("Calculation order").click();
     h.run_steps(3);
-    assert_eq!(h.state().left, LeftPanel::CalculationOrder);
+    assert_eq!(h.state().win.left, LeftPanel::CalculationOrder);
     assert!(h.state().is_preparing(), "the fields stay editable, so a row can select one");
     // The page replaces the Prepare a form tools.
     assert!(h.query_by_label("Field list").is_none());
     assert!(h.query_by_label_contains("No field in this form calculates its value yet").is_some());
     h.get_by_label("Back to Prepare a form").click();
     h.run_steps(3);
-    assert_eq!(h.state().left, LeftPanel::Tool("form"));
+    assert_eq!(h.state().win.left, LeftPanel::Tool("form"));
     assert!(h.query_by_label("Field list").is_some());
     assert!(h.query_by_label("Back to Prepare a form").is_none());
     // Opened from Preview, the page edits the fields again.
