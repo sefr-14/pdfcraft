@@ -25,7 +25,12 @@ fn now() -> f64 {
 /// The script clock: seconds since the first root pass (startup time varies a lot by renderer).
 static SCRIPT0: OnceLock<Instant> = OnceLock::new();
 fn st() -> f64 {
-    SCRIPT0.get_or_init(Instant::now).elapsed().as_secs_f64()
+    SCRIPT0.get_or_init(Instant::now).elapsed().as_secs_f64() / time_scale()
+}
+/// `SPIKE_TIME_SCALE=5` stretches every scripted time five-fold, for manual runs (Windows).
+fn time_scale() -> f64 {
+    static SCALE: OnceLock<f64> = OnceLock::new();
+    *SCALE.get_or_init(|| std::env::var("SPIKE_TIME_SCALE").ok().and_then(|v| v.parse().ok()).filter(|v: &f64| *v > 0.0).unwrap_or(1.0))
 }
 
 struct FileLogger(Mutex<std::fs::File>);
