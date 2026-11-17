@@ -129,11 +129,13 @@ pub struct RegistrationNote {
     /// The fit's RMS residual and largest residual on A's sheet, in millimetres, for fitted pages.
     pub rms_mm: Option<f64>,
     pub max_mm: Option<f64>,
+    /// This fork (OVERLAY.ALIGN.PAGE.1): the page used its own alignment rather than the main one.
+    pub own: bool,
 }
 
 impl RegistrationNote {
     /// A page placed without registration.
-    pub const PLACED: RegistrationNote = RegistrationNote { kind: RegistrationKind::Placed, rms_mm: None, max_mm: None };
+    pub const PLACED: RegistrationNote = RegistrationNote { kind: RegistrationKind::Placed, rms_mm: None, max_mm: None, own: false };
 
     /// The registration as the metadata and the report state it.
     pub fn text(&self) -> String {
@@ -155,6 +157,9 @@ impl RegistrationNote {
                 }
                 s.push_str(&format!(", {what} {v:.3} mm"));
             }
+        }
+        if self.own {
+            s.push_str(", this page's own alignment");
         }
         Ok(s)
     }

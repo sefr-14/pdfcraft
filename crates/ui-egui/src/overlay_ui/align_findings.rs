@@ -243,7 +243,7 @@ fn run(case: &Case) -> Vec<PairFinding> {
     for &(x, y) in &picks_at {
         assert!(picks.click(Side::B, Point::new(x, y), Side::A));
     }
-    w.aligns.insert(first, picks);
+    w.set_picks(Target::Main, picks, first);
     assert_eq!(w.alignment_problem(), None, "{}", case.name);
     assert_eq!(w.sheet_size_problem(), None, "{}", case.name);
     assert_eq!(w.sheets_problem(), None, "{}", case.name);

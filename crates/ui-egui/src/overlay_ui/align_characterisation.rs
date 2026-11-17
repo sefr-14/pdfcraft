@@ -83,9 +83,9 @@ fn k_of(w: &mut Wizard, pair: (usize, usize)) -> Matrix {
     w.sheet_match(pair).transform(sa, sb).expect("sheet transform")
 }
 
-/// Pick three well-spread points on `pair`, New's at fixed places of its sheet and Old's where
+/// Three well-spread points on `pair`, New's at fixed places of its sheet and Old's where
 /// `truth` puts them: Old's three first, then New's, as the wizard asks.
-fn pick(w: &mut Wizard, pair: (usize, usize), truth: &Matrix) {
+fn picks_for(w: &mut Wizard, pair: (usize, usize), truth: &Matrix) -> Picks {
     let (_, (wb, hb)) = w.sheet_sizes(pair).expect("sheet sizes");
     let on_new = [(0.1 * wb, 0.1 * hb), (0.9 * wb, 0.15 * hb), (0.5 * wb, 0.9 * hb)];
     let mut picks = Picks::default();
@@ -97,7 +97,21 @@ fn pick(w: &mut Wizard, pair: (usize, usize), truth: &Matrix) {
         assert!(picks.click(Side::B, Point::new(x, y), Side::A));
     }
     assert_eq!(picks.pairs().len(), 3);
-    w.aligns.insert(pair, picks);
+    picks
+}
+
+/// Pick the main alignment on `pair` (what the wizard calls the first pair's alignment before
+/// OVERLAY.ALIGN.PAGE.1: the default for every pair).
+fn pick(w: &mut Wizard, pair: (usize, usize), truth: &Matrix) {
+    let picks = picks_for(w, pair, truth);
+    w.set_picks(Target::Main, picks, pair);
+}
+
+/// Tick `pair` and pick its own alignment.
+fn pick_own(w: &mut Wizard, pair: (usize, usize), truth: &Matrix) {
+    let picks = picks_for(w, pair, truth);
+    w.tick(pair);
+    w.set_picks(Target::Own(pair), picks, pair);
 }
 
 /// Confirm `choice` for `pair`'s sheet size (or for every pair while it is shared).
@@ -199,7 +213,7 @@ fn a_shared_factor_on_pairs_of_the_same_sizes_is_exact() {
     let (_app, mut w) = wizard(&[(300, 200), (300, 200)], &[(600, 400), (600, 400)]);
     let first = w.first_pair().expect("a pair");
     choose(&mut w, first, SheetChoice::Factor(0.5));
-    assert!(w.same_sheet_for_all && w.same_alignment_for_all);
+    assert!(w.same_sheet_for_all && w.own.is_empty());
     let r = pick_first(&mut w);
     let (old, new) = r.measure(&mut w);
     for m in [old, new] {
@@ -313,13 +327,12 @@ fn two_different_factors_carry_the_fit_at_the_wrong_scale() {
     assert!(new[0] < EXACT && new[1] > 4.0, "{new:?}");
 }
 
-/// The alignment not shared: each pair has its own points and gets its own matrix, exact on its
-/// own geometry. (The test the wizard did not have.)
+/// Each pair with its own alignment (both ticked): each gets its own matrix, exact on its own
+/// geometry. (The test the wizard did not have.)
 #[test]
 fn separate_alignments_give_each_pair_its_own_exact_matrix() {
     let (_app, mut w) = wizard(&[(300, 200), (300, 200)], &[(600, 400), (300, 200)]);
     w.same_sheet_for_all = false;
-    w.same_alignment_for_all = false;
     let pairs: Vec<(usize, usize)> = w.matched_rows().into_iter().map(|(_, p)| p).collect();
     choose(&mut w, pairs[0], SheetChoice::Factor(0.5));
     // Each pair picked from its own truth under the New-frame reading (the one a shared
@@ -329,16 +342,16 @@ fn separate_alignments_give_each_pair_its_own_exact_matrix() {
     let r = Readings::of(&mut w, first, &t1);
     for &pair in &pairs {
         let truth = r.new_frame()(&mut w, pair);
-        pick(&mut w, pair, &truth);
+        pick_own(&mut w, pair, &truth);
     }
     let r0 = w.registration(pairs[0]).expect("first").matrix;
     let r1 = w.registration(pairs[1]).expect("second").matrix;
     assert_ne!(r0, r1, "each pair its own matrix");
     let (_, new) = r.measure(&mut w);
     assert!(new.iter().all(|e| *e < EXACT), "{new:?}");
-    // A pair without points, alignment not shared: placed with the identity, not another
-    // pair's fit.
-    w.aligns.remove(&pairs[1]);
+    // Its own alignment removed, with no main alignment: placed by its sheet match alone (the
+    // identity), never another pair's own fit.
+    w.remove_own(pairs[1]);
     assert_eq!(w.registration(pairs[1]).expect("second").matrix, Matrix::IDENTITY);
 }
 

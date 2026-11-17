@@ -25,7 +25,7 @@ fn pairs_with_blanks_make_one_page_each() {
     let (a, b) = (pages(3), pages(2));
     let v = Visibility::default();
     let shift = Matrix::translate(30.0, 0.0);
-    let fitted = RegistrationNote { kind: RegistrationKind::Similarity, rms_mm: Some(0.1), max_mm: Some(0.2) };
+    let fitted = RegistrationNote { kind: RegistrationKind::Similarity, rms_mm: Some(0.1), max_mm: Some(0.2), own: false };
     let pairs = vec![
         PairPlan { a: Some(0), b: Some(1), sheet: SheetMatch::Off, registration: shift, note: fitted },
         PairPlan::placed(Some(1), None),
