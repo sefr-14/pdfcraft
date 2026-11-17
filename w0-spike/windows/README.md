@@ -42,18 +42,28 @@ git checkout <commit SHA given in the report>
 
 ### (b) Without publishing: the git bundle
 
-The file `tab-window-w0.bundle` holds the branch `scratch/tab-window-w0` with its history. Copy
-it to the Windows machine (USB stick, file share), then:
+`tab-window-w0.bundle` holds the scratch branch's commits on top of Main commit `e2085e24`,
+which is already public on GitHub. The bundle needs that commit as its base, because the
+machine that made it has a shallow clone. Copy the bundle to the Windows machine (USB stick,
+file share), then:
 
 ```
-git clone -b scratch/tab-window-w0 tab-window-w0.bundle pdfcraft-w0
+git clone https://github.com/sefr-14/pdfcraft.git pdfcraft-w0
 cd pdfcraft-w0
-git log -1 --format=%H        # compare with the commit SHA given in the report
-git bundle verify ..\tab-window-w0.bundle
+git bundle verify ..\tab-window-w0.bundle          # "okay"; needs e2085e24, which Main has
+git fetch ..\tab-window-w0.bundle scratch/tab-window-w0:scratch/tab-window-w0
+git checkout scratch/tab-window-w0
+git log -1 --format=%H                             # compare with the commit SHA in the report
 ```
 
-`git clone` from a bundle needs no network. The clone's `origin` points at the bundle file, so
-nothing can be pushed anywhere by accident.
+The bundle adds a local branch only. Nothing is pushed: never run `git push` in this clone.
+
+### (b2) Fully offline: the source zip
+
+The spike is a standalone crate, so `w0-spike-src.zip` (made with `git archive`) is enough to
+build it. Unzip it anywhere and continue at step 3 from inside its `w0-spike` folder. The
+zip's archive comment holds the commit SHA (`git archive` writes it). The first build still
+downloads crates from the internet.
 
 ### (c) From a GitHub Actions artifact (only if the owner approves a proposal in `proposals\`)
 
