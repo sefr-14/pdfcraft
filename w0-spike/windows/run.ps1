@@ -254,7 +254,9 @@ function Wait-LogLine($run, [string]$pattern, [double]$timeoutSec = 60) {
     }
     return $null
 }
-function Find-W([string]$title) { return [W0Win]::FindWindow($null, $title) }
+# [NullString]::Value, not $null: PowerShell passes $null to a .NET string parameter as "", and
+# FindWindow with an empty class name finds nothing.
+function Find-W([string]$title) { return [W0Win]::FindWindow([NullString]::Value, $title) }
 
 # Start one spike run. $settings: name=value strings (see src/main.rs).
 function Start-Spike([string]$name, [string]$renderer, [string[]]$settings) {
@@ -508,7 +510,7 @@ foreach ($r in $Renderers) {
                 @('root_escape', 'W0 root', $root, $desk, 'escape', $true),
                 @('s_to_root_strip', 'W0 sec S', $s, (Strip-Point $root), 'valid', $false)
             )
-            $tray = [W0Win]::FindWindow('Shell_TrayWnd', $null)
+            $tray = [W0Win]::FindWindow('Shell_TrayWnd', [NullString]::Value)
             if ($tray -ne [IntPtr]::Zero) { $tn = Nums ([W0In]::Rect($tray)); $steps += , @('root_to_taskbar', 'W0 root', $root, @(($tn[0] + [int]($tn[2] / 2)), ($tn[1] + [int]($tn[3] / 2))), 'any', $false) }
             foreach ($st in $steps) {
                 $name = $st[0]; $who = $st[1]; $src = $st[2]; $to = $st[3]; $want = $st[4]
