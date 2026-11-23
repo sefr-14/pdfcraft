@@ -1,8 +1,8 @@
 diff --git a/.github/workflows/overlay-windows.yml b/.github/workflows/overlay-windows.yml
-index 538b214c..4e14cb06 100644
+index 538b214c..be455795 100644
 --- a/.github/workflows/overlay-windows.yml
 +++ b/.github/workflows/overlay-windows.yml
-@@ -1,20 +1,14 @@
+@@ -1,20 +1,21 @@
 -# Fork-only workflow (sefr-14/pdfcraft): build the overlay-compare version of PdfCraft for
 -# 64-bit Windows as a downloadable Actions artifact.
 +# Scratch-only Windows feasibility workflow for TAB.WINDOW.1 W0; not for Main.
@@ -30,10 +30,17 @@ index 538b214c..4e14cb06 100644
 +# - Builds w0-spike (its own Cargo.lock and empty [workspace]) for x86_64-pc-windows-msvc.
 +# - No secrets; read-only token; no tag, no release. The artifact holds the spike exe, the
 +#   windows/ test scripts and docs, and a SHA-256 file.
++# - Then runs the checks unattended on this runner (windows\run.ps1 -SkipManual -Unattended), once
++#   per renderer, and uploads the results (CSV, logs, screenshots) as a second artifact. Every row
++#   is labelled with where it ran (ci-vm: a GitHub virtual machine with injected input and software
++#   rendering), so none of it stands in for a test on physical Windows hardware.
++# - glow needs OpenGL 3, which the runner has no driver for: it runs with Mesa's llvmpipe
++#   (pal1000/mesa-dist-win, MIT), downloaded at a pinned release, checked against the SHA-256
++#   digest GitHub publishes for that asset, put next to a copy of the exe and never packaged.
  
  name: overlay windows build
  
-@@ -33,86 +27,62 @@ env:
+@@ -33,86 +34,62 @@ env:
    CARGO_INCREMENTAL: 0
    RUST_BACKTRACE: 1
    TARGET: x86_64-pc-windows-msvc
@@ -152,7 +159,7 @@ index 538b214c..4e14cb06 100644
  
        - name: Package
          shell: pwsh
-@@ -120,39 +90,35 @@ jobs:
+@@ -120,39 +97,35 @@ jobs:
            PACKAGE: ${{ steps.name.outputs.package }}
          run: |
            $ErrorActionPreference = 'Stop'
@@ -219,8 +226,79 @@ index 538b214c..4e14cb06 100644
            $hash = (Get-FileHash -Algorithm SHA256 "dist\$env:PACKAGE.zip").Hash.ToLowerInvariant()
            "$hash  $env:PACKAGE.zip" | Set-Content -Encoding ascii "dist\$env:PACKAGE.zip.sha256"
            "SHA-256 $hash  $env:PACKAGE.zip"
-@@ -165,3 +131,4 @@ jobs:
+@@ -165,3 +138,75 @@ jobs:
              dist/${{ steps.name.outputs.package }}.zip
              dist/${{ steps.name.outputs.package }}.zip.sha256
            if-no-files-found: error
++          retention-days: 14
++
++      - name: Fetch Mesa llvmpipe for glow (runner only, never packaged)
++        id: mesa
++        continue-on-error: true
++        shell: pwsh
++        env:
++          GH_TOKEN: ${{ github.token }}
++          MESA_TAG: '26.2.5'
++          PACKAGE: ${{ steps.name.outputs.package }}
++        run: |
++          $ErrorActionPreference = 'Stop'
++          $rel = gh api "repos/pal1000/mesa-dist-win/releases/tags/$env:MESA_TAG" | ConvertFrom-Json
++          $asset = @($rel.assets | Where-Object { $_.name -match '^mesa3d-.*-release-msvc\.7z$' })
++          if ($asset.Count -ne 1) { throw "expected one MSVC release asset, found: $($rel.assets.name -join ', ')" }
++          $a = $asset[0]
++          if (-not $a.digest) { throw "$($a.name) has no published digest to check it against; not using it" }
++          Invoke-WebRequest -Uri $a.browser_download_url -OutFile mesa.7z
++          $hash = (Get-FileHash -Algorithm SHA256 mesa.7z).Hash.ToLowerInvariant()
++          "Mesa $env:MESA_TAG $($a.name): SHA-256 $hash; GitHub digest $($a.digest)"
++          if ($a.digest -ne "sha256:$hash") { throw "SHA-256 mismatch: $hash vs $($a.digest)" }
++          7z x mesa.7z -omesa x64\opengl32.dll x64\libgallium_wgl.dll -y | Out-Null
++          New-Item -ItemType Directory -Force -Path dist\glow | Out-Null
++          Copy-Item "dist\$env:PACKAGE\target\release\w0-spike.exe" dist\glow
++          Copy-Item mesa\x64\opengl32.dll, mesa\x64\libgallium_wgl.dll dist\glow
++          Get-ChildItem dist\glow | ForEach-Object { "$($_.Name) $((Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant())" }
++
++      - name: Run the W0 checks unattended (wgpu)
++        continue-on-error: true
++        timeout-minutes: 45
++        shell: pwsh
++        env:
++          PACKAGE: ${{ steps.name.outputs.package }}
++        run: |
++          powershell -NoProfile -ExecutionPolicy Bypass -File "dist\$env:PACKAGE\windows\run.ps1" -SkipManual -Unattended -Renderers wgpu -Evidence ci-vm
++
++      - name: Run the W0 checks unattended (glow)
++        continue-on-error: true
++        timeout-minutes: 45
++        shell: pwsh
++        env:
++          PACKAGE: ${{ steps.name.outputs.package }}
++          GALLIUM_DRIVER: llvmpipe
++        run: |
++          $exe = 'dist\glow\w0-spike.exe'; $ev = 'ci-vm/mesa-llvmpipe'
++          if (-not (Test-Path $exe)) { $exe = "dist\$env:PACKAGE\target\release\w0-spike.exe"; $ev = 'ci-vm/no-opengl3-driver' }
++          powershell -NoProfile -ExecutionPolicy Bypass -File "dist\$env:PACKAGE\windows\run.ps1" -SkipManual -Unattended -Renderers glow -Exe (Resolve-Path $exe).Path -Evidence $ev
++
++      - name: Summarise the results
++        if: always()
++        shell: pwsh
++        env:
++          PACKAGE: ${{ steps.name.outputs.package }}
++        run: |
++          $csvs = @(Get-ChildItem -Recurse -Filter results.csv "dist\$env:PACKAGE\windows\w0-results" -ErrorAction SilentlyContinue)
++          if ($csvs.Count -eq 0) { "No results were written."; exit 0 }
++          $rows = @($csvs | ForEach-Object { Import-Csv $_.FullName })
++          $sum = @('## W0 unattended checks', '', '| outcome | rows |', '|---|---|')
++          $sum += $rows | Group-Object outcome | ForEach-Object { "| $($_.Name) | $($_.Count) |" }
++          $sum += '', '| check | renderer | attempt | outcome | evidence | details |', '|---|---|---|---|---|---|'
++          $sum += $rows | Where-Object { $_.outcome -ne 'INFO' -or $_.check -like 'probe_*' } | ForEach-Object { "| $($_.check) | $($_.renderer) | $($_.attempt) | $($_.outcome) | $($_.evidence) | $(($_.details -replace '\|', '/').Substring(0, [math]::Min(160, $_.details.Length))) |" }
++          $sum | Out-File -Encoding utf8 -Append $env:GITHUB_STEP_SUMMARY
++          $sum | Select-Object -First 12
++
++      - name: Upload the results
++        if: always()
++        uses: actions/upload-artifact@v4
++        with:
++          name: w0-results-${{ steps.name.outputs.package }}
++          path: dist/${{ steps.name.outputs.package }}/windows/w0-results
++          if-no-files-found: warn
 +          retention-days: 14
