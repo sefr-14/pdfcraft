@@ -91,10 +91,20 @@ powershell -ExecutionPolicy Bypass -File windows\run.ps1
   to continue. `-SkipManual` runs only the automated part.
 - Useful options: `-Only basic,closes` (run some checks; `-List` prints the names),
   `-Renderers glow`, `-Attempts 50` (posted closes per configuration).
+- **Unattended instead of manual:** `-SkipManual -Unattended` replaces every manual step with
+  injected input (the same Win32 input queue a mouse and keyboard feed), title-bar clicks,
+  Win32 and UI Automation queries and screenshots (`u-drag`, `u-closeclicks`, `u-unsaved`,
+  `u-h1variants`, `u-focus`, `u-uia`). Nothing waits for a person. Rows that need what the
+  machine lacks are `BLOCKED` or `SKIP`, never `PASS`; for example, the second-monitor H1
+  variant needs two monitors. Run it with Windows PowerShell 5.1.
 - Some FAIL rows are expected by design (they reproduce known crashes); `CHECKLIST.md` says which.
 
 Each run of the spike writes a log next to `results.csv`. Its `RESULT` lines are copied into
-`results.csv` (`check,renderer,attempt,outcome,details`).
+`results.csv` (`check,renderer,attempt,outcome,details,evidence`). `evidence` says where the
+row ran: `owner-pc`, or `ci-vm` on a GitHub Actions runner (a virtual machine with software
+rendering). The scratch workflow runs the unattended checks there after packaging. A `ci-vm`
+row is evidence about Windows itself (messages, capture, close paths, geometry), not about
+physical hardware: real GPUs, mixed DPI and several monitors.
 
 ## 5. Return the results
 
