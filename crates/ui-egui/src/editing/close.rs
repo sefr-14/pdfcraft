@@ -12,6 +12,9 @@ pub enum CloseRequest {
     Quit,
     /// File ▸ Close all: like Quit, but the application stays open.
     All,
+    /// This fork (TAB.WINDOW.1 W2c): Close Window. Each document only this window shows asks,
+    /// then the window closes (the first window hands its place to another, H1).
+    Window(crate::multi_window::WindowKey),
 }
 
 impl PdfCraftApp {
@@ -51,23 +54,26 @@ impl PdfCraftApp {
     /// File ▸ Close all: clean documents close at once; each one with unsaved changes asks.
     /// While a document is under OCR review, nothing closes: the review comes forward first.
     pub fn close_all(&mut self) {
-        // Every window's tabs join the main window first, which then closes them as it always has.
+        // Every window's tabs (TAB.WINDOW.1): run between passes, where each window can be reached.
         if self.drawing_other_window() {
-            self.request_window_op(crate::multi_window::WindowOp::MergeAll);
             self.request_window_op(crate::multi_window::WindowOp::Run("file.close_all"));
             return;
         }
-        self.merge_all_windows();
         if self.hold_for_any_ocr_review() {
             return;
         }
-        for i in (0..self.win.views.len()).rev() {
-            if !self.has_unsaved_work(i) {
-                self.close_tab(i);
-            }
+        let keys: Vec<crate::multi_window::WindowKey> = self.window_uis().iter().map(|(key, _)| *key).collect();
+        for key in keys {
+            self.with_window(key, |app| {
+                for i in (0..app.win.views.len()).rev() {
+                    if !app.has_unsaved_work(i) {
+                        app.close_tab(i);
+                    }
+                }
+            });
         }
-        if self.first_dirty().is_some() {
-            self.close_request = Some(CloseRequest::All);
+        if let Some(key) = self.first_dirty_window() {
+            self.ask_in_window(CloseRequest::All, key);
         }
     }
 
@@ -148,9 +154,22 @@ impl PdfCraftApp {
             CloseRequest::Quit | CloseRequest::All => match self.first_dirty() {
                 Some(i) => i,
                 None => {
-                    if req == CloseRequest::Quit {
+                    // The next document to ask about is in another window: ask there.
+                    if let Some(key) = self.first_dirty_window() {
+                        self.ask_in_window(req, key);
+                    } else if req == CloseRequest::Quit {
                         self.quit(ctx);
                     }
+                    return;
+                }
+            },
+            CloseRequest::Window(key) => match self.first_at_risk() {
+                Some(i) if choice.is_some() => i,
+                // Cancelled: the window stays as it is.
+                _ if choice.is_none() => return,
+                // Nothing left to ask about: the window closes.
+                _ => {
+                    self.request_window_op(crate::multi_window::WindowOp::Close(key));
                     return;
                 }
             },
@@ -198,17 +217,29 @@ impl PdfCraftApp {
             return;
         }
         match (req, self.win.views.get(index).map(|v| v.id)) {
-            (CloseRequest::Quit | CloseRequest::All, Some(id)) => self.close_document(id),
+            (CloseRequest::Quit | CloseRequest::All | CloseRequest::Window(_), Some(id)) => self.close_document(id),
             _ => self.close_tab(index),
+        }
+        // Close Window: the next document only this window shows asks, or the window closes.
+        if let CloseRequest::Window(key) = req {
+            if self.close_request.is_none() {
+                if self.first_at_risk().is_some() {
+                    self.save_prompt_seen = false;
+                    self.close_request = Some(req);
+                } else {
+                    self.request_window_op(crate::multi_window::WindowOp::Close(key));
+                }
+            }
+            return;
         }
         // A newer prompt wins: the user may have started another close while a save was pending,
         // and seen its question, which keeps counting as seen.
         if whole && self.close_request.is_none() {
-            match self.first_dirty() {
-                Some(_) => {
-                    // A question about the next document is a new one.
+            match self.first_dirty_window() {
+                Some(key) => {
+                    // A question about the next document is a new one, in its own window.
                     self.save_prompt_seen = false;
-                    self.close_request = Some(req);
+                    self.ask_in_window(req, key);
                 }
                 None if req == CloseRequest::Quit => self.quit(ctx),
                 None => {}
@@ -226,12 +257,13 @@ impl PdfCraftApp {
             self.request_window_op(crate::multi_window::WindowOp::Quit);
             return false;
         }
-        self.merge_all_windows();
         if self.hold_for_any_ocr_review() {
             ctx.request_repaint();
             false
-        } else if self.first_dirty().is_some() {
-            self.close_request = Some(CloseRequest::Quit);
+        } else if let Some(key) = self.first_dirty_window() {
+            // The question shows in the window holding the document (T-3); every window and tab
+            // stays as it is until it is answered, and a Cancel leaves them so.
+            self.ask_in_window(CloseRequest::Quit, key);
             ctx.request_repaint();
             false
         } else {
@@ -245,7 +277,8 @@ impl PdfCraftApp {
         self.allow_quit = true;
         // An update that waited for this quit installs once the window has closed (UPD.1).
         self.hand_off_update();
-        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        // The main window's close ends the app, whichever window asked.
+        ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Close);
     }
 
     /// Publish whether leaving would lose work, for the browser's reload warning (#812): a
@@ -285,15 +318,21 @@ impl PdfCraftApp {
         if !ctx.input(|i| i.viewport().close_requested()) {
             return;
         }
-        // The main window's close quits the app: every other window's tabs join it first, so its
-        // question about unsaved work covers them (W2c re-homes the main window instead).
-        self.merge_all_windows();
+        // With other windows open, closing the first one closes that window only: its documents
+        // ask, then another window takes its place (TAB.WINDOW.1 H1). The app keeps running.
+        if !self.allow_quit && !self.windows.others.is_empty() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.request_window_op(crate::multi_window::WindowOp::Close(None));
+            return;
+        }
         if !self.allow_quit && self.hold_for_any_ocr_review() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-        } else if !self.allow_quit && self.first_dirty().is_some() {
+        } else if !self.allow_quit
+            && let Some(key) = self.first_dirty_window()
+        {
             // `first_dirty` counts text typed into a field as an unsaved change.
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.close_request = Some(CloseRequest::Quit);
+            self.ask_in_window(CloseRequest::Quit, key);
         } else {
             // A clean quit: nothing is left to recover.
             self.shutdown_recovery();

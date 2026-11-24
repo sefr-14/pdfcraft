@@ -391,3 +391,6 @@ fn window_ids_are_never_reused() {
 
 #[path = "w2b_tests.rs"]
 mod w2b;
+
+#[path = "w2c_tests.rs"]
+mod w2c;

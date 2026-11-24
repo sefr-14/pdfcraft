@@ -126,8 +126,6 @@
 	Keep all documents in one window	Mantener todos los documentos en una ventana
 	A new window could not be opened. Its tabs are back where they were.	No se pudo abrir una ventana nueva. Sus pestañas han vuelto a donde estaban.
 	A window stopped working ({m}). Its tabs are back where they were.	Una ventana dejó de funcionar ({m}). Sus pestañas han vuelto a donde estaban.
-	Close or merge the other windows first: the first window closes last for now.	Cierre o combine primero las otras ventanas: por ahora, la primera ventana se cierra la última.
-	{name} has unsaved changes. Save it, or move its tab to another window, before closing this window.	{name} tiene cambios sin guardar. Guárdelo o mueva su pestaña a otra ventana antes de cerrar esta ventana.
 	Only one window can be used here.	Aquí solo se puede usar una ventana.
 	Several windows aren't available on macOS yet.	Varias ventanas aún no están disponibles en macOS.
 	Turn off "Keep all documents in one window" in Preferences to use several windows.	Desactive «Mantener todos los documentos en una ventana» en Preferencias para usar varias ventanas.
@@ -136,3 +134,5 @@
 	The tab is in that window already.	La pestaña ya está en esa ventana.
 	That window is closed.	Esa ventana está cerrada.
 	The first window keeps at least one tab.	La primera ventana conserva al menos una pestaña.
+	A dialog is open in another window.	Hay un cuadro de diálogo abierto en otra ventana.
+	Show it	Mostrarlo

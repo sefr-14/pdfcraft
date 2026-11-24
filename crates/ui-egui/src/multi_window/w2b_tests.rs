@@ -137,30 +137,6 @@ fn merge_all_windows_brings_every_tab_into_the_main_window() {
 }
 
 #[test]
-fn close_window_holds_while_it_has_the_last_tab_of_an_unsaved_document() {
-    let mut h = app_with_tabs();
-    let app = h.state_mut();
-    let all = ids(&app.win.views);
-    app.win.active = Some(1);
-    assert!(app.apply_edit(Edit::RotatePages { pages: vec![0], degrees: 90 }));
-    let mut host = Host::new(app);
-    assert!(app.request_move_tab_to_new_window(1));
-    settle(app, &mut host);
-    let id = app.windows.others[0].id;
-    app.request_window_op(WindowOp::Close(Some(id)));
-    settle(app, &mut host);
-    assert_eq!(app.windows.others.len(), 1, "the window stays");
-    assert!(app.session.get(all[1]).is_some(), "with its unsaved document");
-    assert!(toast(app).contains("has unsaved changes"), "{}", toast(app));
-    // A clean document that another window also shows doesn't hold it: once b is saved... here
-    // undone back to clean, the window closes and b closes with its last tab.
-    assert!(app.session.undo(all[1]).is_ok());
-    app.request_window_op(WindowOp::Close(Some(id)));
-    settle(app, &mut host);
-    assert!(app.windows.others.is_empty());
-}
-
-#[test]
 fn a_document_shown_in_another_window_stays_open_when_its_tab_here_closes() {
     let mut h = app_with_tabs();
     let app = h.state_mut();
@@ -276,22 +252,6 @@ fn opening_a_file_open_in_another_window_brings_that_window_and_tab_forward() {
 }
 
 #[test]
-fn quitting_and_close_all_take_every_windows_tabs_into_account() {
-    let mut h = app_with_tabs();
-    let app = h.state_mut();
-    app.win.active = Some(2);
-    assert!(app.apply_edit(Edit::RotatePages { pages: vec![0], degrees: 90 }));
-    let mut host = Host::new(app);
-    assert!(app.request_move_tab_to_new_window(2));
-    settle(app, &mut host);
-    let ctx = egui::Context::default();
-    // The unsaved document is only in the other window: Quit asks about it instead of quitting.
-    assert!(!app.request_quit(&ctx));
-    assert_eq!(app.window_count(), 1, "every tab joined the main window first");
-    assert_eq!(app.close_request, Some(crate::CloseRequest::Quit));
-}
-
-#[test]
 fn the_window_commands_wait_for_the_preference_and_say_why() {
     let mut h = app_with_tabs();
     let app = h.state_mut();
@@ -301,19 +261,6 @@ fn the_window_commands_wait_for_the_preference_and_say_why() {
     assert!(toast(app).contains("Keep all documents in one window"), "{}", toast(app));
     app.keep_one_window = false;
     assert!(app.windows_unavailable().is_none());
-}
-
-#[test]
-fn the_main_window_closes_last_for_now() {
-    let mut h = app_with_tabs();
-    let app = h.state_mut();
-    let mut host = Host::new(app);
-    assert!(app.request_move_tab_to_new_window(0));
-    settle(app, &mut host);
-    assert!(app.execute("window.close"), "Close window runs from the main window");
-    settle(app, &mut host);
-    assert_eq!(app.window_count(), 2, "W2c re-homes the main window; until then it stays");
-    assert!(toast(app).contains("first window closes last"), "{}", toast(app));
 }
 
 #[test]

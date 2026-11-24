@@ -54,6 +54,17 @@ pub struct SecondaryWindow {
     pub came_from: Option<Origin>,
     /// Passes in a row that panicked; at [`MAX_PANICKING_PASSES`] the window's tabs go back.
     pub(crate) panicking_passes: u32,
+    /// Where the window was at its last pass, in physical pixels: what the first window takes
+    /// over when this one replaces it (H1).
+    pub(crate) last: Option<Placement>,
+}
+
+/// A window's place on the desktop, in physical pixels.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Placement {
+    pub outer: Rect,
+    pub inner_size: Vec2,
+    pub maximized: bool,
 }
 
 impl SecondaryWindow {
@@ -82,6 +93,13 @@ pub struct Windows {
     pub(crate) requeue: Vec<pdfcraft_engine::DocId>,
     /// The main window's settings (decorations, icon, minimum size) for the others.
     pub template: Option<ViewportBuilder>,
+    /// The window the open dialog or question shows in (T-3), once one is open: the window it was
+    /// opened from, or the one holding the document a question is about. `None` while none is.
+    pub(crate) dialog_window: Option<WindowKey>,
+    /// The windows by when they last had the keyboard, most recent last.
+    pub(crate) focus_order: Vec<WindowKey>,
+    /// The first window's physical pixels per point, at its last pass.
+    pub(crate) root_ppp: f32,
 }
 
 impl Windows {
@@ -89,7 +107,7 @@ impl Windows {
     pub fn add(&mut self, ui: WindowUi, geometry: Geometry, came_from: Option<Origin>) -> WindowId {
         self.next = self.next.saturating_add(1);
         let id = WindowId(self.next);
-        self.others.push(SecondaryWindow { id, ui, geometry, came_from, panicking_passes: 0 });
+        self.others.push(SecondaryWindow { id, ui, geometry, came_from, panicking_passes: 0, last: None });
         id
     }
 }
@@ -379,6 +397,13 @@ impl PdfCraftApp {
                     inner = Some(message);
                 }
                 close = ui.ctx().input(|i| i.viewport().close_requested());
+                let (placement, focused) = placement_now(ui.ctx());
+                if let Some(w) = self.windows.others.get_mut(i) {
+                    w.last = placement.or(w.last);
+                }
+                if focused {
+                    self.note_focus(Some(id));
+                }
             });
         });
         match (shown, ran) {
@@ -399,7 +424,16 @@ impl PdfCraftApp {
     pub(crate) fn draw_window(&mut self, ui: &mut egui::Ui) {
         #[cfg(test)]
         self.injected_window_panic();
+        // A dialog open in another window holds this one (T-3).
+        let blocked = self.blocked_by_dialog();
+        if blocked {
+            ui.disable();
+        }
         self.ui_unguarded(ui);
+        if blocked {
+            self.dialog_elsewhere_notice(ui.ctx());
+        }
+        self.note_dialog_window();
         // ⌘Q / Ctrl+Q in another window quits as it does in the main one, whose `logic` only reads
         // the main window's keys.
         if self.drawing_other_window() {
@@ -530,39 +564,27 @@ impl PdfCraftApp {
         self.focus_window(to);
     }
 
-    /// Close Window. Another window closes with its tabs; a document closes with its last tab in
-    /// any window. Until the close rules of W2c ask about unsaved work across windows, a window
-    /// holding the last tab of a document with unsaved work stays open and says so. The main
-    /// window closes (and the app quits, asking about unsaved work) only when it is the last.
+    /// Close Window (W2c). Each document only this window shows asks about its unsaved work, in
+    /// this window (Save, Don't Save, Cancel; Cancel leaves the window as it was). Then the window
+    /// closes with its tabs; documents other windows show stay open there. The first window, with
+    /// others open, hands its place to the one used last (H1); alone, closing it quits (O-4).
     pub(crate) fn close_window(&mut self, key: WindowKey) {
-        let Some(id) = key else {
-            if self.windows.others.is_empty() {
-                if let Some(ctx) = &self.ctx {
-                    ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Close);
-                }
-            } else {
-                self.notify_tr("Close or merge the other windows first: the first window closes last for now.");
+        if key.is_some_and(|id| !self.windows.others.iter().any(|w| w.id == id)) {
+            return;
+        }
+        // One question at a time (T-3): finish the one that is open first.
+        if self.modal_open() {
+            self.focus_window(self.dialog_window());
+            return;
+        }
+        if key.is_none() && self.windows.others.is_empty() {
+            if let Some(ctx) = self.ctx.clone() {
+                self.request_quit(&ctx);
             }
             return;
-        };
-        let at_risk = self
-            .with_window(key, |app| {
-                (0..app.win.views.len())
-                    .filter(|&i| {
-                        app.has_unsaved_work(i)
-                            && app
-                                .win
-                                .views
-                                .get(i)
-                                .is_some_and(|v| !app.viewed_in_other_window(v.id) && app.win.views.iter().filter(|w| w.id == v.id).count() == 1)
-                    })
-                    .filter_map(|i| crate::canvas::tab_label(app, i))
-                    .collect::<Vec<String>>()
-            })
-            .unwrap_or_default();
-        if let Some(name) = at_risk.first() {
-            self.notify_fmt("{name} has unsaved changes. Save it, or move its tab to another window, before closing this window.", &[("name", name)]);
-            self.focus_window(key);
+        }
+        if self.with_window(key, |app| app.first_at_risk()).flatten().is_some() {
+            self.ask_in_window(crate::CloseRequest::Window(key), key);
             return;
         }
         self.with_window(key, |app| {
@@ -570,8 +592,142 @@ impl PdfCraftApp {
                 app.close_tab(last);
             }
         });
-        self.windows.others.retain(|w| w.id != id);
+        match key {
+            Some(id) => {
+                self.windows.others.retain(|w| w.id != id);
+                self.forget_window(key);
+            }
+            None => self.rehome_main(),
+        }
+    }
+
+    /// H1: the first window's tabs are closed and another window is open: that window's tabs,
+    /// panes, panels and mode move into the first window, which takes its place and size; the
+    /// other window then closes. The process and every other window carry on as they were.
+    pub(crate) fn rehome_main(&mut self) {
+        let recent = self.windows.focus_order.iter().rev().find_map(|key| key.and_then(|id| self.windows.others.iter().position(|w| w.id == id)));
+        let Some(index) = recent.or((!self.windows.others.is_empty()).then_some(0)) else { return };
+        let window = self.windows.others.remove(index);
+        let id = window.id;
+        self.win = window.ui;
+        // The titles it last sent went to the other window: send them again to this one.
+        self.win.window_title.clear();
+        self.win.page_title.clear();
+        if let (Some(ctx), Some(placement)) = (&self.ctx, window.last) {
+            for command in rehome_commands(placement, self.windows.root_ppp) {
+                ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, command);
+            }
+        }
+        // What named that window now names the first one.
+        for w in &mut self.windows.others {
+            if let Some(origin) = w.came_from.as_mut().filter(|o| o.window == Some(id)) {
+                origin.window = None;
+            }
+        }
+        self.windows.on_screen.retain(|(key, _)| key.is_some() && *key != Some(id));
+        for key in &mut self.windows.focus_order {
+            if *key == Some(id) {
+                *key = None;
+            }
+        }
+        if self.windows.dialog_window == Some(Some(id)) {
+            self.windows.dialog_window = Some(None);
+        }
+    }
+
+    /// A window is gone: nothing refers to it any more.
+    fn forget_window(&mut self, key: WindowKey) {
         self.windows.on_screen.retain(|(k, _)| *k != key);
+        self.windows.focus_order.retain(|k| *k != key);
+        if self.windows.dialog_window == Some(key) {
+            self.windows.dialog_window = Some(None);
+        }
+    }
+
+    /// Ask `req`'s question in window `key`, which comes to the front (T-3).
+    pub(crate) fn ask_in_window(&mut self, req: crate::CloseRequest, key: WindowKey) {
+        self.close_request = Some(req);
+        self.windows.dialog_window = Some(key);
+        self.focus_window(key);
+    }
+
+    /// The first window with a tab whose work isn't saved, the first window first.
+    pub(crate) fn first_dirty_window(&self) -> Option<WindowKey> {
+        self.window_uis().into_iter().find(|(_, ui)| ui.views.iter().any(|v| self.view_has_unsaved_work(v))).map(|(key, _)| key)
+    }
+
+    /// The current window's first tab whose unsaved work would be lost with the window: no tab in
+    /// another window shows its document.
+    pub(crate) fn first_at_risk(&self) -> Option<usize> {
+        (0..self.win.views.len()).find(|&i| self.has_unsaved_work(i) && self.win.views.get(i).is_some_and(|v| !self.viewed_in_other_window(v.id)))
+    }
+
+    /// The window the open dialog shows in; the first window when it is gone.
+    pub(crate) fn dialog_window(&self) -> WindowKey {
+        match self.windows.dialog_window {
+            Some(Some(id)) if self.window_uis().iter().any(|(key, _)| *key == Some(id)) => Some(id),
+            _ => None,
+        }
+    }
+
+    /// Whether the open dialog (if any) belongs in the window being drawn.
+    pub(crate) fn dialog_here(&self) -> bool {
+        self.dialog_window() == self.current_window()
+    }
+
+    /// Whether a dialog open in another window blocks this one (T-3).
+    pub(crate) fn blocked_by_dialog(&self) -> bool {
+        self.modal_open() && !self.dialog_here()
+    }
+
+    /// After a window's pass: a dialog that opened during it belongs to this window; with none
+    /// open, none does.
+    pub(crate) fn note_dialog_window(&mut self) {
+        if !self.modal_open() {
+            self.windows.dialog_window = None;
+        } else if self.windows.dialog_window.is_none() {
+            self.windows.dialog_window = Some(self.current_window());
+        }
+    }
+
+    fn note_focus(&mut self, key: WindowKey) {
+        if self.windows.focus_order.last() != Some(&key) {
+            self.windows.focus_order.retain(|k| *k != key);
+            self.windows.focus_order.push(key);
+        }
+    }
+
+    /// The first window's pass: its scale and whether it has the keyboard.
+    pub(crate) fn note_main_window(&mut self, ctx: &egui::Context) {
+        let (ppp, focused) = ctx.input(|i| (i.viewport().native_pixels_per_point.unwrap_or(i.pixels_per_point), i.viewport().focused == Some(true)));
+        self.windows.root_ppp = finite_positive(Some(ppp)).unwrap_or(1.0);
+        if focused {
+            self.note_focus(None);
+        }
+    }
+
+    /// In a window a dialog elsewhere blocks (T-3): a notice over it that says so and brings the
+    /// dialog's window forward. The window's own content is drawn disabled under it.
+    pub(crate) fn dialog_elsewhere_notice(&mut self, ctx: &egui::Context) {
+        let rect = ctx.content_rect();
+        ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("pdfcraft-dialog-elsewhere-shade"))).rect_filled(
+            rect,
+            0.0,
+            egui::Color32::from_black_alpha(96),
+        );
+        let mut show = false;
+        egui::Area::new(egui::Id::unique("pdfcraft-dialog-elsewhere"))
+            .order(egui::Order::Tooltip)
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.label(tl!("A dialog is open in another window."));
+                    show = ui.button(tl!("Show it")).clicked();
+                });
+            });
+        if show {
+            self.focus_window(self.dialog_window());
+        }
     }
 
     fn focus_window(&mut self, key: WindowKey) {
@@ -738,6 +894,40 @@ fn same_path(a: &str, b: &str) -> bool {
 #[cfg(target_arch = "wasm32")]
 fn same_path(a: &str, b: &str) -> bool {
     a == b
+}
+
+/// Where a window is now and whether it has the keyboard, from its viewport's report.
+fn placement_now(ctx: &egui::Context) -> (Option<Placement>, bool) {
+    ctx.input(|i| {
+        let v = i.viewport();
+        let ppp = finite_positive(v.native_pixels_per_point).unwrap_or(1.0);
+        let placement = v.outer_rect.zip(v.inner_rect).map(|(outer, inner)| Placement {
+            outer: Rect::from_min_max((outer.min.to_vec2() * ppp).to_pos2(), (outer.max.to_vec2() * ppp).to_pos2()),
+            inner_size: inner.size() * ppp,
+            maximized: v.maximized == Some(true),
+        });
+        (placement, v.focused == Some(true))
+    })
+}
+
+/// H1: what the first window is told so that it takes `placement` (physical pixels), at its own
+/// scale `root_ppp`: position and size in its points, then maximized as the other one was.
+pub fn rehome_commands(placement: Placement, root_ppp: f32) -> Vec<egui::ViewportCommand> {
+    let ppp = finite_positive(Some(root_ppp)).unwrap_or(1.0);
+    let pos = (placement.outer.min.to_vec2() / ppp).to_pos2();
+    let size = placement.inner_size / ppp;
+    let mut commands = vec![egui::ViewportCommand::Maximized(false)];
+    if pos.x.is_finite() && pos.y.is_finite() {
+        commands.push(egui::ViewportCommand::OuterPosition(pos));
+    }
+    if size.x.is_finite() && size.y.is_finite() && size.x > 0.0 && size.y > 0.0 {
+        commands.push(egui::ViewportCommand::InnerSize(size));
+    }
+    if placement.maximized {
+        commands.push(egui::ViewportCommand::Maximized(true));
+    }
+    commands.push(egui::ViewportCommand::Focus);
+    commands
 }
 
 /// The limits on the monitor `area` (physical pixels) for a window at `ppp`, in points.

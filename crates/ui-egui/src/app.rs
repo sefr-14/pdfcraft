@@ -611,7 +611,17 @@ impl eframe::App for PdfCraftApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.begin_ui();
+        self.note_main_window(ui.ctx());
+        // A dialog open in another window holds this one (T-3).
+        let blocked = self.blocked_by_dialog();
+        if blocked {
+            ui.disable();
+        }
         self.guarded_frame(|app| app.ui_unguarded(ui));
+        if blocked {
+            self.dialog_elsewhere_notice(ui.ctx());
+        }
+        self.note_dialog_window();
         // Every other window, each under its own guard, inside this pass (TAB.WINDOW.1 W2a).
         let mut ctx = ui.ctx().clone();
         self.show_other_windows(&mut ctx);
@@ -910,8 +920,11 @@ impl PdfCraftApp {
                     }
                 }
             });
-            if main {
+            // The dialog shows in its own window (T-3); notices in the first one.
+            if self.dialog_here() {
                 dialogs::show(self, &ctx);
+            }
+            if main {
                 // Notices too: a refused field value or a failed save must be seen in full screen.
                 self.show_progress(&ctx);
             }
@@ -951,7 +964,9 @@ impl PdfCraftApp {
             // still show above it.
             workflows::ocr_verify::show(self, ui);
             palette::show(self, &ctx);
-            dialogs::show(self, &ctx);
+            if self.dialog_here() {
+                dialogs::show(self, &ctx);
+            }
             self.show_progress(&ctx);
             widgets::toast(self, &ctx);
             self.finish_render_frame(&ctx);
@@ -986,8 +1001,12 @@ impl PdfCraftApp {
             self.process_pending_edits();
         }
         palette::show(self, &ctx);
-        if main {
+        // The dialog shows in its own window (T-3): the one it was opened from, or the one holding
+        // the document a question is about.
+        if self.dialog_here() {
             dialogs::show(self, &ctx);
+        }
+        if main {
             overlay_ui::show(self, &ctx);
             self.show_progress(&ctx);
         }

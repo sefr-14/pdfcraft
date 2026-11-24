@@ -1214,7 +1214,16 @@ impl PdfCraftApp {
     /// committed, an edit waiting, text being typed. (The document's own edits are shared with
     /// any other tab of it, in split view.)
     pub(crate) fn has_unsaved_typing(&self, index: usize) -> bool {
-        let Some(v) = self.win.views.get(index) else { return false };
+        self.win.views.get(index).is_some_and(|v| self.view_has_unsaved_typing(v))
+    }
+
+    /// [`Self::has_unsaved_work`] for a tab of any window (TAB.WINDOW.1).
+    pub(crate) fn view_has_unsaved_work(&self, v: &crate::DocView) -> bool {
+        self.session.get(v.id).is_some_and(|doc| doc.dirty) || self.view_has_unsaved_typing(v)
+    }
+
+    /// [`Self::has_unsaved_typing`] for a tab of any window.
+    pub(crate) fn view_has_unsaved_typing(&self, v: &crate::DocView) -> bool {
         let Some(doc) = self.session.get(v.id) else { return false };
         v.pending_edit.is_some()
             || v.content.blocked().is_some()
