@@ -98,6 +98,7 @@ public static class W0In {
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
     [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr h);
+    [DllImport("user32.dll")] public static extern uint GetDoubleClickTime();
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
     [StructLayout(LayoutKind.Sequential)] public struct TITLEBARINFOEX {
@@ -545,18 +546,24 @@ foreach ($r in $Renderers) {
             Stop-Spike $run 1 10 'any'
         }
         if ((Want 'u-closeclicks') -and -not (Gui-Blocked 'u_closeclicks' $r)) {
-            # W0-9 through the real title-bar X (non-client click -> SC_CLOSE -> WM_CLOSE).
+            # W0-9 through the real title-bar X (non-client click -> SC_CLOSE -> WM_CLOSE). Clicks are
+            # spaced wider than the double-click time: run #48 spaced them 350 ms apart and every
+            # second click never became a close (5 of 10, none lost after winit), as two clicks
+            # inside the double-click time on the X make a double-click, not a second click.
+            $gap = [int][W0In]::GetDoubleClickTime() + 250
             foreach ($anim in 0, 1) {
-                $run = Start-Spike "u-closeclicks-anim$anim" $r @('mode=closes', "anim=$anim", 'secs=30')
+                $secs = [int](4 + 20 * $gap / 1000.0 + 4)
+                $run = Start-Spike "u-closeclicks-anim$anim" $r @('mode=closes', "anim=$anim", "secs=$secs")
                 Wait-Until $run 1.0
                 foreach ($t in 'W0 root', 'W0 sec C1') {
                     $h = Find-W $t; $n = 0
-                    for ($i = 1; $i -le 10; $i++) { if (Click-Close $h) { $n++ }; Start-Sleep -Milliseconds 350 }
+                    for ($i = 1; $i -le 10; $i++) { if (Click-Close $h) { $n++ }; Start-Sleep -Milliseconds $gap }
                     Start-Sleep -Milliseconds 800
                     $app = Log-Count $run "CLOSE_RX who=$([regex]::Escape($t)) "
                     $o = 'FAIL'; if ($n -eq 10 -and $app -eq 10) { $o = 'PASS' }
                     if ($n -eq 0) { $o = 'BLOCKED' }
-                    Add-Row 'closes_titlebar' $r "anim$anim" $o "$t title-bar X clicked=$n received by the app=$app"
+                    $ef = Log-Count $run 'Received WindowEvent::CloseRequested'
+                    Add-Row 'closes_titlebar' $r "anim$anim" $o "$t title-bar X clicked=$n (every $gap ms; double-click time $([W0In]::GetDoubleClickTime()) ms) received by the app=$app; eframe close events so far, all windows=$ef"
                 }
                 Stop-Process -Id $run.Process.Id -Force -ErrorAction SilentlyContinue
                 Stop-Spike $run "anim$anim" 10 'any'
