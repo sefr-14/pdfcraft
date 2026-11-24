@@ -20,6 +20,10 @@ Statements of the first version that this revision corrects:
 All Linux evidence in this revision comes from debug builds on Xvfb with software rendering (Mesa llvmpipe/lavapipe).
 
 
+## Revision 2 (2026-11-24): Windows evidence from GitHub Actions
+
+§15 adds the first Windows results, from `windows/run.ps1 -SkipManual -Unattended` on a GitHub Actions `windows-latest` runner (run #48, commit `97cdfe41`). They carry a new tag, **[ci-vm]**: Windows Server 2025 in a virtual machine, one 1920x1080 monitor at 100 %, injected input, software rendering only (wgpu on the Microsoft Basic Render Driver, glow on Mesa 26.2.5 llvmpipe). [ci-vm] is evidence about Windows itself (window messages, capture, close paths, geometry, UI Automation), not about physical hardware: real GPU drivers, mixed DPI and several monitors stay [windows-pending]. Where §15 and the §2 table differ, §15 is newer.
+
 Evidence tags: **[source]** means read in the pinned source. **[linux-x11]** means observed by running the spike here (Xvfb, Mesa llvmpipe/lavapipe, software rendering). **[windows-pending]** means it cannot be established here. Nothing below claims Windows behaviour from Linux evidence. Paths shortened to `egui/…` mean `~/.cargo/git/checkouts/egui-057e9a0485eda407/725a39f/crates/…`, and `winit/…` means `~/.cargo/git/checkouts/winit-0b02aa607dc0343f/a517b38/…`.
 
 ## 1. Workspace and baseline
@@ -398,3 +402,41 @@ Size and risk:
   - Linux debug build and kittest test pass.
   - The PowerShell scripts could not be run or parsed here: no `pwsh` package in apt, and downloading it was refused. Only bracket balance was checked.
   - No Linux release build was made (disk), so release-only behaviour (the NaN case) is untested.
+
+## 15. Windows run on GitHub Actions [ci-vm] (Revision 2)
+
+Run #48 (run id 45248098397, `97cdfe41`), both renderers, release build. Results artifact `w0-results-w0-spike-97cdfe4-windows-x64` (SHA-256 `2b31c71b7e6994ae06b7663fcea9be9eb3b908c8518824fcdc63ec29da234e25`): `results.csv` per renderer, every spike log, screenshots. Run #47 found no window at all, because of a harness bug (`FindWindow($null, …)`: PowerShell passes `$null` as `""`); fixed in `97cdfe41`.
+
+Environment (probe rows):
+- interactive session 2;
+- display 1024x768, raised to 1920x1080 by the harness;
+- one monitor, Microsoft Hyper-V Video;
+- cursor injection works.
+
+| # | Result [ci-vm] | Evidence |
+|---|---|---|
+| W0-1, W0-2 | **PASS**, wgpu and glow | Root plus secondaries open and draw. Each window's client area samples 48/48 non-black. Every run ends with `run_native` returning `Ok(())`. |
+| W0-3 | Ran (rc 0) | Release build, so the debug-only id assert of §2 cannot fire. Not re-assessed. |
+| W0-4 | **PASS** | Injected drags with both renderers: root to S's tab strip is valid, to S's page area invalid, to the desktop opens a new window, and S to root's strip is valid. The release always reached the source window, also over the desktop and the taskbar. Escape while held cancelled the drag (`drag_escape`) with no drop. |
+| W0-5 | **PASS** at one DPI | The app's desktop position of each release is 0 px from the real cursor. The new window lands at the drop point (0 px). |
+| W0-6 | **PENDING (physical)** | One monitor at 100 %. The other-monitor H1 variant is `SKIP`. |
+| W0-7 (a) | Unclamped: wgpu **survived** huge, NaN and inf (unlike X11); glow survived all except **huge**, which ended in a native access violation (`0xC0000005`, no Rust panic), drop0 and drop1 alike. Clamped: **6/6 PASS** on both renderers. | `fail-*`, `clamp_*` rows. A native crash cannot be caught by `catch_unwind`, so prevention (clamping) is the only defence. The access violation is in Mesa's software GL path; real drivers are [windows-pending]. |
+| W0-7 (b) | **PASS** with the inner guard (all 7 checks, both renderers); **rc 101** without it | `panic_*` rows, the same as Linux. |
+| W0-7 (c) | c4 simulated device loss: **rc 101** with and without an error handler (wgpu). c1, c2, c5 not forced. | Unchanged: not containable without eframe/egui-wgpu changes. |
+| W0-8 H1 | **PASS** both renderers: plain, S maximized, S snapped (Win+Left) | The root takes S's client rectangle exactly and S's window is gone. Sampling the root's rectangle every ~2 ms across the handoff found no in-between rectangle shown for a frame (17 ms) or more. Screenshots before and after. Other monitor: `SKIP`. |
+| W0-8 H2 | Root hides: PASS. Rate: glow 48/s visible, 51/s hidden; wgpu 14/s visible and 14/s hidden | No invisible-window throttle in either renderer. The wgpu row is FAIL only by its absolute threshold (30/s): the software renderer makes every frame slow. |
+| W0-8 H3 | glow **FAIL** (root visible in 1 of 190 samples); wgpu PASS (0 of 162) | A real flash of the never-shown root under glow, as §4 predicted from source. H3 stays rejected. |
+| W0-9 posted | **PASS** | 50/50 posted `WM_CLOSE` reached eframe and the app, root and secondary, animation off and on, both renderers (8 of 8 configurations). |
+| W0-9 title-bar clicks | **INCONCLUSIVE**: 5 of 10 in every configuration | eframe saw exactly the 5 closes that reached the app, so nothing was lost inside the app. The clicks were 350 ms apart, inside Windows' default double-click time (500 ms), so every second click on the X probably became a double-click and no close. Re-run with the clicks spaced wider than the double-click time (§15 follow-up). |
+| Unsaved close | **PASS** | Through the title bar: the first click is held, the second closes. |
+| Focus, geometry | **PASS** | A click brings each window to the foreground. The client area lies inside the DWM frame and is drawn. |
+| Accessibility | Root **7** UI Automation elements, secondary **0** (the known gap, now seen on Windows); fallback `a11y_merge` and `a11y_detach_refused` PASS | A UI Automation query activates AccessKit as a screen reader does. No screen reader was run: Narrator listening stays a human check. |
+| W0-10 | Not assessed | Software rendering only. |
+
+Still [windows-pending] (physical):
+- W0-6 (mixed DPI, two monitors) and the other-monitor H1 variant;
+- real GPU drivers on both renderers;
+- W0-7 c1, c2, c5 and real device loss;
+- the H1 handoff as a person sees it;
+- Narrator listening.
+
