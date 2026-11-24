@@ -420,7 +420,7 @@ impl PdfCraftApp {
         let (doc, place) = (view.id, view.place());
         if let Some(ed) = view.line_editor.as_mut().filter(|ed| ed.has_unsaved_text()) {
             ed.claim_typing(&ctx, doc, place);
-            let Some(text) = typing_step(&ctx, crate::edit_text_ui::input_id(place), &ed.text, true) else { return false };
+            let Some(text) = typing_step(&ctx, crate::edit_text_ui::input_id(&ctx, place), &ed.text, true) else { return false };
             let before = std::mem::replace(&mut ed.text, text);
             ed.selection = None;
             ed.follow_typed_rows(&ctx, &before, place);
@@ -428,10 +428,10 @@ impl PdfCraftApp {
         }
         if let Some(d) = view.content.draft.as_mut().filter(|d| d.has_unapplied_typing()) {
             d.claim_typing(&ctx, doc);
-            let Some(text) = typing_step(&ctx, crate::content_ui::input_id(), &d.text, true) else { return false };
+            let Some(text) = typing_step(&ctx, crate::content_ui::input_id(&ctx), &d.text, true) else { return false };
             let before = std::mem::replace(&mut d.text, text);
             d.selection = None;
-            crate::edit_text_ui::follow_typing(&ctx, crate::content_ui::input_id(), &before, &d.text, &mut [&mut d.style.aligns]);
+            crate::edit_text_ui::follow_typing(&ctx, crate::content_ui::input_id(&ctx), &before, &d.text, &mut [&mut d.style.aligns]);
             return true;
         }
         false
@@ -455,7 +455,7 @@ impl PdfCraftApp {
         let (doc, place) = (view.id, view.place());
         if let Some(ed) = view.line_editor.as_mut() {
             ed.claim_typing(&ctx, doc, place);
-            let Some(text) = typing_step(&ctx, crate::edit_text_ui::input_id(place), &ed.text, false) else { return ed.has_unsaved_text() };
+            let Some(text) = typing_step(&ctx, crate::edit_text_ui::input_id(&ctx, place), &ed.text, false) else { return ed.has_unsaved_text() };
             let before = std::mem::replace(&mut ed.text, text);
             ed.selection = None;
             ed.follow_typed_rows(&ctx, &before, place);
@@ -463,10 +463,10 @@ impl PdfCraftApp {
         }
         if let Some(d) = view.content.draft.as_mut() {
             d.claim_typing(&ctx, doc);
-            let Some(text) = typing_step(&ctx, crate::content_ui::input_id(), &d.text, false) else { return d.has_unapplied_typing() };
+            let Some(text) = typing_step(&ctx, crate::content_ui::input_id(&ctx), &d.text, false) else { return d.has_unapplied_typing() };
             let before = std::mem::replace(&mut d.text, text);
             d.selection = None;
-            crate::edit_text_ui::follow_typing(&ctx, crate::content_ui::input_id(), &before, &d.text, &mut [&mut d.style.aligns]);
+            crate::edit_text_ui::follow_typing(&ctx, crate::content_ui::input_id(&ctx), &before, &d.text, &mut [&mut d.style.aligns]);
             return true;
         }
         false
@@ -570,8 +570,8 @@ impl PdfCraftApp {
     /// text.
     pub(crate) fn page_box_focused(&self, ctx: &egui::Context) -> bool {
         let focused = ctx.memory(|m| m.focused());
-        let paragraph = self.win.active.and_then(|i| self.win.views.get(i)).map(|v| crate::edit_text_ui::input_id(v.place()));
-        focused.is_some() && (focused == paragraph || focused == Some(crate::content_ui::input_id()))
+        let paragraph = self.win.active.and_then(|i| self.win.views.get(i)).map(|v| crate::edit_text_ui::input_id(ctx, v.place()));
+        focused.is_some() && (focused == paragraph || focused == Some(crate::content_ui::input_id(ctx)))
     }
 
     /// Whether the focused box on the page has typing its own Redo would put back: after Undo in
@@ -580,14 +580,14 @@ impl PdfCraftApp {
     pub(crate) fn page_box_can_redo(&self, ctx: &egui::Context) -> bool {
         let Some(view) = self.win.active.and_then(|i| self.win.views.get(i)) else { return false };
         let focused = ctx.memory(|m| m.focused());
-        let (id, text) = if focused == Some(crate::edit_text_ui::input_id(view.place()))
+        let (id, text) = if focused == Some(crate::edit_text_ui::input_id(ctx, view.place()))
             && let Some(ed) = &view.line_editor
         {
-            (crate::edit_text_ui::input_id(view.place()), &ed.text)
-        } else if focused == Some(crate::content_ui::input_id())
+            (crate::edit_text_ui::input_id(ctx, view.place()), &ed.text)
+        } else if focused == Some(crate::content_ui::input_id(ctx))
             && let Some(d) = &view.content.draft
         {
-            (crate::content_ui::input_id(), &d.text)
+            (crate::content_ui::input_id(ctx), &d.text)
         } else {
             return false;
         };
@@ -601,9 +601,9 @@ impl PdfCraftApp {
         let Some(ctx) = &self.ctx else { return false };
         let Some(view) = self.win.active.and_then(|i| self.win.views.get(i)) else { return false };
         if let Some(ed) = &view.line_editor {
-            return has_typing_to_redo(ctx, crate::edit_text_ui::input_id(view.place()), &ed.text);
+            return has_typing_to_redo(ctx, crate::edit_text_ui::input_id(ctx, view.place()), &ed.text);
         }
-        view.content.draft.as_ref().is_some_and(|d| has_typing_to_redo(ctx, crate::content_ui::input_id(), &d.text))
+        view.content.draft.as_ref().is_some_and(|d| has_typing_to_redo(ctx, crate::content_ui::input_id(ctx), &d.text))
     }
 
     /// Typing in a box on the page (a paragraph being edited, added text) that the page doesn't

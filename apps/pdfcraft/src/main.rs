@@ -353,8 +353,9 @@ fn native_options(integrated: bool, app_frame: bool, renderer: eframe::Renderer)
     // PdfCraft installs its own last-resort system face (`PDFCRAFT_SYSTEM_FONTS`); eframe's
     // provider would read every installed face, including proprietary ones, into every UI pass.
     native.system_font_fallback = false;
-    // Where the monitors are, for placing new windows (TAB.WINDOW.1): egui only reports sizes.
-    native.viewport_hooks = Some(std::sync::Arc::new(MonitorHook));
+    // Where the monitors are, for placing new windows, and the other windows' raw input
+    // (TAB.WINDOW.1).
+    native.viewport_hooks = Some(std::sync::Arc::new(WindowHooks));
     if renderer == eframe::Renderer::Wgpu {
         configure_gpu(&mut native);
     }
@@ -363,10 +364,11 @@ fn native_options(integrated: bool, app_frame: bool, renderer: eframe::Renderer)
 
 /// Tells the app where the monitors are whenever eframe makes a window (TAB.WINDOW.1): egui
 /// reports a monitor's size but not its position. On Windows the app asks the system itself, for
-/// the work area too (`pdfcraft_ui_egui::monitors`).
-struct MonitorHook;
+/// the work area too (`pdfcraft_ui_egui::monitors`). Also does the raw-input work of the windows
+/// after the first.
+struct WindowHooks;
 
-impl eframe::ViewportHooks for MonitorHook {
+impl eframe::ViewportHooks for WindowHooks {
     fn window_created(&self, _viewport: egui::ViewportId, window: &winit::window::Window) {
         let monitors = window
             .available_monitors()
@@ -379,6 +381,11 @@ impl eframe::ViewportHooks for MonitorHook {
             })
             .collect();
         pdfcraft_ui_egui::monitors::set_known(monitors);
+    }
+
+    /// eframe calls the app's own raw-input hook for the first window only (TAB.WINDOW.1 W2d).
+    fn raw_input(&self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        pdfcraft_ui_egui::multi_window::other_window_raw_input(ctx, raw_input);
     }
 }
 

@@ -272,6 +272,17 @@ pub(crate) trait Host {
 
     /// Drop transient app-owned grabs before widgets observe the canceled pointer as up.
     fn cancel_pointer_gestures(&mut self) {}
+
+    /// How many windows the app has (TAB.WINDOW.1); the control channel captures the first.
+    fn window_count(&self) -> usize {
+        1
+    }
+
+    /// The window at `index` (0 is the first) has no native capture here: the engine's render, at
+    /// `dpi`, of the page it shows, labelled as a render and not a capture of the window.
+    fn window_page_render(&mut self, index: usize, _dpi: f64) -> Reply {
+        Err(format!("there is no window {}; this app has {} window(s)", index.saturating_add(1), self.window_count()))
+    }
 }
 
 impl Control {

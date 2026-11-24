@@ -447,3 +447,33 @@ fn the_system_is_asked_now_and_then_and_no_answer_changes_nothing() {
     pass(&ctx, &mut time, Vec::new(), |ctx| motion.begin_pass(ctx, AnimationEffects::System));
     assert!(motion.reduced && asked.get() == 3, "no answer leaves the last one standing");
 }
+
+/// TAB.WINDOW.1 W2d: a window's wheel is read in its own pass, with its own frames and gestures.
+#[test]
+fn each_window_reads_its_own_wheel() {
+    let ctx = egui::Context::default();
+    let mut motion = Motion::default();
+    let other = egui::ViewportId::from_hash_of("another window");
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, vec2(800.0, 600.0));
+    let point = |dy: f32, phase, modifiers| wheel(MouseWheelUnit::Point, vec2(0.0, dy), phase, modifiers);
+    let mut pass = |viewport, events: Vec<Event>| {
+        let mut raw = egui::RawInput { viewport_id: viewport, screen_rect: Some(screen), time: Some(0.1), events, ..Default::default() };
+        raw.viewports.insert(viewport, egui::ViewportInfo::default());
+        let mut got = (Vec2::ZERO, 1.0);
+        ctx.run_ui(raw, |ui| {
+            motion.begin_pass(ui.ctx(), AnimationEffects::Off);
+            got = (ui.input(|i| i.smooth_scroll_delta), zoom_delta(ui.ctx()));
+        })
+        .drop_without_applying_deltas();
+        got
+    };
+    // Both windows on their first frame: the second window's is not a later pass of the first's.
+    assert_eq!(pass(egui::ViewportId::ROOT, vec![point(-30.0, TouchPhase::Move, Modifiers::NONE)]).0, vec2(0.0, -30.0));
+    assert_eq!(pass(other, vec![point(-18.0, TouchPhase::Move, Modifiers::NONE)]).0, vec2(0.0, -18.0), "the other window's wheel was dropped");
+    // A ⌘ gesture still under way in the first window doesn't turn the other window's scroll into zoom.
+    let zooming =
+        pass(egui::ViewportId::ROOT, vec![point(0.0, TouchPhase::Start, Modifiers::COMMAND), point(20.0, TouchPhase::Move, Modifiers::COMMAND)]);
+    assert!(zooming.1 > 1.0, "{zooming:?}");
+    let scrolled = pass(other, vec![point(-20.0, TouchPhase::Move, Modifiers::NONE)]);
+    assert_eq!(scrolled, (vec2(0.0, -20.0), 1.0), "the other window took the first window's gesture");
+}

@@ -617,6 +617,8 @@ pub(crate) fn show(app: &mut PdfCraftApp, area: Rect, page_left: Option<f32>, ui
     bar.normalize();
     let t = Tokens::get(&ctx);
     let id = app.win.panes.area_id("quick-bar");
+    // The bar's last size, kept per window (egui keeps areas per window, `data` for all of them).
+    let size_id = if ctx.viewport_id() == egui::ViewportId::ROOT { id } else { id.with(ctx.viewport_id()) };
     let full_side = bar.full_side && bar.dock.is_some();
     let bounds = if full_side { area } else { area.shrink(10.0) };
     if let Some(side) = bar.dock.clone() {
@@ -624,7 +626,7 @@ pub(crate) fn show(app: &mut PdfCraftApp, area: Rect, page_left: Option<f32>, ui
     }
     let cell = bar.button_size;
     let popup_align = popup_align_for(bar.dock.as_deref(), bar.vertical);
-    let mut size = ctx.data_mut(|data| data.get_temp::<egui::Vec2>(id)).unwrap_or(vec2(crate::canvas::bars::QUICK_BAR_WIDTH, 220.0));
+    let mut size = ctx.data_mut(|data| data.get_temp::<egui::Vec2>(size_id)).unwrap_or(vec2(crate::canvas::bars::QUICK_BAR_WIDTH, 220.0));
     if full_side {
         size = if bar.vertical { vec2(cell + 12.0, bounds.height()) } else { vec2(bounds.width(), cell + 12.0) };
     }
@@ -944,7 +946,7 @@ pub(crate) fn show(app: &mut PdfCraftApp, area: Rect, page_left: Option<f32>, ui
     }
     bar.picker_drag_pos = (picker_open && sizing).then_some(picker_pos);
     ctx.data_mut(|data| {
-        data.insert_temp(id, shown.response.rect.size());
+        data.insert_temp(size_id, shown.response.rect.size());
         data.insert_temp(egui::Id::unique("custom-hotbar"), shown.response.rect.size());
     });
     bar.picker_open = picker_open;

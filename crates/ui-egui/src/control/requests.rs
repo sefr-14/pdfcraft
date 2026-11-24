@@ -84,6 +84,29 @@ impl Control {
                     None | Some(Value::Null) => None,
                     Some(r) => Some(rect_param(r)?),
                 };
+                // Window 1 is the first window, the one captured natively. Another window
+                // (TAB.WINDOW.1 W2d) has no native capture: the reply is the engine's render of
+                // the page it shows, labelled as such.
+                let window = match p.get("window") {
+                    None | Some(Value::Null) => 1,
+                    Some(w) => w.as_u64().filter(|w| *w >= 1).ok_or_else(|| {
+                        format!("ui.screenshot: window must be a whole number from 1 (the first window) to {}", host.window_count())
+                    })?,
+                };
+                if window > 1 {
+                    if region.is_some() {
+                        return Err("ui.screenshot: region applies to window 1 only; another window's reply is a page render".into());
+                    }
+                    let dpi = match p.get("dpi") {
+                        None | Some(Value::Null) => 96.0,
+                        Some(d) => d
+                            .as_f64()
+                            .filter(|d| d.is_finite() && (18.0..=300.0).contains(d))
+                            .ok_or("ui.screenshot: dpi must be a number from 18 to 300")?,
+                    };
+                    let index = usize::try_from(window - 1).map_err(|_| "ui.screenshot: window is too large".to_string())?;
+                    return Ok(Handled::Now(host.window_page_render(index, dpi)));
+                }
                 ctx.request_repaint();
                 Ok(Handled::Screenshot(region))
             }

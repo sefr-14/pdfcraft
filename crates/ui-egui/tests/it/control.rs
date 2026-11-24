@@ -1549,6 +1549,33 @@ fn screenshots_of_window_and_region() {
     assert!(outside.contains("inside the window"), "{outside}");
 }
 
+/// TAB.WINDOW.1 W2d: `ui.state` lists the windows; `ui.screenshot` takes the window to show,
+/// 1 (the first) captured natively, and refuses what it can't do with a message saying why.
+#[test]
+fn screenshots_name_the_window_and_state_lists_them() {
+    let (mut h, c) = harness();
+    h.render().expect("the test renderer draws");
+    let state = ok(&mut h, &c, "ui.state", json!({}));
+    let windows = state["windows"].as_array().expect("a windows list");
+    assert_eq!(windows.len(), 1, "{state}");
+    assert_eq!(windows[0]["window"], 1);
+    assert_eq!(windows[0]["first"], true);
+    assert_eq!(windows[0]["screenshot"], "native");
+    assert_eq!(windows[0]["tabs"].as_array().map(Vec::len), Some(1));
+    let shot = ok(&mut h, &c, "ui.screenshot", json!({ "window": 1 }));
+    assert!(shot["png_base64"].is_string() && shot.get("source").is_none(), "window 1 is the native capture");
+    let none = call(&mut h, &c, "ui.screenshot", json!({ "window": 2 })).unwrap_err();
+    assert!(none.contains("no window 2"), "{none}");
+    for bad in [json!(0), json!(-1), json!(1.5), json!("2")] {
+        let e = call(&mut h, &c, "ui.screenshot", json!({ "window": bad })).unwrap_err();
+        assert!(e.contains("window must be a whole number from 1"), "{bad}: {e}");
+    }
+    let region = call(&mut h, &c, "ui.screenshot", json!({ "window": 2, "region": [0, 0, 10, 10] })).unwrap_err();
+    assert!(region.contains("region applies to window 1 only"), "{region}");
+    let dpi = call(&mut h, &c, "ui.screenshot", json!({ "window": 2, "dpi": 5000 })).unwrap_err();
+    assert!(dpi.contains("dpi must be"), "{dpi}");
+}
+
 #[test]
 fn loopback_transport_requires_the_token() {
     use std::io::{BufRead, BufReader, Write};

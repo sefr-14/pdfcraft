@@ -940,6 +940,48 @@ pub fn limits_on(area: Option<crate::platform::monitors::MonitorArea>, ppp: f32,
     }
 }
 
+/// An egui id for state that belongs to the window egui is drawing (TAB.WINDOW.1 W2d): egui's
+/// `data` is one store for every window, so a fixed id would be shared by all of them. The first
+/// window keeps the id it had before there were other windows.
+pub(crate) fn window_id(ctx: &egui::Context, name: impl std::hash::Hash + std::fmt::Debug) -> egui::Id {
+    let viewport = ctx.viewport_id();
+    if viewport == ViewportId::ROOT { egui::Id::unique(name) } else { egui::Id::unique((name, viewport)) }
+}
+
+/// The first window's raw-input duties (`eframe::App::raw_input_hook`), for a window other than
+/// the first: eframe calls the app's hook for the first window only, and the app is in the middle
+/// of the first window's pass when another window's input arrives, so this needs nothing from the
+/// app (TAB.WINDOW.1 W2d). Call it from `eframe::ViewportHooks::raw_input`; the first window's
+/// input (`ViewportId::ROOT`) is left alone.
+///
+/// - The button release a window move or resize kept from egui goes back to this window.
+/// - A wheel turned before the pointer moved is placed where the system says the pointer is.
+/// - ⌘/Ctrl wheel lines zoom at egui's rate, whatever the scroll speed.
+/// - While files are dragged over this window, egui is told where the pointer is.
+///
+/// The first window's hook also gives the control channel its input generation (the control
+/// channel acts in the first window) and the macOS menu its key equivalents (other windows are
+/// off on macOS, O-5).
+pub fn other_window_raw_input(ctx: &egui::Context, raw: &mut egui::RawInput) {
+    let id = raw.viewport_id;
+    if id == ViewportId::ROOT {
+        return;
+    }
+    crate::platform::window_controls::release_after_desktop_grab(ctx, raw);
+    let viewport = raw.viewports.get(&id).cloned().unwrap_or_default();
+    let known = ctx.input_for(id, |i| i.pointer.latest_pos().is_some());
+    let size = viewport.inner_rect.map_or(Vec2::ZERO, |r| r.size());
+    crate::platform::drag_pointer::locate_wheel(raw, known, size, || crate::platform::drag_pointer::in_viewport(ctx, &viewport));
+    crate::scroll_speed::keep_zoom_rate_in(ctx, raw);
+    if raw.hovered_files.is_empty() && raw.dropped_files.is_empty() {
+        return;
+    }
+    if let Some(pos) = crate::platform::drag_pointer::in_viewport(ctx, &viewport) {
+        raw.events.push(egui::Event::PointerMoved(pos));
+    }
+    ctx.request_repaint_of(id);
+}
+
 /// Tests: drawing another window panics while `panic_in_other_window` is set.
 #[cfg(test)]
 impl PdfCraftApp {

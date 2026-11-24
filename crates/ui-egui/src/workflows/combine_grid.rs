@@ -246,7 +246,8 @@ pub(crate) fn grid(
     let mut focused_card = None;
     // A zoom in the previous frame asks for a new scroll position. 0.37 keeps `State`'s offset
     // private, so the request is applied through the builder and consumed here.
-    let pending_offset = ctx.data_mut(|d| d.remove_temp::<Vec2>(pending_offset_id()));
+    let pending_id = pending_offset_id(&ctx);
+    let pending_offset = ctx.data_mut(|d| d.remove_temp::<Vec2>(pending_id));
     let mut grid = egui::ScrollArea::vertical().id_salt("combine-grid").auto_shrink([false, false]);
     if let Some(offset) = pending_offset {
         grid = grid.vertical_scroll_offset(offset.y);
@@ -432,7 +433,8 @@ pub(crate) fn grid(
                 // Applied by the next frame's scroll area, before anything is drawn there: no
                 // jump, and no scroll still animating (to a card revealed by the keys, say) can
                 // carry it elsewhere. The request is consumed once.
-                ctx.data_mut(|d| d.insert_temp(pending_offset_id(), vec2(0.0, y)));
+                let id = pending_offset_id(&ctx);
+                ctx.data_mut(|d| d.insert_temp(id, vec2(0.0, y)));
             }
             ctx.request_repaint();
         }
@@ -441,9 +443,9 @@ pub(crate) fn grid(
     action
 }
 
-/// The scroll position a zoom asked the next frame's grid to start at.
-fn pending_offset_id() -> egui::Id {
-    egui::Id::unique("pdfcraft-combine-grid-offset")
+/// The scroll position a zoom asked the next frame's grid to start at, in this window.
+fn pending_offset_id(ctx: &egui::Context) -> egui::Id {
+    crate::multi_window::window_id(ctx, "pdfcraft-combine-grid-offset")
 }
 
 impl PdfCraftApp {

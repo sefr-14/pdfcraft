@@ -86,7 +86,7 @@ impl TextDraft {
     /// Take the shared text box for this box ([`crate::edit_text_ui::forget_typing_before`]): its
     /// own history, or none once the page has its text.
     pub(crate) fn claim_typing(&mut self, ctx: &egui::Context, doc: pdfcraft_engine::DocId) {
-        crate::edit_text_ui::forget_typing_before(ctx, input_id(), doc, &mut self.typing_from, &self.style.text);
+        crate::edit_text_ui::forget_typing_before(ctx, input_id(ctx), doc, &mut self.typing_from, &self.style.text);
     }
 
     /// Typing the page doesn't have yet: Undo takes it back in the box before touching the document.
@@ -761,7 +761,7 @@ pub(crate) fn editor(ctx: &egui::Context, keys: PageKeys, view: &mut DocView, in
                 aligned_galley(ui, text.as_str(), &style, &line_font, color, letter_spacing, wrap)
             };
             let before = t.text.clone();
-            let input = input_id();
+            let input = input_id(ui.ctx());
             t.claim_typing(ui.ctx(), doc_id);
             ui.horizontal_top(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
@@ -871,8 +871,8 @@ fn finish(cv: &mut ContentView, d: TextDraft, added: &[Added]) -> Option<Edit> {
 }
 
 /// The added-text box's text field.
-pub(crate) fn input_id() -> egui::Id {
-    egui::Id::unique("added-text-input")
+pub(crate) fn input_id(ctx: &egui::Context) -> egui::Id {
+    crate::multi_window::window_id(ctx, "added-text-input")
 }
 
 /// `text` laid out as added text with `style` is drawn: each paragraph (line typed with Enter) wrapped

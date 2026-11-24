@@ -206,6 +206,27 @@ pub(super) fn screenshot_png(image: &egui::ColorImage, region: Option<egui::Rect
     }))
 }
 
+/// An already encoded PNG as a reply: base64 data and the image's size, within the reply limits.
+pub(super) fn encoded_png(png: &[u8]) -> Reply {
+    if png.len() > MAX_ENCODED_BYTES {
+        return Err(format!("the image is {} bytes, over the {MAX_ENCODED_BYTES}-byte encode limit", png.len()));
+    }
+    let encoded = png.len().div_ceil(3).checked_mul(4).ok_or_else(|| "the image is too large".to_string())?;
+    if encoded > MAX_BASE64_BYTES {
+        return Err(format!("the image's base64 reply would be {encoded} bytes, over the {MAX_BASE64_BYTES}-byte limit"));
+    }
+    // The size from the PNG header (signature, IHDR length and type, then width and height).
+    let be = |at: usize| png.get(at..at + 4).and_then(|b| <[u8; 4]>::try_from(b).ok()).map(u32::from_be_bytes);
+    let (Some(width), Some(height)) = (be(16), be(20)) else {
+        return Err("the image is not a PNG".into());
+    };
+    if png.get(..8) != Some(b"\x89PNG\r\n\x1a\n".as_slice()) {
+        return Err("the image is not a PNG".into());
+    }
+    use base64::Engine as _;
+    Ok(json!({ "png_base64": base64::engine::general_purpose::STANDARD.encode(png), "width": width, "height": height }))
+}
+
 #[cfg(test)]
 mod screenshot_geometry_tests {
     use super::*;

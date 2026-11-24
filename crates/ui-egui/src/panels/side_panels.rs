@@ -343,7 +343,8 @@ impl PaneContent<Pane> for Content<'_> {
         match pane {
             Pane::Tools => crate::panels::left_panel(self.app, ui),
             Pane::Side => {
-                ui.data_mut(|data| data.insert_temp(egui::Id::unique("pdfcraft-inspector-body"), ui.max_rect()));
+                let id = crate::multi_window::window_id(ui.ctx(), "pdfcraft-inspector-body");
+                ui.data_mut(|data| data.insert_temp(id, ui.max_rect()));
                 crate::panels::right_panel(self.app, ui);
             }
         }

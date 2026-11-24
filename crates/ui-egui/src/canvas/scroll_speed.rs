@@ -60,15 +60,7 @@ impl ScrollSpeed {
     /// those events are scaled back to keep zooming at egui's own rate.
     pub(crate) fn apply(self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         self.set_line_speed(ctx);
-        let points = self.line_points();
-        let zoom_scale = EGUI_LINE_POINTS / points;
-        for event in &mut raw.events {
-            if let egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Line, delta, modifiers, .. } = event
-                && modifiers.command
-            {
-                *delta *= zoom_scale;
-            }
-        }
+        keep_zoom_rate(self.line_points(), raw);
     }
 
     /// Makes egui scroll this far per wheel line (from the next frame when called during one).
@@ -82,6 +74,28 @@ impl ScrollSpeed {
     pub fn parse(value: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|s| s.label().eq_ignore_ascii_case(value))
     }
+}
+
+/// Scale ⌘/Ctrl wheel lines back to egui's rate in `raw`, where a wheel line scrolls `points`.
+fn keep_zoom_rate(points: f32, raw: &mut egui::RawInput) {
+    if !(points.is_finite() && points > 0.0) {
+        return;
+    }
+    let zoom_scale = EGUI_LINE_POINTS / points;
+    for event in &mut raw.events {
+        if let egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Line, delta, modifiers, .. } = event
+            && modifiers.command
+        {
+            *delta *= zoom_scale;
+        }
+    }
+}
+
+/// [`ScrollSpeed::apply`] for a window other than the first (TAB.WINDOW.1): egui's line speed is
+/// one setting for every window, already set by the first window's input, so only `raw`'s
+/// ⌘/Ctrl wheel lines are scaled back, by that setting.
+pub(crate) fn keep_zoom_rate_in(ctx: &egui::Context, raw: &mut egui::RawInput) {
+    keep_zoom_rate(ctx.options(|o| o.input_options.line_scroll_speed), raw);
 }
 
 #[cfg(test)]

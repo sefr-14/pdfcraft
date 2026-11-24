@@ -107,9 +107,9 @@ pub struct LineEditor {
 }
 
 /// The paragraph editor's text box: one for the tabs of a pane (they share it), and one for each pane
-/// of split view, which can show an editor in each.
-pub(crate) fn input_id(place: crate::panes::Place) -> egui::Id {
-    egui::Id::unique(("edit-text-line-input", place))
+/// of split view, which can show an editor in each, in each window (TAB.WINDOW.1 W2d).
+pub(crate) fn input_id(ctx: &egui::Context, place: crate::panes::Place) -> egui::Id {
+    crate::multi_window::window_id(ctx, ("edit-text-line-input", place))
 }
 
 /// The page text box `id` keeps its own Undo history, across every paragraph or box it has shown
@@ -357,7 +357,7 @@ impl LineEditor {
     /// Take the shared text box for this paragraph ([`forget_typing_before`]): its own history,
     /// or none once the page has its text.
     pub(crate) fn claim_typing(&mut self, ctx: &egui::Context, doc: pdfcraft_engine::DocId, place: crate::panes::Place) {
-        forget_typing_before(ctx, input_id(place), doc, &mut self.typing_from, &self.original);
+        forget_typing_before(ctx, input_id(ctx, place), doc, &mut self.typing_from, &self.original);
     }
 
     /// Adopt the rewritten paragraph's current geometry before the next overlay frame.
@@ -491,7 +491,7 @@ impl LineEditor {
     /// The text changed from `before` through the box's own typing (typing, Undo, Redo): rows
     /// aligned on their own keep their alignment, and a row Undo brings back gets its own back.
     pub(crate) fn follow_typed_rows(&mut self, ctx: &egui::Context, before: &str, place: crate::panes::Place) {
-        follow_typing(ctx, input_id(place), before, &self.text, &mut [&mut self.look.aligns, &mut self.look0.aligns]);
+        follow_typing(ctx, input_id(ctx, place), before, &self.text, &mut [&mut self.look.aligns, &mut self.look0.aligns]);
     }
 
     /// The text changed from `before`: rows aligned on their own keep their alignment.
@@ -1003,7 +1003,7 @@ pub(crate) fn overlay(ctx: &egui::Context, keys: PageKeys, view: &mut DocView, i
                     if snapshot.changes_with(text.as_str()) { galley } else { unseen(galley) }
                 };
                 let before = ed.text.clone();
-                let input = input_id(place);
+                let input = input_id(ui.ctx(), place);
                 ed.claim_typing(ui.ctx(), view_id, place);
                 let output = egui::TextEdit::multiline(&mut ed.text)
                     .id(input)

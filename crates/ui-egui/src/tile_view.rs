@@ -68,8 +68,8 @@ pub(crate) fn area(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
     let (tile_w, row_w) = column_width(rect.width(), n);
     // Bring the active tile into view when it changes (a tab click, Ctrl+Tab, a duplicate).
     let active = app.active_key();
+    let id = crate::multi_window::window_id(ui.ctx(), "tile-strip-active");
     let reveal = ui.data_mut(|d| {
-        let id = egui::Id::unique("tile-strip-active");
         let changed = d.get_temp::<Option<ViewKey>>(id) != Some(active);
         d.insert_temp(id, active);
         changed

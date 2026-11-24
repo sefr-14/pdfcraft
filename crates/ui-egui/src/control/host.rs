@@ -56,6 +56,36 @@ impl Host for crate::PdfCraftApp {
         self.request_quit(ctx)
     }
 
+    fn window_count(&self) -> usize {
+        crate::PdfCraftApp::window_count(self)
+    }
+
+    fn window_page_render(&mut self, index: usize, dpi: f64) -> Reply {
+        let windows = self.window_uis();
+        let count = windows.len();
+        let Some((_, ui)) = windows.get(index) else {
+            return Err(format!("there is no window {}; there are {count} (1 is the first window)", index.saturating_add(1)));
+        };
+        let view = ui.active.and_then(|i| ui.views.get(i)).ok_or_else(|| format!("window {} shows no document", index + 1))?;
+        let (id, page) = (view.id, view.current);
+        let doc = self.session.get(id).ok_or_else(|| format!("window {}'s document is no longer open", index + 1))?;
+        let png = pdfcraft_engine::export::Exporter::new(doc).png(page, dpi)?;
+        let mut reply = super::screenshot::encoded_png(&png)?;
+        reply["window"] = json!(index + 1);
+        reply["doc"] = json!(id.0);
+        reply["page"] = json!(page + 1);
+        reply["dpi"] = json!(dpi);
+        // Never to be mistaken for a capture of the window (owner decision Q2).
+        reply["source"] = json!("engine-render");
+        reply["native_window_capture"] = json!(false);
+        reply["note"] = json!(format!(
+            "Not a screenshot: the control channel captures window 1 only. This is the engine's render of page {} of the document window {} shows, without the window's interface.",
+            page + 1,
+            index + 1
+        ));
+        Ok(reply)
+    }
+
     fn state(&self) -> Value {
         let active = self.win.active.and_then(|i| self.win.views.get(i));
         let docs: Vec<Value> = self
@@ -180,6 +210,7 @@ impl Host for crate::PdfCraftApp {
                 .collect();
             out.insert("guides".into(), Value::Array(guides));
         }
+        state["windows"] = self.windows_state();
         state
     }
 
@@ -218,5 +249,39 @@ impl Host for crate::PdfCraftApp {
     #[cfg(target_arch = "wasm32")]
     fn open(&mut self, _path: &str) -> Reply {
         Err("ui.open needs a file system; on the web, drop the file on the page".into())
+    }
+}
+
+impl crate::PdfCraftApp {
+    /// Every window, the first one first (TAB.WINDOW.1): its tabs and active page, where a
+    /// dialog shows, and that only window 1 is captured natively by `ui.screenshot`.
+    fn windows_state(&self) -> Value {
+        let dialog = self.modal_open();
+        let at = self.dialog_window();
+        let windows: Vec<Value> = self
+            .window_uis()
+            .iter()
+            .enumerate()
+            .map(|(n, (key, ui))| {
+                let tabs: Vec<Value> = ui
+                    .views
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| json!({ "tab": i, "doc": v.id.0, "name": self.session.get(v.id).map(|d| d.name.clone()), "active": ui.active == Some(i) }))
+                    .collect();
+                let active = ui.active.and_then(|i| ui.views.get(i));
+                json!({
+                    "window": n + 1,
+                    "first": key.is_none(),
+                    "tabs": tabs,
+                    "active_doc": active.map(|v| v.id.0),
+                    "active_page": active.map(|v| v.current + 1),
+                    "zoom_percent": active.map(|v| (v.zoom * 100.0).round()),
+                    "dialog": dialog && *key == at,
+                    "screenshot": if n == 0 { "native" } else { "engine-render" },
+                })
+            })
+            .collect();
+        Value::Array(windows)
     }
 }

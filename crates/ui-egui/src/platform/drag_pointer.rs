@@ -4,15 +4,22 @@
 //! mouse moves, #1518). The system has to be asked.
 
 /// The pointer in this window's coordinates (egui points), when the system can tell.
-#[cfg(target_os = "macos")]
 pub(crate) fn in_window(ctx: &egui::Context) -> Option<egui::Pos2> {
+    let viewport = ctx.input(|i| i.viewport().clone());
+    in_viewport(ctx, &viewport)
+}
+
+/// The pointer in `viewport`'s coordinates (egui points), when the system can tell. A window
+/// other than the one egui is drawing passes its own [`egui::ViewportInfo`] (TAB.WINDOW.1).
+#[cfg(target_os = "macos")]
+pub(crate) fn in_viewport(ctx: &egui::Context, viewport: &egui::ViewportInfo) -> Option<egui::Pos2> {
     use objc2_app_kit::{NSEvent, NSScreen};
     // AppKit's screen list is only for the main thread (where egui runs).
     let mtm = objc2::MainThreadMarker::new()?;
     // Screen coordinates start at the bottom-left of the first screen; windows at their top-left.
     let top = NSScreen::screens(mtm).firstObject()?.frame().size.height;
     let pointer = NSEvent::mouseLocation();
-    let inner = ctx.input(|i| i.viewport().inner_rect)?;
+    let inner = viewport.inner_rect?;
     // egui's points are the system's, divided by the zoom factor.
     let zoom = ctx.zoom_factor().max(0.01) as f64;
     let (x, y) = (pointer.x / zoom, (top - pointer.y) / zoom);
@@ -20,14 +27,15 @@ pub(crate) fn in_window(ctx: &egui::Context) -> Option<egui::Pos2> {
     (pos.x.is_finite() && pos.y.is_finite()).then_some(pos)
 }
 
-/// The pointer in this window's coordinates (egui points), when the system can tell.
+/// The pointer in `viewport`'s coordinates (egui points), when the system can tell.
 #[cfg(windows)]
-pub(crate) fn in_window(ctx: &egui::Context) -> Option<egui::Pos2> {
+pub(crate) fn in_viewport(ctx: &egui::Context, viewport: &egui::ViewportInfo) -> Option<egui::Pos2> {
     // Physical screen pixels, whatever this thread's DPI awareness.
     let pointer = winsafe::GetPhysicalCursorPos().ok()?;
-    let inner = ctx.input(|i| i.viewport().inner_rect)?;
-    // egui places the window in points: physical pixels over the pixels per point (zoom included).
-    let ppp = ctx.pixels_per_point();
+    let inner = viewport.inner_rect?;
+    // egui places the window in points: physical pixels over the pixels per point (zoom included),
+    // the window's own (each window has its monitor's scale).
+    let ppp = viewport.native_pixels_per_point.unwrap_or(1.0) * ctx.zoom_factor();
     if !(ppp.is_finite() && ppp > 0.0) {
         return None;
     }
@@ -36,7 +44,7 @@ pub(crate) fn in_window(ctx: &egui::Context) -> Option<egui::Pos2> {
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
-pub(crate) fn in_window(_ctx: &egui::Context) -> Option<egui::Pos2> {
+pub(crate) fn in_viewport(_ctx: &egui::Context, _viewport: &egui::ViewportInfo) -> Option<egui::Pos2> {
     None
 }
 

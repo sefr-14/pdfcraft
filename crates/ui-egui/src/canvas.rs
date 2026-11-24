@@ -3373,7 +3373,7 @@ fn search_panel_closed(app: &mut PdfCraftApp, index: usize) {
 /// Whether the page menu offers Paste image, worked out when the right button goes down and kept
 /// until the next press (reading the clipboard every frame would be too slow).
 fn can_paste_image(app: &PdfCraftApp, ui: &egui::Ui) -> bool {
-    let can_paste_key = egui::Id::unique("can-paste-image");
+    let can_paste_key = crate::multi_window::window_id(ui.ctx(), "can-paste-image");
     if ui.input(|i| i.pointer.secondary_pressed()) {
         let can = app.can_paste_image();
         ui.data_mut(|d| d.insert_temp(can_paste_key, can));

@@ -46,7 +46,7 @@ fn score_for_direction(hay: &str, needle: &str, rtl: bool) -> Option<usize> {
 
 /// Draw the command palette and dispatch the chosen command or tool group.
 pub fn show(app: &mut PdfCraftApp, ctx: &egui::Context) {
-    let palette_rect_id = egui::Id::unique("palette_rect");
+    let palette_rect_id = crate::multi_window::window_id(ctx, "palette_rect");
     if !app.win.palette_open {
         return;
     }
@@ -117,9 +117,10 @@ pub fn show(app: &mut PdfCraftApp, ctx: &egui::Context) {
     hits.sort_by_key(|(s, h)| (*s, !h.ready));
     hits.truncate(12);
     let (down, up) = ctx.input(|i| (i.key_pressed(egui::Key::ArrowDown), i.key_pressed(egui::Key::ArrowUp)));
+    // Outside `data_mut`: asking the context for the window there would deadlock.
+    let id = crate::multi_window::window_id(ctx, "palette_selected");
+    let query_id = crate::multi_window::window_id(ctx, "palette_selected_query");
     let selected = ctx.data_mut(|data| {
-        let id = egui::Id::unique("palette_selected");
-        let query_id = egui::Id::unique("palette_selected_query");
         let previous_query = data.get_temp::<String>(query_id);
         let selected =
             if previous_query.as_deref() == Some(&q) { data.get_temp::<usize>(id).unwrap_or(0) } else { 0 }.min(hits.len().saturating_sub(1));

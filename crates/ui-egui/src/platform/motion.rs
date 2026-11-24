@@ -87,6 +87,14 @@ pub struct Motion {
     asked_at: f64,
     /// egui's own animation time and scroll animation, kept while they are changed here.
     egui_times: Option<(f32, ScrollAnimation)>,
+    /// Each window's wheel (TAB.WINDOW.1 W2d): a window has its own frames and its own
+    /// gestures, so one window's wheel never stands for another's.
+    windows: std::collections::HashMap<egui::ViewportId, WindowWheel>,
+}
+
+/// One window's wheel reading.
+#[derive(Default)]
+struct WindowWheel {
     wheel: WheelReader,
     /// This frame's wheel motion, read on its first pass and reused on later passes.
     ///
@@ -100,7 +108,7 @@ pub struct Motion {
 impl Default for Motion {
     /// Start motion handling with animations enabled and no desktop preference sampled yet.
     fn default() -> Self {
-        Self { reduced: false, source: None, asked_at: f64::NEG_INFINITY, egui_times: None, wheel: WheelReader::default(), frame: None }
+        Self { reduced: false, source: None, asked_at: f64::NEG_INFINITY, egui_times: None, windows: std::collections::HashMap::new() }
     }
 }
 
@@ -119,10 +127,15 @@ impl Motion {
         }
         let animate = effects.animates(self.reduced);
         self.sync_style(ctx, animate);
+        // This window's reading; windows that have closed are forgotten.
+        let viewport = ctx.viewport_id();
+        let open = ctx.input(|i| i.raw.viewports.keys().copied().collect::<Vec<_>>());
+        self.windows.retain(|id, _| *id == viewport || open.contains(id));
+        let this = self.windows.entry(viewport).or_default();
         if crate::canvas::wheel_reset::reset_this_pass(ctx) {
             // The document's hidden cancel resets egui before fresh input. Its app reader
             // must forget the same older gesture modifiers before reading those events.
-            self.wheel = WheelReader::default();
+            this.wheel = WheelReader::default();
         }
         let options = ctx.options(|o| o.input_options);
         // One frame may run several passes (`request_discard`). Only the first pass has this
@@ -133,17 +146,18 @@ impl Motion {
         // given zero scroll and a unit zoom explicitly. A missing zoom entry would not do: it
         // would fall back to egui's rebuilt factor.
         let frame = ctx.cumulative_frame_nr();
-        let first_pass = match self.frame {
+        let first_pass = match this.frame {
             Some((read_in, _)) => read_in != frame,
             None => true,
         };
-        let motion = match self.frame {
+        let motion = match this.frame {
             Some((read_in, motion)) if read_in == frame => motion,
             _ => {
-                let motion = ctx.input(|i| self.wheel.read(&i.events, i.time, i.viewport_rect().height(), &options));
-                self.frame = Some((frame, motion));
-                let modifiers = self.wheel.modifiers.clone();
-                ctx.data_mut(|d| d.insert_temp(gesture_id(), (frame, modifiers)));
+                let motion = ctx.input(|i| this.wheel.read(&i.events, i.time, i.viewport_rect().height(), &options));
+                this.frame = Some((frame, motion));
+                let modifiers = this.wheel.modifiers.clone();
+                let id = gesture_id(ctx);
+                ctx.data_mut(|d| d.insert_temp(id, (frame, modifiers)));
                 motion
             }
         };
@@ -155,7 +169,8 @@ impl Motion {
         let (scroll, zoom) = if first_pass { (motion.scroll, motion.zoom) } else { (Vec2::ZERO, 1.0) };
         ctx.input_mut(|i| i.smooth_scroll_delta = scroll);
         let pass = ctx.cumulative_pass_nr();
-        ctx.data_mut(|d| d.insert_temp(zoom_id(), (pass, zoom)));
+        let id = zoom_id(ctx);
+        ctx.data_mut(|d| d.insert_temp(id, (pass, zoom)));
         // Existing kinetic scrolling remains owned by egui; gating wheel input does not
         // suppress a scroll area's per-pass advancement of retained velocity.
     }
@@ -185,15 +200,16 @@ pub(crate) fn animated(ctx: &egui::Context) -> bool {
     ctx.global_style().animation_time > 0.0
 }
 
-/// Return the stable egui id holding the last wheel-zoom input state.
-fn zoom_id() -> egui::Id {
-    egui::Id::unique("pdfcraft-motion-wheel-zoom")
+/// The egui id holding this window's last wheel-zoom input state.
+fn zoom_id(ctx: &egui::Context) -> egui::Id {
+    crate::multi_window::window_id(ctx, "pdfcraft-motion-wheel-zoom")
 }
 
 /// This pass's zoom factor from a pinch or ⌘/Ctrl with the wheel (1.0 for none): egui's
 /// `zoom_delta`, without the easing while animation effects are off.
 pub(crate) fn zoom_delta(ctx: &egui::Context) -> f32 {
-    let read: Option<(u64, f32)> = ctx.data(|d| d.get_temp(zoom_id()));
+    let id = zoom_id(ctx);
+    let read: Option<(u64, f32)> = ctx.data(|d| d.get_temp(id));
     let pass = ctx.cumulative_pass_nr();
     ctx.input(|i| match read {
         // Only what [`Motion::begin_pass`] read in this very pass: a factor left from an earlier
@@ -203,9 +219,9 @@ pub(crate) fn zoom_delta(ctx: &egui::Context) -> f32 {
     })
 }
 
-/// Return the stable egui id holding the modifiers of this frame's wheel events.
-fn gesture_id() -> egui::Id {
-    egui::Id::unique("pdfcraft-motion-wheel-gesture")
+/// The egui id holding the modifiers of this window's frame's wheel events.
+fn gesture_id(ctx: &egui::Context) -> egui::Id {
+    crate::multi_window::window_id(ctx, "pdfcraft-motion-wheel-gesture")
 }
 
 /// This pass's wheel events, each with the modifiers it acts with: a touch gesture keeps
@@ -214,7 +230,8 @@ fn gesture_id() -> egui::Id {
 /// after the keys are let go too. The events keep their own modifiers when
 /// [`Motion::begin_pass`] did not read this frame's wheel.
 pub(crate) fn gesture_wheel_events(ctx: &egui::Context) -> Vec<Event> {
-    let read: Option<(u64, Vec<Modifiers>)> = ctx.data(|d| d.get_temp(gesture_id()));
+    let id = gesture_id(ctx);
+    let read: Option<(u64, Vec<Modifiers>)> = ctx.data(|d| d.get_temp(id));
     let frame = ctx.cumulative_frame_nr();
     let mut events: Vec<Event> = ctx.input(|i| i.events.iter().filter(|e| matches!(e, Event::MouseWheel { .. })).cloned().collect());
     if let Some((at, held)) = read

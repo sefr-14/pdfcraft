@@ -231,9 +231,10 @@ pub fn resize_edges(ctx: &egui::Context) {
         });
 }
 
-/// Return the stable egui id for desktop window-grab state.
-fn grab_id() -> egui::Id {
-    egui::Id::unique("window_controls_desktop_grab")
+/// The egui id of a window's desktop-grab state: one per window, so a grab in one window gives
+/// its release back to that window's input, not another's (TAB.WINDOW.1).
+fn grab_id(viewport: egui::ViewportId) -> egui::Id {
+    egui::Id::unique(("window_controls_desktop_grab", viewport))
 }
 
 /// Hand the pointer to the desktop to move or resize the window. On Wayland the compositor keeps
@@ -243,7 +244,8 @@ fn grab_id() -> egui::Id {
 /// input (`release_after_desktop_grab`).
 pub fn desktop_grab(ctx: &egui::Context, command: egui::ViewportCommand) {
     ctx.send_viewport_cmd(command);
-    ctx.data_mut(|d| d.insert_temp(grab_id(), ()));
+    let id = grab_id(ctx.viewport_id());
+    ctx.data_mut(|d| d.insert_temp(id, ()));
     ctx.request_repaint();
 }
 
@@ -252,8 +254,11 @@ pub fn desktop_grab(ctx: &egui::Context, command: egui::ViewportCommand) {
 /// egui would otherwise end straight away; a release after that press is the press's own. It also
 /// goes before the pointer leaving, as a button event would bring the gone pointer back; a release
 /// the input brings after the pointer left is the grab's own, and moves there instead.
+///
+/// `raw` is the input of the window it names (`raw.viewport_id`), whichever window egui is drawing.
 pub fn release_after_desktop_grab(ctx: &egui::Context, raw: &mut egui::RawInput) {
-    if ctx.data_mut(|d| d.remove_temp::<()>(grab_id())).is_none() {
+    let viewport = raw.viewport_id;
+    if ctx.data_mut(|d| d.remove_temp::<()>(grab_id(viewport))).is_none() {
         return;
     }
     let mut at = raw.events.len();
@@ -284,7 +289,7 @@ pub fn release_after_desktop_grab(ctx: &egui::Context, raw: &mut egui::RawInput)
         return;
     }
     let at = gone.unwrap_or(at);
-    let (pos, modifiers) = ctx.input(|i| (i.pointer.interact_pos().unwrap_or_default(), i.modifiers));
+    let (pos, modifiers) = ctx.input_for(viewport, |i| (i.pointer.interact_pos().unwrap_or_default(), i.modifiers));
     raw.events.insert(at, egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: false, modifiers });
 }
 

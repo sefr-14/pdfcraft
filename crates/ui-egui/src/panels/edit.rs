@@ -84,7 +84,7 @@ pub(super) fn edit_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens, g
         widgets::section_title(ui, tl!("Add content"));
         let content: Vec<_> =
             g.sections.iter().filter(|s| s.title == "Add content").flat_map(|s| s.items.iter()).filter(|i| i.command != "edit.edit_text").collect();
-        let more_id = egui::Id::unique("edit_panel_more");
+        let more_id = crate::multi_window::window_id(ui.ctx(), "edit_panel_more");
         let more = ui.data(|d| d.get_temp::<bool>(more_id)).unwrap_or(false);
         let shown = if more { content.len() } else { EDIT_CONTENT_SHOWN.min(content.len()) };
         for i in content.iter().take(shown) {
