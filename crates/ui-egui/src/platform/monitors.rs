@@ -115,6 +115,22 @@ mod tests {
         assert_eq!(pick(&[m(0.0, 0.0, 1920.0, 1080.0)], pos2(f32::NAN, 0.0)), None);
     }
 
+    /// Windows only, on a real desktop (the CI runner): the system names the monitor under a point
+    /// and its work area, which lies inside it; a point far from every monitor gets the nearest.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_reports_the_monitor_and_its_work_area() {
+        let m = monitor_at(pos2(10.0, 10.0)).expect("Windows reports the monitor under a point");
+        assert!(m.work_known, "the work area comes from the system");
+        assert!(m.bounds.width() > 0.0 && m.bounds.height() > 0.0, "{m:?}");
+        assert!(m.work.width() > 0.0 && m.work.height() > 0.0, "{m:?}");
+        assert!(m.bounds.contains(m.work.min) && m.work.max.x <= m.bounds.max.x && m.work.max.y <= m.bounds.max.y, "{m:?}");
+        assert!(m.bounds.contains(pos2(10.0, 10.0)), "{m:?}");
+        let far = monitor_at(pos2(1.0e6, 1.0e6)).expect("the nearest monitor");
+        assert!(far.work_known && far.bounds.width() > 0.0, "{far:?}");
+        eprintln!("W2b on Windows: monitor {:?}, work area {:?}", m.bounds, m.work);
+    }
+
     #[test]
     fn the_known_list_is_replaced_whole() {
         set_known(vec![m(0.0, 0.0, 800.0, 600.0)]);
