@@ -429,6 +429,8 @@ impl PdfCraftApp {
         if blocked {
             ui.disable();
         }
+        // The keys of a question shown in this window, before anything else reads them.
+        self.dialog_keys(ui.ctx());
         self.ui_unguarded(ui);
         if blocked {
             self.dialog_elsewhere_notice(ui.ctx());
@@ -583,6 +585,11 @@ impl PdfCraftApp {
             }
             return;
         }
+        // A document under OCR review that closes with this window holds the close, as closing
+        // its tab does (#6485): nothing closes, and the review comes forward.
+        if self.hold_window_close_for_ocr_review(key) {
+            return;
+        }
         if self.with_window(key, |app| app.first_at_risk()).flatten().is_some() {
             self.ask_in_window(crate::CloseRequest::Window(key), key);
             return;
@@ -730,7 +737,7 @@ impl PdfCraftApp {
         }
     }
 
-    fn focus_window(&mut self, key: WindowKey) {
+    pub(crate) fn focus_window(&mut self, key: WindowKey) {
         let viewport = key.map_or(egui::ViewportId::ROOT, WindowId::viewport);
         if let Some(ctx) = &self.ctx {
             ctx.send_viewport_cmd_to(viewport, egui::ViewportCommand::Focus);

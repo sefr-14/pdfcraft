@@ -112,6 +112,8 @@ struct Host {
     shown: Vec<(ViewportId, Option<String>)>,
     /// Whether the window's own pass in its context ended normally.
     passes_ended: usize,
+    /// Input for the next window drawn (keys pressed in it).
+    events: Vec<egui::Event>,
 }
 
 impl Host {
@@ -122,7 +124,7 @@ impl Host {
         crate::theme::apply(&ctx, app.theme);
         // Fonts set now take effect on the next pass.
         pass(&ctx, egui::RawInput::default(), |_| {});
-        Host { ctx, embedded: false, behaviour: HashMap::new(), close: false, shown: Vec::new(), passes_ended: 0 }
+        Host { ctx, embedded: false, behaviour: HashMap::new(), close: false, shown: Vec::new(), passes_ended: 0, events: Vec::new() }
     }
 }
 
@@ -144,7 +146,7 @@ impl ViewportHost for Host {
             Behaviour::Refuse => {}
             Behaviour::RefuseAndPanic => panic!("something unrelated went wrong"),
             Behaviour::Open | Behaviour::FailAfter => {
-                let mut input = egui::RawInput::default();
+                let mut input = egui::RawInput { events: std::mem::take(&mut self.events), ..Default::default() };
                 if self.close {
                     input.viewports.entry(ViewportId::ROOT).or_default().events.push(egui::ViewportEvent::Close);
                 }

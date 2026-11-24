@@ -95,13 +95,39 @@ impl PdfCraftApp {
     /// Close all and Quit close every document, so a document under OCR review holds them too
     /// ([`Self::hold_close_for_ocr_review`]), even when it has no unsaved changes. Whether they
     /// were held.
+    ///
+    /// The document may be in any window (TAB.WINDOW.1): that window holds it, and the review
+    /// comes forward in the first window, which shows it.
     fn hold_for_any_ocr_review(&mut self) -> bool {
-        self.ocr_review_index().is_some_and(|i| self.hold_close_for_ocr_review(i))
+        let Some((key, index)) = self.ocr_review_window() else { return false };
+        self.hold_ocr_review_in(key, index)
     }
 
-    /// The tab of the document whose OCR review is still open, if any.
-    fn ocr_review_index(&self) -> Option<usize> {
-        self.win.views.iter().position(|v| self.ocr_verify.holds_reading_of(v.id))
+    /// Close Window: a document under OCR review that only window `key` shows holds the window's
+    /// close; one another window still shows stays open there, so it doesn't. Whether it was held.
+    pub(crate) fn hold_window_close_for_ocr_review(&mut self, key: crate::multi_window::WindowKey) -> bool {
+        let held = self
+            .with_window(key, |app| app.win.views.iter().position(|v| app.ocr_verify.holds_reading_of(v.id) && !app.viewed_in_other_window(v.id)));
+        match held.flatten() {
+            Some(index) => self.hold_ocr_review_in(key, index),
+            None => false,
+        }
+    }
+
+    /// Hold a close for the review of tab `index` of window `key`.
+    fn hold_ocr_review_in(&mut self, key: crate::multi_window::WindowKey, index: usize) -> bool {
+        if key == self.current_window() {
+            return self.hold_close_for_ocr_review(index);
+        }
+        let held = self.with_window(key, |app| app.hold_close_for_ocr_review(index)) == Some(true);
+        // The review screen is the first window's.
+        self.focus_window(None);
+        held
+    }
+
+    /// The window and tab of the document under OCR review, if a window shows it.
+    fn ocr_review_window(&self) -> Option<(crate::multi_window::WindowKey, usize)> {
+        self.window_uis().into_iter().find_map(|(key, ui)| ui.views.iter().position(|v| self.ocr_verify.holds_reading_of(v.id)).map(|i| (key, i)))
     }
 
     /// File ▸ Revert (after the confirmation).
@@ -292,7 +318,7 @@ impl PdfCraftApp {
     /// accepted or rejected. The browser's reload warning and the embedding page (`host_dirty`)
     /// both hear this.
     pub(crate) fn work_at_risk(&self) -> bool {
-        self.first_dirty().is_some() || self.ocr_review_index().is_some()
+        self.first_dirty().is_some() || self.ocr_review_window().is_some()
     }
 
     /// Intercept window close while documents have unsaved changes or an OCR review is open.

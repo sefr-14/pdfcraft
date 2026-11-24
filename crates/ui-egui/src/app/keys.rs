@@ -2,9 +2,24 @@
 use super::*;
 
 impl PdfCraftApp {
-    pub(super) fn shortcuts(&mut self, ctx: &egui::Context) {
+    /// A window other than the first, while the open dialog or question shows in it
+    /// (TAB.WINDOW.1, T-3): the question's keys are read here, from this window's input, as the
+    /// first window's [`Self::shortcuts`] reads them there. Nothing else runs.
+    pub(crate) fn dialog_keys(&mut self, ctx: &egui::Context) {
+        if self.drawing_other_window() && self.modal_open() && self.dialog_here() {
+            self.shortcuts(ctx);
+        }
+    }
+
+    pub(crate) fn shortcuts(&mut self, ctx: &egui::Context) {
         // This frame's Escape is free until something owns it (this fork, OV11: `escape`).
         self.escape_reserved = false;
+        // A dialog or question open in another window holds this one (T-3): its keys answer
+        // nothing and run nothing here. The window showing it reads them (`dialog_keys`).
+        if self.blocked_by_dialog() {
+            self.escape_reserved = true;
+            return;
+        }
         // "Save changes?" is modal: its keys are its own (⌘D is Don't save there, not Document
         // properties; Escape cancels it rather than clearing a selection), and nothing may run
         // underneath it. They are read here, before the canvas can consume them.
@@ -29,6 +44,8 @@ impl PdfCraftApp {
         }
         // The other dialogs and prompts are modal too (⌘W closed the file behind Preferences,
         // #870).
+        // (A window other than the first reads only these, while the dialog shows in it:
+        // `dialog_keys`.)
         if self.modal_open() {
             self.escape_reserved = true;
             return;

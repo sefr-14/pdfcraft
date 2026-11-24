@@ -267,7 +267,10 @@ impl crate::PdfCraftApp {
                     .views
                     .iter()
                     .enumerate()
-                    .map(|(i, v)| json!({ "tab": i, "doc": v.id.0, "name": self.session.get(v.id).map(|d| d.name.clone()), "active": ui.active == Some(i) }))
+                    .map(|(i, v)| {
+                        let doc = self.session.get(v.id);
+                        json!({ "tab": i, "doc": v.id.0, "name": doc.map(|d| d.name.clone()), "dirty": doc.map(|d| d.dirty), "active": ui.active == Some(i) })
+                    })
                     .collect();
                 let active = ui.active.and_then(|i| ui.views.get(i));
                 json!({

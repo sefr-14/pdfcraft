@@ -323,3 +323,168 @@ fn a_question_whose_window_has_nothing_left_to_ask_moves_to_the_window_that_has(
     assert_eq!(app.close_request, Some(CloseRequest::Quit));
     assert_eq!(app.dialog_window(), None, "the question moved to the first window");
 }
+
+/// A review of `doc` with one word corrected, as the OCR review screen holds it.
+fn review(app: &mut PdfCraftApp, doc: pdfcraft_engine::DocId) {
+    use pdfcraft_engine::ocr::{OcrPage, OcrSettings, PlacedWord};
+    let job = app.session.ocr_job(doc, &[0], OcrSettings::default()).expect("an OCR job");
+    let word =
+        PlacedWord { text: "w".into(), origin: [72.0, 700.0], across: [40.0, 0.0], up: [0.0, 12.0], confidence: Some(95.0), source: "ocrs".into() };
+    let page = OcrPage { already_on_page: 0, page: 0, words: vec![word], skipped: None, notes: Vec::new() };
+    app.ocr_verify.load(doc, job.guard.clone(), vec![page]);
+    assert!(app.ocr_verify.correct((0, 0), "Edited"));
+    app.ocr_verify.open = false;
+}
+
+/// The app with a, c in the first window and b, clean and under OCR review, alone in a second one.
+fn b_under_review_in_its_own_window() -> (Harness<'static, PdfCraftApp>, WindowId, pdfcraft_engine::DocId) {
+    let mut h = app_with_tabs();
+    let app = h.state_mut();
+    let b = app.win.views[1].id;
+    review(app, b);
+    let mut host = Host::new(app);
+    assert!(app.request_move_tab_to_new_window(1));
+    settle(app, &mut host);
+    let id = app.windows.others[0].id;
+    (h, id, b)
+}
+
+/// Close Window holds for a document under OCR review that closes with the window (#6485), as
+/// closing its tab does: nothing closes, the review is kept and comes forward. After Reject the
+/// window closes.
+#[test]
+fn close_window_holds_for_a_document_under_ocr_review() {
+    let (mut h, id, b) = b_under_review_in_its_own_window();
+    let app = h.state_mut();
+    let mut host = Host::new(app);
+    let before = layout(app);
+    app.request_window_op(WindowOp::Close(Some(id)));
+    settle(app, &mut host);
+    assert_eq!(layout(app), before, "the close was held: every window and tab as it was");
+    assert!(app.session.get(b).is_some(), "the document stays open");
+    assert_eq!(app.ocr_verify.text_of((0, 0)), Some("Edited"), "with its review as it was");
+    assert!(app.ocr_verify.open, "the review comes forward");
+    assert!(app.windows.others[0].ui.toast.is_some(), "a notice in that window says why");
+    assert!(app.close_request.is_none(), "and nothing is left half done");
+    assert!(app.ocr_verify.reject());
+    app.request_window_op(WindowOp::Close(Some(id)));
+    settle(app, &mut host);
+    assert_eq!(app.window_count(), 1, "after Reject the window closes");
+    assert!(app.session.get(b).is_none());
+}
+
+/// The review holds the first window's close too: no handoff (H1) happens while it would close
+/// the reviewed document.
+#[test]
+fn the_first_windows_close_holds_for_its_reviewed_document() {
+    let mut h = app_with_tabs();
+    let app = h.state_mut();
+    let a = app.win.views[0].id;
+    review(app, a);
+    let mut host = Host::new(app);
+    assert!(app.request_move_tab_to_new_window(1));
+    settle(app, &mut host);
+    let before = layout(app);
+    app.request_window_op(WindowOp::Close(None));
+    settle(app, &mut host);
+    assert_eq!(layout(app), before, "the first window's close is held: no handoff");
+    assert!(app.ocr_verify.open && app.session.get(a).is_some());
+}
+
+/// A window whose reviewed document another window still shows closes: the document stays
+/// open there, with its review.
+#[test]
+fn close_window_doesnt_hold_for_a_reviewed_document_another_window_shows() {
+    let mut h = app_with_tabs();
+    let app = h.state_mut();
+    let a = app.win.views[0].id;
+    review(app, a);
+    assert!(app.duplicate_view(0).is_some());
+    let mut host = Host::new(app);
+    // The duplicate (tab 1) goes to a second window; the first window keeps a, b, c.
+    assert!(app.request_move_tab_to_new_window(1));
+    settle(app, &mut host);
+    let id = app.windows.others[0].id;
+    app.request_window_op(WindowOp::Close(Some(id)));
+    settle(app, &mut host);
+    assert_eq!(app.window_count(), 1);
+    assert!(app.session.get(a).is_some() && app.ocr_verify.holds_reading_of(a));
+    assert_eq!(app.ocr_verify.text_of((0, 0)), Some("Edited"));
+}
+
+/// Close all and Quit from the first window hold for a review of a document in another window:
+/// no tab closes anywhere, and Quit is called off.
+#[test]
+fn close_all_and_quit_hold_for_a_review_in_another_window() {
+    let (mut h, _id, b) = b_under_review_in_its_own_window();
+    let app = h.state_mut();
+    let mut host = Host::new(app);
+    let before = layout(app);
+    app.close_all();
+    settle(app, &mut host);
+    assert_eq!(layout(app), before, "Close all closed nothing");
+    assert!(app.ocr_verify.open);
+    let ctx = app.ctx.clone().expect("a context");
+    assert!(!app.request_quit(&ctx), "Quit is held");
+    settle(app, &mut host);
+    assert_eq!(layout(app), before);
+    assert!(!app.allow_quit && app.session.get(b).is_some());
+}
+
+/// A review started while Close Window's question is open holds the close when the question is
+/// answered: the reviewed document and its window stay, and the close is cancelled cleanly.
+#[test]
+fn a_review_started_during_close_windows_question_cancels_the_close() {
+    let (mut h, id) = b_unsaved_in_its_own_window();
+    let app = h.state_mut();
+    let b = app.windows.others[0].ui.views[0].id;
+    let mut host = Host::new(app);
+    app.request_window_op(WindowOp::Close(Some(id)));
+    settle(app, &mut host);
+    assert_eq!(app.close_request, Some(CloseRequest::Window(Some(id))));
+    review(app, b);
+    answer(app, Some(false));
+    settle(app, &mut host);
+    assert_eq!(app.window_count(), 2, "the window stays");
+    assert!(app.session.get(b).is_some_and(|d| d.dirty), "its document stays open and unsaved");
+    assert!(app.close_request.is_none(), "no question left open");
+    assert_eq!(app.ocr_verify.text_of((0, 0)), Some("Edited"));
+}
+
+fn key(key: egui::Key) -> egui::Event {
+    egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE }
+}
+
+/// T-3 with the keyboard: while Close Window's question shows in the second window, the first
+/// window's keys answer nothing and run nothing (Escape, Enter, Ctrl+W); the second window's own
+/// keys answer it (Ctrl+D is Don't Save), and its window then closes.
+#[test]
+fn only_the_window_showing_the_question_reads_its_keys() {
+    let (mut h, id) = b_unsaved_in_its_own_window();
+    let app = h.state_mut();
+    let b = app.windows.others[0].ui.views[0].id;
+    let mut host = Host::new(app);
+    app.request_window_op(WindowOp::Close(Some(id)));
+    settle(app, &mut host);
+    assert_eq!(app.close_request, Some(CloseRequest::Window(Some(id))));
+    assert_eq!(app.dialog_window(), Some(id), "asked in the second window");
+    let before = layout(app);
+    // The first window's shortcut step, with its own input (a native window's input is its own;
+    // the test harness would show every key to every window it embeds).
+    let first = egui::Context::default();
+    let ctrl = |key| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::COMMAND };
+    for event in [key(egui::Key::Escape), key(egui::Key::Enter), ctrl(egui::Key::W)] {
+        let input = egui::RawInput { events: vec![event.clone()], ..Default::default() };
+        first.run_ui(input, |ui| app.shortcuts(ui.ctx())).textures_delta.clear();
+        settle(app, &mut host);
+        assert_eq!(app.close_request, Some(CloseRequest::Window(Some(id))), "{event:?} in the first window answered the question");
+        assert_eq!(layout(app), before, "{event:?} in the first window ran something");
+    }
+    // In the second window, Ctrl+D is Don't Save: b closes, then its window.
+    host.events.push(ctrl(egui::Key::D));
+    settle(app, &mut host);
+    settle(app, &mut host);
+    assert!(app.close_request.is_none());
+    assert!(app.session.get(b).is_none(), "answered Don't Save in its own window");
+    assert_eq!(app.window_count(), 1);
+}
