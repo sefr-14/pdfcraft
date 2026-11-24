@@ -70,6 +70,8 @@ impl PdfCraftApp {
     pub fn new() -> Self {
         Self {
             win: WindowUi::new(),
+            windows: Default::default(),
+            drawing_window: None,
             session: Session::new(),
             status_captions_lang: None,
             mode: Mode::AllTools,
@@ -220,6 +222,8 @@ impl PdfCraftApp {
             logic_without_ui: false,
             #[cfg(test)]
             panic_next: None,
+            #[cfg(test)]
+            panic_in_other_window: false,
             custom_actions: Vec::new(),
             wizard: Default::default(),
             action_run: None,
@@ -597,6 +601,9 @@ impl eframe::App for PdfCraftApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.begin_ui();
         self.guarded_frame(|app| app.ui_unguarded(ui));
+        // Every other window, each under its own guard, inside this pass (TAB.WINDOW.1 W2a).
+        let mut ctx = ui.ctx().clone();
+        self.show_other_windows(&mut ctx);
         self.end_ui();
     }
 }
@@ -834,7 +841,7 @@ impl PdfCraftApp {
         self.sync_titles(ctx);
     }
 
-    fn ui_unguarded(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn ui_unguarded(&mut self, ui: &mut egui::Ui) {
         #[cfg(test)]
         self.injected_panic(crate::frame_guard::FramePart::Ui);
         let ctx = ui.ctx().clone();
@@ -850,9 +857,14 @@ impl PdfCraftApp {
         self.motion.begin_pass(&ctx, self.animation_effects);
         // One-time 0.36 -> 0.37 panel persistence migration, before any panel stores or reads state.
         migrate_panel_state(ui);
+        // Once per frame, in the main window's pass, for the whole app (TAB.WINDOW.1 W2a): another
+        // window's pass draws that window and nothing app-wide.
+        let main = !self.drawing_other_window();
         // Rulers and guides follow opened, changed, saved and closed documents (OV11).
-        self.sync_doc_prefs();
-        if self.doc_prefs.changed() {
+        if main {
+            self.sync_doc_prefs();
+        }
+        if main && self.doc_prefs.changed() {
             // A frame once `auto_save_interval` has passed, for eframe to write the settings.
             ctx.request_repaint_after(std::time::Duration::from_millis(2100));
         }
@@ -869,7 +881,9 @@ impl PdfCraftApp {
         panes::frame(self);
         // Forms' scripts read Highlight fields as `app.runtimeHighlight`.
         let highlight = self.win.active.and_then(|i| self.win.views.get(i)).map_or(self.view_defaults.highlight_fields, |v| v.highlight_fields);
-        self.session.set_field_highlight(highlight);
+        if main {
+            self.session.set_field_highlight(highlight);
+        }
         self.sync_titles(&ctx);
         // The accessible window takes the same name, so a screen reader (AT-SPI on Linux, UIA on
         // Windows) can tell it apart (#4614). egui builds the root node afresh every pass.
@@ -885,14 +899,16 @@ impl PdfCraftApp {
                     }
                 }
             });
-            dialogs::show(self, &ctx);
-            // Notices too: a refused field value or a failed save must be seen in full screen.
-            self.show_progress(&ctx);
+            if main {
+                dialogs::show(self, &ctx);
+                // Notices too: a refused field value or a failed save must be seen in full screen.
+                self.show_progress(&ctx);
+            }
             widgets::toast(self, &ctx);
             self.show_pending_keys(&ctx);
             self.escape_late(&ctx);
             self.finish_render_frame(&ctx);
-            if let Some(mut control) = self.control.take() {
+            if main && let Some(mut control) = self.control.take() {
                 control.finish_frame(&ctx, self);
                 self.control = Some(control);
             }
@@ -911,11 +927,14 @@ impl PdfCraftApp {
         }
         // Another mode or the Home tab puts the OCR Verify screen away, as Exit does; Correct
         // recognized text brings it back with its review as it was.
-        if self.ocr_verify.open && (self.win.active.is_none() || self.ocr_verify.shown_in.is_some_and(|m| m != self.mode)) {
+        // One OCR Verify screen for the app, in the main window (which window shows it is W2b's).
+        if main && self.ocr_verify.open && (self.win.active.is_none() || self.ocr_verify.shown_in.is_some_and(|m| m != self.mode)) {
             self.ocr_verify.open = false;
         }
-        self.ocr_verify.shown_in = self.ocr_verify.open.then_some(self.mode);
-        if self.ocr_verify.open {
+        if main {
+            self.ocr_verify.shown_in = self.ocr_verify.open.then_some(self.mode);
+        }
+        if main && self.ocr_verify.open {
             // The OCR Verify screen takes the document area (its four panes) under the window's
             // tabs, menus and toolbar, which stay (#6485); the palette, dialogs and notices
             // still show above it.
@@ -925,7 +944,7 @@ impl PdfCraftApp {
             self.show_progress(&ctx);
             widgets::toast(self, &ctx);
             self.finish_render_frame(&ctx);
-            if let Some(mut control) = self.control.take() {
+            if main && let Some(mut control) = self.control.take() {
                 control.finish_frame(&ctx, self);
                 self.control = Some(control);
             }
@@ -952,17 +971,21 @@ impl PdfCraftApp {
         });
         // FitWindow and CenterWindow, once the document just opened is laid out.
         self.window_preferences_frame(&ctx);
-        self.process_pending_edits();
+        if main {
+            self.process_pending_edits();
+        }
         palette::show(self, &ctx);
-        dialogs::show(self, &ctx);
-        overlay_ui::show(self, &ctx);
-        self.show_progress(&ctx);
+        if main {
+            dialogs::show(self, &ctx);
+            overlay_ui::show(self, &ctx);
+            self.show_progress(&ctx);
+        }
         widgets::toast(self, &ctx);
         self.show_pending_keys(&ctx);
         self.escape_late(&ctx);
         self.finish_render_frame(&ctx);
         // Screenshots are issued only after a settled pass that really drew the window.
-        if let Some(mut control) = self.control.take() {
+        if main && let Some(mut control) = self.control.take() {
             control.finish_frame(&ctx, self);
             self.control = Some(control);
         }

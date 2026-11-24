@@ -72,6 +72,8 @@ pub mod i18n;
 pub mod theme;
 pub mod viewer_prefs;
 pub mod window_ui;
+// This fork: windows besides the main one (TAB.WINDOW.1 W2a).
+pub mod multi_window;
 pub use window_ui::WindowUi;
 mod widgets;
 
@@ -343,6 +345,10 @@ struct PendingDestination {
 pub struct PdfCraftApp {
     /// This window's tabs, panes, panels, tool, keys and notices (TAB.WINDOW.1).
     pub win: WindowUi,
+    /// The windows besides the main one (TAB.WINDOW.1 W2a); empty until a command makes one.
+    pub windows: multi_window::Windows,
+    /// The other window being drawn now, whose state is in `win` for its pass.
+    pub(crate) drawing_window: Option<multi_window::WindowId>,
     pub session: Session,
     /// The interface language signature status captions were last drawn in.
     pub(crate) status_captions_lang: Option<i18n::Lang>,
@@ -636,6 +642,9 @@ pub struct PdfCraftApp {
     /// Tests: the part of the next frame that panics on purpose.
     #[cfg(test)]
     panic_next: Option<frame_guard::FramePart>,
+    /// Tests: drawing any window but the main one panics.
+    #[cfg(test)]
+    pub(crate) panic_in_other_window: bool,
     /// Action Wizard: the user's actions, the dialog state, the running action and (tests) the
     /// files to use instead of a picker.
     pub custom_actions: Vec<pdfcraft_engine::actions::Action>,
