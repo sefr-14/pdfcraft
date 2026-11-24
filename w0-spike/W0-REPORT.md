@@ -405,7 +405,7 @@ Size and risk:
 
 ## 15. Windows run on GitHub Actions [ci-vm] (Revision 2)
 
-Run #48 (run id 45248098397, `97cdfe41`), both renderers, release build. Results artifact `w0-results-w0-spike-97cdfe4-windows-x64` (SHA-256 `2b31c71b7e6994ae06b7663fcea9be9eb3b908c8518824fcdc63ec29da234e25`): `results.csv` per renderer, every spike log, screenshots. Run #47 found no window at all, because of a harness bug (`FindWindow($null, …)`: PowerShell passes `$null` as `""`); fixed in `97cdfe41`.
+Run #48 (run id 45248098397, `97cdfe41`), both renderers, release build. Run #49 (run id 45395294559, `693a870d`) re-ran everything with the title-bar clicks spaced wider than the double-click time. Its only change from #48 is that row, now PASS. Every other row matched #48 (wgpu H2 13/s visible and hidden; glow H3 1 of 192 samples). Results artifact of #49 `w0-results-w0-spike-693a870-windows-x64` (SHA-256 `c50b214a4a6d66410bb8d894af1bb9029a0ab073fc3af523de5f9d77fb6b981d`). Results artifact `w0-results-w0-spike-97cdfe4-windows-x64` (SHA-256 `2b31c71b7e6994ae06b7663fcea9be9eb3b908c8518824fcdc63ec29da234e25`): `results.csv` per renderer, every spike log, screenshots. Run #47 found no window at all, because of a harness bug (`FindWindow($null, …)`: PowerShell passes `$null` as `""`); fixed in `97cdfe41`.
 
 Environment (probe rows):
 - interactive session 2;
@@ -427,7 +427,7 @@ Environment (probe rows):
 | W0-8 H2 | Root hides: PASS. Rate: glow 48/s visible, 51/s hidden; wgpu 14/s visible and 14/s hidden | No invisible-window throttle in either renderer. The wgpu row is FAIL only by its absolute threshold (30/s): the software renderer makes every frame slow. |
 | W0-8 H3 | glow **FAIL** (root visible in 1 of 190 samples); wgpu PASS (0 of 162) | A real flash of the never-shown root under glow, as §4 predicted from source. H3 stays rejected. |
 | W0-9 posted | **PASS** | 50/50 posted `WM_CLOSE` reached eframe and the app, root and secondary, animation off and on, both renderers (8 of 8 configurations). |
-| W0-9 title-bar clicks | **INCONCLUSIVE**: 5 of 10 in every configuration | eframe saw exactly the 5 closes that reached the app, so nothing was lost inside the app. The clicks were 350 ms apart, inside Windows' default double-click time (500 ms), so every second click on the X probably became a double-click and no close. Re-run with the clicks spaced wider than the double-click time (§15 follow-up). |
+| W0-9 title-bar clicks | **PASS** (run #49): 10 of 10 at eframe and at the app, root and secondary, animation off and on, both renderers (8 of 8) | Real clicks on each window's title-bar X, 750 ms apart; the runner's double-click time is 500 ms. Run #48 spaced the clicks 350 ms apart, inside the double-click time, and got exactly 5 of 10 everywhere, with eframe seeing the same 5 as the app. Every second click was a double-click on the X, which Windows does not turn into a close. That was a harness artifact, not a lost event. |
 | Unsaved close | **PASS** | Through the title bar: the first click is held, the second closes. |
 | Focus, geometry | **PASS** | A click brings each window to the foreground. The client area lies inside the DWM frame and is drawn. |
 | Accessibility | Root **7** UI Automation elements, secondary **0** (the known gap, now seen on Windows); fallback `a11y_merge` and `a11y_detach_refused` PASS | A UI Automation query activates AccessKit as a screen reader does. No screen reader was run: Narrator listening stays a human check. |
