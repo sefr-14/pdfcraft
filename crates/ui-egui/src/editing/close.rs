@@ -51,6 +51,13 @@ impl PdfCraftApp {
     /// File ▸ Close all: clean documents close at once; each one with unsaved changes asks.
     /// While a document is under OCR review, nothing closes: the review comes forward first.
     pub fn close_all(&mut self) {
+        // Every window's tabs join the main window first, which then closes them as it always has.
+        if self.drawing_other_window() {
+            self.request_window_op(crate::multi_window::WindowOp::MergeAll);
+            self.request_window_op(crate::multi_window::WindowOp::Run("file.close_all"));
+            return;
+        }
+        self.merge_all_windows();
         if self.hold_for_any_ocr_review() {
             return;
         }
@@ -213,6 +220,13 @@ impl PdfCraftApp {
     /// Returns false while the existing save/discard/cancel prompt needs a decision, or while an
     /// OCR review is still to be accepted or rejected.
     pub(crate) fn request_quit(&mut self, ctx: &egui::Context) -> bool {
+        // Quitting from another window: every tab joins the main window first, which then asks
+        // about unsaved work as it always has, so no window's documents are left out.
+        if self.drawing_other_window() {
+            self.request_window_op(crate::multi_window::WindowOp::Quit);
+            return false;
+        }
+        self.merge_all_windows();
         if self.hold_for_any_ocr_review() {
             ctx.request_repaint();
             false
@@ -271,6 +285,9 @@ impl PdfCraftApp {
         if !ctx.input(|i| i.viewport().close_requested()) {
             return;
         }
+        // The main window's close quits the app: every other window's tabs join it first, so its
+        // question about unsaved work covers them (W2c re-homes the main window instead).
+        self.merge_all_windows();
         if !self.allow_quit && self.hold_for_any_ocr_review() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
         } else if !self.allow_quit && self.first_dirty().is_some() {

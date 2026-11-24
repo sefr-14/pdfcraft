@@ -7,8 +7,9 @@
 //! viewport during the main window's pass: its [`WindowUi`] is swapped into `win` for its pass,
 //! so the code that draws a window keeps reading `app.win`, and swapped back after it.
 //!
-//! W2a is the architecture only. No command creates a window yet (W2b), so the app behaves as
-//! before: [`Windows::others`] stays empty outside tests.
+//! W2b adds the commands that make and arrange windows (Move Tab to New Window, Move Tab to
+//! Window, Merge All Windows, Close Window), off by default behind the "Keep all documents in
+//! one window" preference.
 //!
 //! Safety rules from the W0 spike (`w0-spike/W0-REPORT.md` §7, §11), each with a test here:
 //! - A panic while a window draws is caught **inside** its viewport closure. Caught outside,
@@ -56,9 +57,9 @@ pub struct SecondaryWindow {
 }
 
 impl SecondaryWindow {
-    fn builder(&self) -> ViewportBuilder {
+    fn builder(&self, template: Option<&ViewportBuilder>) -> ViewportBuilder {
         let title = if self.ui.window_title.is_empty() { "PDF Overlay" } else { self.ui.window_title.as_str() };
-        let builder = ViewportBuilder::default().with_title(title).with_inner_size(self.geometry.size);
+        let builder = template.cloned().unwrap_or_default().with_title(title).with_inner_size(self.geometry.size);
         match self.geometry.pos {
             Some(pos) => builder.with_position(pos),
             None => builder,
@@ -71,6 +72,16 @@ impl SecondaryWindow {
 pub struct Windows {
     pub others: Vec<SecondaryWindow>,
     next: u64,
+    /// The documents each window had on screen at its last pass: a document another window shows
+    /// keeps its render queue and results (`finish_render_frame`).
+    pub(crate) on_screen: Vec<(WindowKey, Vec<pdfcraft_engine::DocId>)>,
+    /// Window changes asked for, carried out between passes.
+    pub(crate) pending: Vec<WindowOp>,
+    /// Documents whose hidden tab in one window let go of render requests that the tab showing
+    /// them in another window must queue again at its next pass.
+    pub(crate) requeue: Vec<pdfcraft_engine::DocId>,
+    /// The main window's settings (decorations, icon, minimum size) for the others.
+    pub template: Option<ViewportBuilder>,
 }
 
 impl Windows {
@@ -200,74 +211,170 @@ pub(crate) enum PassOutcome {
     FrameworkFailed(String),
 }
 
+/// A window: the main one (`None`) or another.
+pub type WindowKey = Option<WindowId>;
+
+/// A change to which window shows what. It can be asked for at any time (a menu, a key, a tab's
+/// menu, in any window's pass) and is carried out between passes, when no window's state is
+/// swapped into `win`, so no pass ever sees the list of windows change under it.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum WindowOp {
+    /// Move Tab to New Window: the tab with view key `view` leaves window `from`.
+    MoveToNew { from: WindowKey, view: crate::canvas::ViewKey, geometry: Geometry },
+    /// Move Tab to Window: the tab goes to the end of window `to`'s strip.
+    MoveTo { from: WindowKey, view: crate::canvas::ViewKey, to: WindowKey },
+    /// Merge All Windows: every tab into the main window.
+    MergeAll,
+    /// Close Window.
+    Close(WindowKey),
+    /// Bring a window to the front.
+    Focus(WindowKey),
+    /// Run a command in the main window, once the changes before it are done (Close all from
+    /// another window: every tab joins the main window first, which then closes them as always).
+    Run(&'static str),
+    /// Quit, asked for in another window: every tab joins the main window, which then asks
+    /// about unsaved work as it always has.
+    Quit,
+}
+
 impl PdfCraftApp {
-    /// After the main window's pass: draw every other window, each in its own guarded pass, and
-    /// give back the tabs of a window that can't be shown. With no native windows (`embedded`),
-    /// every window's tabs come back to the main window and none is shown.
-    pub(crate) fn show_other_windows(&mut self, host: &mut dyn ViewportHost) {
-        if self.windows.others.is_empty() {
-            return;
-        }
-        let mut give_back = Vec::new();
-        if host.embedded() {
-            give_back = std::mem::take(&mut self.windows.others);
-        } else {
-            let mut keep = Vec::new();
-            for mut window in std::mem::take(&mut self.windows.others) {
-                match self.window_pass(host, &mut window) {
-                    PassOutcome::Shown => {
-                        window.panicking_passes = 0;
-                        keep.push(window);
-                    }
-                    PassOutcome::CloseRequested => give_back.push(window),
-                    PassOutcome::Panicked(message) => {
-                        log::error!("drawing a window panicked and was caught: {message}");
-                        window.panicking_passes = window.panicking_passes.saturating_add(1);
-                        self.after_window_panic(&message);
-                        if window.panicking_passes >= MAX_PANICKING_PASSES {
-                            give_back.push(window);
-                        } else {
-                            keep.push(window);
-                        }
-                    }
-                    PassOutcome::NotOpened => {
-                        log::error!("a window could not be opened; its tabs go back");
-                        self.notify_fmt("A new window could not be opened. Its tabs are back where they were.", &[]);
-                        give_back.push(window);
-                    }
-                    PassOutcome::FrameworkFailed(message) => {
-                        log::error!("a window failed outside its drawing: {message}");
-                        self.notify_fmt("A window stopped working ({m}). Its tabs are back where they were.", &[("m", &message)]);
-                        give_back.push(window);
-                    }
-                }
-            }
-            // Windows added while the others were drawn (none in W2a) follow the ones kept.
-            keep.append(&mut self.windows.others);
-            self.windows.others = keep;
-        }
-        for window in give_back {
-            self.give_back(window);
+    /// The window whose state is in `win` now: the main window unless another one's pass (or an
+    /// operation on it) is running.
+    pub(crate) fn current_window(&self) -> WindowKey {
+        self.drawing_window
+    }
+
+    /// Every window's state, the main window first. While another window's state is in `win`,
+    /// that window's slot in the list holds the main window's.
+    pub(crate) fn window_uis(&self) -> Vec<(WindowKey, &WindowUi)> {
+        let current = self.drawing_window;
+        let mut all = vec![(current, &self.win)];
+        all.extend(self.windows.others.iter().map(|w| (if Some(w.id) == current { None } else { Some(w.id) }, &w.ui)));
+        all.sort_by_key(|(key, _)| key.is_some());
+        all
+    }
+
+    /// [`Self::window_uis`], to change them.
+    pub(crate) fn window_uis_mut(&mut self) -> Vec<(WindowKey, &mut WindowUi)> {
+        let current = self.drawing_window;
+        let mut all = vec![(current, &mut self.win)];
+        all.extend(self.windows.others.iter_mut().map(|w| (if Some(w.id) == current { None } else { Some(w.id) }, &mut w.ui)));
+        all.sort_by_key(|(key, _)| key.is_some());
+        all
+    }
+
+    /// Whether a window other than the current one has a tab on document `id`.
+    pub(crate) fn viewed_in_other_window(&self, id: pdfcraft_engine::DocId) -> bool {
+        let current = self.drawing_window;
+        self.window_uis().iter().any(|(key, ui)| *key != current && ui.views.iter().any(|v| v.id == id))
+    }
+
+    /// Note what the current window has on screen, for the other windows' passes.
+    pub(crate) fn note_on_screen(&mut self, docs: Vec<pdfcraft_engine::DocId>) {
+        let current = self.drawing_window;
+        match self.windows.on_screen.iter_mut().find(|(key, _)| *key == current) {
+            Some((_, shown)) => *shown = docs,
+            None => self.windows.on_screen.push((current, docs)),
         }
     }
 
-    /// One window's pass. Its state is swapped into `win` and back inside the viewport closure,
+    /// Run `f` with window `key`'s state in `win`, as its pass does, under a guard. `None` when
+    /// there is no such window, `f` panicked, or another window's state is in `win` already.
+    pub(crate) fn with_window<R>(&mut self, key: WindowKey, f: impl FnOnce(&mut Self) -> R) -> Option<R> {
+        if self.drawing_window.is_some() {
+            return None;
+        }
+        let Some(id) = key else {
+            return pdfcraft_engine::guard(|| f(self)).map_err(|m| log::error!("a window operation panicked: {m}")).ok();
+        };
+        let i = self.windows.others.iter().position(|w| w.id == id)?;
+        std::mem::swap(&mut self.win, &mut self.windows.others[i].ui);
+        self.drawing_window = Some(id);
+        let result = pdfcraft_engine::guard(|| f(self));
+        self.drawing_window = None;
+        if let Some(w) = self.windows.others.get_mut(i) {
+            std::mem::swap(&mut self.win, &mut w.ui);
+        }
+        result.map_err(|m| log::error!("a window operation panicked: {m}")).ok()
+    }
+
+    /// Ask for a change to the windows; it happens between passes ([`Self::apply_window_ops`]).
+    pub(crate) fn request_window_op(&mut self, op: WindowOp) {
+        self.windows.pending.push(op);
+        if let Some(ctx) = &self.ctx {
+            ctx.request_repaint();
+        }
+    }
+
+    /// After the main window's pass: carry out the window changes asked for, then draw every other
+    /// window, each in its own guarded pass, and give back the tabs of a window that can't be
+    /// shown. Where several windows aren't available (no native windows, the single-window
+    /// preference, macOS for now), every tab comes back to the main window and none is shown.
+    pub(crate) fn show_other_windows(&mut self, host: &mut dyn ViewportHost) {
+        self.apply_window_ops();
+        if !self.windows.others.is_empty() && (host.embedded() || self.windows_unavailable().is_some()) {
+            self.merge_all_windows();
+        }
+        let ids: Vec<WindowId> = self.windows.others.iter().map(|w| w.id).collect();
+        let mut failed = Vec::new();
+        for id in ids {
+            match self.window_pass(host, id) {
+                PassOutcome::Shown => {
+                    if let Some(w) = self.windows.others.iter_mut().find(|w| w.id == id) {
+                        w.panicking_passes = 0;
+                    }
+                }
+                PassOutcome::CloseRequested => self.request_window_op(WindowOp::Close(Some(id))),
+                PassOutcome::Panicked(message) => {
+                    log::error!("drawing a window panicked and was caught: {message}");
+                    self.after_window_panic(&message);
+                    if let Some(w) = self.windows.others.iter_mut().find(|w| w.id == id) {
+                        w.panicking_passes = w.panicking_passes.saturating_add(1);
+                        if w.panicking_passes >= MAX_PANICKING_PASSES {
+                            failed.push(id);
+                        }
+                    }
+                }
+                PassOutcome::NotOpened => {
+                    log::error!("a window could not be opened; its tabs go back");
+                    self.notify_fmt("A new window could not be opened. Its tabs are back where they were.", &[]);
+                    failed.push(id);
+                }
+                PassOutcome::FrameworkFailed(message) => {
+                    log::error!("a window failed outside its drawing: {message}");
+                    self.notify_fmt("A window stopped working ({m}). Its tabs are back where they were.", &[("m", &message)]);
+                    failed.push(id);
+                }
+            }
+        }
+        for id in failed {
+            if let Some(i) = self.windows.others.iter().position(|w| w.id == id) {
+                let window = self.windows.others.remove(i);
+                self.give_back(window);
+            }
+        }
+        self.apply_window_ops();
+    }
+
+    /// One window's pass. Its state is swapped with the main window's inside the viewport closure,
     /// under a guard of its own, so a panic while drawing it neither escapes egui's pass nor leaves
     /// its state in the main window's place.
-    fn window_pass(&mut self, host: &mut dyn ViewportHost, window: &mut SecondaryWindow) -> PassOutcome {
-        let builder = window.builder();
-        let id = window.id;
+    fn window_pass(&mut self, host: &mut dyn ViewportHost, id: WindowId) -> PassOutcome {
+        let Some(window) = self.windows.others.iter().find(|w| w.id == id) else { return PassOutcome::Shown };
+        let builder = window.builder(self.windows.template.as_ref());
         let mut ran = false;
         let mut inner: Option<String> = None;
         let mut close = false;
         let shown = pdfcraft_engine::guard(|| {
             host.show(id.viewport(), builder, &mut |ui, _class| {
                 ran = true;
-                std::mem::swap(&mut self.win, &mut window.ui);
+                // Window operations wait until all passes are over, so its place is unchanged.
+                let Some(i) = self.windows.others.iter().position(|w| w.id == id) else { return };
+                std::mem::swap(&mut self.win, &mut self.windows.others[i].ui);
                 self.drawing_window = Some(id);
                 let result = pdfcraft_engine::guard(|| self.draw_window(ui));
                 self.drawing_window = None;
-                std::mem::swap(&mut self.win, &mut window.ui);
+                std::mem::swap(&mut self.win, &mut self.windows.others[i].ui);
                 if let Err(message) = result {
                     inner = Some(message);
                 }
@@ -293,6 +400,16 @@ impl PdfCraftApp {
         #[cfg(test)]
         self.injected_window_panic();
         self.ui_unguarded(ui);
+        // ⌘Q / Ctrl+Q in another window quits as it does in the main one, whose `logic` only reads
+        // the main window's keys.
+        if self.drawing_other_window() {
+            let quit = ui.ctx().input(|i| {
+                i.events.iter().any(|e| matches!(e, egui::Event::Key { key: egui::Key::Q, pressed: true, modifiers, .. } if modifiers.matches_exact(egui::Modifiers::COMMAND)))
+            });
+            if quit {
+                self.request_window_op(WindowOp::Quit);
+            }
+        }
     }
 
     /// `true` while another window than the main one is being drawn.
@@ -314,6 +431,7 @@ impl PdfCraftApp {
     /// Give a window's tabs back to the window they came from, at the position they left, with
     /// the first of them active; to the end of the main window if that window is gone.
     pub(crate) fn give_back(&mut self, mut window: SecondaryWindow) {
+        self.windows.on_screen.retain(|(key, _)| *key != Some(window.id));
         let views: Vec<DocView> = std::mem::take(&mut window.ui.views);
         if views.is_empty() {
             return;
@@ -331,6 +449,304 @@ impl PdfCraftApp {
         let at = at.min(ui.views.len());
         ui.views.splice(at..at, views);
         ui.active = Some(at);
+    }
+
+    /// Every other window's tabs into the main window, after its own, in window order; the other
+    /// windows close. No document closes, so nothing is asked.
+    pub(crate) fn merge_all_windows(&mut self) {
+        if self.drawing_window.is_some() {
+            self.request_window_op(WindowOp::MergeAll);
+            return;
+        }
+        for mut window in std::mem::take(&mut self.windows.others) {
+            self.windows.on_screen.retain(|(key, _)| *key != Some(window.id));
+            let views = std::mem::take(&mut window.ui.views);
+            if self.win.active.is_none() && !views.is_empty() {
+                self.win.active = Some(self.win.views.len());
+            }
+            self.win.views.extend(views);
+        }
+    }
+
+    /// Carry out the window changes asked for since the last time. Only between passes.
+    pub(crate) fn apply_window_ops(&mut self) {
+        if self.drawing_window.is_some() {
+            return;
+        }
+        for op in std::mem::take(&mut self.windows.pending) {
+            match op {
+                WindowOp::MoveToNew { from, view, geometry } => self.move_to_new_window(from, view, geometry),
+                WindowOp::MoveTo { from, view, to } => self.move_to_window(from, view, to),
+                WindowOp::MergeAll => self.merge_all_windows(),
+                WindowOp::Close(key) => self.close_window(key),
+                WindowOp::Focus(key) => self.focus_window(key),
+                WindowOp::Run(command) => {
+                    let _ = self.execute(command);
+                }
+                WindowOp::Quit => {
+                    if let Some(ctx) = self.ctx.clone() {
+                        self.request_quit(&ctx);
+                    }
+                }
+            }
+        }
+        // A window whose last tab closed (or moved away) closes too.
+        let empty: Vec<WindowId> = self.windows.others.iter().filter(|w| w.ui.views.is_empty()).map(|w| w.id).collect();
+        for id in empty {
+            self.windows.others.retain(|w| w.id != id);
+            self.windows.on_screen.retain(|(key, _)| *key != Some(id));
+        }
+    }
+
+    fn move_to_new_window(&mut self, from: WindowKey, view: crate::canvas::ViewKey, geometry: Geometry) {
+        let Some(Some((tab, index, mode))) = self.with_window(from, |app| app.take_tab(view, false)) else { return };
+        let mut ui = WindowUi::new();
+        ui.mode = mode;
+        ui.views.push(tab);
+        ui.active = Some(0);
+        self.windows.add(ui, geometry, Some(Origin { window: from, index }));
+    }
+
+    fn move_to_window(&mut self, from: WindowKey, view: crate::canvas::ViewKey, to: WindowKey) {
+        if from == to || (to.is_some() && !self.windows.others.iter().any(|w| Some(w.id) == to)) {
+            return;
+        }
+        let Some(Some((tab, index, _))) = self.with_window(from, |app| app.take_tab(view, from.is_some())) else { return };
+        let mut tab = Some(tab);
+        self.with_window(to, |app| {
+            if let Some(t) = tab.take() {
+                app.win.views.push(t);
+                app.win.active = Some(app.win.views.len() - 1);
+            }
+        });
+        // The window it was going to went away meanwhile: back where it was.
+        if let Some(t) = tab.take() {
+            self.with_window(from, |app| {
+                let at = index.min(app.win.views.len());
+                app.win.views.insert(at, t);
+                app.win.active = Some(at);
+            });
+        }
+        self.focus_window(to);
+    }
+
+    /// Close Window. Another window closes with its tabs; a document closes with its last tab in
+    /// any window. Until the close rules of W2c ask about unsaved work across windows, a window
+    /// holding the last tab of a document with unsaved work stays open and says so. The main
+    /// window closes (and the app quits, asking about unsaved work) only when it is the last.
+    pub(crate) fn close_window(&mut self, key: WindowKey) {
+        let Some(id) = key else {
+            if self.windows.others.is_empty() {
+                if let Some(ctx) = &self.ctx {
+                    ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Close);
+                }
+            } else {
+                self.notify_tr("Close or merge the other windows first: the first window closes last for now.");
+            }
+            return;
+        };
+        let at_risk = self
+            .with_window(key, |app| {
+                (0..app.win.views.len())
+                    .filter(|&i| {
+                        app.has_unsaved_work(i)
+                            && app
+                                .win
+                                .views
+                                .get(i)
+                                .is_some_and(|v| !app.viewed_in_other_window(v.id) && app.win.views.iter().filter(|w| w.id == v.id).count() == 1)
+                    })
+                    .filter_map(|i| crate::canvas::tab_label(app, i))
+                    .collect::<Vec<String>>()
+            })
+            .unwrap_or_default();
+        if let Some(name) = at_risk.first() {
+            self.notify_fmt("{name} has unsaved changes. Save it, or move its tab to another window, before closing this window.", &[("name", name)]);
+            self.focus_window(key);
+            return;
+        }
+        self.with_window(key, |app| {
+            while let Some(last) = app.win.views.len().checked_sub(1) {
+                app.close_tab(last);
+            }
+        });
+        self.windows.others.retain(|w| w.id != id);
+        self.windows.on_screen.retain(|(k, _)| *k != key);
+    }
+
+    fn focus_window(&mut self, key: WindowKey) {
+        let viewport = key.map_or(egui::ViewportId::ROOT, WindowId::viewport);
+        if let Some(ctx) = &self.ctx {
+            ctx.send_viewport_cmd_to(viewport, egui::ViewportCommand::Focus);
+        }
+    }
+
+    /// Why several windows can't be used here, or `None` when they can.
+    pub(crate) fn windows_unavailable(&self) -> Option<&'static str> {
+        if !self.native_windows_here() {
+            Some("Only one window can be used here.")
+        } else if cfg!(target_os = "macos") && !self.native_windows_forced() {
+            // O-5: until quitting and closing several windows can be told apart there.
+            Some("Several windows aren't available on macOS yet.")
+        } else if self.keep_one_window {
+            Some("Turn off \"Keep all documents in one window\" in Preferences to use several windows.")
+        } else {
+            None
+        }
+    }
+
+    /// Whether the platform can make more native windows here (not wasm, not the test harness).
+    fn native_windows_here(&self) -> bool {
+        self.native_windows_forced() || (!cfg!(target_arch = "wasm32") && self.ctx.as_ref().is_some_and(|c| !c.embed_viewports()))
+    }
+
+    /// Tests: native windows stand in for the harness, which has none.
+    fn native_windows_forced(&self) -> bool {
+        #[cfg(test)]
+        return self.force_native_windows;
+        #[cfg(not(test))]
+        false
+    }
+
+    /// The windows a tab can move to from the current one, for the Window menu: the main window
+    /// and the others, with a name each.
+    pub(crate) fn window_names(&self) -> Vec<(WindowKey, String)> {
+        self.window_uis()
+            .iter()
+            .enumerate()
+            .map(|(n, (key, ui))| {
+                let doc = ui.active.and_then(|i| ui.views.get(i)).and_then(|v| self.session.get(v.id)).map(|d| d.display_name()).unwrap_or_default();
+                let name = crate::i18n::fmt(tl!("Window {n}"), &[("n", &(n + 1).to_string())]);
+                (*key, if doc.is_empty() { name } else { format!("{name} — {doc}") })
+            })
+            .collect()
+    }
+
+    /// How many windows there are, the main one included.
+    pub(crate) fn window_count(&self) -> usize {
+        1 + self.windows.others.len()
+    }
+
+    /// The window at `index` in the order of [`Self::window_names`] (the main window first).
+    pub(crate) fn window_at(&self, index: usize) -> Option<WindowKey> {
+        self.window_uis().get(index).map(|(key, _)| *key)
+    }
+
+    /// Why tab `index` of the current window can't move to a new window (`to` is `None`) or to
+    /// window `to`; `None` when it can.
+    pub(crate) fn move_unavailable(&self, index: usize, to: Option<WindowKey>) -> Option<&'static str> {
+        if let Some(reason) = self.windows_unavailable() {
+            return Some(reason);
+        }
+        let current = self.current_window();
+        if index >= self.win.views.len() {
+            return Some("Open a document first");
+        }
+        match to {
+            None if self.win.views.len() < 2 => Some("A window's only tab can't move to a new window."),
+            Some(to) if to == current => Some("The tab is in that window already."),
+            Some(Some(id)) if !self.window_uis().iter().any(|(key, _)| *key == Some(id)) => Some("That window is closed."),
+            Some(_) if current.is_none() && self.win.views.len() < 2 => Some("The first window keeps at least one tab."),
+            _ => None,
+        }
+    }
+
+    /// Move Tab to New Window for tab `index` of the current window. `false` (and the user is told
+    /// why) when it can't.
+    pub(crate) fn request_move_tab_to_new_window(&mut self, index: usize) -> bool {
+        if let Some(reason) = self.move_unavailable(index, None) {
+            self.notify_tr(reason);
+            return false;
+        }
+        let Some(view) = self.win.views.get(index).map(|v| crate::canvas::ViewKey(v.view_key())) else { return false };
+        let geometry = self.new_window_geometry();
+        self.request_window_op(WindowOp::MoveToNew { from: self.current_window(), view, geometry });
+        true
+    }
+
+    /// Move Tab to Window: tab `index` of the current window to the end of window `to`'s strip.
+    pub(crate) fn request_move_tab_to_window(&mut self, index: usize, to: WindowKey) -> bool {
+        if let Some(reason) = self.move_unavailable(index, Some(to)) {
+            self.notify_tr(reason);
+            return false;
+        }
+        let Some(view) = self.win.views.get(index).map(|v| crate::canvas::ViewKey(v.view_key())) else { return false };
+        self.request_window_op(WindowOp::MoveTo { from: self.current_window(), view, to });
+        true
+    }
+
+    /// A file already open in a tab of another window: that tab becomes the window's active one and
+    /// the window comes to the front. `false` when no other window shows it.
+    pub(crate) fn focus_tab_in_other_window(&mut self, path: &str) -> bool {
+        let current = self.drawing_window;
+        let session = &self.session;
+        let shows = |v: &DocView| session.get(v.id).and_then(|d| d.path.as_deref()).is_some_and(|p| same_path(p, path));
+        let mut found = None;
+        if current.is_some()
+            && let Some(i) = self.windows.others.iter().find(|w| Some(w.id) == current).and_then(|w| w.ui.views.iter().position(&shows))
+        {
+            // While another window is drawn, the main window's state is in that window's slot.
+            if let Some(w) = self.windows.others.iter_mut().find(|w| Some(w.id) == current) {
+                w.ui.active = Some(i);
+            }
+            found = Some(None);
+        }
+        if found.is_none() {
+            for w in self.windows.others.iter_mut().filter(|w| Some(w.id) != current) {
+                if let Some(i) = w.ui.views.iter().position(&shows) {
+                    w.ui.active = Some(i);
+                    found = Some(Some(w.id));
+                    break;
+                }
+            }
+        }
+        match found {
+            Some(key) => {
+                self.request_window_op(WindowOp::Focus(key));
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Where a window made from the current one goes (O-3): 32 px from it, on its monitor, inside
+    /// that monitor's usable area, the size of the current window.
+    pub(crate) fn new_window_geometry(&self) -> Geometry {
+        let Some(ctx) = &self.ctx else { return validate(None, FALLBACK_SIZE, Limits { ppp: 1.0, monitor: None, usable: None }) };
+        let (outer, inner, ppp, monitor) = ctx.input(|i| {
+            let v = i.viewport();
+            (v.outer_rect, v.inner_rect, v.native_pixels_per_point.unwrap_or(i.pixels_per_point), v.monitor_size)
+        });
+        let size = inner.map_or(FALLBACK_SIZE, |r| r.size());
+        let ppp = finite_positive(Some(ppp)).unwrap_or(1.0);
+        match outer {
+            Some(outer) => {
+                let area = crate::platform::monitors::monitor_at(outer.center() * ppp);
+                beside(outer, size, limits_on(area, ppp, monitor))
+            }
+            // Wayland: windows can't be placed; the platform picks.
+            None => validate(None, size, Limits { ppp, monitor, usable: None }),
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn same_path(a: &str, b: &str) -> bool {
+    crate::same_file(a, b)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn same_path(a: &str, b: &str) -> bool {
+    a == b
+}
+
+/// The limits on the monitor `area` (physical pixels) for a window at `ppp`, in points.
+pub fn limits_on(area: Option<crate::platform::monitors::MonitorArea>, ppp: f32, monitor_size: Option<Vec2>) -> Limits {
+    let ppp = finite_positive(Some(ppp)).unwrap_or(1.0);
+    let points = |r: Rect| Rect::from_min_max((r.min.to_vec2() / ppp).to_pos2(), (r.max.to_vec2() / ppp).to_pos2());
+    match area {
+        Some(a) => Limits { ppp, monitor: Some(a.bounds.size() / ppp), usable: Some(points(a.work)) },
+        None => Limits { ppp, monitor: monitor_size, usable: None },
     }
 }
 

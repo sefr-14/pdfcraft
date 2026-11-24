@@ -1777,7 +1777,7 @@ fn mode_tabs_keep_the_hand_over_a_text_field_scrolled_under_them() {
     assert_eq!(mode_tab_cursors(&mut h, name), HAND_ON_EVERY_TAB, "the open field under the tabs");
     let convert = mode_tab(&h, "Convert").center();
     click_at(&mut h, convert);
-    assert_eq!(h.state().mode, pdfcraft_ui_egui::Mode::Convert, "the tab takes the click, not the field's editor");
+    assert_eq!(h.state().win.mode, pdfcraft_ui_egui::Mode::Convert, "the tab takes the click, not the field's editor");
 }
 
 /// The one-page PDF `guide_fixture` attaches as `Guide.pdf`.

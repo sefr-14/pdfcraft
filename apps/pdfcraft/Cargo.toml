@@ -31,6 +31,10 @@ serde_json = { workspace = true }
 log = { workspace = true }
 # The log timestamp goes through chrono (no hand-rolled calendar code).
 chrono = { workspace = true }
+# Where the monitors are, for placing new windows (TAB.WINDOW.1, src/main.rs `MonitorHook`):
+# eframe hands each new window over as winit's. Already in the tree through eframe and covered
+# by the workspace's winit patch.
+winit = { version = "0.30", default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Finder double-click / Open With / Dock drops arrive as Apple events (#73); this small audited

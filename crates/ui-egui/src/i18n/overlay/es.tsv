@@ -116,3 +116,23 @@
 	A bookmark can't go inside itself	Un marcador no puede colocarse dentro de sí mismo
 	Clear the search to rearrange bookmarks	Borre la búsqueda para reorganizar los marcadores
 	The bookmarks changed, so nothing was moved. Select them again.	Los marcadores cambiaron, así que no se movió nada. Vuelva a seleccionarlos.
+	Move tab to new window	Mover pestaña a una ventana nueva
+	Merge all windows	Combinar todas las ventanas
+	Close window	Cerrar ventana
+	Move tab to window	Mover pestaña a la ventana
+	Window {n}	Ventana {n}
+	Move to New Window	Mover a una ventana nueva
+	Move to Window	Mover a la ventana
+	Keep all documents in one window	Mantener todos los documentos en una ventana
+	A new window could not be opened. Its tabs are back where they were.	No se pudo abrir una ventana nueva. Sus pestañas han vuelto a donde estaban.
+	A window stopped working ({m}). Its tabs are back where they were.	Una ventana dejó de funcionar ({m}). Sus pestañas han vuelto a donde estaban.
+	Close or merge the other windows first: the first window closes last for now.	Cierre o combine primero las otras ventanas: por ahora, la primera ventana se cierra la última.
+	{name} has unsaved changes. Save it, or move its tab to another window, before closing this window.	{name} tiene cambios sin guardar. Guárdelo o mueva su pestaña a otra ventana antes de cerrar esta ventana.
+	Only one window can be used here.	Aquí solo se puede usar una ventana.
+	Several windows aren't available on macOS yet.	Varias ventanas aún no están disponibles en macOS.
+	Turn off "Keep all documents in one window" in Preferences to use several windows.	Desactive «Mantener todos los documentos en una ventana» en Preferencias para usar varias ventanas.
+	There is only one window.	Solo hay una ventana.
+	A window's only tab can't move to a new window.	La única pestaña de una ventana no se puede mover a una ventana nueva.
+	The tab is in that window already.	La pestaña ya está en esa ventana.
+	That window is closed.	Esa ventana está cerrada.
+	The first window keeps at least one tab.	La primera ventana conserva al menos una pestaña.

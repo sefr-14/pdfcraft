@@ -254,6 +254,10 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("view.previous_tab", "Previous tab", VIEW, Some(Shortcut { command: false, shift: true, mac_ctrl: true, key: "Tab" }), Nothing, "chevron-left"),
     // This fork (OV7): another tab on the active document, navigated on its own.
     c("view.duplicate_tab", "Duplicate tab", VIEW, None, Document, "copy"),
+    // This fork (TAB.WINDOW.1): several windows, in the Window menu.
+    c("window.move_tab_to_new", "Move tab to new window", None, None, Document, "app-window"),
+    c("window.merge_all", "Merge all windows", None, None, Nothing, "app-window"),
+    c("window.close", "Close window", None, None, Nothing, "x"),
     // This fork (OV7.2): the active view alone, or every view side by side in columns.
     c("view.tab_view", "Tab view", VIEW, None, Document, "app-window"),
     c("view.tile_view", "Tile view", VIEW, None, Document, "columns-3"),

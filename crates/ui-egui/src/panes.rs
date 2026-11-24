@@ -381,11 +381,6 @@ impl PdfCraftApp {
         }
     }
 
-    /// The tabs, one per document (the last session lists each file once).
-    pub(crate) fn first_views(&self) -> impl Iterator<Item = &crate::DocView> {
-        self.win.views.iter().enumerate().filter(|(i, v)| !self.win.views.iter().take(*i).any(|w| w.id == v.id)).map(|(_, v)| v)
-    }
-
     /// The tab that comes forward when the active tab closes (it was at `index`, in `place`, and
     /// is gone from `views`): the one that took its place in the same strip, else the strip's last,
     /// else the tab the other pane shows.

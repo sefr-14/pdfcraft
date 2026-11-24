@@ -4231,7 +4231,7 @@ fn edit_tab_with_an_open_paragraph(h: &mut Harness<'static, PdfCraftApp>) {
     use pdfcraft_ui_egui::{Mode, QuickTool};
     support::outside_menus(h, "Edit").click();
     h.run_steps(3);
-    assert_eq!((h.state().mode, h.state().win.quick_tool), (Mode::Edit, QuickTool::EditText));
+    assert_eq!((h.state().win.mode, h.state().win.quick_tool), (Mode::Edit, QuickTool::EditText));
     open_the_first_line(h);
 }
 
@@ -4271,7 +4271,7 @@ fn the_read_mode_command_applies_an_open_paragraph_and_puts_edit_text_down() {
     edit_tab_with_an_open_paragraph(&mut h);
     assert!(h.state_mut().execute("view.read_mode"));
     h.run_steps(3);
-    assert_eq!(h.state().mode, pdfcraft_ui_egui::Mode::Read);
+    assert_eq!(h.state().win.mode, pdfcraft_ui_egui::Mode::Read);
     assert_edit_text_put_down_and_the_paragraph_applied(h.state());
 }
 
@@ -4286,11 +4286,11 @@ fn the_edit_panel_back_arrow_applies_an_open_paragraph_and_puts_edit_text_down()
     // All tools ▸ Edit a PDF ▸ Edit text & images: the Edit panel, under All tools.
     assert!(h.state_mut().execute("edit.edit_text"));
     h.run_steps(3);
-    assert_eq!((h.state().mode, h.state().win.quick_tool), (Mode::AllTools, QuickTool::EditText));
+    assert_eq!((h.state().win.mode, h.state().win.quick_tool), (Mode::AllTools, QuickTool::EditText));
     open_the_first_line(&mut h);
     h.get_by_label("Back to all tools").click();
     h.run_steps(3);
-    assert_eq!((h.state().mode, h.state().win.left), (Mode::AllTools, LeftPanel::AllTools));
+    assert_eq!((h.state().win.mode, h.state().win.left), (Mode::AllTools, LeftPanel::AllTools));
     assert_edit_text_put_down_and_the_paragraph_applied(h.state());
 }
 
@@ -4308,7 +4308,7 @@ fn the_organize_back_arrow_applies_an_open_paragraph_and_puts_edit_text_down() {
     h.get_by_label("Back to all tools").click();
     h.run_steps(3);
     let s = h.state();
-    assert_eq!((s.mode, s.win.left), (Mode::AllTools, LeftPanel::AllTools));
+    assert_eq!((s.win.mode, s.win.left), (Mode::AllTools, LeftPanel::AllTools));
     assert!(!s.win.views[0].organize, "the grid closes");
     assert_edit_text_put_down_and_the_paragraph_applied(s);
 }
@@ -5498,7 +5498,7 @@ fn another_tool_from_edit_a_pdf_applies_the_open_paragraph() {
     let mut h = harness(1, |_| {});
     h.state_mut().set_option("tool", "edit").unwrap();
     h.run_steps(2);
-    assert_ne!(h.state().mode, Mode::Edit, "Edit a PDF from All tools, not the Edit tab");
+    assert_ne!(h.state().win.mode, Mode::Edit, "Edit a PDF from All tools, not the Edit tab");
     assert_eq!(h.state().win.quick_tool, QuickTool::EditText);
     let id = h.state().win.views[0].id;
     let b = h.state().session.get(id).unwrap().text_blocks(0)[0].clone();
@@ -8553,7 +8553,7 @@ fn page_properties_does_not_apply_after_the_document_changes() {
 fn leaving_organize_goes_back_to_the_workspace_panel() {
     use pdfcraft_ui_egui::{LeftPanel, Mode};
     let mut h = harness(3, |_| {});
-    h.state_mut().mode = Mode::Edit;
+    h.state_mut().win.mode = Mode::Edit;
     h.state_mut().win.left = LeftPanel::Tool("edit");
     h.run_steps(2);
     h.state_mut().win.left = LeftPanel::Tool("organize");
@@ -8565,7 +8565,7 @@ fn leaving_organize_goes_back_to_the_workspace_panel() {
     h.run_steps(3);
     assert_eq!(h.state().win.left, LeftPanel::Tool("edit"), "back to the Edit panel");
     // The same from All tools goes back to All tools.
-    h.state_mut().mode = Mode::AllTools;
+    h.state_mut().win.mode = Mode::AllTools;
     h.state_mut().win.left = LeftPanel::Tool("organize");
     h.state_mut().win.views[0].organize = true;
     h.run_steps(3);
@@ -9778,7 +9778,7 @@ fn read_mode_shortcut_applies_the_open_paragraph() {
     h.state_mut().run_command("view.read_mode");
     h.run_steps(3);
     let s = h.state();
-    assert_eq!(s.mode, Mode::Read);
+    assert_eq!(s.win.mode, Mode::Read);
     assert_eq!(s.win.quick_tool, QuickTool::Select);
     assert!(s.win.views[0].line_editor.is_none(), "no editor stays open in Read mode");
     assert_eq!(s.session.get(s.win.views[0].id).unwrap().text_lines(0)[0].text, "Chapter One", "the edit is applied");
@@ -10199,7 +10199,7 @@ fn mode_tabs_keep_the_hand_over_a_paragraph_scrolled_under_them() {
     h.state_mut().win.views[0].goto = Some((0, 0.5));
     h.run_steps(4);
     click_at(&mut h, convert);
-    assert_eq!(h.state().mode, pdfcraft_ui_egui::Mode::Convert, "the tab takes the click, not the paragraph's editor");
+    assert_eq!(h.state().win.mode, pdfcraft_ui_egui::Mode::Convert, "the tab takes the click, not the paragraph's editor");
 }
 
 #[test]

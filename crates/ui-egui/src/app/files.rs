@@ -382,7 +382,7 @@ impl PdfCraftApp {
         // Acrobat opens straight to the Comments panel when a document has comments.
         // Read mode opens with the panes closed; the rail still opens them (#932). A right panel
         // the user closed stays closed (#1590).
-        let opening_mode = self.mode_override.unwrap_or(self.default_mode);
+        let opening_mode = self.win.mode_override.unwrap_or(self.default_mode);
         let initial = doc.initial_view();
         // A portfolio presents the document its `/D` names (ISO 32000-2 Table 153), kept by its
         // name-tree key, which an edit meanwhile can't shift as it can an index.
@@ -446,10 +446,10 @@ impl PdfCraftApp {
         if activate {
             self.win.all_tools_full = false;
         }
-        if activate && let Some(mode) = self.mode_override {
+        if activate && let Some(mode) = self.win.mode_override {
             // Explicit mode options do not reset independent --tool / --left choices.
-            self.mode = mode;
-        } else if activate && self.mode != self.default_mode {
+            self.win.mode = mode;
+        } else if activate && self.win.mode != self.default_mode {
             // Switch workspace like the mode bar, but a left panel the user (or `--left closed`)
             // closed stays closed, and an unchanged mode keeps the tool panel the user chose.
             let left_open = self.win.left_open;
@@ -598,7 +598,7 @@ impl PdfCraftApp {
         }
         self.leave_portfolio();
         if let Some(id) = active
-            && self.mode != Mode::Read
+            && self.win.mode != Mode::Read
             && self.win.right != Some(RightPanel::Attachments)
             && self.lists_files(id)
         {
@@ -653,7 +653,7 @@ impl PdfCraftApp {
     fn leave_portfolio(&mut self) {
         self.portfolio_seen = None;
         let Some(before) = self.portfolio_panel.take() else { return };
-        if self.mode == Mode::Read {
+        if self.win.mode == Mode::Read {
             if self.win.right_before_read == Some(RightPanel::Attachments) {
                 self.win.right_before_read = before;
             }
@@ -808,7 +808,7 @@ impl PdfCraftApp {
     pub fn open_recent(&mut self, path: &str) {
         if let Some(i) = self.tab_showing(path) {
             self.win.active = Some(i);
-        } else {
+        } else if !self.focus_tab_in_other_window(path) {
             #[cfg(not(target_arch = "wasm32"))]
             self.open_path(path);
         }
@@ -866,6 +866,11 @@ impl PdfCraftApp {
             if let Some(command) = then {
                 self.execute(command);
             }
+            return OpenOutcome::Focused;
+        }
+        // Open in another window (TAB.WINDOW.1): that window and its tab come to the front.
+        if self.focus_tab_in_other_window(path) {
+            self.startup_superseded = true;
             return OpenOutcome::Focused;
         }
         if let Some(pending) = self.pending_opens.iter_mut().find(|p| p.path.as_deref().is_some_and(|p| same_file(p, path))) {
@@ -1079,8 +1084,8 @@ impl PdfCraftApp {
         self.remember_view(index);
         let view = self.win.views.remove(index);
         let (id, place) = (view.id, view.place());
-        // Another tab showing the same document (split view) keeps it open.
-        if !self.win.views.iter().any(|v| v.id == id) {
+        // Another tab showing the same document (split view, or another window) keeps it open.
+        if !self.win.views.iter().any(|v| v.id == id) && !self.viewed_in_other_window(id) {
             #[cfg(not(target_arch = "wasm32"))]
             if let Some(path) = self.session.get(id).and_then(|d| d.path.clone()) {
                 if self.win.closed_tabs.len() == 10 {
@@ -1101,11 +1106,49 @@ impl PdfCraftApp {
         };
     }
 
-    /// Close every tab of document `id`, and the document with them, without asking.
+    /// Close every tab of document `id`, and the document with them, without asking: its tabs in
+    /// other windows first (a window left with none closes between passes), then this window's.
     pub fn close_document(&mut self, id: DocId) {
+        let current = self.current_window();
+        for (key, ui) in self.window_uis_mut() {
+            if key != current {
+                ui.views.retain(|v| v.id != id);
+                if ui.active.is_some_and(|a| a >= ui.views.len()) {
+                    ui.active = ui.views.len().checked_sub(1);
+                }
+            }
+        }
         while let Some(i) = self.win.views.iter().rposition(|v| v.id == id) {
             self.close_tab(i);
         }
+        // Still open when this window had no tab on it: no window shows it now.
+        if self.session.get(id).is_some() && !self.win.views.iter().any(|v| v.id == id) && !self.viewed_in_other_window(id) {
+            self.placed_signatures.remove(&id);
+            self.forget_recovery(id);
+            self.session.close(id);
+        }
+    }
+
+    /// Take tab `view` (a view key) out of this window to show it in another (TAB.WINDOW.1), with
+    /// where it was and this window's mode. The document stays open with all its state and undo
+    /// history; the tab keeps its page, zoom and history. `None` for an unknown tab, or the
+    /// window's only tab unless `allow_last` (another window, which then closes).
+    pub(crate) fn take_tab(&mut self, view: crate::canvas::ViewKey, allow_last: bool) -> Option<(crate::DocView, usize, crate::Mode)> {
+        let index = self.view_index(view)?;
+        if self.win.views.len() < 2 && !allow_last {
+            return None;
+        }
+        let mut tab = self.win.views.remove(index);
+        let place = tab.place();
+        // It joins the other window's strip as a new tab there does.
+        tab.pane = Default::default();
+        self.win.active = match self.win.active {
+            _ if self.win.views.is_empty() => None,
+            Some(a) if a > index => Some(a - 1),
+            Some(a) if a == index => self.after_close(place, index),
+            other => other,
+        };
+        Some((tab, index, self.win.mode))
     }
 
     /// Duplicate Tab: a document shown in several tabs changes through one of them (an edit,
@@ -1117,27 +1160,40 @@ impl PdfCraftApp {
     /// a second call with nothing changed in between does nothing (`logic` may run more than
     /// once per frame).
     pub(crate) fn sync_shared_views(&mut self) {
-        for i in 0..self.win.views.len() {
-            let Some(id) = self.win.views.get(i).map(|v| v.id) else { continue };
-            if self.win.views.iter().filter(|v| v.id == id).nth(1).is_none() {
-                continue;
+        // Tabs of one document in different windows share it as tabs in one window do.
+        let mut counts: std::collections::HashMap<DocId, usize> = std::collections::HashMap::new();
+        for (_, ui) in self.window_uis() {
+            for v in &ui.views {
+                *counts.entry(v.id).or_default() += 1;
             }
-            let Some(doc) = self.session.get(id) else { continue };
-            let now = content_version(doc);
-            let Some(view) = self.win.views.get_mut(i) else { continue };
-            match view.content_seen {
-                Some(seen) if seen == now => {}
-                // First seen shared (just duplicated, or never edited): its caches are its own.
-                None => view.content_seen = Some(now),
-                Some(_) => {
-                    view.document_changed(&doc.info);
-                    view.forget_content_selection();
-                    view.content_seen = Some(now);
-                    if let Some(ctx) = &self.ctx {
-                        ctx.request_repaint();
+        }
+        let mut repaint = false;
+        let session = &self.session;
+        let mut uis = Vec::new();
+        uis.push(&mut self.win);
+        uis.extend(self.windows.others.iter_mut().map(|w| &mut w.ui));
+        for ui in uis {
+            for view in &mut ui.views {
+                if counts.get(&view.id).copied().unwrap_or(0) < 2 {
+                    continue;
+                }
+                let Some(doc) = session.get(view.id) else { continue };
+                let now = content_version(doc);
+                match view.content_seen {
+                    Some(seen) if seen == now => {}
+                    // First seen shared (just duplicated, or never edited): its caches are its own.
+                    None => view.content_seen = Some(now),
+                    Some(_) => {
+                        view.document_changed(&doc.info);
+                        view.forget_content_selection();
+                        view.content_seen = Some(now);
+                        repaint = true;
                     }
                 }
             }
+        }
+        if repaint && let Some(ctx) = &self.ctx {
+            ctx.request_repaint();
         }
     }
 

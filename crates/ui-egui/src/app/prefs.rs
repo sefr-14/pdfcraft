@@ -116,6 +116,7 @@ impl PdfCraftApp {
             "docking_right": self.win.right,
             "recent": self.recent.iter().take(self.recent_limit).collect::<Vec<_>>(),
             "reopen_last_session": self.reopen_last_session,
+            "keep_one_window": self.keep_one_window,
             "restore_last_view": self.restore_last_view,
             "last_views": self.last_views_to_save(),
             // Kept only while the preference is on.
@@ -278,6 +279,9 @@ impl PdfCraftApp {
 
     /// The panels, combine view, zoom and recent files.
     fn restore_layout_prefs(&mut self, v: &serde_json::Value) {
+        if let Some(on) = v["keep_one_window"].as_bool() {
+            self.keep_one_window = on;
+        }
         if let Some(on) = v["reopen_last_session"].as_bool() {
             self.reopen_last_session = on;
         }

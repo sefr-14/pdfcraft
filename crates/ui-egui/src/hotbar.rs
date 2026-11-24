@@ -272,7 +272,7 @@ fn core_tool_buttons(ui: &mut egui::Ui, app: &mut PdfCraftApp, cell: f32, popup_
     }
     // Edit text & images, while the Edit workspace is open (Acrobat's Edit toolbar)
     // or the tool is in use.
-    if app.mode == crate::Mode::Edit || app.win.quick_tool == QuickTool::EditText {
+    if app.win.mode == crate::Mode::Edit || app.win.quick_tool == QuickTool::EditText {
         let on = app.win.quick_tool == QuickTool::EditText;
         if icons::button(ui, "text-cursor-input", cell, on, tl!("Edit text & images")).clicked() {
             if on {

@@ -76,6 +76,12 @@ fn every_registered_command_is_implemented() {
         if PICKERS.contains(&spec.id) || spec.id == "edit.copy" {
             continue;
         }
+        // This fork (TAB.WINDOW.1): the window commands need native windows, which the harness
+        // doesn't have, so they are disabled here (and say why). `multi_window::tests::w2b` runs
+        // each of them through `execute` with native windows available.
+        if spec.id.starts_with("window.") {
+            continue;
+        }
         let mut app = PdfCraftApp::new();
         app.set_option("language", "en").unwrap();
         if spec.id.starts_with("form.") || spec.id == "comment.flatten" {
@@ -284,7 +290,7 @@ fn shortcuts_run_registered_commands() {
     h.run_steps(2);
     h.key_press_modifiers(Modifiers::COMMAND | Modifiers::CTRL, Key::H);
     h.run_steps(2);
-    assert_eq!(h.state().mode, pdfcraft_ui_egui::Mode::Read);
+    assert_eq!(h.state().win.mode, pdfcraft_ui_egui::Mode::Read);
 }
 
 #[test]
@@ -467,7 +473,7 @@ fn localized_shortcuts_update_immediately_and_keep_command_ids_and_key_bindings(
     h.run_steps(2);
     h.key_press(Key::Enter);
     h.run_steps(3);
-    assert_eq!(h.state().mode, pdfcraft_ui_egui::Mode::Read);
+    assert_eq!(h.state().win.mode, pdfcraft_ui_egui::Mode::Read);
     assert!(!h.state().win.palette_open);
     let doc = h.state().session.get(h.state().win.views[0].id).unwrap();
     assert!(!doc.dirty);

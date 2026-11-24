@@ -42,6 +42,10 @@ pub(crate) const SELECT_ALL: &str = "edit.select_all";
 pub(crate) const NO_RECENT: &str = "file.no_recent";
 /// An open document in the Window menu, `{"index": n}` in the tab strip.
 pub(crate) const DOCUMENT: &str = "window.document";
+/// This fork (TAB.WINDOW.1): Window ▸ Move tab to window ▸ (its `index` is the window's place in
+/// the list), and the list of windows that brings one to the front.
+pub(crate) const MOVE_TO_WINDOW: &str = "window.move_tab_to";
+pub(crate) const FOCUS_WINDOW: &str = "window.focus";
 /// A side panel, `{"panel": name}` ([`PANELS`]).
 pub(crate) const PANEL: &str = "view.panel";
 const ACTUAL_SIZE: &str = "view.zoom.actual_size";
@@ -353,7 +357,31 @@ impl PdfCraftApp {
                 .collect(),
         )];
         sign.extend(list(SIGN, &mut used));
-        let window = craft_menu::tidy(list(WINDOW, &mut used));
+        let mut window = list(WINDOW, &mut used);
+        // This fork (TAB.WINDOW.1): several windows, while the preference allows them.
+        if self.windows_unavailable().is_none() {
+            window.push(Node::Separator);
+            window.extend(list(&["window.move_tab_to_new"], &mut used));
+            let names = self.window_names();
+            if names.len() > 1 {
+                let to = names
+                    .iter()
+                    .enumerate()
+                    .map(|(n, (_, name))| Item::new(CommandRef::with_params(MOVE_TO_WINDOW, serde_json::json!({ "index": n })), name.clone()).into())
+                    .collect();
+                window.push(Node::submenu(tl!("Move tab to window"), to));
+            }
+            window.extend(list(&["window.merge_all", "window.close"], &mut used));
+            if names.len() > 1 {
+                window.push(Node::Separator);
+                let current = self.current_window();
+                for (n, (key, name)) in names.into_iter().enumerate() {
+                    let _ = (key, current);
+                    window.push(Item::new(CommandRef::with_params(FOCUS_WINDOW, serde_json::json!({ "index": n })), name).radio(false).into());
+                }
+            }
+        }
+        let window = craft_menu::tidy(window);
         let help = list(HELP, &mut used);
         let mut view = vec![
             Node::submenu(tl!("Zoom"), list(ZOOM, &mut used)),
@@ -503,6 +531,10 @@ impl PdfCraftApp {
                 "file.open_recent" => index.is_none_or(|i| i < self.recent.len()),
                 "file.clear_recent" => !self.recent.is_empty(),
                 DOCUMENT => index.is_some_and(|i| i < self.win.views.len()),
+                MOVE_TO_WINDOW => {
+                    self.win.active.zip(index.and_then(|i| self.window_at(i))).is_some_and(|(tab, to)| self.move_unavailable(tab, Some(to)).is_none())
+                }
+                FOCUS_WINDOW => index.is_some_and(|i| i < self.window_count()),
                 // macOS ⌘W closes the window when no document is open (#869).
                 "file.close" if !has_doc && crate::commands::mac_shortcuts(ctx) && !cfg!(target_arch = "wasm32") => true,
                 "edit.copy" if organize => enabled_id("page.copy"),
@@ -527,7 +559,7 @@ impl PdfCraftApp {
             "view.page_gaps" => Some(view.is_some_and(|v| v.show_page_gaps)),
             "view.layout.cover" => Some(view.is_some_and(|v| v.cover)),
             "view.full_screen" => Some(self.win.full_screen),
-            "view.read_mode" => Some(self.mode == crate::Mode::Read),
+            "view.read_mode" => Some(self.win.mode == crate::Mode::Read),
             "view.side_panel" => Some(self.win.right.is_some()),
             "view.tools_pane" => Some(self.win.left_open),
             "view.split" => Some(self.win.panes.split.is_some()),
@@ -535,6 +567,8 @@ impl PdfCraftApp {
             "view.theme.light" => Some(self.theme_preference == ThemePreference::Light),
             "view.theme.dark" => Some(self.theme_preference == ThemePreference::Dark),
             PANEL => Some(panel(command).is_some_and(|p| self.win.right == Some(p))),
+            // This fork (TAB.WINDOW.1): the window this menu belongs to.
+            FOCUS_WINDOW => Some(index.and_then(|i| self.window_at(i)) == Some(self.current_window())),
             // This fork: Thin lines is app-wide (OV9); rulers and guides are the active PDF's (OV11).
             "view.thin_lines" => Some(self.thin_lines),
             "view.rulers" => Some(view.and_then(|v| self.doc_prefs.state(v.id)).is_some_and(|s| s.prefs.rulers)),
@@ -572,6 +606,16 @@ impl PdfCraftApp {
             DOCUMENT => {
                 if let Some(i) = index.filter(|&i| i < self.win.views.len()) {
                     self.win.active = Some(i);
+                }
+            }
+            MOVE_TO_WINDOW => {
+                if let (Some(tab), Some(to)) = (self.win.active, index.and_then(|i| self.window_at(i))) {
+                    self.request_move_tab_to_window(tab, to);
+                }
+            }
+            FOCUS_WINDOW => {
+                if let Some(key) = index.and_then(|i| self.window_at(i)) {
+                    self.request_window_op(crate::multi_window::WindowOp::Focus(key));
                 }
             }
             "edit.copy" => self.win.menu_input.push(egui::Event::Copy),

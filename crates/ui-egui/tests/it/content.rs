@@ -991,7 +991,7 @@ fn mode_tabs_keep_the_hand_over_added_text_scrolled_under_them() {
     assert_eq!(mode_tab_cursors(&mut h, draft), HAND_ON_EVERY_TAB, "the open box under the tabs");
     let convert = mode_tab(&h, "Convert").center();
     click(&mut h, convert);
-    assert_eq!(h.state().mode, pdfcraft_ui_egui::Mode::Convert, "the tab takes the click, not the box");
+    assert_eq!(h.state().win.mode, pdfcraft_ui_egui::Mode::Convert, "the tab takes the click, not the box");
 }
 
 /// Red pixels in `r`: the test picture.

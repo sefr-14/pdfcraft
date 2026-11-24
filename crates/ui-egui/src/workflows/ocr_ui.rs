@@ -504,7 +504,7 @@ impl PdfCraftApp {
         // Not in Read mode (which leaves the Edit tool picked but is not editing) and not beneath a
         // dialog or prompt: nothing may change the document under those. It is tried again once
         // they are gone.
-        if !editing || self.mode == crate::Mode::Read || self.modal_open() || self.ocr_run.is_some() || self.ocr_batch_running() {
+        if !editing || self.win.mode == crate::Mode::Read || self.modal_open() || self.ocr_run.is_some() || self.ocr_batch_running() {
             return None;
         }
         let (view, doc) = self.active_ids()?;
@@ -891,7 +891,7 @@ impl PdfCraftApp {
         // The result of a run Edit started waits while Read mode or a dialog is up: nothing may change
         // the document beneath them, and the run may have been started before they appeared. A run
         // the user asked for completes as before.
-        if automatic && s.result.is_some() && (self.mode == crate::Mode::Read || self.modal_open()) {
+        if automatic && s.result.is_some() && (self.win.mode == crate::Mode::Read || self.modal_open()) {
             drop(s);
             if let Some(ctx) = &self.ctx {
                 ctx.request_repaint_after(std::time::Duration::from_millis(200));
@@ -1126,9 +1126,9 @@ mod tests {
     #[test]
     fn it_waits_for_read_mode_and_dialogs_to_end() {
         let mut app = app_with(scan());
-        app.mode = Mode::Read;
+        app.win.mode = Mode::Read;
         assert_eq!(found(&mut app), None, "Read mode");
-        app.mode = Mode::Edit;
+        app.win.mode = Mode::Edit;
         app.dialog = Some(Dialog::JsConsole);
         assert_eq!(found(&mut app), None, "beneath a dialog");
         app.dialog = None;
@@ -1196,10 +1196,10 @@ mod tests {
 
         let mut app = app_with(scan());
         app.ocr_run = Some(finished(&app, true));
-        app.mode = Mode::Read;
+        app.win.mode = Mode::Read;
         app.poll_ocr();
         assert!(app.ocr_run.is_some() && label(&app).is_none(), "waits in Read mode");
-        app.mode = Mode::Edit;
+        app.win.mode = Mode::Edit;
         app.dialog = Some(Dialog::JsConsole);
         app.poll_ocr();
         assert!(app.ocr_run.is_some() && label(&app).is_none(), "waits beneath a dialog");
@@ -1211,7 +1211,7 @@ mod tests {
         // A run the user asked for is not held back.
         let mut app = app_with(scan());
         app.ocr_run = Some(finished(&app, false));
-        app.mode = Mode::Read;
+        app.win.mode = Mode::Read;
         app.poll_ocr();
         assert_eq!(label(&app).as_deref(), Some("Recognize text"));
     }

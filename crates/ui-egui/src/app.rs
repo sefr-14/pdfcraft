@@ -72,15 +72,18 @@ impl PdfCraftApp {
             win: WindowUi::new(),
             windows: Default::default(),
             drawing_window: None,
+            keep_one_window: true,
+            #[cfg(test)]
+            force_native_windows: false,
+            #[cfg(test)]
+            suspended_docs: Vec::new(),
             session: Session::new(),
             status_captions_lang: None,
-            mode: Mode::AllTools,
             default_mode: Mode::AllTools,
             view_defaults: Default::default(),
             units: Default::default(),
             blank_paper: crate::paper::Paper::system(),
             date_format_draft: None,
-            mode_override: None,
             portfolio_initial: None,
             portfolio_seen: None,
             #[cfg(target_arch = "wasm32")]
@@ -387,13 +390,21 @@ impl PdfCraftApp {
     /// The open documents in tab order, each once however many tabs show it (Duplicate Tab):
     /// what pickers of open documents list.
     pub fn open_documents(&self) -> Vec<DocId> {
+        // Every window's, the main window's first (TAB.WINDOW.1).
         let mut ids: Vec<DocId> = Vec::with_capacity(self.win.views.len());
-        for v in &self.win.views {
-            if !ids.contains(&v.id) {
-                ids.push(v.id);
+        for (_, ui) in self.window_uis() {
+            for v in &ui.views {
+                if !ids.contains(&v.id) {
+                    ids.push(v.id);
+                }
             }
         }
         ids
+    }
+
+    /// How many tabs show document `id`, in every window.
+    pub(crate) fn all_views_of(&self, id: DocId) -> usize {
+        self.window_uis().iter().map(|(_, ui)| ui.views.iter().filter(|v| v.id == id).count()).sum()
     }
 
     /// The tab that stands for document `id`: the active tab when it shows the document,
@@ -443,7 +454,7 @@ impl PdfCraftApp {
 
     /// Read mode and full screen hide the hotbar (the quick tools), and its tools window with it.
     pub(crate) fn hotbar_hidden(&self) -> bool {
-        self.mode == crate::Mode::Read || self.win.full_screen
+        self.win.mode == crate::Mode::Read || self.win.full_screen
     }
 
     /// The pages are covered, and no page key reaches them, a menu click's included: by a dialog or
@@ -928,11 +939,11 @@ impl PdfCraftApp {
         // Another mode or the Home tab puts the OCR Verify screen away, as Exit does; Correct
         // recognized text brings it back with its review as it was.
         // One OCR Verify screen for the app, in the main window (which window shows it is W2b's).
-        if main && self.ocr_verify.open && (self.win.active.is_none() || self.ocr_verify.shown_in.is_some_and(|m| m != self.mode)) {
+        if main && self.ocr_verify.open && (self.win.active.is_none() || self.ocr_verify.shown_in.is_some_and(|m| m != self.win.mode)) {
             self.ocr_verify.open = false;
         }
         if main {
-            self.ocr_verify.shown_in = self.ocr_verify.open.then_some(self.mode);
+            self.ocr_verify.shown_in = self.ocr_verify.open.then_some(self.win.mode);
         }
         if main && self.ocr_verify.open {
             // The OCR Verify screen takes the document area (its four panes) under the window's
@@ -959,7 +970,7 @@ impl PdfCraftApp {
         }
         let t = theme::Tokens::get(&ctx);
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.pasteboard)).show(ui, |ui| {
-            if self.mode == Mode::AllTools && self.win.all_tools_full && !hidden.window_ui {
+            if self.win.mode == Mode::AllTools && self.win.all_tools_full && !hidden.window_ui {
                 all_tools_ui::show(self, ui);
             } else {
                 match self.win.active {

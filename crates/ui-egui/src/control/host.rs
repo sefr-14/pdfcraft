@@ -143,7 +143,7 @@ impl Host for crate::PdfCraftApp {
                 crate::QuickTool::Comment(t) => t.command().trim_start_matches("comment.").to_string(),
             },
             "home": self.win.active.is_none(),
-            "mode": format!("{:?}", self.mode),
+            "mode": format!("{:?}", self.win.mode),
             "default_mode": self.default_mode,
             "hotbar": self.win.hotbar,
             "comment_tool_pinned": self.comment_prefs.pinned,

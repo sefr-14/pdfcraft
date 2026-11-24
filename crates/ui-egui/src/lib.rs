@@ -190,6 +190,7 @@ use platform::file_filter;
 pub use platform::file_watch;
 #[cfg(target_os = "macos")]
 use platform::macos_association;
+pub use platform::monitors;
 pub use platform::motion;
 #[cfg(not(target_arch = "wasm32"))]
 use platform::open_worker;
@@ -349,10 +350,18 @@ pub struct PdfCraftApp {
     pub windows: multi_window::Windows,
     /// The other window being drawn now, whose state is in `win` for its pass.
     pub(crate) drawing_window: Option<multi_window::WindowId>,
+    /// Preferences ▸ "Keep all documents in one window" (TAB.WINDOW.1): on by default while
+    /// several windows are a preview; on, every tab stays in the main window.
+    pub keep_one_window: bool,
+    /// Tests: act as if native windows were available (the test harness has none).
+    #[cfg(test)]
+    pub(crate) force_native_windows: bool,
+    /// Tests: the documents a pass suspended the rendering of (`finish_render_frame`).
+    #[cfg(test)]
+    pub(crate) suspended_docs: Vec<DocId>,
     pub session: Session,
     /// The interface language signature status captions were last drawn in.
     pub(crate) status_captions_lang: Option<i18n::Lang>,
-    pub mode: Mode,
     /// Workspace used for newly opened PDFs; independent of PDF Initial View metadata.
     pub default_mode: Mode,
     /// Page display and zoom for newly opened PDFs that don't ask for their own (Preferences ▸
@@ -366,8 +375,6 @@ pub struct PdfCraftApp {
     /// The Preferences ▸ Date format box while it's being edited, or while it holds an invalid
     /// pattern (the session keeps the last valid one).
     pub date_format_draft: Option<String>,
-    /// Explicit CLI/control mode lasts for this session and is never persisted.
-    mode_override: Option<Mode>,
     /// A portfolio that just opened and the name-tree key of the attachment it presents first
     /// (`/Collection /D`), opened by [`Self::present_portfolios`] on the next frame while the
     /// portfolio is still the active tab.

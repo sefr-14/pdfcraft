@@ -665,6 +665,12 @@ fn card_general(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens, ctx: &mut 
     // PDF Overlay checks on its own only when a "Remind me later" reminder comes due
     // (`platform/updates.rs`). The setting is still read and written, so settings files keep it.
     ctx.checkbox(ui, &mut app.show_secured_notice, tl!("Show a notice when a document is secured"), t);
+    // This fork (TAB.WINDOW.1): several windows are a preview, so this is on until turned off.
+    // Turning it on brings every tab back to the first window.
+    #[cfg(not(target_arch = "wasm32"))]
+    if ctx.checkbox(ui, &mut app.keep_one_window, tl!("Keep all documents in one window"), t).changed() && app.keep_one_window {
+        app.merge_all_windows();
+    }
 
     #[cfg(not(target_arch = "wasm32"))]
     {

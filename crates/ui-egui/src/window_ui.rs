@@ -6,10 +6,14 @@
 use pdfcraft_engine::DocId;
 
 use crate::canvas::{self, DocView};
-use crate::state::{LeftPanel, QuickTool, RightPanel};
+use crate::state::{LeftPanel, Mode, QuickTool, RightPanel};
 use crate::{ViewLayout, hotbar, page_keys, panes, side_panels, tool_keys};
 
 pub struct WindowUi {
+    /// This window's mode (Edit, Read…): each window has its own (TAB.WINDOW.1 O-2).
+    pub mode: Mode,
+    /// Explicit CLI/control mode lasts for this session and is never persisted.
+    pub(crate) mode_override: Option<Mode>,
     /// Split view (`panes`); which pane shows each tab is its view's.
     pub panes: panes::Panes,
     /// Tools side and pane widths; which panes are open is `left_open` and `right`.
@@ -91,6 +95,8 @@ impl WindowUi {
     /// A window with no tabs, showing Home, as PdfCraft starts.
     pub fn new() -> Self {
         Self {
+            mode: Mode::AllTools,
+            mode_override: None,
             panes: Default::default(),
             views: Vec::new(),
             closed_tabs: Vec::new(),

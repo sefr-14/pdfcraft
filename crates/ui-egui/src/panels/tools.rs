@@ -15,7 +15,7 @@ pub fn left_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
     // Organize closed another way (the grid's Close, or a page opened from it) closes the tool too,
     // as its panel's Close does, back to the workspace's own panel.
     if app.win.left == LeftPanel::Tool("organize") && app.win.active.and_then(|i| app.win.views.get(i)).is_some_and(|v| !v.organize) {
-        app.win.left = crate::organize_panel::workspace_panel(app.mode);
+        app.win.left = crate::organize_panel::workspace_panel(app.win.mode);
     }
     egui::Frame::NONE.fill(t.panel).inner_margin(egui::Margin { left: 14, right: 14, top: 12, bottom: 10 }).stroke(Stroke::new(1.0, t.divider)).show(
         ui,

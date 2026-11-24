@@ -1966,7 +1966,7 @@ fn read_mode_retains_existing_rail_click_to_close_policy() {
     h.get_by_role_and_label(egui::accesskit::Role::Button, "Bookmarks").click();
     h.run_steps(3);
     assert_eq!(h.state().win.right, None);
-    assert_eq!(h.state().mode, pdfcraft_ui_egui::Mode::Read);
+    assert_eq!(h.state().win.mode, pdfcraft_ui_egui::Mode::Read);
 }
 
 #[test]

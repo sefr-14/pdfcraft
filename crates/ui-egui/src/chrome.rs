@@ -299,6 +299,24 @@ fn tab_menu(app: &PdfCraftApp, ui: &mut egui::Ui, index: usize, action: &mut Opt
         *action = Some(Action::Duplicate(tab));
         ui.close();
     }
+    // This fork (TAB.WINDOW.1): several windows, while the preference allows them.
+    if app.windows_unavailable().is_none() {
+        if ui.add_enabled(app.move_unavailable(index, None).is_none(), egui::Button::new(tl!("Move to New Window"))).clicked() {
+            *action = Some(Action::MoveToNewWindow(tab));
+            ui.close();
+        }
+        let names = app.window_names();
+        if names.len() > 1 {
+            ui.menu_button(tl!("Move to Window"), |ui| {
+                for (n, (key, name)) in names.iter().enumerate() {
+                    if ui.add_enabled(app.move_unavailable(index, Some(*key)).is_none(), egui::Button::new(name)).clicked() {
+                        *action = Some(Action::MoveToWindow { tab, window: n });
+                        ui.close();
+                    }
+                }
+            });
+        }
+    }
     ui.separator();
     // How the views are arranged (OV7.2); the one shown is greyed out.
     for (mode, label) in [(crate::ViewLayout::Tabs, tl!("Tab View")), (crate::ViewLayout::Tiles, tl!("Tile View"))] {
@@ -629,23 +647,23 @@ pub fn mode_bar(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                 let inline_tabs = avail >= tabs_w + right + MODE_BAR_SEARCH_MIN;
                 if inline_tabs {
                     for (mode, label) in modes {
-                        if widgets::mode_tab(ui, tl!(label), app.mode == mode).clicked() {
+                        if widgets::mode_tab(ui, tl!(label), app.win.mode == mode).clicked() {
                             app.switch_mode(mode, true);
                         }
                     }
                 } else {
                     // Narrow window: the modes fold into one menu named after the current one.
                     // Read is not one of the four choices but can be active (View command): name it too.
-                    let current = if app.mode == Mode::Read {
+                    let current = if app.win.mode == Mode::Read {
                         tl!("Read")
                     } else {
-                        tl!(modes.iter().find(|(m, _)| *m == app.mode).map_or("All tools", |(_, l)| *l))
+                        tl!(modes.iter().find(|(m, _)| *m == app.win.mode).map_or("All tools", |(_, l)| *l))
                     };
                     let resp = widgets::ghost_button(ui, "chevron-down", current);
                     egui::Popup::menu(&resp).show(|ui| {
                         ui.set_min_width(160.0);
                         for (mode, label) in modes {
-                            if ui.add(egui::Button::selectable(app.mode == mode, tl!(label))).clicked() {
+                            if ui.add(egui::Button::selectable(app.win.mode == mode, tl!(label))).clicked() {
                                 app.switch_mode(mode, true);
                             }
                         }

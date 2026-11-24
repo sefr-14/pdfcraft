@@ -166,7 +166,7 @@ pub(crate) fn panel(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens) {
 
     if close {
         view.organize = false;
-        app.win.left = workspace_panel(app.mode);
+        app.win.left = workspace_panel(app.win.mode);
     } else if back {
         view.organize = false;
         app.win.left = LeftPanel::AllTools;

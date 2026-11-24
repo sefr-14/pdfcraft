@@ -2557,7 +2557,7 @@ fn mode_tabs_keep_the_hand_over_a_type_box_scrolled_under_them() {
     h.run_steps(1);
     h.drop_at(convert);
     h.run_steps(3);
-    assert_eq!(h.state().mode, pdfcraft_ui_egui::Mode::Convert, "the tab takes the click, not the text box");
+    assert_eq!(h.state().win.mode, pdfcraft_ui_egui::Mode::Convert, "the tab takes the click, not the text box");
 }
 
 fn place_selected_text(h: &mut Harness<'static, PdfCraftApp>, text: &str) {
@@ -2766,13 +2766,13 @@ fn a_restored_fill_tool_shows_without_replacing_the_last_selection() {
 #[test]
 fn a_fill_tool_selected_while_the_quick_bar_is_hidden_is_remembered() {
     let mut h = harness();
-    let mode = h.state().mode;
+    let mode = h.state().win.mode;
     h.state_mut().set_option("mode", "read").unwrap();
     h.run_steps(2);
     h.state_mut().set_option("quick", "fill-date").unwrap();
     h.run_steps(2);
     h.state_mut().set_option("quick", "select").unwrap();
-    h.state_mut().mode = mode;
+    h.state_mut().win.mode = mode;
     h.run_steps(2);
     h.get_by_label("Fill & Sign: Date");
 
@@ -2785,7 +2785,7 @@ fn a_fill_tool_selected_while_the_quick_bar_is_hidden_is_remembered() {
     h.run_steps(3);
     assert_eq!(h.state().win.quick_tool, QuickTool::Fill(FillTool::Initials));
     h.state_mut().win.quick_tool = QuickTool::Select;
-    h.state_mut().mode = mode;
+    h.state_mut().win.mode = mode;
     h.run_steps(2);
     h.get_by_label("Fill & Sign: Place saved initials");
 }

@@ -49,6 +49,13 @@ impl PdfCraftApp {
                 };
                 self.set_theme_preference(preference);
             }
+            // This fork (TAB.WINDOW.1): Preferences ▸ Keep all documents in one window.
+            ("keep_one_window", _) => {
+                self.keep_one_window = value.parse::<bool>().map_err(|_| "keep_one_window must be true or false")?;
+                if self.keep_one_window {
+                    self.merge_all_windows();
+                }
+            }
             ("show_page_edge_shadows", _) => {
                 self.show_page_edge_shadows = value.parse::<bool>().map_err(|_| "show_page_edge_shadows must be true or false")?;
             }
@@ -83,8 +90,8 @@ impl PdfCraftApp {
             }
             ("mode", _) => {
                 let mode = Mode::parse(value).unwrap_or(Mode::AllTools);
-                self.mode_override = Some(mode);
-                self.mode = mode;
+                self.win.mode_override = Some(mode);
+                self.win.mode = mode;
                 // As switch_mode: another workspace puts the expanded All tools view away.
                 if mode != Mode::AllTools {
                     self.win.all_tools_full = false;

@@ -97,8 +97,9 @@ impl PdfCraftApp {
     /// Rulers and guides of the documents with a tab: remembered ones applied when a document
     /// opens, pages and saves followed, closed ones let go of (this fork, OV11).
     pub(crate) fn sync_doc_prefs(&mut self) {
-        let views = &self.win.views;
-        let docs = self.session.docs().iter().filter(|d| views.iter().any(|v| v.id == d.id));
+        // Documents open in any window (TAB.WINDOW.1).
+        let open = self.open_documents();
+        let docs = self.session.docs().iter().filter(|d| open.contains(&d.id));
         self.doc_prefs.sync(docs, self.units);
     }
 
@@ -122,22 +123,44 @@ impl PdfCraftApp {
             self.views_on_screen()
         };
         let shown: Vec<DocId> = displayed.iter().filter_map(|&i| self.win.views.get(i).map(|v| v.id)).collect();
-        // A hidden tab of a document another tab shows (Duplicate Tab, split view) must leave the
-        // shared render pool alone: suspending would clear the shown tab's queue and drain its
-        // results.
+        // What the other windows had on screen at their last pass (TAB.WINDOW.1): the render pool
+        // is one per document, whichever window shows it.
+        let current = self.current_window();
+        let elsewhere: Vec<DocId> =
+            self.windows.on_screen.iter().filter(|(key, _)| *key != current).flat_map(|(_, docs)| docs.iter().copied()).collect();
+        // A hidden tab of a document another tab shows (Duplicate Tab, split view, another
+        // window) must leave the shared render pool alone: suspending would clear the shown tab's
+        // queue and drain its results.
         let mut requeue: Vec<DocId> = Vec::new();
         for (i, view) in self.win.views.iter_mut().enumerate() {
             if !displayed.contains(&i)
                 && let Some(doc) = self.session.get(view.id)
             {
-                if !shown.contains(&view.id) {
+                if !shown.contains(&view.id) && !elsewhere.contains(&view.id) {
                     view.suspend_rendering(&doc.renderer);
+                    #[cfg(test)]
+                    self.suspended_docs.push(view.id);
                 } else if view.release_textures() {
-                    // Its requests are still in the pool: the shown tab replaces them with its own.
-                    requeue.push(view.id);
+                    // Its requests are still in the pool: the shown tab replaces them with its own,
+                    // in this window now or in the other window at its next pass.
+                    if shown.contains(&view.id) {
+                        requeue.push(view.id);
+                    } else if !self.windows.requeue.contains(&view.id) {
+                        self.windows.requeue.push(view.id);
+                    }
                 }
             }
         }
+        // Requests released for this window's documents in another window's pass.
+        for id in &shown {
+            if let Some(at) = self.windows.requeue.iter().position(|r| r == id) {
+                self.windows.requeue.remove(at);
+                requeue.push(*id);
+            }
+        }
+        let mut on_screen = shown.clone();
+        on_screen.dedup();
+        self.note_on_screen(on_screen);
         // In Tile View the views on screen share one prefetch allowance between them.
         let share = if tiled { displayed.len().max(1) } else { 1 };
         let mut done: Vec<DocId> = Vec::new();

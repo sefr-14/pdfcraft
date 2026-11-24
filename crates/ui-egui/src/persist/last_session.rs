@@ -64,7 +64,22 @@ impl PdfCraftApp {
         #[cfg(not(target_arch = "wasm32"))]
         {
             let path = |v: &crate::DocView| self.session.get(v.id).and_then(|d| d.path.as_deref()).map(absolute);
-            let files = self.first_views().filter_map(|v| Some(SessionFile { path: path(v)?, page: v.current })).take(MAX_FILES).collect();
+            // Every window's tabs, the main window's first; each document once (W4 keeps windows apart).
+            let mut seen: Vec<pdfcraft_engine::DocId> = Vec::new();
+            let all: Vec<&crate::DocView> = self
+                .window_uis()
+                .into_iter()
+                .flat_map(|(_, ui)| ui.views.iter())
+                .filter(|v| {
+                    if seen.contains(&v.id) {
+                        false
+                    } else {
+                        seen.push(v.id);
+                        true
+                    }
+                })
+                .collect();
+            let files = all.into_iter().filter_map(|v| Some(SessionFile { path: path(v)?, page: v.current })).take(MAX_FILES).collect();
             let active = self.win.active.and_then(|i| self.win.views.get(i)).and_then(path);
             LastSession { files, active }
         }

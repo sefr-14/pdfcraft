@@ -620,7 +620,7 @@ fn a_late_startup_url_preserves_the_current_edit_workspace_and_save_target() {
     let mut h = harness(&[3]);
     let active = h.state().active_ids().unwrap().1;
     h.state_mut().apply_edit(Edit::DeletePages { pages: vec![1] });
-    h.state_mut().mode = Mode::Edit;
+    h.state_mut().win.mode = Mode::Edit;
     h.state_mut().win.right = Some(RightPanel::Pages);
     h.state_mut().win.left = LeftPanel::AllTools;
     h.state_mut().win.left_open = false;
@@ -629,7 +629,7 @@ fn a_late_startup_url_preserves_the_current_edit_workspace_and_save_target() {
     h.run_steps(2);
 
     assert_eq!(h.state().active_ids().unwrap().1, active, "Save still targets the user's document");
-    assert_eq!(h.state().mode, Mode::Edit);
+    assert_eq!(h.state().win.mode, Mode::Edit);
     assert_eq!(h.state().win.right, Some(RightPanel::Pages));
     assert_eq!(h.state().win.left, LeftPanel::AllTools);
     assert!(!h.state().win.left_open);

@@ -167,6 +167,8 @@ fn app_with_tabs() -> Harness<'static, PdfCraftApp> {
     let mut h = Harness::builder().with_size(vec2(1200.0, 800.0)).build_eframe(|_cc| {
         let mut app = PdfCraftApp::new();
         app.set_option("language", "en").unwrap();
+        app.keep_one_window = false;
+        app.force_native_windows = true;
         for name in ["a", "b", "c"] {
             app.open_bytes(&format!("{name}.pdf"), None, pdf(name)).unwrap();
         }
@@ -279,7 +281,7 @@ fn a_failure_after_the_window_drew_gives_its_tabs_back() {
 }
 
 #[test]
-fn closing_another_window_gives_its_tabs_back_and_closes_no_document() {
+fn closing_another_window_closes_its_tabs_and_the_documents_only_it_showed() {
     let mut h = app_with_tabs();
     let app = h.state_mut();
     let all = ids(&app.win.views);
@@ -287,10 +289,12 @@ fn closing_another_window_gives_its_tabs_back_and_closes_no_document() {
     let docs = app.session.docs().len();
     let mut host = Host::new(app);
     host.close = true;
+    // The close is asked for in the window's pass and carried out after all passes.
     app.show_other_windows(&mut host);
     assert!(app.windows.others.is_empty());
-    assert_eq!(ids(&app.win.views), all);
-    assert_eq!(app.session.docs().len(), docs);
+    assert_eq!(ids(&app.win.views), vec![all[1], all[2]]);
+    assert_eq!(app.session.docs().len(), docs - 1, "a, shown only in that window, closed with it");
+    assert!(app.session.get(all[0]).is_none());
 }
 
 #[test]
@@ -344,7 +348,8 @@ fn without_native_windows_no_other_window_is_shown_and_its_tabs_come_back() {
     app.show_other_windows(&mut host);
     assert!(host.shown.is_empty());
     assert!(app.windows.others.is_empty());
-    assert_eq!(ids(&app.win.views), all);
+    // Merged: after the main window's own tabs.
+    assert_eq!(ids(&app.win.views), vec![all[0], all[2], all[1]]);
 }
 
 #[test]
@@ -359,6 +364,20 @@ fn the_test_harness_has_no_native_windows_so_the_app_keeps_every_tab_in_the_main
 }
 
 #[test]
+fn the_single_window_preference_shows_no_other_window_and_merges_every_tab() {
+    let mut h = app_with_tabs();
+    let app = h.state_mut();
+    let all = ids(&app.win.views);
+    move_to_new_window(app, 0);
+    app.keep_one_window = true;
+    let mut host = Host::new(app);
+    app.show_other_windows(&mut host);
+    assert!(host.shown.is_empty());
+    assert!(app.windows.others.is_empty());
+    assert_eq!(ids(&app.win.views), vec![all[1], all[2], all[0]]);
+}
+
+#[test]
 fn window_ids_are_never_reused() {
     let mut windows = Windows::default();
     let g = validate(None, vec2(600.0, 400.0), limits(1.0, None, None));
@@ -369,3 +388,6 @@ fn window_ids_are_never_reused() {
     assert_ne!(a.viewport(), b.viewport());
     assert_ne!(a.viewport(), ViewportId::ROOT);
 }
+
+#[path = "w2b_tests.rs"]
+mod w2b;

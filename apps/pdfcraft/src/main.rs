@@ -346,9 +346,46 @@ fn retry_with_gl(choice: RendererChoice, app_started: bool) -> bool {
 
 /// The window and renderer settings for one run.
 fn native_options(integrated: bool, app_frame: bool, renderer: eframe::Renderer) -> eframe::NativeOptions {
+    let viewport = window_template(integrated, app_frame).with_title("PDF Overlay").with_inner_size([1440.0, 920.0]);
+    let persistence_path = settings_dir().map(|d| d.join("app.ron"));
+    // Set explicitly, so the renderer never depends on which one eframe defaults to.
+    let mut native = eframe::NativeOptions { viewport, persistence_path, renderer, ..Default::default() };
+    // PdfCraft installs its own last-resort system face (`PDFCRAFT_SYSTEM_FONTS`); eframe's
+    // provider would read every installed face, including proprietary ones, into every UI pass.
+    native.system_font_fallback = false;
+    // Where the monitors are, for placing new windows (TAB.WINDOW.1): egui only reports sizes.
+    native.viewport_hooks = Some(std::sync::Arc::new(MonitorHook));
+    if renderer == eframe::Renderer::Wgpu {
+        configure_gpu(&mut native);
+    }
+    native
+}
+
+/// Tells the app where the monitors are whenever eframe makes a window (TAB.WINDOW.1): egui
+/// reports a monitor's size but not its position. On Windows the app asks the system itself, for
+/// the work area too (`pdfcraft_ui_egui::monitors`).
+struct MonitorHook;
+
+impl eframe::ViewportHooks for MonitorHook {
+    fn window_created(&self, _viewport: egui::ViewportId, window: &winit::window::Window) {
+        let monitors = window
+            .available_monitors()
+            .map(|m| {
+                let (p, s) = (m.position(), m.size());
+                pdfcraft_ui_egui::monitors::MonitorArea::whole(egui::Rect::from_min_size(
+                    egui::pos2(p.x as f32, p.y as f32),
+                    egui::vec2(s.width as f32, s.height as f32),
+                ))
+            })
+            .collect();
+        pdfcraft_ui_egui::monitors::set_known(monitors);
+    }
+}
+
+/// Every window's frame, icon and limits: the first window's, and each window made later
+/// (TAB.WINDOW.1), which then gets its own title, size and position.
+fn window_template(integrated: bool, app_frame: bool) -> egui::ViewportBuilder {
     let mut viewport = egui::ViewportBuilder::default()
-        .with_title("PDF Overlay")
-        .with_inner_size([1440.0, 920.0])
         .with_min_inner_size(pdfcraft_ui_egui::MIN_WINDOW_SIZE)
         .with_drag_and_drop(true)
         // Wayland app id: matches packaging/linux/ai.storyteller.pdfcraft.desktop.
@@ -373,16 +410,7 @@ fn native_options(integrated: bool, app_frame: bool, renderer: eframe::Renderer)
         // The tab strip is the title bar (pdfcraft_ui_egui::window_controls).
         viewport = viewport.with_decorations(false);
     }
-    let persistence_path = settings_dir().map(|d| d.join("app.ron"));
-    // Set explicitly, so the renderer never depends on which one eframe defaults to.
-    let mut native = eframe::NativeOptions { viewport, persistence_path, renderer, ..Default::default() };
-    // PdfCraft installs its own last-resort system face (`PDFCRAFT_SYSTEM_FONTS`); eframe's
-    // provider would read every installed face, including proprietary ones, into every UI pass.
-    native.system_font_fallback = false;
-    if renderer == eframe::Renderer::Wgpu {
-        configure_gpu(&mut native);
-    }
-    native
+    viewport
 }
 
 /// What the command line asked for, kept so a second run (with OpenGL) can start the same way.
@@ -466,6 +494,7 @@ fn app_creator<'a>(
     Box::new(move |cc| {
         started.set(true);
         let mut app = PdfCraftApp::new();
+        app.windows.template = Some(window_template(integrated, window_controls.is_some()));
         // First start (or settings from before Units existed): the region's unit.
         app.units = pdfcraft_ui_egui::units::Unit::system();
         #[cfg(target_os = "linux")]

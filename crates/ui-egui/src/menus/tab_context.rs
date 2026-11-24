@@ -18,6 +18,13 @@ pub(crate) enum Action {
     Layout(crate::ViewLayout),
     Reopen,
     Reveal(DocId),
+    /// This fork (TAB.WINDOW.1): a tab, by its view key, to a new window or to another window
+    /// (its place in the Window menu's list).
+    MoveToNewWindow(u64),
+    MoveToWindow {
+        tab: u64,
+        window: usize,
+    },
     /// Split right (or down) with a tab, by its view key.
     Split {
         tab: u64,
@@ -29,7 +36,8 @@ impl crate::PdfCraftApp {
     /// Whether tab `index` can be duplicated: it shows a document that isn't in
     /// [`MAX_VIEWS_PER_DOCUMENT`] tabs already.
     pub fn can_duplicate(&self, index: usize) -> bool {
-        self.win.views.get(index).is_some_and(|v| self.session.get(v.id).is_some() && self.views_of(v.id).len() < MAX_VIEWS_PER_DOCUMENT)
+        // Counted over every window (TAB.WINDOW.1).
+        self.win.views.get(index).is_some_and(|v| self.session.get(v.id).is_some() && self.all_views_of(v.id) < MAX_VIEWS_PER_DOCUMENT)
     }
 
     /// Duplicate Tab: another view of tab `index`'s document, right after it and made active. It
@@ -43,7 +51,9 @@ impl crate::PdfCraftApp {
         }
         let source = self.win.views.get(index)?;
         let doc = self.session.get(source.id)?;
-        let taken: Vec<u16> = self.win.views.iter().filter(|v| v.id == source.id).map(|v| v.instance).collect();
+        // Numbers in use in any window, so two tabs of a document never share one.
+        let taken: Vec<u16> =
+            self.window_uis().iter().flat_map(|(_, ui)| ui.views.iter()).filter(|v| v.id == source.id).map(|v| v.instance).collect();
         let instance = (2..=u16::MAX).find(|n| !taken.contains(n))?;
         let version = crate::content_version(doc);
         let mut view = source.duplicate(&doc.info, instance);
@@ -74,6 +84,16 @@ impl crate::PdfCraftApp {
                 }
             }
             Action::Layout(layout) => self.set_view_layout(layout),
+            Action::MoveToNewWindow(tab) => {
+                if let Some(i) = self.tab_with_key(tab) {
+                    self.request_move_tab_to_new_window(i);
+                }
+            }
+            Action::MoveToWindow { tab, window } => {
+                if let (Some(i), Some(to)) = (self.tab_with_key(tab), self.window_at(window)) {
+                    self.request_move_tab_to_window(i, to);
+                }
+            }
             Action::Split { tab, down } => {
                 if let Some(i) = self.tab_with_key(tab) {
                     self.split_tab(i, down);

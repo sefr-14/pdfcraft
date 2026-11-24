@@ -24,7 +24,7 @@ pub(super) fn edit_panel(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens, g
     let mut run = None;
     let mut tool = None;
     // Back to All tools only when Edit was opened from there; the Edit tab is its own way back.
-    let from_all_tools = app.mode != crate::Mode::Edit;
+    let from_all_tools = app.win.mode != crate::Mode::Edit;
     ui.horizontal(|ui| {
         if from_all_tools && icons::button(ui, "chevron-left", 26.0, false, tl!("Back to all tools")).clicked() {
             app.win.left = LeftPanel::AllTools;

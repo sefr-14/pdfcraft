@@ -107,6 +107,10 @@ impl PdfCraftApp {
                 "view.previous_view" => self.win.active.and_then(|i| self.win.views.get(i)).is_some_and(|v| !v.back.is_empty()),
                 "view.next_view" => self.win.active.and_then(|i| self.win.views.get(i)).is_some_and(|v| !v.forward.is_empty()),
                 "view.duplicate_tab" => self.win.active.is_some_and(|i| self.can_duplicate(i)),
+                // This fork (TAB.WINDOW.1).
+                "window.move_tab_to_new" => self.win.active.is_some_and(|i| self.move_unavailable(i, None).is_none()),
+                "window.merge_all" => self.windows_unavailable().is_none() && self.window_count() > 1,
+                "window.close" => self.windows_unavailable().is_none(),
                 // The arrangement already shown is greyed out, in the menu and the palette alike.
                 "view.tab_view" => self.win.layout_mode != crate::ViewLayout::Tabs,
                 "view.tile_view" => self.win.layout_mode != crate::ViewLayout::Tiles,
@@ -136,6 +140,16 @@ impl PdfCraftApp {
 
     /// Why the command can't run right now, for the user.
     fn disabled_reason(&self, spec: &CommandSpec) -> String {
+        if spec.id.starts_with("window.") {
+            let reason = match spec.id {
+                "window.move_tab_to_new" => self.win.active.and_then(|i| self.move_unavailable(i, None)),
+                "window.merge_all" => self.windows_unavailable().or(Some("There is only one window.")),
+                _ => self.windows_unavailable(),
+            };
+            if let Some(reason) = reason {
+                return tl!(reason).to_string();
+            }
+        }
         match spec.needs {
             commands::Needs::Undo => tl!("Nothing to undo").to_string(),
             commands::Needs::Redo => tl!("Nothing to redo").to_string(),
@@ -354,7 +368,7 @@ impl PdfCraftApp {
                     None => self.apply_full_screen(on),
                 }
             }
-            "view.read_mode" => self.switch_mode(if self.mode == Mode::Read { Mode::AllTools } else { Mode::Read }, false),
+            "view.read_mode" => self.switch_mode(if self.win.mode == Mode::Read { Mode::AllTools } else { Mode::Read }, false),
             "view.split" => self.toggle_split(),
             crate::viewer_prefs::TOGGLE => self.toggle_interface(),
             "view.previous_view" | "view.next_view" => {
@@ -369,6 +383,13 @@ impl PdfCraftApp {
                     return Some(self.duplicate_view(i).is_some());
                 }
             }
+            "window.move_tab_to_new" => {
+                if let Some(i) = active {
+                    return Some(self.request_move_tab_to_new_window(i));
+                }
+            }
+            "window.merge_all" => self.request_window_op(crate::multi_window::WindowOp::MergeAll),
+            "window.close" => self.request_window_op(crate::multi_window::WindowOp::Close(self.current_window())),
             "view.tab_view" => self.set_view_layout(crate::ViewLayout::Tabs),
             "view.tile_view" => self.set_view_layout(crate::ViewLayout::Tiles),
             "view.thin_lines" => self.set_thin_lines(!self.thin_lines),

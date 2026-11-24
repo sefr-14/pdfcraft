@@ -380,7 +380,7 @@ fn state_of(panels: &SidePanels, pane: Pane) -> PaneState {
 fn open_panes(app: &PdfCraftApp) -> Vec<Pane> {
     let mut open = Vec::new();
     // Read mode hides the tools, not the navigation panes.
-    if app.win.left_open && app.mode != Mode::Read {
+    if app.win.left_open && app.win.mode != Mode::Read {
         open.push(Pane::Tools);
     }
     // Home and Combine files have no side panel; the choice is kept for the next document.
@@ -425,7 +425,7 @@ pub fn show(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
         crate::chrome::right_rail(app, ui);
     }
     // The expanded All tools view covers the panes.
-    if app.mode == Mode::AllTools && app.win.all_tools_full {
+    if app.win.mode == Mode::AllTools && app.win.all_tools_full {
         return;
     }
     let open = open_panes(app);

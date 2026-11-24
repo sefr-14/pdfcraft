@@ -67,10 +67,10 @@ impl PdfCraftApp {
         // hides the quick toolbar and keeps every tool down (`enter_mode`), so the control
         // channel's `tool edit` there leaves editing off.
         if id == "edit" {
-            if self.mode != Mode::Read {
+            if self.win.mode != Mode::Read {
                 self.win.quick_tool = QuickTool::EditText;
             }
-        } else if self.mode != Mode::Edit
+        } else if self.win.mode != Mode::Edit
             && self.win.left == LeftPanel::Tool("edit")
             && matches!(self.win.quick_tool, QuickTool::EditText | QuickTool::AddText)
         {
@@ -109,7 +109,7 @@ impl PdfCraftApp {
     /// every paragraph and image on the page gets its box and is editable with one click. Leaving
     /// Edit puts the editing tools down again and applies a paragraph still open in the editor.
     pub(crate) fn enter_mode(&mut self, mode: Mode) {
-        self.mode = mode;
+        self.win.mode = mode;
         // Another workspace puts the expanded All tools view away.
         if mode != Mode::AllTools {
             self.win.all_tools_full = false;
@@ -129,7 +129,7 @@ impl PdfCraftApp {
     /// Fill the workspace with the expanded All tools view, entering All tools the way the mode
     /// bar does: leaving Read restores its right panel and leaving Edit puts the editing tool down.
     pub(crate) fn expand_all_tools(&mut self) {
-        if self.mode != Mode::AllTools {
+        if self.win.mode != Mode::AllTools {
             self.switch_mode(Mode::AllTools, true);
         }
         self.win.all_tools_full = true;
@@ -158,7 +158,7 @@ impl PdfCraftApp {
     /// that panel. The rail stays in Read mode, and its buttons open panels there too (#932).
     /// Read mode hides the quick toolbar, so entering it also puts the current tool down.
     pub(crate) fn switch_mode(&mut self, mode: Mode, select_tools: bool) {
-        let was_read = self.mode == Mode::Read;
+        let was_read = self.win.mode == Mode::Read;
         if select_tools {
             self.select_mode(mode);
         } else {
@@ -184,7 +184,7 @@ impl PdfCraftApp {
     /// keeps comment tools from reopening it; opening it again lets them (#225). A choice made in
     /// Read mode replaces the pane saved on the way in, so leaving Read mode doesn't undo it.
     pub fn choose_right_panel(&mut self, panel: Option<RightPanel>) {
-        if self.mode == Mode::Read {
+        if self.win.mode == Mode::Read {
             self.win.right_before_read = None;
         }
         if panel == Some(RightPanel::Comments) {
