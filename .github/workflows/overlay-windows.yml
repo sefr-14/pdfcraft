@@ -1,3 +1,8 @@
+# Scratch-only copy for TAB.WINDOW.1 W2e (branch scratch/tab-window-w2e-windows; never on Main):
+# the production workflow below plus native multi-window checks of the built app
+# (scripts/w2e-windows/run.ps1): real windows, injected input, the opt-in control channel.
+# The three added steps are marked "W2e scratch".
+#
 # Fork-only workflow (sefr-14/pdfcraft): build the overlay-compare version of PdfCraft for
 # 64-bit Windows as a downloadable Actions artifact.
 #
@@ -43,6 +48,15 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
+      # W2e scratch: parse the check script before the long build, so a mistake fails at once.
+      - name: Parse the native check script (W2e scratch)
+        shell: pwsh
+        run: |
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'scripts\w2e-windows\run.ps1').Path, [ref]$null, [ref]$errors)
+          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Host $_ }; throw "run.ps1 does not parse" }
+          'run.ps1 parses'
 
       # This fork (SYNC.16): upstream's interface translations live in storytold/craft-i18n
       # (#6055), and PDF Overlay's own rows are merged over them by crates/ui-egui/build.rs.
@@ -114,6 +128,11 @@ jobs:
           & "target\$env:TARGET\release\pdfcraft-cli.exe" --version
           if ($LASTEXITCODE -ne 0) { throw "pdfcraft-cli --version failed with exit code $LASTEXITCODE" }
 
+      # W2e scratch: the built app with several native windows (evidence class ci-vm).
+      - name: Native multi-window checks (W2e scratch)
+        shell: pwsh
+        run: .\scripts\w2e-windows\run.ps1 -Bin "target\$env:TARGET\release" -Out native-w2e -Renderer wgpu
+
       - name: Package
         shell: pwsh
         env:
@@ -165,3 +184,19 @@ jobs:
             dist/${{ steps.name.outputs.package }}.zip
             dist/${{ steps.name.outputs.package }}.zip.sha256
           if-no-files-found: error
+
+      # W2e scratch: the native checks' results and logs, whatever happened above.
+      - name: Upload the native check results (W2e scratch)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: w2e-windows-native-${{ github.sha }}
+          path: native-w2e/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Print the native check results (W2e scratch)
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path native-w2e\results.txt) { Get-Content native-w2e\results.txt } else { 'no results file' }
