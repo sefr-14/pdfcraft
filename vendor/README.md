@@ -17,6 +17,38 @@ Review upstream changes before replacing the snapshot and run the lifecycle and 
 | [LICENSE-MIT](edit-session/LICENSE-MIT) | `665a942f9317a358930b470ad522a22a58ff6c346db0395463ec84dd3e19d775` |
 | [LICENSE-APACHE](edit-session/LICENSE-APACHE) | `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30` |
 
+## eframe (TAB.WINDOW.1: `native_window`)
+
+`vendor/eframe` is the `eframe` crate of storytold/egui at
+`725a39fca940f77149ffbb9c58eef405a16997bc` (the revision every other egui crate is pinned to)
+plus one reviewed patch, until that patch lands in storytold/egui. Both `[patch.crates-io]` and
+`[patch."https://github.com/storytold/egui.git"]` point `eframe` here, so one eframe is built.
+
+- **The patch** (4 files, +104 / −2, a registry unit test included): `eframe::native_window(viewport)`
+  returns the native window of any live viewport, so a file dialog can be parented to the window
+  that asked with no `unsafe` (`winit::Window` implements the raw-window-handle traits safely).
+  eframe keeps a weak reference per viewport: registered where it holds the window's `Arc`
+  (wgpu: on creation; glow: `initialize_window`), removed beside the `window_destroyed` hook. No
+  existing API or behaviour changes. Review record: `REVIEW-native-window.md` on branch
+  `review/native-window-by-viewport` (commit `86704d8`) of the local egui review clone; the
+  same diff is meant for storytold/egui.
+- **Files:** `src/`, `data/icon.png` (in `ATTRIBUTION.toml`), `README.md`, and the workspace's
+  `LICENSE-MIT` and `LICENSE-APACHE`, copied unchanged. `Cargo.toml` is eframe's own with the
+  workspace inheritance written out (versions, edition, licence and the workspace dependency
+  specs; its `[lints] workspace = true` dropped, as the copy is outside a workspace). Every other
+  file equals the revision above except the patched ones:
+
+| File | SHA-256 |
+| --- | --- |
+| `src/native/viewport_hooks.rs` | `9dcac812a4cce477224c8061d9bbf7744d8a5b3566ce3ab3d7e516d3848204aa` |
+| `src/native/wgpu_integration.rs` | `06163f64020dea9f8dbf112581a8a2c1561a1b94ebd11a2e160c6a3c68fe2314` |
+| `src/native/glow_integration.rs` | `5a61f402fa3944e790de4c4885c0a1d7c8181aad71a687278fbcdd627be2a19e` |
+| `src/lib.rs` | `7d0e7d49928dfd84059e2f37bf5cf10d92f8a7ec6760fcaf8509d9f4151ee826` |
+| `Cargo.toml` | `512c8a7a58139375ec9724aaec7da57779853509e47683dd0b1d37d6723b90a9` |
+
+To drop the copy once storytold/egui has the patch: point `eframe` back at the new egui revision
+with the other egui crates and delete `vendor/eframe` and its `ATTRIBUTION.toml` entry.
+
 ## Window-stack provenance after the egui 0.37 migration
 
 The checked-in, resolved Cargo graph pins `winit` to storytold/winit

@@ -170,7 +170,15 @@ egui_glow = { git = "https://github.com/storytold/egui.git", rev = "725a39fca940
 egui_extras = { git = "https://github.com/storytold/egui.git", rev = "725a39fca940f77149ffbb9c58eef405a16997bc" }
 egui_kittest = { git = "https://github.com/storytold/egui.git", rev = "725a39fca940f77149ffbb9c58eef405a16997bc" }
 egui_system_font_provider = { git = "https://github.com/storytold/egui.git", rev = "725a39fca940f77149ffbb9c58eef405a16997bc" }
-eframe = { git = "https://github.com/storytold/egui.git", rev = "725a39fca940f77149ffbb9c58eef405a16997bc" }
+# eframe is the storytold/egui 725a39fc crate plus one reviewed patch (`native_window`, TAB.WINDOW.1:
+# parenting file dialogs to the window that asked), vendored until it lands in storytold/egui. See
+# vendor/README.md.
+eframe = { path = "vendor/eframe" }
 egui_demo_lib = { git = "https://github.com/storytold/egui.git", rev = "725a39fca940f77149ffbb9c58eef405a16997bc" }
 egui_inspection = { git = "https://github.com/storytold/egui.git", rev = "725a39fca940f77149ffbb9c58eef405a16997bc" }
 winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }
+
+# The same vendored eframe for the crates of storytold/egui that reach it inside that repository
+# (egui_kittest), so one eframe is built.
+[patch."https://github.com/storytold/egui.git"]
+eframe = { path = "vendor/eframe" }

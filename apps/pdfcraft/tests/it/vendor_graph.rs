@@ -79,3 +79,30 @@ fn renderer_and_security_vendors_remain() {
         assert!(manifest.contains(&format!("path = \"{vendor}\"")), "{vendor} must stay a path patch");
     }
 }
+
+/// TAB.WINDOW.1: eframe is the vendored storytold/egui 725a39fc crate with the reviewed
+/// `native_window` patch, used for every eframe in the graph (one package, a path source), and
+/// its patched files are the reviewed ones (`vendor/README.md` records their hashes).
+#[test]
+fn eframe_is_the_vendored_reviewed_patch() {
+    let package = locked("eframe");
+    assert!(package.lines().any(|line| line.trim() == "version = \"0.37.0\""), "{package}");
+    assert!(!package.contains("source = "), "eframe must resolve to vendor/eframe: {package}");
+    let manifest = std::fs::read_to_string(root().join("Cargo.toml")).expect("root Cargo.toml");
+    let patches = manifest.matches("eframe = { path = \"vendor/eframe\" }").count();
+    assert_eq!(patches, 2, "both the crates.io and the storytold/egui git sources of eframe point at vendor/eframe");
+    let readme = std::fs::read_to_string(root().join("vendor/README.md")).expect("vendor/README.md");
+    for file in ["src/native/viewport_hooks.rs", "src/native/wgpu_integration.rs", "src/native/glow_integration.rs", "src/lib.rs"] {
+        let bytes = std::fs::read(root().join("vendor/eframe").join(file)).expect("a patched eframe file");
+        let hash = sha256_hex(&bytes);
+        assert!(readme.contains(&format!("| `{file}` | `{hash}` |")), "vendor/eframe/{file} is not the reviewed patch (sha256 {hash})");
+    }
+    let hooks = std::fs::read_to_string(root().join("vendor/eframe/src/native/viewport_hooks.rs")).expect("viewport_hooks.rs");
+    assert!(hooks.contains("pub fn native_window(viewport: egui::ViewportId) -> Option<Arc<winit::window::Window>>"));
+    assert!(!hooks.contains("unsafe"), "the patch has no unsafe");
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest as _;
+    sha2::Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+}

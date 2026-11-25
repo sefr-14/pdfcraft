@@ -56,6 +56,8 @@ raw-window-handle = "0.6"
 [dev-dependencies]
 # Waits for wgpu's adapter, device and error-scope futures in tests (already in the tree through wgpu).
 pollster = "1.0"
+# Checks the vendored eframe patch against the hashes vendor/README.md records (already in the tree).
+sha2 = "0.11"
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 # Exercise the vendored Wayland scroll policy with the actual winit event type.

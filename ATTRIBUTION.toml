@@ -2240,6 +2240,17 @@ usage = "Small special-icon subset embedded by egui default_fonts; retained in F
 sha256 = "122806555c73df7cef55aa1d945289ae27fbc4dbbd31abbb4204ee0cda829cc8"
 
 [[asset]]
+path = "vendor/eframe/data/icon.png"
+title = "eframe default window icon"
+author = "Emil Ernerfeldt and the egui contributors"
+source = "https://github.com/storytold/egui/blob/725a39fca940f77149ffbb9c58eef405a16997bc/crates/eframe/data/icon.png"
+licence = "MIT OR Apache-2.0"
+licence_file = "vendor/eframe/LICENSE-MIT"
+kind = "icon"
+usage = "Compiled into the vendored eframe (vendor/README.md) as its fallback window icon; PDF Overlay sets its own icon, so this one is not shown. The same file the storytold/egui dependency compiled in before it was vendored"
+sha256 = "9e076c34e32a0b0ef35c62ebf6be8b5594a4601e7bcd478b681e9eff1f327973"
+
+[[asset]]
 path = "vendor/hayro-cmap/assets/cmaps.brotli"
 title = "Adobe CMap resources (predefined CJK CMaps)"
 author = "Adobe"
