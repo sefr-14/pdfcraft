@@ -399,3 +399,6 @@ mod w2c;
 
 #[path = "w2d_tests.rs"]
 mod w2d;
+
+#[path = "w2e_tests.rs"]
+mod w2e;

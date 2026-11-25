@@ -2,12 +2,41 @@
 use super::*;
 
 impl PdfCraftApp {
-    /// A window other than the first, while the open dialog or question shows in it
-    /// (TAB.WINDOW.1, T-3): the question's keys are read here, from this window's input, as the
-    /// first window's [`Self::shortcuts`] reads them there. Nothing else runs.
-    pub(crate) fn dialog_keys(&mut self, ctx: &egui::Context) {
-        if self.drawing_other_window() && self.modal_open() && self.dialog_here() {
-            self.shortcuts(ctx);
+    /// The keyboard of a window other than the first, at the start of its pass and from its own
+    /// input (TAB.WINDOW.1): what the first window's `logic` does with its keys, in the same
+    /// order. Shortcuts (Ctrl+W, Rotate, zoom, the page keys…) act on this window's tabs; a
+    /// question shown here reads its keys here; a dialog open in another window holds this one
+    /// (T-3, in [`Self::shortcuts`]). The first window's keys stay in `logic`.
+    pub(crate) fn window_keys(&mut self, ctx: &egui::Context) {
+        if !self.drawing_other_window() {
+            return;
+        }
+        // Shortcuts deferred last pass of this window: its field has taken that typing since.
+        let deferred = std::mem::take(&mut self.win.deferred_commands);
+        // The input a click in this window's menu stands for, before anything reads its keys.
+        self.release_menu_input(ctx);
+        craft_menu::bar::leave_for_shortcut(ctx);
+        self.win.hotbar.close_hidden_picker(ctx, self.hotbar_hidden());
+        self.win.page_keys = page_keys::PageKeys::new(self.over_pages(ctx));
+        self.shortcuts(ctx);
+        let blocked = self.modal_open() || self.win.palette_open || !ctx.input(|i| i.focused);
+        let tiled = self.tiled();
+        for (index, view) in self.win.views.iter_mut().enumerate() {
+            let shut = blocked || self.win.active != Some(index);
+            view.objects.set_input_blocked(shut);
+            if blocked || (self.win.active != Some(index) && !tiled) {
+                view.auto_scroll.cancel();
+                if matches!(self.win.quick_tool, QuickTool::EditText | QuickTool::AddText) {
+                    view.cancel_edit_text_gestures();
+                }
+            }
+        }
+        if self.process_pending_edits() && self.close_request.is_none() {
+            for (id, view) in deferred {
+                if self.active_key() == view {
+                    self.execute(id);
+                }
+            }
         }
     }
 

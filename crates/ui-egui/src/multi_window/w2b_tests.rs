@@ -247,7 +247,8 @@ fn opening_a_file_open_in_another_window_brings_that_window_and_tab_forward() {
     let tabs = app.win.views.len();
     assert_eq!(app.open_path(&path), crate::OpenOutcome::Focused);
     assert_eq!(app.win.views.len(), tabs, "not opened twice");
-    assert!(app.windows.pending.iter().any(|op| matches!(op, WindowOp::Focus(Some(_)))));
+    // W2e: brought forward by `Reveal`, which also applies what the open asked for there.
+    assert!(app.windows.pending.iter().any(|op| matches!(op, WindowOp::Reveal { window: Some(_), .. })));
     let _ = std::fs::remove_file(&path);
 }
 

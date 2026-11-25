@@ -79,6 +79,14 @@ impl Control {
                 let modifiers = modifiers(p.get("modifiers"))?;
                 self.after_input(key_batches(key, modifiers), json!({ "key": name }), since)
             }
+            // Windows (TAB.WINDOW.1): the list, and the Window menu's commands for any window and tab.
+            "ui.windows" => Ok(Handled::Now(Ok(host.windows()))),
+            "ui.window.new" | "ui.window.move" | "ui.window.merge" | "ui.window.close" | "ui.window.focus" => {
+                let reply = host.window_action(method, p)?;
+                ctx.request_repaint();
+                // Answered once the windows have changed (between two passes).
+                Ok(Handled::AfterFrames(2, reply))
+            }
             "ui.screenshot" => {
                 let region = match p.get("region") {
                     None | Some(Value::Null) => None,
@@ -111,7 +119,7 @@ impl Control {
                 Ok(Handled::Screenshot(region))
             }
             other => Err(format!(
-                "unknown method {other:?} (ui.state, ui.inspect, ui.click, ui.focus, ui.resize, ui.quit, ui.move, ui.drag, ui.type, ui.key, ui.command, ui.commands, ui.set, ui.open, ui.screenshot)"
+                "unknown method {other:?} (ui.state, ui.inspect, ui.click, ui.focus, ui.resize, ui.quit, ui.move, ui.drag, ui.type, ui.key, ui.command, ui.commands, ui.set, ui.open, ui.screenshot, ui.windows, ui.window.new, ui.window.move, ui.window.merge, ui.window.close, ui.window.focus)"
             )),
         })();
         r.unwrap_or_else(|e| Handled::Now(Err(e)))

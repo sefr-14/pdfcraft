@@ -278,6 +278,17 @@ pub(crate) trait Host {
         1
     }
 
+    /// Every window, the first one first (TAB.WINDOW.1).
+    fn windows(&self) -> Value {
+        json!({ "windows": [], "available": false })
+    }
+
+    /// A window command from the control channel (`ui.window.*`): checked now, done before the
+    /// reply. `Err` says what was wrong and what is allowed.
+    fn window_action(&mut self, method: &str, _params: &Value) -> Reply {
+        Err(format!("{method}: this app has one window"))
+    }
+
     /// The window at `index` (0 is the first) has no native capture here: the engine's render, at
     /// `dpi`, of the page it shows, labelled as a render and not a capture of the window.
     fn window_page_render(&mut self, index: usize, _dpi: f64) -> Reply {

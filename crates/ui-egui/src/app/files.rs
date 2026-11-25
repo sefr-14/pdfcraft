@@ -868,8 +868,10 @@ impl PdfCraftApp {
             }
             return OpenOutcome::Focused;
         }
-        // Open in another window (TAB.WINDOW.1): that window and its tab come to the front.
-        if self.focus_tab_in_other_window(path) {
+        // Open in another window (TAB.WINDOW.1): that window and its tab come to the front, shown
+        // as asked, with the tool asked for.
+        let reopen = crate::multi_window::Reopen { display: display_override, destination: after_open.clone(), then };
+        if self.reveal_in_other_window(path, reopen) {
             self.startup_superseded = true;
             return OpenOutcome::Focused;
         }

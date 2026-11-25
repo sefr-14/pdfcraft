@@ -232,6 +232,17 @@ pub(crate) enum PassOutcome {
 /// A window: the main one (`None`) or another.
 pub type WindowKey = Option<WindowId>;
 
+/// What an open of a file another window shows asks for there ([`WindowOp::Reveal`]).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct Reopen {
+    /// Page layout and continuous scrolling (`--layout` on the command line, a launch display).
+    pub(crate) display: Option<(crate::canvas::PageLayout, bool)>,
+    /// Where to show it (`file.pdf#page=3`, a link into it).
+    pub(crate) destination: Option<pdfcraft_render::RemoteDestination>,
+    /// The tool it was opened for.
+    pub(crate) then: Option<&'static str>,
+}
+
 /// A change to which window shows what. It can be asked for at any time (a menu, a key, a tab's
 /// menu, in any window's pass) and is carried out between passes, when no window's state is
 /// swapped into `win`, so no pass ever sees the list of windows change under it.
@@ -247,6 +258,10 @@ pub(crate) enum WindowOp {
     Close(WindowKey),
     /// Bring a window to the front.
     Focus(WindowKey),
+    /// A file opened again that window `window`'s tab `view` already shows: that tab becomes the
+    /// window's active one, in the display, at the destination and with the tool the open asked
+    /// for, and the window comes to the front.
+    Reveal { window: WindowKey, view: crate::canvas::ViewKey, reopen: Box<Reopen> },
     /// Run a command in the main window, once the changes before it are done (Close all from
     /// another window: every tab joins the main window first, which then closes them as always).
     Run(&'static str),
@@ -429,8 +444,8 @@ impl PdfCraftApp {
         if blocked {
             ui.disable();
         }
-        // The keys of a question shown in this window, before anything else reads them.
-        self.dialog_keys(ui.ctx());
+        // This window's keyboard, before anything else reads its keys.
+        self.window_keys(ui.ctx());
         self.ui_unguarded(ui);
         if blocked {
             self.dialog_elsewhere_notice(ui.ctx());
@@ -516,6 +531,7 @@ impl PdfCraftApp {
                 WindowOp::MergeAll => self.merge_all_windows(),
                 WindowOp::Close(key) => self.close_window(key),
                 WindowOp::Focus(key) => self.focus_window(key),
+                WindowOp::Reveal { window, view, reopen } => self.reveal(window, view, *reopen),
                 WindowOp::Run(command) => {
                     let _ = self.execute(command);
                 }
@@ -798,18 +814,22 @@ impl PdfCraftApp {
     /// Why tab `index` of the current window can't move to a new window (`to` is `None`) or to
     /// window `to`; `None` when it can.
     pub(crate) fn move_unavailable(&self, index: usize, to: Option<WindowKey>) -> Option<&'static str> {
+        self.move_unavailable_from(self.current_window(), self.win.views.len(), index, to)
+    }
+
+    /// [`Self::move_unavailable`] for tab `index` of window `from`, which has `tabs` tabs.
+    pub(crate) fn move_unavailable_from(&self, from: WindowKey, tabs: usize, index: usize, to: Option<WindowKey>) -> Option<&'static str> {
         if let Some(reason) = self.windows_unavailable() {
             return Some(reason);
         }
-        let current = self.current_window();
-        if index >= self.win.views.len() {
+        if index >= tabs {
             return Some("Open a document first");
         }
         match to {
-            None if self.win.views.len() < 2 => Some("A window's only tab can't move to a new window."),
-            Some(to) if to == current => Some("The tab is in that window already."),
+            None if tabs < 2 => Some("A window's only tab can't move to a new window."),
+            Some(to) if to == from => Some("The tab is in that window already."),
             Some(Some(id)) if !self.window_uis().iter().any(|(key, _)| *key == Some(id)) => Some("That window is closed."),
-            Some(_) if current.is_none() && self.win.views.len() < 2 => Some("The first window keeps at least one tab."),
+            Some(_) if from.is_none() && tabs < 2 => Some("The first window keeps at least one tab."),
             _ => None,
         }
     }
@@ -841,34 +861,49 @@ impl PdfCraftApp {
     /// A file already open in a tab of another window: that tab becomes the window's active one and
     /// the window comes to the front. `false` when no other window shows it.
     pub(crate) fn focus_tab_in_other_window(&mut self, path: &str) -> bool {
+        self.reveal_in_other_window(path, Reopen::default())
+    }
+
+    /// [`Self::focus_tab_in_other_window`], applying `reopen` there: the display, destination and
+    /// tool the open asked for, as a tab of the current window gets them.
+    pub(crate) fn reveal_in_other_window(&mut self, path: &str, reopen: Reopen) -> bool {
         let current = self.drawing_window;
         let session = &self.session;
         let shows = |v: &DocView| session.get(v.id).and_then(|d| d.path.as_deref()).is_some_and(|p| same_path(p, path));
-        let mut found = None;
-        if current.is_some()
-            && let Some(i) = self.windows.others.iter().find(|w| Some(w.id) == current).and_then(|w| w.ui.views.iter().position(&shows))
-        {
-            // While another window is drawn, the main window's state is in that window's slot.
-            if let Some(w) = self.windows.others.iter_mut().find(|w| Some(w.id) == current) {
-                w.ui.active = Some(i);
-            }
-            found = Some(None);
-        }
-        if found.is_none() {
-            for w in self.windows.others.iter_mut().filter(|w| Some(w.id) != current) {
-                if let Some(i) = w.ui.views.iter().position(&shows) {
-                    w.ui.active = Some(i);
-                    found = Some(Some(w.id));
-                    break;
+        let found = self
+            .window_uis()
+            .into_iter()
+            .filter(|(key, _)| *key != current)
+            .find_map(|(key, ui)| ui.views.iter().find(|v| shows(v)).map(|v| (key, crate::canvas::ViewKey(v.view_key()))));
+        let Some((window, view)) = found else { return false };
+        self.request_window_op(WindowOp::Reveal { window, view, reopen: Box::new(reopen) });
+        true
+    }
+
+    /// [`WindowOp::Reveal`], between passes.
+    fn reveal(&mut self, window: WindowKey, view: crate::canvas::ViewKey, reopen: Reopen) {
+        let shown = self.with_window(window, |app| {
+            let Some(i) = app.view_index(view) else { return false };
+            app.win.active = Some(i);
+            if let Some((layout, continuous)) = reopen.display
+                && let Some(v) = app.win.views.get_mut(i)
+            {
+                v.set_display(layout, continuous);
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    app.launch_display_target = Some(v.id);
                 }
             }
-        }
-        match found {
-            Some(key) => {
-                self.request_window_op(WindowOp::Focus(key));
-                true
+            if let Some(destination) = reopen.destination {
+                app.apply_destination_at(i, destination);
             }
-            None => false,
+            if let Some(command) = reopen.then {
+                app.execute(command);
+            }
+            true
+        });
+        if shown == Some(true) {
+            self.focus_window(window);
         }
     }
 

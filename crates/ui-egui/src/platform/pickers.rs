@@ -23,6 +23,12 @@
 //! pages) happens there and nowhere else. One picker shows at a time, and it keeps that claim
 //! until its closure starts, so a closure that asks again (merge data, then save the
 //! spreadsheet) always gets its second picker.
+//!
+//! A picker belongs to the window that asked (TAB.WINDOW.1): on Windows and Linux it is parented
+//! to that window's native window ([`eframe::native_window`]): on Windows the panel is owned by
+//! it, and the XDG portal is told which window it is for. The window is kept alive until the
+//! panel is answered, as rfd holds its raw handle. macOS keeps rfd's own choice (one window
+//! there, O-5).
 
 use std::future::Future;
 use std::path::PathBuf;
@@ -77,6 +83,8 @@ struct Waiting {
     ask: Ask,
     target: Option<PickTarget>,
     then: Then,
+    /// The window that asked.
+    window: egui::ViewportId,
 }
 
 impl std::fmt::Debug for Waiting {
@@ -90,6 +98,9 @@ impl std::fmt::Debug for Waiting {
 pub struct Pickers {
     /// Requests that show, in order, once the picker before them is answered.
     waiting: std::collections::VecDeque<Waiting>,
+    /// The window the last picker shown belongs to (TAB.WINDOW.1), and whether its native
+    /// window was there to parent it.
+    pub(crate) last_window: Option<(egui::ViewportId, bool)>,
     /// A picker is showing, or its pick is waiting for the frame; a second request waits
     /// until the pick's closure starts.
     showing: Arc<AtomicBool>,
@@ -168,6 +179,28 @@ impl Pickers {
     }
 }
 
+/// What keeps a picker's parent window alive until the picker is answered.
+type KeepParent = Option<Box<dyn std::any::Any + Send>>;
+
+/// `ask` parented to `window`'s native window, and what keeps that window alive meanwhile; as it
+/// is when the window has no native window (embedded windows, tests) or on macOS and the web.
+#[cfg(not(any(target_arch = "wasm32", target_os = "macos")))]
+fn parented(ask: Ask, window: egui::ViewportId) -> (Ask, KeepParent) {
+    let Some(native) = eframe::native_window(window) else { return (ask, None) };
+    let ask = match ask {
+        Ask::File(d) => Ask::File(d.set_parent(&*native)),
+        Ask::Files(d) => Ask::Files(d.set_parent(&*native)),
+        Ask::Folder(d) => Ask::Folder(d.set_parent(&*native)),
+        Ask::Save(d) => Ask::Save(d.set_parent(&*native)),
+    };
+    (ask, Some(Box::new(native)))
+}
+
+#[cfg(any(target_arch = "wasm32", target_os = "macos"))]
+fn parented(ask: Ask, _window: egui::ViewportId) -> (Ask, KeepParent) {
+    (ask, None)
+}
+
 impl PdfCraftApp {
     /// Show a native picker for `pick_for` without blocking the frame. The choice is used on a
     /// later frame by [`Self::process_picked`].
@@ -201,17 +234,20 @@ impl PdfCraftApp {
     pub(crate) fn ask(&mut self, ask: Ask, target: Option<DocId>, then: impl FnOnce(&mut PdfCraftApp, Vec<PathBuf>) + Send + 'static) -> bool {
         let target = self.pick_target(target);
         let then: Then = Box::new(then);
+        let window = self.current_window().map_or(egui::ViewportId::ROOT, crate::multi_window::WindowId::viewport);
         if self.pickers.showing.swap(true, Ordering::SeqCst) {
             // Refusing would drop what asked, such as a finished Reduce File Size copy.
-            self.pickers.waiting.push_back(Waiting { ask, target, then });
+            self.pickers.waiting.push_back(Waiting { ask, target, then, window });
             self.notify_tr("Another file dialog is still open. This one will open when it closes.");
             return true;
         }
-        self.show_picker(ask, target, then)
+        self.show_picker(ask, target, then, window)
     }
 
-    /// [`Self::ask`] once `showing` is claimed for it.
-    fn show_picker(&mut self, ask: Ask, target: Option<PickTarget>, then: Then) -> bool {
+    /// [`Self::ask`] once `showing` is claimed for it; `window` asked for it.
+    fn show_picker(&mut self, ask: Ask, target: Option<PickTarget>, then: Then, window: egui::ViewportId) -> bool {
+        let (ask, keep) = parented(ask, window);
+        self.pickers.last_window = Some((window, keep.is_some()));
         if let Some(paths) = self.pick_override.clone() {
             self.pickers.deliver(target, paths.into_iter().map(PathBuf::from).collect(), then);
             return true;
@@ -220,24 +256,56 @@ impl PdfCraftApp {
         let ctx = self.ctx.clone();
         let one = |h: Option<rfd::FileHandle>| h.map(|h| h.path().to_path_buf()).into_iter().collect::<Vec<_>>();
         let started = match ask {
+            // `keep` holds the parent window until the panel is answered.
             Ask::File(d) => {
                 let pick = d.pick_file();
-                self.pickers.spawn(target, ctx, async move { one(pick.await) }, then)
+                self.pickers.spawn(
+                    target,
+                    ctx,
+                    async move {
+                        let paths = one(pick.await);
+                        drop(keep);
+                        paths
+                    },
+                    then,
+                )
             }
             Ask::Folder(d) => {
                 let pick = d.pick_folder();
-                self.pickers.spawn(target, ctx, async move { one(pick.await) }, then)
+                self.pickers.spawn(
+                    target,
+                    ctx,
+                    async move {
+                        let paths = one(pick.await);
+                        drop(keep);
+                        paths
+                    },
+                    then,
+                )
             }
             Ask::Save(d) => {
                 let pick = d.save_file();
-                self.pickers.spawn(target, ctx, async move { one(pick.await) }, then)
+                self.pickers.spawn(
+                    target,
+                    ctx,
+                    async move {
+                        let paths = one(pick.await);
+                        drop(keep);
+                        paths
+                    },
+                    then,
+                )
             }
             Ask::Files(d) => {
                 let pick = d.pick_files();
                 self.pickers.spawn(
                     target,
                     ctx,
-                    async move { pick.await.unwrap_or_default().into_iter().map(|h| h.path().to_path_buf()).collect() },
+                    async move {
+                        let paths = pick.await.unwrap_or_default().into_iter().map(|h| h.path().to_path_buf()).collect();
+                        drop(keep);
+                        paths
+                    },
                     then,
                 )
             }
@@ -285,9 +353,9 @@ impl PdfCraftApp {
         // After the closures, so a picker one of them asked for comes before the waiting ones.
         if !self.pickers.waiting.is_empty()
             && !self.pickers.showing.swap(true, Ordering::SeqCst)
-            && let Some(Waiting { ask, target, then }) = self.pickers.waiting.pop_front()
+            && let Some(Waiting { ask, target, then, window }) = self.pickers.waiting.pop_front()
         {
-            self.show_picker(ask, target, then);
+            self.show_picker(ask, target, then, window);
         }
     }
 }

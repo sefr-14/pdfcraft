@@ -1576,6 +1576,36 @@ fn screenshots_name_the_window_and_state_lists_them() {
     assert!(dpi.contains("dpi must be"), "{dpi}");
 }
 
+/// TAB.WINDOW.1 W2e: the window tools. With the default "Keep all documents in one window" they
+/// list the one window and refuse to make others, saying how to allow them; bad numbers are
+/// refused with what is allowed.
+#[test]
+fn window_tools_list_and_refuse_with_reasons() {
+    let (mut h, c) = harness();
+    let list = ok(&mut h, &c, "ui.windows", json!({}));
+    assert_eq!(list["windows"].as_array().map(Vec::len), Some(1), "{list}");
+    assert_eq!(list["available"], false);
+    assert!(list["unavailable_reason"].is_string(), "{list}");
+    let new = call(&mut h, &c, "ui.window.new", json!({ "tab": 0 })).unwrap_err();
+    assert!(new.contains("keep_one_window value=false"), "{new}");
+    for (method, params, says) in [
+        ("ui.window.new", json!({}), "tab must be"),
+        ("ui.window.new", json!({ "tab": 5 }), "has no tab 5"),
+        ("ui.window.new", json!({ "window": 2, "tab": 0 }), "there is no window 2"),
+        ("ui.window.move", json!({ "tab": 0 }), "missing to"),
+        ("ui.window.move", json!({ "tab": 0, "to": 0 }), "no window 0"),
+        ("ui.window.close", json!({}), "missing window"),
+        ("ui.window.focus", json!({ "window": "one" }), "must be a window number"),
+        ("ui.window.merge", json!({}), "only one window"),
+    ] {
+        let e = call(&mut h, &c, method, params.clone()).unwrap_err();
+        assert!(e.contains(says), "{method} {params}: {e}");
+    }
+    // Window 1 can be focused and closed through the tools like any other (closing the last
+    // window quits, asking about unsaved work as Quit does).
+    ok(&mut h, &c, "ui.window.focus", json!({ "window": 1 }));
+}
+
 #[test]
 fn loopback_transport_requires_the_token() {
     use std::io::{BufRead, BufReader, Write};

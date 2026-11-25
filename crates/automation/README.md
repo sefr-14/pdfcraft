@@ -326,6 +326,29 @@ returns to page tops, does not restore zoom, does not switch documents, and is n
 restarts. Standalone engine/MCP sessions have no viewport, so they do not have a separate
 navigation-history tool; use the opt-in UI control channel to navigate the displayed document.
 
+## Windows (TAB.WINDOW.1, this fork)
+
+Several windows are a property of the running app, so they are driven through the opt-in UI
+control channel (`pdfcraft --control FILE`), not this tool table; standalone engine and MCP
+sessions have no windows. Windows are numbered from 1 (the first window), tabs from 0 within
+their window, as `ui.state` numbers them:
+
+- `pdfcraft-cli ui --control FILE windows`: every window, its tabs, active document and page,
+  zoom, whether a dialog shows in it, and how `screenshot` captures it; `available` says whether
+  tabs can move to other windows here, and `unavailable_reason` why not (the default "Keep all
+  documents in one window" preference, macOS, or a host without native windows).
+- `window.new window=W tab=T` (Move Tab to New Window), `window.move window=W tab=T to=N` (Move
+  Tab to Window), `window.merge` (Merge All Windows), `window.close window=W` (Close Window: a
+  document only that window shows asks first, see `state`'s `close_prompt`) and
+  `window.focus window=W`. They follow the Window menu's rules (the first window keeps a tab; a
+  window's only tab doesn't make a new window) and refuse with the reason; the reply comes once
+  the windows have changed.
+- `screenshot window=N` for a window other than the first returns the engine's render of the page
+  it shows, labelled `"source": "engine-render"`, `"native_window_capture": false`; only window 1
+  is captured natively.
+- `state`'s `last_file_dialog` names the window the last file dialog belonged to, and whether it
+  was parented to that native window.
+
 ## Fill & Sign text appearance
 
 `fill_sign_add` accepts `font_size` (4–300 pt, default 10) and `color`

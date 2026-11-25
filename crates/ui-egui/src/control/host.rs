@@ -60,6 +60,20 @@ impl Host for crate::PdfCraftApp {
         crate::PdfCraftApp::window_count(self)
     }
 
+    fn windows(&self) -> Value {
+        let unavailable = self.windows_unavailable();
+        json!({
+            "windows": self.windows_state(),
+            // Whether tabs can move to other windows here; when not, why.
+            "available": unavailable.is_none(),
+            "unavailable_reason": unavailable,
+        })
+    }
+
+    fn window_action(&mut self, method: &str, p: &Value) -> Reply {
+        self.control_window_action(method, p)
+    }
+
     fn window_page_render(&mut self, index: usize, dpi: f64) -> Reply {
         let windows = self.window_uis();
         let count = windows.len();
@@ -211,6 +225,22 @@ impl Host for crate::PdfCraftApp {
             out.insert("guides".into(), Value::Array(guides));
         }
         state["windows"] = self.windows_state();
+        // The window the last file dialog belongs to (1 is the first window), and whether it was
+        // parented to that native window (TAB.WINDOW.1). The web build has no native pickers.
+        #[cfg(not(target_arch = "wasm32"))]
+        let last_window = self.pickers.last_window;
+        #[cfg(target_arch = "wasm32")]
+        let last_window: Option<(egui::ViewportId, bool)> = None;
+        state["last_file_dialog"] = match last_window {
+            Some((viewport, parented)) => {
+                let window = self
+                    .window_uis()
+                    .iter()
+                    .position(|(key, _)| key.map_or(egui::ViewportId::ROOT, crate::multi_window::WindowId::viewport) == viewport);
+                json!({ "window": window.map(|n| n + 1), "parented": parented })
+            }
+            None => Value::Null,
+        };
         state
     }
 
@@ -280,11 +310,87 @@ impl crate::PdfCraftApp {
                     "active_doc": active.map(|v| v.id.0),
                     "active_page": active.map(|v| v.current + 1),
                     "zoom_percent": active.map(|v| (v.zoom * 100.0).round()),
+                    "rotation": active.map(|v| v.rotation),
                     "dialog": dialog && *key == at,
                     "screenshot": if n == 0 { "native" } else { "engine-render" },
                 })
             })
             .collect();
         Value::Array(windows)
+    }
+}
+
+impl crate::PdfCraftApp {
+    /// `ui.window.new {window?, tab}`, `ui.window.move {window?, tab, to}`, `ui.window.merge`,
+    /// `ui.window.close {window}` and `ui.window.focus {window}`: the Window menu's commands for
+    /// any window (1 is the first, as `ui.windows` numbers them) and tab (0-based, as `ui.state`
+    /// numbers them). Checked here; done between this pass and the next, as the menu's are.
+    fn control_window_action(&mut self, method: &str, p: &Value) -> Reply {
+        use crate::multi_window::WindowOp;
+        let count = self.window_count();
+        let window_param = |key: &str, default: Option<u64>| -> Result<usize, String> {
+            let n = match p.get(key) {
+                None | Some(Value::Null) => default.ok_or_else(|| format!("{method}: missing {key} (a window number from 1 to {count})"))?,
+                Some(v) => v.as_u64().ok_or_else(|| format!("{method}: {key} must be a window number from 1 to {count}"))?,
+            };
+            match usize::try_from(n) {
+                Ok(n) if (1..=count).contains(&n) => Ok(n - 1),
+                _ => Err(format!("{method}: there is no window {n}; windows are numbered 1 to {count} (ui.windows lists them)")),
+            }
+        };
+        let key_of = |app: &Self, index: usize| app.window_at(index).ok_or_else(|| format!("{method}: that window closed meanwhile"));
+        match method {
+            "ui.window.new" | "ui.window.move" => {
+                let from_index = window_param("window", Some(1))?;
+                let from = key_of(self, from_index)?;
+                let tabs = self.window_uis().get(from_index).map_or(0, |(_, ui)| ui.views.len());
+                let tab = p.get("tab").and_then(Value::as_u64).and_then(|t| usize::try_from(t).ok());
+                let tab =
+                    tab.ok_or_else(|| format!("{method}: tab must be a tab number of window {} (0 to {})", from_index + 1, tabs.saturating_sub(1)))?;
+                if tab >= tabs {
+                    return Err(format!("{method}: window {} has no tab {tab}; its tabs are 0 to {}", from_index + 1, tabs.saturating_sub(1)));
+                }
+                let to = if method == "ui.window.move" { Some(key_of(self, window_param("to", None)?)?) } else { None };
+                if let Some(reason) = self.move_unavailable_from(from, tabs, tab, to) {
+                    let hint =
+                        if self.windows_unavailable().is_some() { " (ui.set key=keep_one_window value=false allows several windows)" } else { "" };
+                    return Err(format!("{method}: {reason}{hint}"));
+                }
+                let view = self.window_uis().get(from_index).and_then(|(_, ui)| ui.views.get(tab)).map(|v| crate::canvas::ViewKey(v.view_key()));
+                let view = view.ok_or_else(|| format!("{method}: that tab closed meanwhile"))?;
+                match to {
+                    None => {
+                        let geometry = self.new_window_geometry();
+                        self.request_window_op(WindowOp::MoveToNew { from, view, geometry });
+                    }
+                    Some(to) => self.request_window_op(WindowOp::MoveTo { from, view, to }),
+                }
+                Ok(json!({ "requested": method, "window": from_index + 1, "tab": tab }))
+            }
+            "ui.window.merge" => {
+                if count < 2 {
+                    return Err(format!("{method}: there is only one window"));
+                }
+                self.request_window_op(WindowOp::MergeAll);
+                Ok(json!({ "requested": method }))
+            }
+            "ui.window.close" => {
+                let index = window_param("window", None)?;
+                let key = key_of(self, index)?;
+                self.request_window_op(WindowOp::Close(key));
+                // A document only this window shows with unsaved work asks first (ui.state's
+                // close_prompt); closing the last window quits, asking the same way.
+                Ok(json!({ "requested": method, "window": index + 1 }))
+            }
+            "ui.window.focus" => {
+                let index = window_param("window", None)?;
+                let key = key_of(self, index)?;
+                self.request_window_op(WindowOp::Focus(key));
+                Ok(json!({ "requested": method, "window": index + 1 }))
+            }
+            other => {
+                Err(format!("unknown window method {other:?} (ui.window.new, ui.window.move, ui.window.merge, ui.window.close, ui.window.focus)"))
+            }
+        }
     }
 }
