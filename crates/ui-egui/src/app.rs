@@ -139,6 +139,7 @@ impl PdfCraftApp {
             restore_last_view: true,
             last_views: Vec::new(),
             last_session: Default::default(),
+            restoring: None,
             quit_session: None,
             reload_changed_files: true,
             update_check_at_start: true,

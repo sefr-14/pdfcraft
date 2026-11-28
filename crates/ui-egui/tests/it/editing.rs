@@ -903,6 +903,38 @@ fn the_last_session_reopens_its_files_pages_and_active_tab() {
     assert_eq!(app.win.views[1].current, 3, "at the page it showed");
 }
 
+/// TAB.WINDOW.1 W4: a one-window session is saved as before (no `windows` key, which older
+/// builds would not know); a session that had several windows reopens, where windows are
+/// embedded (as in this harness), with every file in the one window, at the pages they showed.
+#[test]
+fn window_arrangements_keep_old_sessions_and_embedded_hosts_working() {
+    let dir = TempPdfs::new("windows");
+    let files = [dir.file("a.pdf", 1), dir.file("b.pdf", 5), dir.file("c.pdf", 2)];
+    let opened = files.clone();
+    let mut h = session_harness(move |app| {
+        opened.iter().for_each(|f| {
+            app.open_path(f);
+        })
+    });
+    h.state_mut().win.views[1].go_to_page(3);
+    h.run_steps(4);
+    let settings: serde_json::Value = serde_json::from_str(&h.state().persist()).unwrap();
+    assert!(settings["last_session"].get("windows").is_none(), "one window: saved as before");
+    // The same session as a build with windows saves it: b and c in a second window.
+    let mut with_windows = settings.clone();
+    with_windows["last_session"]["windows"] = serde_json::json!([{ "files": [&files[1], &files[2]], "active": &files[2] }]);
+    let text = with_windows.to_string();
+    let mut h = session_harness(move |app| {
+        app.restore(&text);
+        app.reopen_last_files(&[]);
+    });
+    h.run_steps(6);
+    let app = h.state();
+    assert_eq!(open_paths(app), files, "every file once, in the one window");
+    assert_eq!(app.win.views[1].current, 3, "b.pdf at the page it showed");
+    assert_eq!(app.session.docs().len(), 3);
+}
+
 #[test]
 fn quitting_with_unsaved_changes_still_remembers_every_file() {
     let dir = TempPdfs::new("quit");

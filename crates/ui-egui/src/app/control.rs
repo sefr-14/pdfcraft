@@ -56,6 +56,9 @@ impl PdfCraftApp {
                     self.merge_all_windows();
                 }
             }
+            ("reopen_last_session", _) => {
+                self.reopen_last_session = value.parse::<bool>().map_err(|_| "reopen_last_session must be true or false")?;
+            }
             ("show_page_edge_shadows", _) => {
                 self.show_page_edge_shadows = value.parse::<bool>().map_err(|_| "show_page_edge_shadows must be true or false")?;
             }

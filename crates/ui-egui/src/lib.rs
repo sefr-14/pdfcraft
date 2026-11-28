@@ -494,6 +494,8 @@ pub struct PdfCraftApp {
     pub last_session: last_session::LastSession,
     /// Quitting closes unsaved tabs one by one: what was open when the quit began.
     quit_session: Option<last_session::LastSession>,
+    /// The last session's windows still to be made, once their files are open (TAB.WINDOW.1 W4).
+    pub(crate) restoring: Option<multi_window::Restore>,
     /// Preferences: reload a document when its file changes on disk (#431).
     pub reload_changed_files: bool,
     /// Preferences: ask for a newer release when the desktop app starts (#5737). Off, the app

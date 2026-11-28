@@ -57,6 +57,8 @@ pub struct SecondaryWindow {
     /// Where the window was at its last pass, in physical pixels: what the first window takes
     /// over when this one replaces it (H1).
     pub(crate) last: Option<Placement>,
+    /// Opens maximized (a window restored as it was, W4).
+    pub(crate) maximized: bool,
 }
 
 /// A window's place on the desktop, in physical pixels.
@@ -70,7 +72,10 @@ pub struct Placement {
 impl SecondaryWindow {
     fn builder(&self, template: Option<&ViewportBuilder>) -> ViewportBuilder {
         let title = if self.ui.window_title.is_empty() { "PDF Overlay" } else { self.ui.window_title.as_str() };
-        let builder = template.cloned().unwrap_or_default().with_title(title).with_inner_size(self.geometry.size);
+        let mut builder = template.cloned().unwrap_or_default().with_title(title).with_inner_size(self.geometry.size);
+        if self.maximized {
+            builder = builder.with_maximized(true);
+        }
         match self.geometry.pos {
             Some(pos) => builder.with_position(pos),
             None => builder,
@@ -109,7 +114,7 @@ impl Windows {
     pub fn add(&mut self, ui: WindowUi, geometry: Geometry, came_from: Option<Origin>) -> WindowId {
         self.next = self.next.saturating_add(1);
         let id = WindowId(self.next);
-        self.others.push(SecondaryWindow { id, ui, geometry, came_from, panicking_passes: 0, last: None });
+        self.others.push(SecondaryWindow { id, ui, geometry, came_from, panicking_passes: 0, last: None, maximized: false });
         id
     }
 }
@@ -235,8 +240,10 @@ pub(crate) enum PassOutcome {
 pub type WindowKey = Option<WindowId>;
 
 mod drag;
+mod restore;
 pub use drag::set_tracking as set_drag_tracking;
 pub(crate) use drag::{CrossDrag, WindowFrame, marker_x};
+pub(crate) use restore::Restore;
 
 /// What an open of a file another window shows asks for there ([`WindowOp::Reveal`]).
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -351,6 +358,12 @@ impl PdfCraftApp {
     /// shown. Where several windows aren't available (no native windows, the single-window
     /// preference, macOS for now), every tab comes back to the main window and none is shown.
     pub(crate) fn show_other_windows(&mut self, host: &mut dyn ViewportHost) {
+        // The last session's windows, once their files are open (W4); none where windows are
+        // embedded, which keeps every tab in the main window.
+        if host.embedded() {
+            self.restoring = None;
+        }
+        self.restore_windows();
         self.apply_window_ops();
         if !self.windows.others.is_empty() && (host.embedded() || self.windows_unavailable().is_some()) {
             self.merge_all_windows();
