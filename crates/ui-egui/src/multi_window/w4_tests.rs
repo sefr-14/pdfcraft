@@ -5,7 +5,7 @@ use serde_json::json;
 
 use super::*;
 use crate::last_session::{LastSession, SavedPlace, SessionWindow};
-use crate::multi_window::restore::place_on;
+use crate::multi_window::restore::{kept_on, place_on};
 
 /// Files a.pdf … e.pdf in a fresh folder, their absolute paths in order.
 fn files(tag: &str) -> (std::path::PathBuf, Vec<String>) {
@@ -220,6 +220,18 @@ fn a_saved_place_is_used_only_on_a_monitor_there_now() {
     let gone = SavedPlace { x: 4000, y: 100, width: 800, height: 600, maximized: false };
     assert_eq!(place_on(gone, 1.0, Some(monitor)), None);
     assert_eq!(place_on(place, 1.0, None), None);
+}
+
+/// The pixels a restored window is put at (from its own pass) are kept inside the monitor too:
+/// a window saved with only its corner on screen comes back whole on it.
+#[test]
+fn the_pixels_a_window_is_restored_at_are_kept_inside_its_monitor() {
+    let monitor = crate::monitors::MonitorArea::whole(Rect::from_min_size(Pos2::ZERO, vec2(1920.0, 1080.0)));
+    let corner = SavedPlace { x: 1842, y: 1030, width: 800, height: 600, maximized: true };
+    assert_eq!(kept_on(corner, Some(monitor)), Some(SavedPlace { x: 1120, y: 480, width: 800, height: 600, maximized: true }));
+    let inside = SavedPlace { x: 100, y: 80, width: 800, height: 600, maximized: false };
+    assert_eq!(kept_on(inside, Some(monitor)), Some(inside));
+    assert_eq!(kept_on(SavedPlace { x: 4000, ..inside }, Some(monitor)), None);
 }
 
 /// A Quit cancelled at its question leaves the session as it was: windows and all. One that

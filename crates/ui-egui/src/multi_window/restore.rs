@@ -94,7 +94,7 @@ impl PdfCraftApp {
             .collect();
         let Some((&first, rest)) = views.split_first() else { return };
         let geometry = self.restored_geometry(saved.place);
-        let on_screen = saved.place.filter(|p| self.place_is_on_screen(*p));
+        let on_screen = saved.place.and_then(kept_on_screen);
         let before = self.windows.others.len();
         // The first window keeps a tab: a session whose first window lost all its files gives
         // one of this window's back to it (`take_tab` refuses the last one).
@@ -124,11 +124,6 @@ impl PdfCraftApp {
         self.session.get(id).and_then(|d| d.path.clone())
     }
 
-    /// Whether a saved place's title bar is on a monitor there now.
-    fn place_is_on_screen(&self, place: SavedPlace) -> bool {
-        crate::platform::monitors::monitor_at(grip(place)).is_some_and(|m| m.bounds.contains(grip(place)))
-    }
-
     /// Where a restored window first opens: near its saved place (in points at the first
     /// window's scale: the system's own conversion corrects it from the window's pass, see
     /// [`super::SecondaryWindow::place_on_screen`]), or beside the first window.
@@ -142,6 +137,19 @@ impl PdfCraftApp {
 /// A point just inside a saved window's title bar: where it is on screen, it can be taken hold of.
 fn grip(place: SavedPlace) -> Pos2 {
     pos2(place.x as f32, place.y as f32) + vec2(48.0, 12.0)
+}
+
+/// A saved place (physical pixels) kept inside the monitor its title bar is on now, in physical
+/// pixels; `None` when it is on no monitor there now.
+fn kept_on_screen(place: SavedPlace) -> Option<SavedPlace> {
+    kept_on(place, crate::platform::monitors::monitor_at(grip(place)))
+}
+
+/// `place` kept inside `area` (both in physical pixels), as [`place_on`] keeps it at a scale of 1.
+pub(crate) fn kept_on(place: SavedPlace, area: Option<crate::monitors::MonitorArea>) -> Option<SavedPlace> {
+    let g = place_on(place, 1.0, area)?;
+    let pos = g.pos?;
+    Some(SavedPlace { x: pos.x.round() as i32, y: pos.y.round() as i32, width: g.size.x.round() as u32, height: g.size.y.round() as u32, ..place })
 }
 
 /// `place` (physical pixels) on the monitor `area` the platform found nearest it, in points at
