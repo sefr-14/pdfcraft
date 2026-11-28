@@ -87,6 +87,16 @@ pub struct WindowUi {
     pub(crate) page_keys: page_keys::PageKeys,
     /// The window title last sent to the platform.
     pub window_title: String,
+    /// Where this window is and what its tab strip holds, at its last pass (W3: tabs dragged
+    /// between windows are hit against it).
+    pub(crate) frame: crate::multi_window::WindowFrame,
+    /// A tab drag Escape (or a dialog, or losing the keyboard) cancelled: it does nothing until
+    /// the button is let go.
+    pub(crate) cancelled_drag: bool,
+    /// Where the pointer was last seen during this window's tab drag.
+    pub(crate) drag_pos: Option<egui::Pos2>,
+    /// Where this window's tab drag took hold of the tab.
+    pub(crate) drag_grab: Option<egui::Pos2>,
     /// The web page's title last set: the window title, but always with the file's name.
     pub page_title: String,
 }
@@ -133,6 +143,10 @@ impl WindowUi {
             menu_pastes: 0,
             page_keys: Default::default(),
             window_title: String::new(),
+            frame: Default::default(),
+            cancelled_drag: false,
+            drag_pos: None,
+            drag_grab: None,
             page_title: String::new(),
         }
     }

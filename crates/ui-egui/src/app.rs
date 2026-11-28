@@ -876,6 +876,8 @@ impl PdfCraftApp {
         }
         // Before any widget reads this frame's wheel input or draws.
         self.motion.begin_pass(&ctx, self.animation_effects);
+        // Where this window is, for tabs dragged between windows (TAB.WINDOW.1 W3).
+        self.note_frame(&ctx);
         // One-time 0.36 -> 0.37 panel persistence migration, before any panel stores or reads state.
         migrate_panel_state(ui);
         // Once per frame, in the main window's pass, for the whole app (TAB.WINDOW.1 W2a): another

@@ -402,3 +402,6 @@ mod w2d;
 
 #[path = "w2e_tests.rs"]
 mod w2e;
+
+#[path = "w3_tests.rs"]
+mod w3;

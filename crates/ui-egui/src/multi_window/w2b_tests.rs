@@ -87,7 +87,7 @@ fn the_main_windows_last_tab_stays_even_when_a_move_is_queued_directly() {
     let only = crate::canvas::ViewKey(key_of(app, 0));
     let geometry = app.new_window_geometry();
     app.request_window_op(WindowOp::MoveToNew { from: None, view: only, geometry });
-    app.request_window_op(WindowOp::MoveTo { from: None, view: only, to: Some(app.windows.others[0].id) });
+    app.request_window_op(WindowOp::MoveTo { from: None, view: only, to: Some(app.windows.others[0].id), at: None });
     settle(app, &mut host);
     assert_eq!(app.win.views.len(), 1, "the operation itself refuses, not only the command");
     assert_eq!(app.windows.others.len(), 2);
@@ -111,7 +111,7 @@ fn move_tab_to_window_moves_it_to_the_end_and_an_emptied_window_closes() {
     // From the other window back, one by one: when its last tab leaves, it closes.
     for _ in 0..2 {
         let key = app.windows.others[0].ui.views[0].view_key();
-        app.request_window_op(WindowOp::MoveTo { from: Some(first), view: crate::canvas::ViewKey(key), to: None });
+        app.request_window_op(WindowOp::MoveTo { from: Some(first), view: crate::canvas::ViewKey(key), to: None, at: None });
         settle(app, &mut host);
     }
     assert!(app.windows.others.is_empty());

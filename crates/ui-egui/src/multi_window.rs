@@ -100,6 +100,8 @@ pub struct Windows {
     pub(crate) focus_order: Vec<WindowKey>,
     /// The first window's physical pixels per point, at its last pass.
     pub(crate) root_ppp: f32,
+    /// A tab being dragged out of its window (W3), while it is.
+    pub(crate) drag: Option<CrossDrag>,
 }
 
 impl Windows {
@@ -232,6 +234,10 @@ pub(crate) enum PassOutcome {
 /// A window: the main one (`None`) or another.
 pub type WindowKey = Option<WindowId>;
 
+mod drag;
+pub use drag::set_tracking as set_drag_tracking;
+pub(crate) use drag::{CrossDrag, WindowFrame, marker_x};
+
 /// What an open of a file another window shows asks for there ([`WindowOp::Reveal`]).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct Reopen {
@@ -250,8 +256,9 @@ pub(crate) struct Reopen {
 pub(crate) enum WindowOp {
     /// Move Tab to New Window: the tab with view key `view` leaves window `from`.
     MoveToNew { from: WindowKey, view: crate::canvas::ViewKey, geometry: Geometry },
-    /// Move Tab to Window: the tab goes to the end of window `to`'s strip.
-    MoveTo { from: WindowKey, view: crate::canvas::ViewKey, to: WindowKey },
+    /// Move Tab to Window: the tab goes to window `to`'s strip, before its tab `at` (W3: where it
+    /// was dropped), or at the end.
+    MoveTo { from: WindowKey, view: crate::canvas::ViewKey, to: WindowKey, at: Option<usize> },
     /// Merge All Windows: every tab into the main window.
     MergeAll,
     /// Close Window.
@@ -527,7 +534,7 @@ impl PdfCraftApp {
         for op in std::mem::take(&mut self.windows.pending) {
             match op {
                 WindowOp::MoveToNew { from, view, geometry } => self.move_to_new_window(from, view, geometry),
-                WindowOp::MoveTo { from, view, to } => self.move_to_window(from, view, to),
+                WindowOp::MoveTo { from, view, to, at } => self.move_to_window(from, view, to, at),
                 WindowOp::MergeAll => self.merge_all_windows(),
                 WindowOp::Close(key) => self.close_window(key),
                 WindowOp::Focus(key) => self.focus_window(key),
@@ -559,7 +566,7 @@ impl PdfCraftApp {
         self.windows.add(ui, geometry, Some(Origin { window: from, index }));
     }
 
-    fn move_to_window(&mut self, from: WindowKey, view: crate::canvas::ViewKey, to: WindowKey) {
+    fn move_to_window(&mut self, from: WindowKey, view: crate::canvas::ViewKey, to: WindowKey, at: Option<usize>) {
         if from == to || (to.is_some() && !self.windows.others.iter().any(|w| Some(w.id) == to)) {
             return;
         }
@@ -567,8 +574,9 @@ impl PdfCraftApp {
         let mut tab = Some(tab);
         self.with_window(to, |app| {
             if let Some(t) = tab.take() {
-                app.win.views.push(t);
-                app.win.active = Some(app.win.views.len() - 1);
+                let at = at.unwrap_or(usize::MAX).min(app.win.views.len());
+                app.win.views.insert(at, t);
+                app.win.active = Some(at);
             }
         });
         // The window it was going to went away meanwhile: back where it was.
@@ -854,7 +862,7 @@ impl PdfCraftApp {
             return false;
         }
         let Some(view) = self.win.views.get(index).map(|v| crate::canvas::ViewKey(v.view_key())) else { return false };
-        self.request_window_op(WindowOp::MoveTo { from: self.current_window(), view, to });
+        self.request_window_op(WindowOp::MoveTo { from: self.current_window(), view, to, at: None });
         true
     }
 

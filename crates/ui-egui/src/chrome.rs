@@ -45,6 +45,8 @@ pub fn tab_strip(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
         .show(ui, |ui| {
             let full = ui.max_rect();
             app.win.panes.main_strip = Some(full);
+            // A tab dragged in from another window drops anywhere on this bar (W3).
+            app.win.frame.strip = Some(full);
             let drag = ui.interact(full, ui.scope_id().with("titledrag"), Sense::click_and_drag());
             if drag.drag_started() {
                 window_controls::desktop_grab(ui.ctx(), egui::ViewportCommand::StartDrag);
@@ -173,6 +175,17 @@ pub fn tab_strip(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
                                 }
                             }
                             drag_x = tab_drag(app, ui, &slots, dragged, Place::Main, close.is_some() || action.is_some());
+                            // For tabs dragged in from other windows (TAB.WINDOW.1 W3): where these
+                            // tabs are, and the marker where one would land.
+                            app.win.frame.slots = slots.clone();
+                            if let Some(at) = app.cross_drag_marker()
+                                && let Some(x) = crate::multi_window::marker_x(&slots, at, ui.spacing().item_spacing.x)
+                            {
+                                let span = slots.first().map_or(ui.max_rect().y_range(), |(_, r)| r.y_range());
+                                let clip = ui.clip_rect();
+                                let x = x.clamp(clip.left() + 1.0, (clip.right() - 1.0).max(clip.left() + 1.0));
+                                ui.painter().vline(x, span.shrink(4.0), Stroke::new(2.0, t.accent));
+                            }
                             if let Some(i) = close
                                 && let Some(view) = app.win.views.get(i)
                             {
@@ -361,7 +374,35 @@ fn tab_menu(app: &PdfCraftApp, ui: &mut egui::Ui, index: usize, action: &mut Opt
 /// pointer's x while the tab moves along the strip, for scrolling at the strip's edges.
 fn tab_drag(app: &mut PdfCraftApp, ui: &egui::Ui, slots: &[(usize, Rect)], dragged: Option<(usize, bool)>, place: Place, busy: bool) -> Option<f32> {
     let (from, released) = dragged?;
-    let pos = ui.ctx().pointer_latest_pos()?;
+    let view = app.win.views.get(from).map(|v| crate::canvas::ViewKey(v.view_key()))?;
+    // Escape, a dialog opening or the window losing the keyboard cancels the drag (TAB.WINDOW.1
+    // W3): nothing moves, until the button is let go. Escape is read from the raw input, as the
+    // window's own keys may have used it already this pass.
+    let escape = ui.input(|i| i.raw.events.iter().any(|e| matches!(e, egui::Event::Key { key: egui::Key::Escape, pressed: true, .. })));
+    let lost = app.modal_open() || !ui.input(|i| i.focused);
+    if app.win.cancelled_drag || escape || lost {
+        app.win.cancelled_drag = !released;
+        app.win.panes.drop_hint = None;
+        app.end_cross_drag(ui.ctx());
+        return None;
+    }
+    // Let go outside the window, X11 reports the pointer leaving in the same input as the
+    // release: the drop is where the pointer was last seen during the drag.
+    let pos = match ui.ctx().pointer_latest_pos() {
+        Some(pos) => {
+            app.win.drag_pos = Some(pos);
+            pos
+        }
+        None => app.win.drag_pos?,
+    };
+    // Where the tab was taken hold of: a new window made from it puts that point under the pointer.
+    if app.win.drag_grab.is_none() {
+        app.win.drag_grab = ui.input(|i| i.pointer.press_origin()).or(Some(pos));
+    }
+    // Out of the window: onto another window's strip, or the desktop (W3).
+    if !busy && app.tab_dragged_out(ui.ctx(), from, view, pos, released) {
+        return None;
+    }
     match app.drop_target(pos, place) {
         TabDrop::Strip => {
             let x = pos.x;

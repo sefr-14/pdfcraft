@@ -363,7 +363,7 @@ impl crate::PdfCraftApp {
                         let geometry = self.new_window_geometry();
                         self.request_window_op(WindowOp::MoveToNew { from, view, geometry });
                     }
-                    Some(to) => self.request_window_op(WindowOp::MoveTo { from, view, to }),
+                    Some(to) => self.request_window_op(WindowOp::MoveTo { from, view, to, at: None }),
                 }
                 Ok(json!({ "requested": method, "window": from_index + 1, "tab": tab }))
             }

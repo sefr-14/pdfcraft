@@ -1828,6 +1828,50 @@ fn dragging_a_tab_moves_it_and_keeps_the_same_document_active() {
     }
 }
 
+/// TAB.WINDOW.1 W3: Escape during a tab drag cancels it: letting go then moves nothing, and the
+/// next drag of the same tab works again.
+#[test]
+fn escape_cancels_a_tab_drag() {
+    use egui::accesskit::Role;
+    let mut h = three_tab_harness();
+    let ids: Vec<_> = h.state().win.views.iter().map(|view| view.id).collect();
+    let tab = |h: &Harness<'static, PdfCraftApp>, name: &str| h.get_by_role_and_label(Role::Tab, name).rect();
+    let to = tab(&h, "last.pdf").right_center() + egui::vec2(20.0, 0.0);
+    drag_named_tab(&mut h, "first.pdf", to, false);
+    h.key_press(egui::Key::Escape);
+    h.run_steps(1);
+    h.event(egui::Event::PointerButton { pos: to, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE });
+    h.run_steps(3);
+    assert_eq!(h.state().win.views.iter().map(|view| view.id).collect::<Vec<_>>(), ids, "cancelled: nothing moved");
+    // The cancel ends with the button: the same drag again moves the tab.
+    let to = tab(&h, "last.pdf").right_center() + egui::vec2(20.0, 0.0);
+    drag_named_tab(&mut h, "first.pdf", to, true);
+    assert_eq!(h.state().win.views.iter().map(|view| view.id).collect::<Vec<_>>(), [ids[1], ids[2], ids[0]]);
+}
+
+/// TAB.WINDOW.1 W3: the window losing the keyboard, or a dialog opening, during a tab drag
+/// cancels it, as Escape does.
+#[test]
+fn losing_the_keyboard_or_a_dialog_cancels_a_tab_drag() {
+    use egui::accesskit::Role;
+    for how in ["focus", "dialog"] {
+        let mut h = three_tab_harness();
+        let ids: Vec<_> = h.state().win.views.iter().map(|view| view.id).collect();
+        let to = h.get_by_role_and_label(Role::Tab, "last.pdf").rect().right_center() + egui::vec2(20.0, 0.0);
+        drag_named_tab(&mut h, "first.pdf", to, false);
+        match how {
+            "focus" => h.input_mut().focused = false,
+            _ => h.state_mut().dialog = Some(pdfcraft_ui_egui::Dialog::About),
+        }
+        h.run_steps(1);
+        h.state_mut().dialog = None;
+        h.input_mut().focused = true;
+        h.event(egui::Event::PointerButton { pos: to, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE });
+        h.run_steps(3);
+        assert_eq!(h.state().win.views.iter().map(|view| view.id).collect::<Vec<_>>(), ids, "{how}: nothing moved");
+    }
+}
+
 /// Regression (#2225): the drop line in front of the first tab sat half a gap outside the
 /// scroll area's clip rect and was never visible.
 #[test]

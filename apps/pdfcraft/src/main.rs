@@ -381,6 +381,13 @@ impl eframe::ViewportHooks for WindowHooks {
             })
             .collect();
         pdfcraft_ui_egui::monitors::set_known(monitors);
+        // A tab drag can follow the pointer out of its window where the system reports the
+        // pointer outside while the button is held: Windows (SetCapture) and X11 (the implicit
+        // grab), not Wayland (TAB.WINDOW.1 W3, W0-4).
+        use winit::raw_window_handle::{HasWindowHandle as _, RawWindowHandle};
+        let tracking =
+            matches!(window.window_handle().map(|h| h.as_raw()), Ok(RawWindowHandle::Win32(_) | RawWindowHandle::Xlib(_) | RawWindowHandle::Xcb(_)));
+        pdfcraft_ui_egui::multi_window::set_drag_tracking(tracking);
     }
 
     /// eframe calls the app's own raw-input hook for the first window only (TAB.WINDOW.1 W2d).
