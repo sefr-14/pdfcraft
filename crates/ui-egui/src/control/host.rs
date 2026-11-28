@@ -225,6 +225,8 @@ impl Host for crate::PdfCraftApp {
             out.insert("guides".into(), Value::Array(guides));
         }
         state["windows"] = self.windows_state();
+        // The last frame's CPU time in milliseconds, every window's passes included.
+        state["frame_cpu_ms"] = json!(self.last_frame_cpu.map(|s| (f64::from(s) * 1000.0 * 100.0).round() / 100.0));
         // The window the last file dialog belongs to (1 is the first window), and whether it was
         // parented to that native window (TAB.WINDOW.1). The web build has no native pickers.
         #[cfg(not(target_arch = "wasm32"))]

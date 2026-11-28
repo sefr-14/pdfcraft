@@ -114,6 +114,10 @@ struct Host {
     passes_ended: usize,
     /// Input for the next window drawn (keys pressed in it).
     events: Vec<egui::Event>,
+    /// The scale of the monitor the windows are on (simulated mixed DPI; `None`: egui's own).
+    scale: Option<f32>,
+    /// The viewport commands the windows sent, in order.
+    commands: Vec<egui::ViewportCommand>,
 }
 
 impl Host {
@@ -124,7 +128,17 @@ impl Host {
         crate::theme::apply(&ctx, app.theme);
         // Fonts set now take effect on the next pass.
         pass(&ctx, egui::RawInput::default(), |_| {});
-        Host { ctx, embedded: false, behaviour: HashMap::new(), close: false, shown: Vec::new(), passes_ended: 0, events: Vec::new() }
+        Host {
+            ctx,
+            embedded: false,
+            behaviour: HashMap::new(),
+            close: false,
+            shown: Vec::new(),
+            passes_ended: 0,
+            events: Vec::new(),
+            scale: None,
+            commands: Vec::new(),
+        }
     }
 }
 
@@ -150,7 +164,12 @@ impl ViewportHost for Host {
                 if self.close {
                     input.viewports.entry(ViewportId::ROOT).or_default().events.push(egui::ViewportEvent::Close);
                 }
-                pass(&self.ctx, input, |ui| body(ui, ViewportClass::Immediate));
+                if let Some(scale) = self.scale {
+                    input.viewports.entry(ViewportId::ROOT).or_default().native_pixels_per_point = Some(scale);
+                }
+                let mut out = self.ctx.run_ui(input, |ui| body(ui, ViewportClass::Immediate));
+                out.textures_delta.clear();
+                self.commands.extend(out.viewport_output.into_values().flat_map(|v| v.commands));
                 self.passes_ended += 1;
                 if behaviour == Behaviour::FailAfter {
                     panic!("the backend failed after drawing");

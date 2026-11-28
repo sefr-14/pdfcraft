@@ -156,7 +156,6 @@ fn a_restart_brings_the_windows_back_as_they_were() {
     assert_eq!(names(app), vec![vec!["a.pdf".to_string(), "b.pdf".into()], vec!["d.pdf".into(), "c.pdf".into()], vec!["e.pdf".into()]]);
     assert_eq!(active_names(app), vec![Some("b.pdf".into()), Some("c.pdf".into()), Some("e.pdf".into())]);
     assert_eq!(app.session.docs().len(), 5, "each file opened once");
-    assert!(app.windows.others[1].maximized && !app.windows.others[0].maximized);
     assert!(app.restoring.is_none());
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -297,4 +296,53 @@ fn one_window_mode_makes_no_window_at_all() {
     assert!(app.restoring.is_none());
     assert_eq!(app.win.views.len(), 2);
     let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Mixed DPI (simulated): a restored window is put at its saved pixels at its own scale, not
+/// the first window's: on a 200 % monitor, (2400, 200) 1600×1200 px is (1200, 100) 800×600
+/// points. If that lands it on a monitor of another scale, it is set once more there; then it
+/// is left alone.
+#[test]
+fn a_restored_window_is_placed_at_its_own_scale() {
+    let mut h = app_with_tabs();
+    let app = h.state_mut();
+    app.windows.root_ppp = 1.0;
+    let mut host = Host::new(app);
+    assert!(app.request_move_tab_to_new_window(1));
+    app.show_other_windows(&mut host);
+    let place = SavedPlace { x: 2400, y: 200, width: 1600, height: 1200, maximized: true };
+    app.windows.others[0].pending_place = Some(super::PendingPlace { place, set_at: None, tries: 0 });
+    let placed = |host: &mut Host| -> Vec<egui::ViewportCommand> {
+        std::mem::take(&mut host.commands)
+            .into_iter()
+            .filter(|c| {
+                matches!(c, egui::ViewportCommand::OuterPosition(_) | egui::ViewportCommand::InnerSize(_) | egui::ViewportCommand::Maximized(_))
+            })
+            .collect()
+    };
+    host.scale = Some(2.0);
+    host.commands.clear();
+    app.show_other_windows(&mut host);
+    assert_eq!(
+        placed(&mut host),
+        vec![
+            egui::ViewportCommand::OuterPosition(pos2(1200.0, 100.0)),
+            egui::ViewportCommand::InnerSize(vec2(800.0, 600.0)),
+            egui::ViewportCommand::Maximized(true)
+        ],
+        "the saved pixels at the window's 200 %, not the first window's 100 %"
+    );
+    // It landed on a 150 % monitor: once more, at that scale.
+    host.scale = Some(1.5);
+    app.show_other_windows(&mut host);
+    assert_eq!(
+        placed(&mut host)[..2],
+        [egui::ViewportCommand::OuterPosition(pos2(1600.0, 2400.0 / 18.0)), egui::ViewportCommand::InnerSize(vec2(1600.0 / 1.5, 800.0))]
+    );
+    // Then it is left alone, whatever happens to it.
+    host.scale = Some(1.25);
+    app.show_other_windows(&mut host);
+    app.show_other_windows(&mut host);
+    assert!(placed(&mut host).is_empty());
+    assert!(app.windows.others[0].pending_place.is_none());
 }

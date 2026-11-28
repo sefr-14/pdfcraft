@@ -57,8 +57,45 @@ pub struct SecondaryWindow {
     /// Where the window was at its last pass, in physical pixels: what the first window takes
     /// over when this one replaces it (H1).
     pub(crate) last: Option<Placement>,
-    /// Opens maximized (a window restored as it was, W4).
-    pub(crate) maximized: bool,
+    /// A restored window's saved place (W4), set from its own first passes: see
+    /// [`SecondaryWindow::place_on_screen`].
+    pub(crate) pending_place: Option<PendingPlace>,
+}
+
+/// A saved place still to be set on a restored window, in physical pixels, and the window's
+/// pixels per point when it was last set.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct PendingPlace {
+    pub(crate) place: crate::last_session::SavedPlace,
+    pub(crate) set_at: Option<f32>,
+    pub(crate) tries: u8,
+}
+
+impl SecondaryWindow {
+    /// Put a restored window where it was saved, in physical pixels (W4). egui turns a window's
+    /// place in points into pixels with that window's own scale (`OuterPosition`, `InnerSize`),
+    /// but a new window is placed with the scale of whichever monitor the system picks first (the
+    /// pointer's on X11, the one it was created on on Windows). So the saved pixels are set from
+    /// the window's own pass, at its own scale; if that moved it onto a monitor of another scale,
+    /// once more at the new scale. Then it is left alone.
+    pub(crate) fn place_on_screen(&mut self, ctx: &egui::Context) {
+        let Some(pending) = self.pending_place else { return };
+        let ppp = ctx.pixels_per_point();
+        if !(ppp.is_finite() && ppp > 0.0) {
+            return;
+        }
+        if pending.set_at == Some(ppp) || pending.tries >= 2 {
+            self.pending_place = None;
+            return;
+        }
+        let p = pending.place;
+        ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(p.x as f32 / ppp, p.y as f32 / ppp)));
+        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(p.width as f32 / ppp, p.height as f32 / ppp)));
+        if p.maximized {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+        }
+        self.pending_place = Some(PendingPlace { place: p, set_at: Some(ppp), tries: pending.tries + 1 });
+    }
 }
 
 /// A window's place on the desktop, in physical pixels.
@@ -72,10 +109,7 @@ pub struct Placement {
 impl SecondaryWindow {
     fn builder(&self, template: Option<&ViewportBuilder>) -> ViewportBuilder {
         let title = if self.ui.window_title.is_empty() { "PDF Overlay" } else { self.ui.window_title.as_str() };
-        let mut builder = template.cloned().unwrap_or_default().with_title(title).with_inner_size(self.geometry.size);
-        if self.maximized {
-            builder = builder.with_maximized(true);
-        }
+        let builder = template.cloned().unwrap_or_default().with_title(title).with_inner_size(self.geometry.size);
         match self.geometry.pos {
             Some(pos) => builder.with_position(pos),
             None => builder,
@@ -114,7 +148,7 @@ impl Windows {
     pub fn add(&mut self, ui: WindowUi, geometry: Geometry, came_from: Option<Origin>) -> WindowId {
         self.next = self.next.saturating_add(1);
         let id = WindowId(self.next);
-        self.others.push(SecondaryWindow { id, ui, geometry, came_from, panicking_passes: 0, last: None, maximized: false });
+        self.others.push(SecondaryWindow { id, ui, geometry, came_from, panicking_passes: 0, last: None, pending_place: None });
         id
     }
 }
@@ -435,6 +469,7 @@ impl PdfCraftApp {
                 let (placement, focused) = placement_now(ui.ctx());
                 if let Some(w) = self.windows.others.get_mut(i) {
                     w.last = placement.or(w.last);
+                    w.place_on_screen(ui.ctx());
                 }
                 if focused {
                     self.note_focus(Some(id));

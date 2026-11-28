@@ -496,6 +496,8 @@ pub struct PdfCraftApp {
     quit_session: Option<last_session::LastSession>,
     /// The last session's windows still to be made, once their files are open (TAB.WINDOW.1 W4).
     pub(crate) restoring: Option<multi_window::Restore>,
+    /// The CPU time eframe measured for the last frame, in seconds.
+    pub(crate) last_frame_cpu: Option<f32>,
     /// Preferences: reload a document when its file changes on disk (#431).
     pub reload_changed_files: bool,
     /// Preferences: ask for a newer release when the desktop app starts (#5737). Off, the app

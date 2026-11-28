@@ -94,6 +94,7 @@ impl PdfCraftApp {
             .collect();
         let Some((&first, rest)) = views.split_first() else { return };
         let geometry = self.restored_geometry(saved.place);
+        let on_screen = saved.place.filter(|p| self.place_is_on_screen(*p));
         let before = self.windows.others.len();
         // The first window keeps a tab: a session whose first window lost all its files gives
         // one of this window's back to it (`take_tab` refuses the last one).
@@ -108,7 +109,9 @@ impl PdfCraftApp {
         let paths: Vec<Option<String>> =
             self.windows.others.last().map(|w| w.ui.views.iter().map(|v| self.path_of(v.id)).collect()).unwrap_or_default();
         if let Some(w) = self.windows.others.last_mut() {
-            w.maximized = saved.place.is_some_and(|p| p.maximized);
+            // Its saved place, in pixels at its own scale, from its first passes (only where it
+            // is on a monitor there now; otherwise it stays beside the first window).
+            w.pending_place = on_screen.map(|place| super::PendingPlace { place, set_at: None, tries: 0 });
             if let Some(active) = saved.active.as_deref()
                 && let Some(i) = paths.iter().position(|p| p.as_deref().is_some_and(|p| same(p, active)))
             {
@@ -121,8 +124,14 @@ impl PdfCraftApp {
         self.session.get(id).and_then(|d| d.path.clone())
     }
 
-    /// Where a restored window goes: its saved place, when that is on a monitor there now (kept
-    /// inside it, its size too); else beside the first window, as a new window does.
+    /// Whether a saved place's title bar is on a monitor there now.
+    fn place_is_on_screen(&self, place: SavedPlace) -> bool {
+        crate::platform::monitors::monitor_at(grip(place)).is_some_and(|m| m.bounds.contains(grip(place)))
+    }
+
+    /// Where a restored window first opens: near its saved place (in points at the first
+    /// window's scale: the system's own conversion corrects it from the window's pass, see
+    /// [`super::SecondaryWindow::place_on_screen`]), or beside the first window.
     pub(crate) fn restored_geometry(&self, place: Option<SavedPlace>) -> Geometry {
         let ppp = super::finite_positive(Some(self.windows.root_ppp)).unwrap_or(1.0);
         let area = place.and_then(|p| crate::platform::monitors::monitor_at(grip(p)));

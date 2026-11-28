@@ -140,6 +140,7 @@ impl PdfCraftApp {
             last_views: Vec::new(),
             last_session: Default::default(),
             restoring: None,
+            last_frame_cpu: None,
             quit_session: None,
             reload_changed_files: true,
             update_check_at_start: true,
@@ -610,7 +611,10 @@ impl eframe::App for PdfCraftApp {
         }
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        // The last frame's CPU time, every window's passes included (they run inside this one):
+        // `ui.state`'s `frame_cpu_ms`, for measuring what several windows cost (TAB.WINDOW.1).
+        self.last_frame_cpu = frame.info().cpu_usage;
         self.begin_ui();
         self.note_main_window(ui.ctx());
         // A dialog open in another window holds this one (T-3).
