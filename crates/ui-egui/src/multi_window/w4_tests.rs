@@ -35,7 +35,16 @@ fn fresh(keep_one_window: bool) -> Harness<'static, PdfCraftApp> {
         app
     });
     h.run_steps(4);
+    framed(h.state_mut());
     h
+}
+
+/// The first window's rects, as a platform reports them once its window is up (the test harness
+/// reports none): a 2 px border and a 30 px title bar.
+fn framed(app: &mut PdfCraftApp) {
+    app.win.frame.inner = Some(Rect::from_min_size(pos2(102.0, 132.0), vec2(1200.0, 800.0)));
+    app.win.frame.outer = Some(Rect::from_min_size(pos2(100.0, 100.0), vec2(1204.0, 834.0)));
+    app.win.frame.ppp = 1.0;
 }
 
 /// Start `h` with the last session `saved` (its settings JSON), as the desktop app does.
@@ -228,10 +237,14 @@ fn a_saved_place_is_used_only_on_a_monitor_there_now() {
 fn the_pixels_a_window_is_restored_at_are_kept_inside_its_monitor() {
     let monitor = crate::monitors::MonitorArea::whole(Rect::from_min_size(Pos2::ZERO, vec2(1920.0, 1080.0)));
     let corner = SavedPlace { x: 1842, y: 1030, width: 800, height: 600, maximized: true };
-    assert_eq!(kept_on(corner, Some(monitor)), Some(SavedPlace { x: 1120, y: 480, width: 800, height: 600, maximized: true }));
+    assert_eq!(kept_on(corner, Vec2::ZERO, Some(monitor)), Some(SavedPlace { x: 1120, y: 480, width: 800, height: 600, maximized: true }));
+    // Its title bar (40 px) and borders (2 px a side) are kept on the monitor too.
+    assert_eq!(kept_on(corner, vec2(4.0, 42.0), Some(monitor)), Some(SavedPlace { x: 1116, y: 438, width: 800, height: 600, maximized: true }));
     let inside = SavedPlace { x: 100, y: 80, width: 800, height: 600, maximized: false };
-    assert_eq!(kept_on(inside, Some(monitor)), Some(inside));
-    assert_eq!(kept_on(SavedPlace { x: 4000, ..inside }, Some(monitor)), None);
+    assert_eq!(kept_on(inside, vec2(4.0, 42.0), Some(monitor)), Some(inside));
+    assert_eq!(kept_on(SavedPlace { x: 4000, ..inside }, Vec2::ZERO, Some(monitor)), None);
+    // A frame no window has (hostile or broken reports) is not believed.
+    assert_eq!(kept_on(inside, vec2(f32::NAN, -5.0), Some(monitor)), Some(inside));
 }
 
 /// A Quit cancelled at its question leaves the session as it was: windows and all. One that
@@ -357,4 +370,49 @@ fn a_restored_window_is_placed_at_its_own_scale() {
     app.show_other_windows(&mut host);
     assert!(placed(&mut host).is_empty());
     assert!(app.windows.others[0].pending_place.is_none());
+}
+
+/// Until the platform says how large the first window's frame is, the arrangement waits (a
+/// restored window is kept on screen title bar and all); a platform that never says only
+/// delays it, by a bounded number of passes.
+#[test]
+fn a_restore_waits_a_bounded_time_for_the_first_windows_frame() {
+    let (dir, paths) = files("frame");
+    let mut h = fresh(false);
+    let app = h.state_mut();
+    app.win.frame.inner = None;
+    app.win.frame.outer = None;
+    app.last_session = LastSession::from_json(&session(&paths[..2], json!([{ "files": [&paths[1]] }]), &paths[0]));
+    app.reopen_last_files(&[]);
+    let mut host = Host::new(app);
+    for _ in 0..super::restore::FRAME_WAIT {
+        app.show_other_windows(&mut host);
+    }
+    assert_eq!(app.window_count(), 1, "no frame yet: waiting");
+    app.show_other_windows(&mut host);
+    assert_eq!(names(app), vec![vec!["a.pdf".to_string()], vec!["b.pdf".into()]], "never known: restored anyway");
+    // Known at once: no wait.
+    let mut h = fresh(false);
+    let app = h.state_mut();
+    app.last_session = LastSession::from_json(&session(&paths[..2], json!([{ "files": [&paths[1]] }]), &paths[0]));
+    app.reopen_last_files(&[]);
+    let mut host = Host::new(app);
+    app.show_other_windows(&mut host);
+    assert_eq!(app.window_count(), 2);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// The frame a restored window is kept on screen with is the first window's title bar and
+/// borders, in pixels; nothing when the platform reports no rects, or nonsense ones.
+#[test]
+fn the_frame_comes_from_the_first_windows_rects() {
+    let mut h = fresh(false);
+    let app = h.state_mut();
+    assert_eq!(app.decoration(), vec2(4.0, 34.0));
+    app.win.frame.ppp = 2.0;
+    assert_eq!(app.decoration(), vec2(8.0, 68.0), "in pixels");
+    app.win.frame.outer = Some(Rect::from_min_size(pos2(100.0, 100.0), vec2(10.0, 10.0)));
+    assert_eq!(app.decoration(), Vec2::ZERO, "an outer rect smaller than the inner one");
+    app.win.frame.outer = None;
+    assert_eq!(app.decoration(), Vec2::ZERO);
 }

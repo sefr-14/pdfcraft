@@ -27,7 +27,13 @@ use crate::last_session::{SavedPlace, SessionWindow};
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct Restore {
     pub(crate) windows: Vec<SessionWindow>,
+    /// The first window's passes spent waiting for the system to say how large its frame is.
+    pub(crate) waited: u8,
 }
+
+/// How many of the first window's passes a restore waits for its frame (title bar and borders)
+/// to be known, so restored windows are kept on screen whole; after that it goes ahead without.
+pub(crate) const FRAME_WAIT: u8 = 30;
 
 impl PdfCraftApp {
     /// Make the last session's windows once their files are open (each pass of the first window,
@@ -39,6 +45,19 @@ impl PdfCraftApp {
         let Some(plan) = self.restoring.as_ref() else { return };
         if plan.windows.iter().flat_map(|w| w.files.iter()).any(|f| self.still_opening(f)) {
             return;
+        }
+        // Wait (a bounded number of passes) for the first window's frame: a restored window is
+        // kept on its monitor title bar and all.
+        if self.win.frame.inner.is_none() || self.win.frame.outer.is_none() {
+            if let Some(plan) = self.restoring.as_mut()
+                && plan.waited < FRAME_WAIT
+            {
+                plan.waited += 1;
+                if let Some(ctx) = &self.ctx {
+                    ctx.request_repaint();
+                }
+                return;
+            }
         }
         let Some(plan) = self.restoring.take() else { return };
         // One window here: everything stays in the first, which is the fallback (T-4).
@@ -94,7 +113,8 @@ impl PdfCraftApp {
             .collect();
         let Some((&first, rest)) = views.split_first() else { return };
         let geometry = self.restored_geometry(saved.place);
-        let on_screen = saved.place.and_then(kept_on_screen);
+        let frame = self.decoration();
+        let on_screen = saved.place.and_then(|p| kept_on(p, frame, crate::platform::monitors::monitor_at(grip(p))));
         let before = self.windows.others.len();
         // The first window keeps a tab: a session whose first window lost all its files gives
         // one of this window's back to it (`take_tab` refuses the last one).
@@ -120,6 +140,18 @@ impl PdfCraftApp {
         }
     }
 
+    /// How much larger than its inner size a window of this app is, in physical pixels: the
+    /// first window's title bar and borders, when the platform reports both its rects; nothing
+    /// otherwise (a restored window is then kept inside by its inner size).
+    pub(crate) fn decoration(&self) -> Vec2 {
+        let f = &self.win.frame;
+        let ppp = super::finite_positive(Some(f.ppp)).unwrap_or(1.0);
+        match (f.inner, f.outer) {
+            (Some(inner), Some(outer)) => ((outer.size() - inner.size()) * ppp).max(Vec2::ZERO),
+            _ => Vec2::ZERO,
+        }
+    }
+
     fn path_of(&self, id: pdfcraft_engine::DocId) -> Option<String> {
         self.session.get(id).and_then(|d| d.path.clone())
     }
@@ -139,17 +171,21 @@ fn grip(place: SavedPlace) -> Pos2 {
     pos2(place.x as f32, place.y as f32) + vec2(48.0, 12.0)
 }
 
-/// A saved place (physical pixels) kept inside the monitor its title bar is on now, in physical
-/// pixels; `None` when it is on no monitor there now.
-fn kept_on_screen(place: SavedPlace) -> Option<SavedPlace> {
-    kept_on(place, crate::platform::monitors::monitor_at(grip(place)))
+/// `place` kept inside `area`, title bar and borders included: `frame` is how much larger than
+/// its inner size a window is (all in physical pixels). As [`place_on`] keeps it, at a scale of 1;
+/// `None` when its title bar is on no monitor there now.
+pub(crate) fn kept_on(place: SavedPlace, frame: Vec2, area: Option<crate::monitors::MonitorArea>) -> Option<SavedPlace> {
+    let frame = Vec2::new(finite_or_zero(frame.x), finite_or_zero(frame.y));
+    let whole = SavedPlace { width: place.width.saturating_add(frame.x as u32), height: place.height.saturating_add(frame.y as u32), ..place };
+    let g = place_on(whole, 1.0, area)?;
+    let pos = g.pos?;
+    let size = (g.size - frame).max(Vec2::splat(1.0));
+    Some(SavedPlace { x: pos.x.round() as i32, y: pos.y.round() as i32, width: size.x.round() as u32, height: size.y.round() as u32, ..place })
 }
 
-/// `place` kept inside `area` (both in physical pixels), as [`place_on`] keeps it at a scale of 1.
-pub(crate) fn kept_on(place: SavedPlace, area: Option<crate::monitors::MonitorArea>) -> Option<SavedPlace> {
-    let g = place_on(place, 1.0, area)?;
-    let pos = g.pos?;
-    Some(SavedPlace { x: pos.x.round() as i32, y: pos.y.round() as i32, width: g.size.x.round() as u32, height: g.size.y.round() as u32, ..place })
+/// A frame side: finite, not negative, and no larger than any title bar and borders could be.
+fn finite_or_zero(v: f32) -> f32 {
+    if v.is_finite() { v.clamp(0.0, 512.0) } else { 0.0 }
 }
 
 /// `place` (physical pixels) on the monitor `area` the platform found nearest it, in points at

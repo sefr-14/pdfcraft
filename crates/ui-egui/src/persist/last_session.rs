@@ -271,7 +271,7 @@ impl PdfCraftApp {
             }
             // The windows after the first come back once their files are open (W4).
             if !last.windows.is_empty() {
-                self.restoring = Some(crate::multi_window::Restore { windows: last.windows.clone() });
+                self.restoring = Some(crate::multi_window::Restore { windows: last.windows.clone(), waited: 0 });
             }
         }
         #[cfg(target_arch = "wasm32")]
