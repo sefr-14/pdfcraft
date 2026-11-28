@@ -89,8 +89,8 @@ pub fn run(args: &[String]) -> Result<()> {
 
 /// The workspace root (the parent of this crate's manifest directory).
 fn repo_root() -> PathBuf {
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let manifest = manifest.canonicalize().unwrap_or_else(|_| manifest.to_path_buf());
+    let manifest = crate::gates::manifest_dir();
+    let manifest = manifest.canonicalize().unwrap_or(manifest);
     manifest.parent().map(Path::to_path_buf).unwrap_or(manifest)
 }
 

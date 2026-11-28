@@ -140,7 +140,7 @@ pub struct Fetched {
 }
 
 pub fn root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).parent().expect("xtask lives in the workspace").to_path_buf()
+    crate::gates::manifest_dir().parent().expect("xtask lives in the workspace").to_path_buf()
 }
 
 pub fn load(root: &Path) -> Result<Manifest> {

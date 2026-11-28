@@ -9,7 +9,20 @@ use anyhow::{Context, anyhow, bail};
 use crate::layers;
 
 pub fn root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).parent().expect("xtask has a parent dir").to_path_buf()
+    manifest_dir().parent().expect("xtask has a parent dir").to_path_buf()
+}
+
+/// This crate's directory in the checkout being checked: the one `cargo run` (and so `cargo
+/// xtask`) names as it starts xtask, else the one xtask was built in. Several checkouts (git
+/// worktrees) can share a target directory, and Cargo then reuses one xtask binary for all of
+/// them: the directory compiled in is whichever checkout built it, so the gates would read that
+/// checkout's files instead of this one's (this fork, TAB.WINDOW.1 W3).
+pub fn manifest_dir() -> PathBuf {
+    let built = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    std::env::var_os("CARGO_MANIFEST_DIR")
+        .map(PathBuf::from)
+        .filter(|dir| dir.join("Cargo.toml").is_file() && dir.join("src").join("gates.rs").is_file())
+        .unwrap_or(built)
 }
 
 /// Cargo's target directory: `CARGO_TARGET_DIR` when it is set (parallel agents use their own),
